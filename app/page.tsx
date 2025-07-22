@@ -1,6 +1,18 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import { useFirebase } from "./providers/FirebaseProvider";
+import { db } from "./providers/FirebaseProvider";
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  addDoc
+} from "firebase/firestore";
 
 // Types
 interface Option {
@@ -32,33 +44,6 @@ declare global {
 type _SpeechRecognition = typeof window extends { SpeechRecognition: infer T } ? T : any;
 type _SpeechRecognitionEvent = typeof window extends { SpeechRecognitionEvent: infer T } ? T : any;
 
-// Helpers for localStorage
-const OPTIONS_KEY = "speech_to_text_options";
-const WEBHOOKS_KEY = "speech_to_text_webhooks";
-
-function loadOptions(): Option[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(OPTIONS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-function saveOptions(options: Option[]) {
-  localStorage.setItem(OPTIONS_KEY, JSON.stringify(options));
-}
-function loadWebhooks(): Webhook[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(WEBHOOKS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-function saveWebhooks(webhooks: Webhook[]) {
-  localStorage.setItem(WEBHOOKS_KEY, JSON.stringify(webhooks));
-}
-
 // Helper for default header types
 const HEADER_TYPE_SECRET = 'X-Webhook-Secret';
 const HEADER_TYPE_BEARER = 'Authorization';
@@ -83,42 +68,23 @@ export default function Home() {
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [lastPayload, setLastPayload] = useState<any>(null);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
-        <div className="text-lg text-white">Loading...</div>
-      </div>
-    );
-  }
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
-        <div className="bg-white/90 dark:bg-[#18181b] rounded-xl shadow-lg p-10 flex flex-col items-center gap-6 border border-gray-200 dark:border-gray-800">
-          <h1 className="text-3xl font-extrabold tracking-tight mb-2">Welcome to ReportAI</h1>
-          <p className="text-base text-gray-500 dark:text-gray-300 mb-4 text-center">Sign in with Google to manage your webhooks and options securely.</p>
-          <button
-            onClick={signInWithGoogle}
-            className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition flex items-center gap-2"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path><path d="M3.272 7.545l3.273 2.402c.891-1.07 2.18-2.188 4.242-2.188 1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-2.953 0-5.453 1.68-6.617 4.088z" fill="#34A853"></path><path d="M12.487 21.5c2.789 0 5.125-.922 6.836-2.516l-3.164-2.594c-.867.617-2.055 1.055-3.672 1.055-2.367 0-4.367-1.555-5.086-3.703l-3.242 2.5c1.547 3.07 4.789 5.258 8.328 5.258z" fill="#FBBC05"></path><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path></g></svg>
-            Sign in with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
-  // Speech to text
-  // Load from localStorage on mount
+  // Always call hooks, only run logic if user exists
   useEffect(() => {
-    setOptions(loadOptions());
-    setWebhooks(loadWebhooks());
-  }, []);
+    if (!user) return;
+    const optionsRef = collection(db, "users", user.uid, "options");
+    const webhooksRef = collection(db, "users", user.uid, "webhooks");
+    const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
+      setOptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Option));
+    });
+    const unsubWebhooks = onSnapshot(webhooksRef, (snapshot) => {
+      setWebhooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Webhook));
+    });
+    return () => {
+      unsubOptions();
+      unsubWebhooks();
+    };
+  }, [user]);
 
-  // Save options/webhooks to localStorage
-  useEffect(() => { saveOptions(options); }, [options]);
-  useEffect(() => { saveWebhooks(webhooks); }, [webhooks]);
-
-  // Speech recognition setup
   useEffect(() => {
     if (typeof window === "undefined") return;
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -135,24 +101,6 @@ export default function Home() {
     recognitionRef.current.onend = () => setListening(false);
   }, []);
 
-  // When secret/api key changes, update the headers for that webhook
-  const setSecretForWebhook = (webhookId: string, value: string, type: 'secret' | 'bearer') => {
-    setSecretValueFor(v => ({ ...v, [webhookId]: value }));
-    setSecretTypeFor(t => ({ ...t, [webhookId]: type }));
-    setWebhooks(webhooks.map(w => {
-      if (w.id !== webhookId) return w;
-      let headers = (w.headers || []).filter(h => h.key !== HEADER_TYPE_SECRET && h.key !== HEADER_TYPE_BEARER);
-      if (value) {
-        if (type === 'secret') {
-          headers = [...headers, { id: 'secret', key: HEADER_TYPE_SECRET, value }];
-        } else {
-          headers = [...headers, { id: 'bearer', key: HEADER_TYPE_BEARER, value: `Bearer ${value}` }];
-        }
-      }
-      return { ...w, headers };
-    }));
-  };
-  // When loading webhooks, initialize secret fields
   useEffect(() => {
     const newSecretType: { [webhookId: string]: 'secret' | 'bearer' } = {};
     const newSecretValue: { [webhookId: string]: string } = {};
@@ -172,21 +120,8 @@ export default function Home() {
     });
     setSecretTypeFor(newSecretType);
     setSecretValueFor(newSecretValue);
-  }, [webhooks.length]);
+  }, [webhooks]);
 
-  // When Make.com API key changes, update the headers for that webhook
-  const setMakeApiKeyForWebhook = (webhookId: string, value: string) => {
-    setMakeApiKeyFor(v => ({ ...v, [webhookId]: value }));
-    setWebhooks(webhooks.map(w => {
-      if (w.id !== webhookId) return w;
-      let headers = (w.headers || []).filter(h => h.key !== HEADER_TYPE_MAKE_APIKEY);
-      if (value) {
-        headers = [...headers, { id: 'make-apikey', key: HEADER_TYPE_MAKE_APIKEY, value }];
-      }
-      return { ...w, headers };
-    }));
-  };
-  // When loading webhooks, initialize Make.com API key fields
   useEffect(() => {
     const newMakeApiKey: { [webhookId: string]: string } = {};
     webhooks.forEach(w => {
@@ -198,7 +133,37 @@ export default function Home() {
       }
     });
     setMakeApiKeyFor(newMakeApiKey);
-  }, [webhooks.length]);
+  }, [webhooks]);
+
+  // When secret/api key changes, update the headers for that webhook
+  const setSecretForWebhook = (webhookId: string, value: string, type: 'secret' | 'bearer') => {
+    setSecretValueFor(v => ({ ...v, [webhookId]: value }));
+    setSecretTypeFor(t => ({ ...t, [webhookId]: type }));
+    setWebhooks(webhooks.map(w => {
+      if (w.id !== webhookId) return w;
+      let headers = (w.headers || []).filter(h => h.key !== HEADER_TYPE_SECRET && h.key !== HEADER_TYPE_BEARER);
+      if (value) {
+        if (type === 'secret') {
+          headers = [...headers, { id: 'secret', key: HEADER_TYPE_SECRET, value }];
+        } else {
+          headers = [...headers, { id: 'bearer', key: HEADER_TYPE_BEARER, value: `Bearer ${value}` }];
+        }
+      }
+      return { ...w, headers };
+    }));
+  };
+
+  // When Make.com API key changes, update the headers for that webhook
+  const setMakeApiKeyForWebhook = async (webhookId: string, value: string) => {
+    setMakeApiKeyFor(v => ({ ...v, [webhookId]: value }));
+    const webhook = webhooks.find(w => w.id === webhookId);
+    if (!user || !webhook) return;
+    let headers = (webhook.headers || []).filter(h => h.key !== HEADER_TYPE_MAKE_APIKEY);
+    if (value) {
+      headers = [...headers, { id: 'make-apikey', key: HEADER_TYPE_MAKE_APIKEY, value }];
+    }
+    await setDoc(doc(db, "users", user.uid, "webhooks", webhookId), { ...webhook, headers });
+  };
 
   const startListening = () => {
     if (!recognitionRef.current) return alert("Speech recognition not supported in this browser.");
@@ -212,33 +177,36 @@ export default function Home() {
   };
 
   // Option management
-  const addOption = () => {
-    if (!newOption.trim()) return;
-    const option: Option = { id: Date.now().toString(), label: newOption.trim() };
-    setOptions([...options, option]);
+  const addOption = async () => {
+    if (!newOption.trim() || !user) return;
+    await addDoc(collection(db, "users", user.uid, "options"), { label: newOption.trim() });
     setNewOption("");
   };
-  const deleteOption = (id: string) => {
-    setOptions(options.filter(o => o.id !== id));
+  const deleteOption = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, "users", user.uid, "options", id));
     if (selectedOption === id) setSelectedOption("");
   };
-  const editOption = (id: string, label: string) => {
-    setOptions(options.map(o => o.id === id ? { ...o, label } : o));
+  const editOption = async (id: string, label: string) => {
+    if (!user) return;
+    await setDoc(doc(db, "users", user.uid, "options", id), { label });
   };
 
   // Webhook management
-  const addWebhook = () => {
-    if (!newWebhook.trim()) return;
-    const webhook: Webhook = { id: Date.now().toString(), url: newWebhook.trim(), headers: [] };
-    setWebhooks([...webhooks, webhook]);
+  const addWebhook = async () => {
+    if (!newWebhook.trim() || !user) return;
+    await addDoc(collection(db, "users", user.uid, "webhooks"), { url: newWebhook.trim(), headers: [] });
     setNewWebhook("");
   };
-  const deleteWebhook = (id: string) => {
-    setWebhooks(webhooks.filter(w => w.id !== id));
+  const deleteWebhook = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, "users", user.uid, "webhooks", id));
     if (selectedWebhook === id) setSelectedWebhook("");
   };
-  const editWebhook = (id: string, url: string) => {
-    setWebhooks(webhooks.map(w => w.id === id ? { ...w, url } : w));
+  const editWebhook = async (id: string, url: string) => {
+    if (!user) return;
+    const webhook = webhooks.find(w => w.id === id);
+    await setDoc(doc(db, "users", user.uid, "webhooks", id), { ...webhook, url });
   };
   // (Removed: addHeader, editHeader, deleteHeader)
 
@@ -292,6 +260,33 @@ export default function Home() {
     }
     setSending(false);
   };
+
+  // UI rendering
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
+        <div className="text-lg text-white">Loading...</div>
+      </div>
+    );
+  }
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
+        <div className="bg-white/90 dark:bg-[#18181b] rounded-xl shadow-lg p-10 flex flex-col items-center gap-6 border border-gray-200 dark:border-gray-800">
+          <h1 className="text-3xl font-extrabold tracking-tight mb-2">Welcome to ReportAI</h1>
+          <p className="text-base text-gray-500 dark:text-gray-300 mb-4 text-center">Sign in with Google to manage your webhooks and options securely.</p>
+          <button
+            onClick={signInWithGoogle}
+            className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition flex items-center gap-2"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path><path d="M3.272 7.545l3.273 2.402c.891-1.07 2.18-2.188 4.242-2.188 1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-2.953 0-5.453 1.68-6.617 4.088z" fill="#34A853"></path><path d="M12.487 21.5c2.789 0 5.125-.922 6.836-2.516l-3.164-2.594c-.867.617-2.055 1.055-3.672 1.055-2.367 0-4.367-1.555-5.086-3.703l-3.242 2.5c1.547 3.07 4.789 5.258 8.328 5.258z" fill="#FBBC05"></path><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path></g></svg>
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+  // (The two useEffect hooks after the return have been removed)
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a] dark:from-[#18181b] dark:via-[#23232a] dark:to-[#0a0a0a] p-4">
@@ -400,7 +395,7 @@ export default function Home() {
             </div>
           )}
         </section>
-      </div>
+        </div>
     </div>
   );
 }

@@ -30,7 +30,7 @@ export default function RootLayout({
         style={{ minHeight: '100vh', background: 'var(--background)' }}
       >
         <FirebaseProvider>
-          {children}
+        {children}
         </FirebaseProvider>
       </body>
     </html>
