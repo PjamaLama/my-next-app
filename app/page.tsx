@@ -57,6 +57,14 @@ declare global {
   var webkitSpeechRecognition: unknown;
 }
 
+// Add type for stepper field
+interface StepperField {
+  column: string;
+  cell: string;
+  value?: string;
+  suggested_value?: string;
+}
+
 // Helper for default header types
 const HEADER_TYPE_MAKE_APIKEY = 'x-make-apikey';
 
@@ -76,6 +84,38 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [lastPayload, setLastPayload] = useState<Record<string, unknown> | null>(null);
+  const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
+
+  // Stepper UI state
+  const [stepperIndex, setStepperIndex] = useState(0);
+  const [stepperValues, setStepperValues] = useState<{ [cell: string]: string }>({});
+  const [stepperComplete, setStepperComplete] = useState(false);
+
+  // Handler for updating a value
+  const handleStepperChange = (cell: string, value: string) => {
+    setStepperValues(v => ({ ...v, [cell]: value }));
+  };
+  // Handler for skipping a field
+  const handleStepperSkip = (cell: string) => {
+    setStepperValues(v => ({ ...v, [cell]: "" }));
+    handleStepperNext();
+  };
+  // Handler for next
+  const handleStepperNext = () => {
+    if (stepperIndex < stepperFields.length - 1) {
+      setStepperIndex(i => i + 1);
+    } else {
+      setStepperComplete(true);
+    }
+  };
+  // Handler for back
+  const handleStepperBack = () => {
+    if (stepperIndex > 0) setStepperIndex(i => i - 1);
+  };
+  // Handler for finish
+  const handleStepperFinish = () => {
+    setStepperComplete(true);
+  };
 
   // Always call hooks, only run logic if user exists
   useEffect(() => {
@@ -232,6 +272,49 @@ export default function Home() {
     setSending(false);
   };
 
+  // Helper to parse webhook response for stepper fields
+  function parseStepperFields(response: string): StepperField[] {
+    // Try to extract JSON array from response
+    // Remove the unsupported 's' flag and allow multiline with [\s\S]
+    const match = response.match(/\[[\s\S]*\]/);
+    let arrStr = match ? match[0] : response;
+    try {
+      // Try parsing as JSON array
+      const arr = JSON.parse(arrStr);
+      if (Array.isArray(arr) && arr.every(obj => obj.column && obj.cell)) {
+        return arr;
+      }
+    } catch {
+      // Try to parse as comma-separated objects
+      const objectRegex = /\{[^}]+\}/g;
+      const objects = response.match(objectRegex);
+      if (objects) {
+        return objects.map(objStr => {
+          try {
+            // Replace single quotes with double quotes for JSON.parse
+            const safeStr = objStr.replace(/([a-zA-Z0-9_]+):/g, '"$1":').replace(/'/g, '"');
+            return JSON.parse(safeStr);
+          } catch {
+            return {};
+          }
+        }).filter(obj => obj.column && obj.cell);
+      }
+    }
+    return [];
+  }
+
+  // When sendResult changes and contains a webhook response, parse stepper fields
+  useEffect(() => {
+    if (sendResult && sendResult.includes("Response:")) {
+      // Try to extract the JSON-like part after 'Response:'
+      const parts = sendResult.split("Response:");
+      if (parts.length > 1) {
+        const fields = parseStepperFields(parts[1]);
+        if (fields.length > 0) setStepperFields(fields);
+      }
+    }
+  }, [sendResult]);
+
   // UI rendering
   if (loading) {
     return (
@@ -358,15 +441,96 @@ export default function Home() {
           >
             {sending ? "Sending..." : "Send to Webhook"}
           </button>
-          {sendResult && <div className="mt-2 text-sm whitespace-pre-line text-center max-w-xl">{sendResult}</div>}
-          {lastPayload && (
-            <div className="mt-2 text-xs w-full max-w-xl">
-              <div className="font-semibold mb-1">Payload being sent:</div>
-              <pre className="bg-black/10 dark:bg-white/10 rounded p-2 overflow-x-auto">{JSON.stringify(lastPayload, null, 2)}</pre>
+          {sendResult && (
+            <div className="mt-2 text-sm whitespace-pre-line text-center max-w-xl">
+              {/* Only show status, not raw JSON response */}
+              {sendResult.split('Response:')[0].trim()}
             </div>
           )}
         </section>
-        </div>
+        {/* Stepper UI for editing webhook fields as a modal */}
+        {stepperFields.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <section className="w-full max-w-xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
+              <button
+                onClick={() => { setStepperFields([]); setStepperComplete(false); setStepperIndex(0); setStepperValues({}); }}
+                className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
+                aria-label="Close"
+                style={{ position: 'absolute', top: 16, right: 16 }}
+              >&times;</button>
+              <div className="w-full overflow-y-auto scrollbar-none" style={{ maxHeight: '70vh', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {/* Add custom CSS for Webkit browsers to hide scrollbar */}
+                <style>{`
+                  .scrollbar-none::-webkit-scrollbar { display: none; }
+                `}</style>
+              {!stepperComplete ? (
+                <>
+                  <h2 className="text-xl font-bold mb-4 text-center">Review & Edit Webhook Data</h2>
+                  <div className="w-full flex flex-col items-center">
+                    <div className="mb-6 w-full">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-gray-500">Field {stepperIndex + 1} of {stepperFields.length}</span>
+                        <span className="text-xs text-gray-400">Cell: <span className="font-mono">{stepperFields[stepperIndex].cell}</span></span>
+                      </div>
+                      <label className="block text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200">{stepperFields[stepperIndex].column}</label>
+                      <input
+                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base mb-2"
+                        value={stepperValues[stepperFields[stepperIndex].cell] ?? stepperFields[stepperIndex].suggested_value ?? stepperFields[stepperIndex].value ?? ''}
+                        onChange={e => handleStepperChange(stepperFields[stepperIndex].cell, e.target.value)}
+                        placeholder={stepperFields[stepperIndex].suggested_value || 'Enter value...'}
+                      />
+                      {stepperFields[stepperIndex].suggested_value && (
+                        <div className="text-xs text-blue-600 dark:text-blue-300 mb-1">Suggested: <span className="font-mono">{stepperFields[stepperIndex].suggested_value}</span></div>
+                      )}
+                    </div>
+                    <div className="flex gap-3 w-full justify-between">
+                      <button
+                        onClick={handleStepperBack}
+                        disabled={stepperIndex === 0}
+                        className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:text-gray-600 transition text-sm font-medium disabled:opacity-50"
+                      >Back</button>
+                      <button
+                        onClick={() => handleStepperSkip(stepperFields[stepperIndex].cell)}
+                        className="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium transition text-sm"
+                      >Skip</button>
+                      {stepperIndex < stepperFields.length - 1 ? (
+                        <button
+                          onClick={handleStepperNext}
+                          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm"
+                        >Next</button>
+                      ) : (
+                        <button
+                          onClick={handleStepperFinish}
+                          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm"
+                        >Finish</button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-bold mb-4 text-center">Review Complete</h2>
+                  <div className="w-full">
+                    <ul className="space-y-2">
+                      {stepperFields.map(field => (
+                        <li key={field.cell} className="flex flex-col gap-1 border-b border-gray-200 dark:border-gray-700 pb-2">
+                          <span className="font-semibold">{field.column} <span className="text-xs text-gray-400">({field.cell})</span></span>
+                          <span className="text-base text-gray-700 dark:text-gray-200">{stepperValues[field.cell] ?? field.suggested_value ?? field.value ?? <span className='italic text-gray-400'>(empty)</span>}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <button
+                    onClick={() => { setStepperComplete(false); setStepperIndex(0); }}
+                    className="mt-6 px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-base"
+                  >Edit Again</button>
+                </>
+              )}
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
