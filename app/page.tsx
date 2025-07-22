@@ -5,12 +5,9 @@ import { db } from "./providers/FirebaseProvider";
 import {
   collection,
   doc,
-  getDocs,
   setDoc,
   deleteDoc,
   onSnapshot,
-  query,
-  orderBy,
   addDoc
 } from "firebase/firestore";
 
@@ -30,23 +27,37 @@ interface Webhook {
   headers?: WebhookHeader[];
 }
 
+// Add minimal interfaces for SpeechRecognition and SpeechRecognitionEvent
+interface MinimalSpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: (event: MinimalSpeechRecognitionEvent) => void;
+  onerror: () => void;
+  onend: () => void;
+}
+interface MinimalSpeechRecognitionEvent {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+}
+
 // TypeScript: Add SpeechRecognition types if missing (for browser compatibility)
 declare global {
   interface Window {
-    webkitSpeechRecognition?: typeof SpeechRecognition;
+    webkitSpeechRecognition?: {
+      new (): MinimalSpeechRecognition;
+    };
+    SpeechRecognition?: {
+      new (): MinimalSpeechRecognition;
+    };
   }
-  // Only declare if not already present
-  // @ts-ignore
-  var SpeechRecognition: any;
-  // @ts-ignore
-  var webkitSpeechRecognition: any;
+  type SpeechRecognitionEvent = MinimalSpeechRecognitionEvent;
+  var SpeechRecognition: unknown;
+  var webkitSpeechRecognition: unknown;
 }
-type _SpeechRecognition = typeof window extends { SpeechRecognition: infer T } ? T : any;
-type _SpeechRecognitionEvent = typeof window extends { SpeechRecognitionEvent: infer T } ? T : any;
 
 // Helper for default header types
-const HEADER_TYPE_SECRET = 'X-Webhook-Secret';
-const HEADER_TYPE_BEARER = 'Authorization';
 const HEADER_TYPE_MAKE_APIKEY = 'x-make-apikey';
 
 export default function Home() {
@@ -54,19 +65,17 @@ export default function Home() {
   // All hooks must be called before any return!
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<_SpeechRecognition | null>(null);
+  const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
   const [options, setOptions] = useState<Option[]>([]);
   const [newOption, setNewOption] = useState("");
   const [selectedOption, setSelectedOption] = useState<string>("");
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [newWebhook, setNewWebhook] = useState("");
   const [selectedWebhook, setSelectedWebhook] = useState<string>("");
-  const [secretTypeFor, setSecretTypeFor] = useState<{ [webhookId: string]: 'secret' | 'bearer' }>({});
-  const [secretValueFor, setSecretValueFor] = useState<{ [webhookId: string]: string }>({});
   const [makeApiKeyFor, setMakeApiKeyFor] = useState<{ [webhookId: string]: string }>({});
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
-  const [lastPayload, setLastPayload] = useState<any>(null);
+  const [lastPayload, setLastPayload] = useState<Record<string, unknown> | null>(null);
 
   // Always call hooks, only run logic if user exists
   useEffect(() => {
@@ -93,34 +102,13 @@ export default function Home() {
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = false;
     recognitionRef.current.lang = "en-US";
-    recognitionRef.current.onresult = (event: any) => {
+    recognitionRef.current.onresult = (event: MinimalSpeechRecognitionEvent) => {
       setTranscript(event.results[0][0].transcript);
       setListening(false);
     };
     recognitionRef.current.onerror = () => setListening(false);
     recognitionRef.current.onend = () => setListening(false);
   }, []);
-
-  useEffect(() => {
-    const newSecretType: { [webhookId: string]: 'secret' | 'bearer' } = {};
-    const newSecretValue: { [webhookId: string]: string } = {};
-    webhooks.forEach(w => {
-      const secretHeader = (w.headers || []).find(h => h.key === HEADER_TYPE_SECRET);
-      const bearerHeader = (w.headers || []).find(h => h.key === HEADER_TYPE_BEARER);
-      if (bearerHeader) {
-        newSecretType[w.id] = 'bearer';
-        newSecretValue[w.id] = bearerHeader.value.replace(/^Bearer /, '');
-      } else if (secretHeader) {
-        newSecretType[w.id] = 'secret';
-        newSecretValue[w.id] = secretHeader.value;
-      } else {
-        newSecretType[w.id] = 'secret';
-        newSecretValue[w.id] = '';
-      }
-    });
-    setSecretTypeFor(newSecretType);
-    setSecretValueFor(newSecretValue);
-  }, [webhooks]);
 
   useEffect(() => {
     const newMakeApiKey: { [webhookId: string]: string } = {};
@@ -134,24 +122,6 @@ export default function Home() {
     });
     setMakeApiKeyFor(newMakeApiKey);
   }, [webhooks]);
-
-  // When secret/api key changes, update the headers for that webhook
-  const setSecretForWebhook = (webhookId: string, value: string, type: 'secret' | 'bearer') => {
-    setSecretValueFor(v => ({ ...v, [webhookId]: value }));
-    setSecretTypeFor(t => ({ ...t, [webhookId]: type }));
-    setWebhooks(webhooks.map(w => {
-      if (w.id !== webhookId) return w;
-      let headers = (w.headers || []).filter(h => h.key !== HEADER_TYPE_SECRET && h.key !== HEADER_TYPE_BEARER);
-      if (value) {
-        if (type === 'secret') {
-          headers = [...headers, { id: 'secret', key: HEADER_TYPE_SECRET, value }];
-        } else {
-          headers = [...headers, { id: 'bearer', key: HEADER_TYPE_BEARER, value: `Bearer ${value}` }];
-        }
-      }
-      return { ...w, headers };
-    }));
-  };
 
   // When Make.com API key changes, update the headers for that webhook
   const setMakeApiKeyForWebhook = async (webhookId: string, value: string) => {
@@ -251,11 +221,12 @@ export default function Home() {
           `Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`
         );
       }
-    } catch (e: any) {
-      setSendResult("Error: " + (e?.message || e?.toString()));
+    } catch (e) {
+      const error = e as Error;
+      setSendResult("Error: " + (error?.message || error?.toString()));
       if (typeof window !== "undefined" && window.console) {
         // Log full error to browser console
-        console.error("Webhook send error:", e);
+        console.error("Webhook send error:", error);
       }
     }
     setSending(false);
