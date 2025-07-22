@@ -297,92 +297,97 @@ export default function Home() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-8">
-      <h1 className="text-2xl font-bold mb-4">Speech to Text App</h1>
-      {/* Speech to Text */}
-      <section className="space-y-2">
-        <div className="flex gap-2">
-          <button onClick={startListening} disabled={listening} className="px-4 py-2 rounded disabled:opacity-50">Start Listening</button>
-          <button onClick={stopListening} disabled={!listening} className="px-4 py-2 rounded disabled:opacity-50">Stop</button>
-        </div>
-        <div className="transcript-box">{transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}</div>
-      </section>
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a] dark:from-[#18181b] dark:via-[#23232a] dark:to-[#0a0a0a] p-4">
+      <div className="w-full max-w-2xl mx-auto space-y-8">
+        <header className="mb-4 text-center">
+          <h1 className="text-3xl font-extrabold tracking-tight mb-2">Speech to Text Webhook App</h1>
+          <p className="text-base text-gray-400">Transcribe speech, select an option, and send to your Make.com webhook.</p>
+        </header>
 
-      {/* Options Management */}
-      <section>
-        <h2 className="font-semibold mb-2">Manage Options</h2>
-        <div className="flex gap-2 mb-2">
-          <input value={newOption} onChange={e => setNewOption(e.target.value)} placeholder="Add option..." className="border rounded px-2 py-1 flex-1" />
-          <button onClick={addOption} className="px-3 py-1 rounded">Add</button>
-        </div>
-        <ul className="space-y-1">
-          {options.map(option => (
-            <li key={option.id} className="flex items-center gap-2">
-              <input type="radio" name="option" checked={selectedOption === option.id} onChange={() => setSelectedOption(option.id)} />
-              <input
-                className="border rounded px-1 py-0.5 flex-1"
-                value={option.label}
-                onChange={e => editOption(option.id, e.target.value)}
-              />
-              <button onClick={() => deleteOption(option.id)} style={{ color: 'red', background: 'transparent' }}>Delete</button>
-            </li>
-          ))}
-        </ul>
-      </section>
+        {/* Speech to Text */}
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-semibold mb-2">Speech Recognition</h2>
+          <div className="flex gap-3 flex-wrap">
+            <button onClick={startListening} disabled={listening} className="px-5 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">Start Listening</button>
+            <button onClick={stopListening} disabled={!listening} className="px-5 py-2 rounded-lg font-medium bg-gray-400 hover:bg-gray-500 text-white transition disabled:opacity-50">Stop</button>
+          </div>
+          <div className="transcript-box mt-2 shadow-inner border border-gray-300 dark:border-gray-700">{transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}</div>
+        </section>
 
-      {/* Webhook Management */}
-      <section>
-        <h2 className="font-semibold mb-2">Manage Webhooks</h2>
-        <div className="flex gap-2 mb-2">
-          <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border rounded px-2 py-1 flex-1" />
-          <button onClick={addWebhook} className="px-3 py-1 rounded">Add</button>
-        </div>
-        <ul className="space-y-1">
-          {webhooks.map(webhook => (
-            <li key={webhook.id} className="flex flex-col gap-1 border-b pb-2 mb-2">
-              <div className="flex items-center gap-2">
-                <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} />
+        {/* Options Management */}
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-semibold mb-2">Options</h2>
+          <div className="flex gap-2 mb-3">
+            <input value={newOption} onChange={e => setNewOption(e.target.value)} placeholder="Add option..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+            <button onClick={addOption} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
+          </div>
+          <ul className="space-y-2">
+            {options.map(option => (
+              <li key={option.id} className="flex items-center gap-3">
+                <input type="radio" name="option" checked={selectedOption === option.id} onChange={() => setSelectedOption(option.id)} className="accent-blue-600 w-4 h-4" />
                 <input
-                  className="border rounded px-1 py-0.5 flex-1"
-                  value={webhook.url}
-                  onChange={e => editWebhook(webhook.id, e.target.value)}
+                  className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                  value={option.label}
+                  onChange={e => editOption(option.id, e.target.value)}
                 />
-                <button onClick={() => deleteWebhook(webhook.id)} style={{ color: 'red', background: 'transparent' }}>Delete</button>
-              </div>
-              {/* Make.com API Key UI */}
-              <div className="ml-6 mt-2 flex flex-col gap-1">
+                <button onClick={() => deleteOption(option.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Webhook Management */}
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-semibold mb-2">Webhooks</h2>
+          <div className="flex gap-2 mb-3">
+            <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+            <button onClick={addWebhook} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
+          </div>
+          <ul className="space-y-3">
+            {webhooks.map(webhook => (
+              <li key={webhook.id} className={`flex flex-col gap-2 p-3 rounded-lg border ${selectedWebhook === webhook.id ? 'border-blue-500 shadow-lg' : 'border-gray-300 dark:border-gray-700'}`} style={{ background: 'rgba(0,0,0,0.02)' }}>
                 <div className="flex items-center gap-2">
+                  <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} className="accent-blue-600 w-4 h-4" />
                   <input
-                    className="border rounded px-1 py-0.5 text-xs"
+                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                    value={webhook.url}
+                    onChange={e => editWebhook(webhook.id, e.target.value)}
+                  />
+                  <button onClick={() => deleteWebhook(webhook.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
+                </div>
+                {/* Make.com API Key UI */}
+                <div className="flex items-center gap-2 ml-6">
+                  <input
+                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
                     style={{ width: 260 }}
                     value={makeApiKeyFor[webhook.id] || ''}
                     placeholder="Make.com API Key (x-make-apikey)"
                     onChange={e => setMakeApiKeyForWebhook(webhook.id, e.target.value)}
                   />
                 </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+              </li>
+            ))}
+          </ul>
+        </section>
 
-      {/* Send to Webhook */}
-      <section>
-        <button
-          onClick={sendToWebhook}
-          disabled={sending || !transcript || !selectedOption || !selectedWebhook}
-          className="px-6 py-2 rounded disabled:opacity-50"
-        >
-          {sending ? "Sending..." : "Send to Webhook"}
-        </button>
-        {sendResult && <div className="mt-2 text-sm whitespace-pre-line">{sendResult}</div>}
-       {lastPayload && (
-         <div className="mt-2 text-xs">
-           <div className="font-semibold mb-1">Payload being sent:</div>
-           <pre className="bg-black/10 dark:bg-white/10 rounded p-2 overflow-x-auto">{JSON.stringify(lastPayload, null, 2)}</pre>
-         </div>
-       )}
-      </section>
+        {/* Send to Webhook */}
+        <section className="flex flex-col items-center gap-3">
+          <button
+            onClick={sendToWebhook}
+            disabled={sending || !transcript || !selectedOption || !selectedWebhook}
+            className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
+          >
+            {sending ? "Sending..." : "Send to Webhook"}
+          </button>
+          {sendResult && <div className="mt-2 text-sm whitespace-pre-line text-center max-w-xl">{sendResult}</div>}
+          {lastPayload && (
+            <div className="mt-2 text-xs w-full max-w-xl">
+              <div className="font-semibold mb-1">Payload being sent:</div>
+              <pre className="bg-black/10 dark:bg-white/10 rounded p-2 overflow-x-auto">{JSON.stringify(lastPayload, null, 2)}</pre>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
