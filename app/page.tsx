@@ -85,11 +85,13 @@ export default function Home() {
   const [makeApiKeyFor, setMakeApiKeyFor] = useState<{ [webhookId: string]: string }>({});
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
-  const [lastPayload, setLastPayload] = useState<Record<string, unknown> | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   // Add state for webhook modal visibility
   const [webhooksModalOpen, setWebhooksModalOpen] = useState(false);
+  // Add state for stepper modal visibility and confirmation message
+  const [stepperModalOpen, setStepperModalOpen] = useState(false);
+  const [finalSubmitConfirmation, setFinalSubmitConfirmation] = useState<string | null>(null);
 
   // Stepper UI state
   const [stepperIndex, setStepperIndex] = useState(0);
@@ -253,7 +255,6 @@ export default function Home() {
     const webhook = webhooks.find(w => w.id === selectedWebhook);
     const webhookUrl = webhook?.url;
     const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
-    setLastPayload(payload);
     if (!webhookUrl) {
       setSendResult("Invalid webhook selected.");
       setSending(false);
@@ -299,7 +300,7 @@ export default function Home() {
     // Try to extract JSON array from response
     // Remove the unsupported 's' flag and allow multiline with [\s\S]
     const match = response.match(/\[[\s\S]*\]/);
-    let arrStr = match ? match[0] : response;
+    const arrStr = match ? match[0] : response;
     try {
       // Try parsing as JSON array
       const arr = JSON.parse(arrStr);
@@ -325,14 +326,17 @@ export default function Home() {
     return [];
   }
 
-  // When sendResult changes and contains a webhook response, parse stepper fields
+  // When sendResult changes and contains a webhook response, parse stepper fields and open the stepper modal
   useEffect(() => {
     if (sendResult && sendResult.includes("Response:")) {
       // Try to extract the JSON-like part after 'Response:'
       const parts = sendResult.split("Response:");
       if (parts.length > 1) {
         const fields = parseStepperFields(parts[1]);
-        if (fields.length > 0) setStepperFields(fields);
+        if (fields.length > 0) {
+          setStepperFields(fields);
+          setStepperModalOpen(true);
+        }
       }
     }
   }, [sendResult]);
@@ -390,7 +394,7 @@ export default function Home() {
         missing_columns.push({ column: field.column, cell: field.cell, suggested_value: field.suggested_value });
       }
     });
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
       row_to_update: row,
       sheet_name: selectedSheetName,
       cells_to_update,
@@ -409,6 +413,13 @@ export default function Home() {
       } catch {}
       if (res.ok) {
         setFinalSubmitStatus("Successfully submitted to webhook!" + (responseText ? `\n${responseText}` : ""));
+        setStepperModalOpen(false);
+        setFinalSubmitConfirmation("Submission complete!");
+        setTimeout(() => setFinalSubmitConfirmation(null), 4000);
+        setStepperFields([]);
+        setStepperComplete(false);
+        setStepperIndex(0);
+        setStepperValues({});
       } else {
         setFinalSubmitStatus(`Failed to submit. Status: ${res.status} ${res.statusText}\n${responseText}`);
       }
@@ -540,7 +551,7 @@ export default function Home() {
           )}
         </section>
         {/* Stepper UI for editing webhook fields as a modal */}
-        {stepperFields.length > 0 && (
+        {stepperModalOpen && stepperFields.length > 0 && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <section className="w-full max-w-xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
               <button
@@ -607,7 +618,7 @@ export default function Home() {
                     <select
                       className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
                       value={selectedFinalWebhook}
-                      onChange={e => setSelectedFinalWebhook(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedFinalWebhook(e.target.value)}
                     >
                       {webhooks.filter(w => (w.type || 'final') === 'final').map(w => (
                         <option key={w.id} value={w.id}>{w.name ? `${w.name} (${w.type || 'final'})` : w.url}</option>
@@ -689,7 +700,7 @@ export default function Home() {
             <h2 className="text-xl font-bold mb-4 text-center">Manage Webhooks</h2>
             <div className="flex gap-2 mb-3 w-full">
               <input value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} placeholder="Webhook Name..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
-              <select value={newWebhookType} onChange={e => setNewWebhookType(e.target.value as any)} className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
+              <select value={newWebhookType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewWebhookType(e.target.value as 'initial' | 'final' | 'backup' | 'other')} className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
                 <option value="initial">Initial</option>
                 <option value="final">Final</option>
                 <option value="backup">Backup</option>
@@ -716,7 +727,7 @@ export default function Home() {
                     <select
                       className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-28 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
                       value={webhook.type || 'final'}
-                      onChange={e => editWebhook(webhook.id, webhook.url, webhook.name, e.target.value as any)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => editWebhook(webhook.id, webhook.url, webhook.name, e.target.value as 'initial' | 'final' | 'backup' | 'other')}
                     >
                       <option value="initial">Initial</option>
                       <option value="final">Final</option>
@@ -741,6 +752,14 @@ export default function Home() {
           </section>
         </div>
       )}
+      {finalSubmitConfirmation && (
+        <div className="w-full max-w-2xl mx-auto mb-4">
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative text-center">
+            {finalSubmitConfirmation}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
