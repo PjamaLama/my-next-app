@@ -614,17 +614,15 @@ export default function Home() {
               </button>
               <span className={`ml-2 text-base font-medium ${listening ? 'text-red-600' : 'text-blue-600'}`}>{listening ? 'Listening...' : 'Tap to speak'}</span>
             </div>
-            <div className="transcript-box mt-2 shadow-inner border border-gray-300 dark:border-gray-700">
-              {transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}
-            </div>
             <div className="mt-4">
-              <label htmlFor="manual-transcript" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Type or edit transcript manually:</label>
+              <label htmlFor="manual-transcript" className="block mb-2 text-base font-semibold text-gray-700 dark:text-gray-200" style={{letterSpacing: '0.01em'}}>Transcript</label>
               <textarea
                 id="manual-transcript"
-                className="w-full min-h-[60px] border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
+                className="w-full min-h-[60px] border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-4 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
                 value={transcript}
                 onChange={e => setTranscript(e.target.value)}
-                placeholder="Type here or use voice..."
+                placeholder="Type or use the mic to enter your transcript..."
+                aria-label="Transcript"
               />
             </div>
             <div className="flex justify-end mt-4">
