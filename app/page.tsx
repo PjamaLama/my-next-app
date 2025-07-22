@@ -500,6 +500,14 @@ export default function Home() {
     return () => unsub();
   }, [user]);
 
+  // Step flow state
+  const [flowStep, setFlowStep] = useState(0); // 0: input, 1: sheet, 2: webhook
+
+  // Validation for each step
+  const canProceedInput = transcript.trim().length > 0;
+  const canProceedSheet = !!selectedOption;
+  const canProceedWebhook = !!selectedWebhook;
+
   // UI rendering
   if (loading) {
     return (
@@ -541,127 +549,139 @@ export default function Home() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a] dark:from-[#18181b] dark:via-[#23232a] dark:to-[#0a0a0a] p-4">
       <div className="w-full max-w-2xl mx-auto space-y-8 pb-40">
-        <header className="mb-4 text-center flex flex-col items-center gap-2">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            {/* Cool icon logo */}
-            <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-green-400 shadow-lg">
-              <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="6" y="6" width="20" height="20" rx="4" fill="#fff" stroke="#6366f1" strokeWidth="2"/>
-                <path d="M12 20c2-2 6-2 8 0" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round"/>
-                <path d="M16 14v2" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"/>
-                <circle cx="16" cy="12" r="1.5" fill="#a21caf"/>
-                <path d="M10 12c2-4 10-4 12 0" stroke="#a21caf" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </span>
-            <h1 className="text-3xl font-extrabold tracking-tight">Report Ai</h1>
-          </div>
-          <p className="text-base text-gray-400">Transcribe speech, select a sheet, and send to your Make.com webhook.</p>
-          <div className="flex items-center gap-3 mt-2">
-            <span className="text-sm text-gray-500 dark:text-gray-300">Signed in as <span className="font-semibold">{user.displayName || user.email}</span></span>
-            <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
-          </div>
-        </header>
+        {/* Stepper/flow indicator */}
+        <div className="flex items-center justify-center gap-4 mb-6">
+          <div className={`flex flex-col items-center ${flowStep === 0 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>1<div className="text-xs">Input</div></div>
+          <div className="w-8 h-0.5 bg-gray-300" />
+          <div className={`flex flex-col items-center ${flowStep === 1 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>2<div className="text-xs">Sheet</div></div>
+          <div className="w-8 h-0.5 bg-gray-300" />
+          <div className={`flex flex-col items-center ${flowStep === 2 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>3<div className="text-xs">Webhook</div></div>
+        </div>
 
-        {/* Speech to Text */}
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold mb-2">Speech Recognition</h2>
-          <div className="flex gap-3 flex-wrap">
-            <button onClick={startListening} disabled={listening} className="px-5 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">Start Listening</button>
-            <button onClick={stopListening} disabled={!listening} className="px-5 py-2 rounded-lg font-medium bg-gray-400 hover:bg-gray-500 text-white transition disabled:opacity-50">Stop</button>
-          </div>
-          <div className="transcript-box mt-2 shadow-inner border border-gray-300 dark:border-gray-700">
-            {transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}
-          </div>
-          <div className="mt-4">
-            <label htmlFor="manual-transcript" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Type or edit transcript manually:</label>
-            <textarea
-              id="manual-transcript"
-              className="w-full min-h-[60px] border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
-              value={transcript}
-              onChange={e => setTranscript(e.target.value)}
-              placeholder="Type here or use voice..."
-            />
-          </div>
-        </section>
-
-        {/* Sheet Names Display (Read-only, with Manage button) */}
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold mb-2">Sheet Names</h2>
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-gray-500 text-sm">Select a sheet name below.</span>
-            <button
-              onClick={() => setOptionsModalOpen(true)}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
-            >
-              Manage Sheet Names
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {options.map(option => (
-              <div
-                key={option.id}
-                className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
-                  ${selectedOption === option.id ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
-                onClick={() => setSelectedOption(option.id)}
-                tabIndex={0}
-                role="button"
-                aria-pressed={selectedOption === option.id}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedOption(option.id); }}
-              >
-                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedOption === option.id ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedOption === option.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Webhooks selection UI */}
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold mb-2">Webhooks</h2>
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-gray-500 text-sm">Select a webhook below.</span>
-            <button
-              onClick={() => setWebhooksModalOpen(true)}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
-            >
-              Manage Webhooks
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {webhooks.filter(w => (w.type || 'final') === 'initial').map(webhook => (
-              <div
-                key={webhook.id}
-                className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
-                  ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
-                onClick={() => setSelectedWebhook(webhook.id)}
-                tabIndex={0}
-                role="button"
-                aria-pressed={selectedWebhook === webhook.id}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedWebhook(webhook.id); }}
-              >
-                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedWebhook === webhook.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{webhook.name ? `${webhook.name} (${webhook.type || 'final'})` : webhook.url}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Send to Webhook */}
-        <section className="flex flex-col items-center gap-3">
-          <button
-            onClick={sendToWebhook}
-            disabled={sending || !transcript || !selectedOption || !selectedWebhook}
-            className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
-          >
-            {sending ? "Sending..." : "Send to Webhook"}
-          </button>
-          {sendResult && (
-            <div className="mt-2 text-sm whitespace-pre-line text-center max-w-xl">
-              {/* Only show status, not raw JSON response */}
-              {sendResult.split('Response:')[0].trim()}
+        {/* Step 1: Speech/Text Input */}
+        {flowStep === 0 && (
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+            <h2 className="text-lg font-semibold mb-2">Speech Recognition</h2>
+            <div className="flex gap-3 flex-wrap">
+              <button onClick={startListening} disabled={listening} className="px-5 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">Start Listening</button>
+              <button onClick={stopListening} disabled={!listening} className="px-5 py-2 rounded-lg font-medium bg-gray-400 hover:bg-gray-500 text-white transition disabled:opacity-50">Stop</button>
             </div>
-          )}
-        </section>
+            <div className="transcript-box mt-2 shadow-inner border border-gray-300 dark:border-gray-700">
+              {transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}
+            </div>
+            <div className="mt-4">
+              <label htmlFor="manual-transcript" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Type or edit transcript manually:</label>
+              <textarea
+                id="manual-transcript"
+                className="w-full min-h-[60px] border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
+                value={transcript}
+                onChange={e => setTranscript(e.target.value)}
+                placeholder="Type here or use voice..."
+              />
+            </div>
+            <div className="flex justify-end mt-4">
+              <button
+                className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50"
+                onClick={() => setFlowStep(1)}
+                disabled={!canProceedInput}
+              >Next</button>
+            </div>
+          </section>
+        )}
+
+        {/* Step 2: Sheet Selection */}
+        {flowStep === 1 && (
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+            <h2 className="text-lg font-semibold mb-2">Sheet Names</h2>
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-500 text-sm">Select a sheet name below.</span>
+              <button
+                onClick={() => setOptionsModalOpen(true)}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
+              >
+                Manage Sheet Names
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {options.map(option => (
+                <div
+                  key={option.id}
+                  className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
+                    ${selectedOption === option.id ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
+                  onClick={() => setSelectedOption(option.id)}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={selectedOption === option.id}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedOption(option.id); }}
+                >
+                  <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedOption === option.id ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedOption === option.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                  <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between mt-4">
+              <button
+                className="px-6 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold transition"
+                onClick={() => setFlowStep(0)}
+              >Back</button>
+              <button
+                className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50"
+                onClick={() => setFlowStep(2)}
+                disabled={!canProceedSheet}
+              >Next</button>
+            </div>
+          </section>
+        )}
+
+        {/* Step 3: Webhook Selection and Send */}
+        {flowStep === 2 && (
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+            <h2 className="text-lg font-semibold mb-2">Webhooks</h2>
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-500 text-sm">Select a webhook below.</span>
+              <button
+                onClick={() => setWebhooksModalOpen(true)}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
+              >
+                Manage Webhooks
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {webhooks.filter(w => (w.type || 'final') === 'initial').map(webhook => (
+                <div
+                  key={webhook.id}
+                  className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
+                    ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
+                  onClick={() => setSelectedWebhook(webhook.id)}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={selectedWebhook === webhook.id}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedWebhook(webhook.id); }}
+                >
+                  <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedWebhook === webhook.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                  <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{webhook.name ? `${webhook.name} (${webhook.type || 'final'})` : webhook.url}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between mt-4">
+              <button
+                className="px-6 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold transition"
+                onClick={() => setFlowStep(1)}
+              >Back</button>
+              <button
+                onClick={sendToWebhook}
+                disabled={sending || !transcript || !selectedOption || !selectedWebhook}
+                className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
+              >{sending ? "Sending..." : "Send to Webhook"}</button>
+            </div>
+            {sendResult && (
+              <div className="mt-2 text-sm whitespace-pre-line text-center max-w-xl">
+                {/* Only show status, not raw JSON response */}
+                {sendResult.split('Response:')[0].trim()}
+              </div>
+            )}
+          </section>
+        )}
         {/* Stepper UI for editing webhook fields as a modal */}
         {stepperModalOpen && stepperFields.length > 0 && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
