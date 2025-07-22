@@ -442,8 +442,19 @@ export default function Home() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
         <div className="bg-white/90 dark:bg-[#18181b] rounded-xl shadow-lg p-10 flex flex-col items-center gap-6 border border-gray-200 dark:border-gray-800">
-          <h1 className="text-3xl font-extrabold tracking-tight mb-2">Welcome to ReportAI</h1>
-          <p className="text-base text-gray-500 dark:text-gray-300 mb-4 text-center">Sign in with Google to manage your webhooks and options securely.</p>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <span className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-green-400 shadow-lg">
+              <svg width="36" height="36" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="6" y="6" width="20" height="20" rx="4" fill="#fff" stroke="#6366f1" strokeWidth="2"/>
+                <path d="M12 20c2-2 6-2 8 0" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round"/>
+                <path d="M16 14v2" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"/>
+                <circle cx="16" cy="12" r="1.5" fill="#a21caf"/>
+                <path d="M10 12c2-4 10-4 12 0" stroke="#a21caf" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </span>
+            <h1 className="text-3xl font-extrabold tracking-tight">Report Ai</h1>
+          </div>
+          <p className="text-base text-gray-500 dark:text-gray-300 mb-4 text-center">Sign in with Google to manage your webhooks and sheet names securely.</p>
           <button
             onClick={signInWithGoogle}
             className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition flex items-center gap-2"
@@ -461,8 +472,20 @@ export default function Home() {
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a] dark:from-[#18181b] dark:via-[#23232a] dark:to-[#0a0a0a] p-4">
       <div className="w-full max-w-2xl mx-auto space-y-8">
         <header className="mb-4 text-center flex flex-col items-center gap-2">
-          <h1 className="text-3xl font-extrabold tracking-tight mb-2">Speech to Text Webhook App</h1>
-          <p className="text-base text-gray-400">Transcribe speech, select an option, and send to your Make.com webhook.</p>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            {/* Cool icon logo */}
+            <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-green-400 shadow-lg">
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="6" y="6" width="20" height="20" rx="4" fill="#fff" stroke="#6366f1" strokeWidth="2"/>
+                <path d="M12 20c2-2 6-2 8 0" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round"/>
+                <path d="M16 14v2" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"/>
+                <circle cx="16" cy="12" r="1.5" fill="#a21caf"/>
+                <path d="M10 12c2-4 10-4 12 0" stroke="#a21caf" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </span>
+            <h1 className="text-3xl font-extrabold tracking-tight">Report Ai</h1>
+          </div>
+          <p className="text-base text-gray-400">Transcribe speech, select a sheet, and send to your Make.com webhook.</p>
           <div className="flex items-center gap-3 mt-2">
             <span className="text-sm text-gray-500 dark:text-gray-300">Signed in as <span className="font-semibold">{user.displayName || user.email}</span></span>
             <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
