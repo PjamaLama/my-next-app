@@ -414,12 +414,13 @@ export default function Home() {
       if (res.ok) {
         setFinalSubmitStatus("Successfully submitted to webhook!" + (responseText ? `\n${responseText}` : ""));
         setStepperModalOpen(false);
-        setFinalSubmitConfirmation("Submission complete!");
-        setTimeout(() => setFinalSubmitConfirmation(null), 4000);
+        setFinalSubmitConfirmation("done"); // Use a flag for modal
+        setTimeout(() => setFinalSubmitConfirmation(null), 3000);
         setStepperFields([]);
         setStepperComplete(false);
         setStepperIndex(0);
         setStepperValues({});
+        setTranscript(""); // Clear transcript input
       } else {
         setFinalSubmitStatus(`Failed to submit. Status: ${res.status} ${res.statusText}\n${responseText}`);
       }
@@ -752,10 +753,12 @@ export default function Home() {
           </section>
         </div>
       )}
-      {finalSubmitConfirmation && (
-        <div className="w-full max-w-2xl mx-auto mb-4">
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative text-center">
-            {finalSubmitConfirmation}
+      {finalSubmitConfirmation && finalSubmitConfirmation === "done" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-[#23232a] rounded-xl shadow-2xl px-8 py-10 flex flex-col items-center border border-green-400">
+            <svg className="mb-4" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2.5" fill="#dcfce7"/><path d="M8 12l2.5 2.5L16 9" stroke="#22c55e" strokeWidth="2.5"/></svg>
+            <div className="text-2xl font-bold text-green-700 dark:text-green-400 mb-2">Done!</div>
+            <div className="text-base text-gray-700 dark:text-gray-200 text-center">Your submission was successful.</div>
           </div>
         </div>
       )}
