@@ -234,6 +234,15 @@ export default function Home() {
     setListening(false);
   };
 
+  // Mic button handler
+  const handleMicButton = () => {
+    if (listening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
   // Option management
   const addOption = async () => {
     if (!newOption.trim() || !user) return;
@@ -579,9 +588,31 @@ export default function Home() {
         {flowStep === 0 && (
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Speech Recognition</h2>
-            <div className="flex gap-3 flex-wrap">
-              <button onClick={startListening} disabled={listening} className="px-5 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">Start Listening</button>
-              <button onClick={stopListening} disabled={!listening} className="px-5 py-2 rounded-lg font-medium bg-gray-400 hover:bg-gray-500 text-white transition disabled:opacity-50">Stop</button>
+            <div className="flex gap-3 flex-wrap items-center">
+              <button
+                onClick={handleMicButton}
+                aria-label={listening ? 'Stop Listening' : 'Start Listening'}
+                className={`rounded-full p-4 transition focus:outline-none shadow-md border-2 ${listening ? 'bg-red-100 border-red-500 text-red-600 animate-pulse' : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
+                style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {listening ? (
+                  // Mic off or animated mic icon
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="2" width="6" height="12" rx="3"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                  </svg>
+                ) : (
+                  // Mic icon
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="2" width="6" height="12" rx="3"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="22"/>
+                    <line x1="8" y1="22" x2="16" y2="22"/>
+                  </svg>
+                )}
+              </button>
+              <span className={`ml-2 text-base font-medium ${listening ? 'text-red-600' : 'text-blue-600'}`}>{listening ? 'Listening...' : 'Tap to speak'}</span>
             </div>
             <div className="transcript-box mt-2 shadow-inner border border-gray-300 dark:border-gray-700">
               {transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}
