@@ -362,12 +362,38 @@ export default function Home() {
         if (h.key) headers[h.key] = h.value;
       });
     }
-    // Build payload from stepperValues
-    const payload = stepperFields.map(field => ({
-      column: field.column,
-      cell: field.cell,
-      value: stepperValues[field.cell] ?? field.suggested_value ?? field.value ?? ""
-    }));
+    // Build payload: match requested format
+    let row: string | undefined = undefined;
+    // Get sheet name from selected option
+    const selectedSheetName = options.find(o => o.id === selectedOption)?.label || '';
+    const cells_to_update: { column: string; cell: string; value: string }[] = [];
+    const missing_columns: { column: string; cell: string; suggested_value: string }[] = [];
+    stepperFields.forEach(field => {
+      // Try to extract row number from cell (e.g., 'A12' -> '12')
+      if (!row && /^([A-Z]+)(\d+)$/.test(field.cell)) {
+        row = field.cell.match(/^([A-Z]+)(\d+)$/)?.[2];
+      }
+      let value: string = "";
+      if (stepperValues[field.cell] !== undefined && stepperValues[field.cell] !== "") {
+        value = stepperValues[field.cell];
+      } else if (field.suggested_value !== undefined && field.suggested_value !== "") {
+        value = field.suggested_value;
+      } else if (field.value !== undefined && field.value !== "") {
+        value = field.value;
+      }
+      if (value !== "") {
+        cells_to_update.push({ column: field.column, cell: field.cell, value });
+      } else if (field.suggested_value !== undefined) {
+        missing_columns.push({ column: field.column, cell: field.cell, suggested_value: field.suggested_value });
+      }
+    });
+    const payload: Record<string, any> = {
+      row_to_update: row,
+      sheet_name: selectedSheetName,
+      cells_to_update,
+      missing_columns
+    };
+    console.log('Final webhook payload:', payload);
     try {
       const res = await fetch(webhookUrl, {
         method: "POST",
