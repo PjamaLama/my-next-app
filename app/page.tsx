@@ -535,6 +535,30 @@ export default function Home() {
   const canProceedWebhook = !!selectedWebhook;
 
   // UI rendering
+  // NavBar component
+  function NavBar() {
+    return (
+      <nav className="sticky top-0 z-40 w-full bg-white/90 dark:bg-[#18181b] border-b border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between px-6 py-3 mb-8">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-green-400 shadow-lg">
+            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="6" y="6" width="20" height="20" rx="4" fill="#fff" stroke="#6366f1" strokeWidth="2"/>
+              <path d="M12 20c2-2 6-2 8 0" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M16 14v2" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"/>
+              <circle cx="16" cy="12" r="1.5" fill="#a21caf"/>
+              <path d="M10 12c2-4 10-4 12 0" stroke="#a21caf" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </span>
+          <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Report Ai</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{user.displayName || user.email}</span>
+          <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
+        </div>
+      </nav>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
@@ -574,6 +598,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a] dark:from-[#18181b] dark:via-[#23232a] dark:to-[#0a0a0a] p-4">
+      {/* NavBar (only if user is signed in) */}
+      {user && <NavBar />}
       <div className="w-full max-w-2xl mx-auto space-y-8 pb-40">
         {/* Stepper/flow indicator */}
         <div className="flex items-center justify-center gap-4 mb-6">
