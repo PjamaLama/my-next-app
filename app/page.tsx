@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
+import { useFirebase } from "./providers/FirebaseProvider";
 
 // Types
 interface Option {
@@ -64,6 +65,31 @@ const HEADER_TYPE_BEARER = 'Authorization';
 const HEADER_TYPE_MAKE_APIKEY = 'x-make-apikey';
 
 export default function Home() {
+  const { user, loading, signInWithGoogle, signOutUser } = useFirebase();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
+        <div className="text-lg text-white">Loading...</div>
+      </div>
+    );
+  }
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
+        <div className="bg-white/90 dark:bg-[#18181b] rounded-xl shadow-lg p-10 flex flex-col items-center gap-6 border border-gray-200 dark:border-gray-800">
+          <h1 className="text-3xl font-extrabold tracking-tight mb-2">Welcome to ReportAI</h1>
+          <p className="text-base text-gray-500 dark:text-gray-300 mb-4 text-center">Sign in with Google to manage your webhooks and options securely.</p>
+          <button
+            onClick={signInWithGoogle}
+            className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition flex items-center gap-2"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path><path d="M3.272 7.545l3.273 2.402c.891-1.07 2.18-2.188 4.242-2.188 1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-2.953 0-5.453 1.68-6.617 4.088z" fill="#34A853"></path><path d="M12.487 21.5c2.789 0 5.125-.922 6.836-2.516l-3.164-2.594c-.867.617-2.055 1.055-3.672 1.055-2.367 0-4.367-1.555-5.086-3.703l-3.242 2.5c1.547 3.07 4.789 5.258 8.328 5.258z" fill="#FBBC05"></path><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path></g></svg>
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
   // Speech to text
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
@@ -279,9 +305,13 @@ export default function Home() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a] dark:from-[#18181b] dark:via-[#23232a] dark:to-[#0a0a0a] p-4">
       <div className="w-full max-w-2xl mx-auto space-y-8">
-        <header className="mb-4 text-center">
+        <header className="mb-4 text-center flex flex-col items-center gap-2">
           <h1 className="text-3xl font-extrabold tracking-tight mb-2">Speech to Text Webhook App</h1>
           <p className="text-base text-gray-400">Transcribe speech, select an option, and send to your Make.com webhook.</p>
+          <div className="flex items-center gap-3 mt-2">
+            <span className="text-sm text-gray-500 dark:text-gray-300">Signed in as <span className="font-semibold">{user.displayName || user.email}</span></span>
+            <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
+          </div>
         </header>
 
         {/* Speech to Text */}
@@ -291,7 +321,19 @@ export default function Home() {
             <button onClick={startListening} disabled={listening} className="px-5 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">Start Listening</button>
             <button onClick={stopListening} disabled={!listening} className="px-5 py-2 rounded-lg font-medium bg-gray-400 hover:bg-gray-500 text-white transition disabled:opacity-50">Stop</button>
           </div>
-          <div className="transcript-box mt-2 shadow-inner border border-gray-300 dark:border-gray-700">{transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}</div>
+          <div className="transcript-box mt-2 shadow-inner border border-gray-300 dark:border-gray-700">
+            {transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}
+          </div>
+          <div className="mt-4">
+            <label htmlFor="manual-transcript" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Type or edit transcript manually:</label>
+            <textarea
+              id="manual-transcript"
+              className="w-full min-h-[60px] border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
+              value={transcript}
+              onChange={e => setTranscript(e.target.value)}
+              placeholder="Type here or use voice..."
+            />
+          </div>
         </section>
 
         {/* Options Management */}
