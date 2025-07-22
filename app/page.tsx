@@ -8,8 +8,15 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
-  addDoc
+  addDoc,
+  query,
+  where,
+  orderBy,
+  limit
 } from "firebase/firestore";
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 
 // Types
 interface Option {
@@ -70,7 +77,20 @@ interface StepperField {
 // Helper for default header types
 const HEADER_TYPE_MAKE_APIKEY = 'x-make-apikey';
 
+// Add activity tracking state
+interface ActivityItem {
+  type: 'add' | 'edit' | 'delete';
+  entity: 'sheet' | 'webhook';
+  label: string;
+  timestamp: number;
+  oldValue?: string; // For edit activity
+  newValue?: string; // For edit activity
+  webhookType?: 'initial' | 'final' | 'backup' | 'other'; // For webhook edit activity
+}
+
 export default function Home() {
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, signOutUser } = useFirebase();
   // All hooks must be called before any return!
   const [transcript, setTranscript] = useState("");
@@ -200,16 +220,20 @@ export default function Home() {
   const addOption = async () => {
     if (!newOption.trim() || !user) return;
     await addDoc(collection(db, "users", user.uid, "options"), { label: newOption.trim() });
+    await addActivity({ type: 'add', entity: 'sheet', label: newOption.trim(), timestamp: Date.now() });
     setNewOption("");
   };
   const deleteOption = async (id: string) => {
     if (!user) return;
+    const label = options.find(o => o.id === id)?.label || '';
     await deleteDoc(doc(db, "users", user.uid, "options", id));
+    await addActivity({ type: 'delete', entity: 'sheet', label, timestamp: Date.now() });
     if (selectedOption === id) setSelectedOption("");
   };
   const editOption = async (id: string, label: string) => {
     if (!user) return;
     await setDoc(doc(db, "users", user.uid, "options", id), { label });
+    await addActivity({ type: 'edit', entity: 'sheet', label, timestamp: Date.now() });
   };
 
   // Webhook management
@@ -223,13 +247,16 @@ export default function Home() {
       type: newWebhookType,
       headers: []
     });
+    await addActivity({ type: 'add', entity: 'webhook', label: newWebhookName.trim() || newWebhook.trim(), timestamp: Date.now() });
     setNewWebhook("");
     setNewWebhookName("");
     setNewWebhookType('final');
   };
   const deleteWebhook = async (id: string) => {
     if (!user) return;
+    const wh = webhooks.find(w => w.id === id);
     await deleteDoc(doc(db, "users", user.uid, "webhooks", id));
+    await addActivity({ type: 'delete', entity: 'webhook', label: wh?.name || wh?.url || '', timestamp: Date.now() });
     if (selectedWebhook === id) setSelectedWebhook("");
   };
   const editWebhook = async (id: string, url: string, name?: string, type?: 'initial' | 'final' | 'backup' | 'other') => {
@@ -241,6 +268,7 @@ export default function Home() {
       name: (name ?? webhook?.name) || "",
       type: (type ?? webhook?.type) || "final",
     });
+    await addActivity({ type: 'edit', entity: 'webhook', label: name || url, timestamp: Date.now() });
   };
   // (Removed: addHeader, editHeader, deleteHeader)
 
@@ -421,6 +449,13 @@ export default function Home() {
         setStepperIndex(0);
         setStepperValues({});
         setTranscript(""); // Clear transcript input
+        // Add activity for final webhook submission
+        await addActivity({
+          type: 'add',
+          entity: 'webhook',
+          label: webhook.name || webhook.url,
+          timestamp: Date.now()
+        });
       } else {
         setFinalSubmitStatus(`Failed to submit. Status: ${res.status} ${res.statusText}\n${responseText}`);
       }
@@ -429,6 +464,35 @@ export default function Home() {
       setFinalSubmitStatus("Error: " + (error?.message || error?.toString()));
     }
   };
+
+  // Add activity to Firestore
+  const addActivity = async (activity: ActivityItem) => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, "recentActivity"), { ...activity, userId: user.uid });
+      console.log("Activity written to Firestore:", { ...activity, userId: user.uid });
+      setActivityError(null);
+    } catch (err) {
+      console.error("Failed to write activity to Firestore:", err);
+      setActivityError("Failed to save activity to Firestore. Check your connection and permissions.");
+    }
+  };
+
+  // On user load, subscribe to recentActivity for this user
+  useEffect(() => {
+    if (!user) return;
+    const qAct = query(
+      collection(db, "recentActivity"),
+      where("userId", "==", user.uid),
+      orderBy("timestamp", "desc"),
+      limit(10)
+    );
+    const unsub = onSnapshot(qAct, (snapshot) => {
+      const acts = snapshot.docs.map(doc => doc.data() as ActivityItem);
+      setActivity(acts);
+    });
+    return () => unsub();
+  }, [user]);
 
   // UI rendering
   if (loading) {
@@ -470,7 +534,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a] dark:from-[#18181b] dark:via-[#23232a] dark:to-[#0a0a0a] p-4">
-      <div className="w-full max-w-2xl mx-auto space-y-8">
+      <div className="w-full max-w-2xl mx-auto space-y-8 pb-40">
         <header className="mb-4 text-center flex flex-col items-center gap-2">
           <div className="flex items-center justify-center gap-3 mb-2">
             {/* Cool icon logo */}
@@ -696,7 +760,6 @@ export default function Home() {
             </section>
           </div>
         )}
-      </div>
 
       {/* Options Management Modal */}
       {optionsModalOpen && (
@@ -803,7 +866,55 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Recent Activity section - moved here to be at the bottom of the main content column */}
+      <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 border border-gray-200 dark:border-gray-800 mt-12">
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <svg width="22" height="22" fill="none" stroke="#6366f1" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+          Recent Activity
+        </h2>
+        {activityError && (
+          <div className="text-xs text-red-600 mb-2">{activityError}</div>
+        )}
+        {activity.length === 0 ? (
+          <div className="text-gray-400 text-xs">No recent edits yet.</div>
+        ) : (
+          <ul className="space-y-2 w-full">
+            {activity.slice(0, 5).map((item, i) => (
+              <li key={i} className="flex items-start gap-3 text-xs w-full">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5">
+                  {item.type === 'add' && <svg width="14" height="14" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
+                  {item.type === 'edit' && <svg width="14" height="14" fill="none" stroke="#f59e42" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+                  {item.type === 'delete' && <svg width="14" height="14" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M9 6v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6m-6 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>}
+                </span>
+                <span className="truncate">
+                  {item.entity === 'sheet' ? (
+                    <>
+                      <span className="font-medium text-gray-700 dark:text-gray-200">Sheet</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
+                      {item.type === 'edit' && item.oldValue && item.newValue && (
+                        <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium text-purple-700 dark:text-purple-300">Webhook</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
+                      {item.webhookType && (
+                        <span className="ml-1 text-gray-500">({item.webhookType})</span>
+                      )}
+                      {item.type === 'edit' && item.oldValue && item.newValue && (
+                        <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
+                      )}
+                    </>
+                  )}
+                  <span className="ml-2 text-gray-400">&middot; {dayjs(item.timestamp).fromNow()}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
+  </div>
   );
 }
 
