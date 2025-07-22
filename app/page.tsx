@@ -1,103 +1,224 @@
-import Image from "next/image";
+"use client";
+import React, { useState, useRef, useEffect } from "react";
+
+// Types
+interface Option {
+  id: string;
+  label: string;
+}
+interface Webhook {
+  id: string;
+  url: string;
+}
+
+// Helpers for localStorage
+const OPTIONS_KEY = "speech_to_text_options";
+const WEBHOOKS_KEY = "speech_to_text_webhooks";
+
+function loadOptions(): Option[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(OPTIONS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+function saveOptions(options: Option[]) {
+  localStorage.setItem(OPTIONS_KEY, JSON.stringify(options));
+}
+function loadWebhooks(): Webhook[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(WEBHOOKS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+function saveWebhooks(webhooks: Webhook[]) {
+  localStorage.setItem(WEBHOOKS_KEY, JSON.stringify(webhooks));
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  // Speech to text
+  const [transcript, setTranscript] = useState("");
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Options
+  const [options, setOptions] = useState<Option[]>([]);
+  const [newOption, setNewOption] = useState("");
+  const [selectedOption, setSelectedOption] = useState<string>("");
+
+  // Webhooks
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [newWebhook, setNewWebhook] = useState("");
+  const [selectedWebhook, setSelectedWebhook] = useState<string>("");
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    setOptions(loadOptions());
+    setWebhooks(loadWebhooks());
+  }, []);
+
+  // Save options/webhooks to localStorage
+  useEffect(() => { saveOptions(options); }, [options]);
+  useEffect(() => { saveWebhooks(webhooks); }, [webhooks]);
+
+  // Speech recognition setup
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = false;
+    recognitionRef.current.interimResults = false;
+    recognitionRef.current.lang = "en-US";
+    recognitionRef.current.onresult = (event: any) => {
+      setTranscript(event.results[0][0].transcript);
+      setListening(false);
+    };
+    recognitionRef.current.onerror = () => setListening(false);
+    recognitionRef.current.onend = () => setListening(false);
+  }, []);
+
+  const startListening = () => {
+    if (!recognitionRef.current) return alert("Speech recognition not supported in this browser.");
+    setTranscript("");
+    setListening(true);
+    recognitionRef.current.start();
+  };
+  const stopListening = () => {
+    if (recognitionRef.current) recognitionRef.current.stop();
+    setListening(false);
+  };
+
+  // Option management
+  const addOption = () => {
+    if (!newOption.trim()) return;
+    const option: Option = { id: Date.now().toString(), label: newOption.trim() };
+    setOptions([...options, option]);
+    setNewOption("");
+  };
+  const deleteOption = (id: string) => {
+    setOptions(options.filter(o => o.id !== id));
+    if (selectedOption === id) setSelectedOption("");
+  };
+  const editOption = (id: string, label: string) => {
+    setOptions(options.map(o => o.id === id ? { ...o, label } : o));
+  };
+
+  // Webhook management
+  const addWebhook = () => {
+    if (!newWebhook.trim()) return;
+    const webhook: Webhook = { id: Date.now().toString(), url: newWebhook.trim() };
+    setWebhooks([...webhooks, webhook]);
+    setNewWebhook("");
+  };
+  const deleteWebhook = (id: string) => {
+    setWebhooks(webhooks.filter(w => w.id !== id));
+    if (selectedWebhook === id) setSelectedWebhook("");
+  };
+  const editWebhook = (id: string, url: string) => {
+    setWebhooks(webhooks.map(w => w.id === id ? { ...w, url } : w));
+  };
+
+  // Send to webhook
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
+  const sendToWebhook = async () => {
+    if (!transcript || !selectedOption || !selectedWebhook) {
+      setSendResult("Please provide transcript, select an option, and a webhook.");
+      return;
+    }
+    setSending(true);
+    setSendResult(null);
+    const webhookUrl = webhooks.find(w => w.id === selectedWebhook)?.url;
+    if (!webhookUrl) {
+      setSendResult("Invalid webhook selected.");
+      setSending(false);
+      return;
+    }
+    try {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript, option: options.find(o => o.id === selectedOption)?.label }),
+      });
+      if (res.ok) setSendResult("Sent successfully!");
+      else setSendResult("Failed to send: " + res.statusText);
+    } catch (e: any) {
+      setSendResult("Error: " + e.message);
+    }
+    setSending(false);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-6 space-y-8">
+      <h1 className="text-2xl font-bold mb-4">Speech to Text App</h1>
+      {/* Speech to Text */}
+      <section className="space-y-2">
+        <div className="flex gap-2">
+          <button onClick={startListening} disabled={listening} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50">Start Listening</button>
+          <button onClick={stopListening} disabled={!listening} className="px-4 py-2 bg-gray-400 text-white rounded disabled:opacity-50">Stop</button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        <div className="border p-2 rounded min-h-[40px] bg-gray-50">{transcript || <span className="text-gray-400">Transcript will appear here...</span>}</div>
+      </section>
+
+      {/* Options Management */}
+      <section>
+        <h2 className="font-semibold mb-2">Manage Options</h2>
+        <div className="flex gap-2 mb-2">
+          <input value={newOption} onChange={e => setNewOption(e.target.value)} placeholder="Add option..." className="border rounded px-2 py-1 flex-1" />
+          <button onClick={addOption} className="px-3 py-1 bg-green-600 text-white rounded">Add</button>
+        </div>
+        <ul className="space-y-1">
+          {options.map(option => (
+            <li key={option.id} className="flex items-center gap-2">
+              <input type="radio" name="option" checked={selectedOption === option.id} onChange={() => setSelectedOption(option.id)} />
+              <input
+                className="border rounded px-1 py-0.5 flex-1"
+                value={option.label}
+                onChange={e => editOption(option.id, e.target.value)}
+              />
+              <button onClick={() => deleteOption(option.id)} className="text-red-600">Delete</button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* Webhook Management */}
+      <section>
+        <h2 className="font-semibold mb-2">Manage Webhooks</h2>
+        <div className="flex gap-2 mb-2">
+          <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border rounded px-2 py-1 flex-1" />
+          <button onClick={addWebhook} className="px-3 py-1 bg-green-600 text-white rounded">Add</button>
+        </div>
+        <ul className="space-y-1">
+          {webhooks.map(webhook => (
+            <li key={webhook.id} className="flex items-center gap-2">
+              <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} />
+              <input
+                className="border rounded px-1 py-0.5 flex-1"
+                value={webhook.url}
+                onChange={e => editWebhook(webhook.id, e.target.value)}
+              />
+              <button onClick={() => deleteWebhook(webhook.id)} className="text-red-600">Delete</button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* Send to Webhook */}
+      <section>
+        <button
+          onClick={sendToWebhook}
+          disabled={sending || !transcript || !selectedOption || !selectedWebhook}
+          className="px-6 py-2 bg-purple-700 text-white rounded disabled:opacity-50"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          {sending ? "Sending..." : "Send to Webhook"}
+        </button>
+        {sendResult && <div className="mt-2 text-sm">{sendResult}</div>}
+      </section>
     </div>
   );
 }
