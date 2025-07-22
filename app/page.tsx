@@ -125,6 +125,7 @@ export default function Home() {
   // Send to webhook
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
+  const [lastPayload, setLastPayload] = useState<any>(null);
   const sendToWebhook = async () => {
     if (!transcript || !selectedOption || !selectedWebhook) {
       setSendResult("Please provide transcript, select an option, and a webhook.");
@@ -133,6 +134,8 @@ export default function Home() {
     setSending(true);
     setSendResult(null);
     const webhookUrl = webhooks.find(w => w.id === selectedWebhook)?.url;
+    const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
+    setLastPayload(payload);
     if (!webhookUrl) {
       setSendResult("Invalid webhook selected.");
       setSending(false);
@@ -142,12 +145,25 @@ export default function Home() {
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, option: options.find(o => o.id === selectedOption)?.label }),
+        body: JSON.stringify(payload),
       });
-      if (res.ok) setSendResult("Sent successfully!");
-      else setSendResult("Failed to send: " + res.statusText);
+      let responseText = "";
+      try {
+        responseText = await res.text();
+      } catch {}
+      if (res.ok) {
+        setSendResult("Sent successfully! Response: " + responseText);
+      } else {
+        setSendResult(
+          `Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`
+        );
+      }
     } catch (e: any) {
-      setSendResult("Error: " + e.message);
+      setSendResult("Error: " + (e?.message || e?.toString()));
+      if (typeof window !== "undefined" && window.console) {
+        // Log full error to browser console
+        console.error("Webhook send error:", e);
+      }
     }
     setSending(false);
   };
@@ -217,7 +233,13 @@ export default function Home() {
         >
           {sending ? "Sending..." : "Send to Webhook"}
         </button>
-        {sendResult && <div className="mt-2 text-sm">{sendResult}</div>}
+        {sendResult && <div className="mt-2 text-sm whitespace-pre-line">{sendResult}</div>}
+       {lastPayload && (
+         <div className="mt-2 text-xs">
+           <div className="font-semibold mb-1">Payload being sent:</div>
+           <pre className="bg-black/10 dark:bg-white/10 rounded p-2 overflow-x-auto">{JSON.stringify(lastPayload, null, 2)}</pre>
+         </div>
+       )}
       </section>
     </div>
   );
