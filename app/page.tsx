@@ -17,6 +17,20 @@ interface Webhook {
   headers?: WebhookHeader[];
 }
 
+// TypeScript: Add SpeechRecognition types if missing (for browser compatibility)
+declare global {
+  interface Window {
+    webkitSpeechRecognition?: typeof SpeechRecognition;
+  }
+  // Only declare if not already present
+  // @ts-ignore
+  var SpeechRecognition: any;
+  // @ts-ignore
+  var webkitSpeechRecognition: any;
+}
+type _SpeechRecognition = typeof window extends { SpeechRecognition: infer T } ? T : any;
+type _SpeechRecognitionEvent = typeof window extends { SpeechRecognitionEvent: infer T } ? T : any;
+
 // Helpers for localStorage
 const OPTIONS_KEY = "speech_to_text_options";
 const WEBHOOKS_KEY = "speech_to_text_webhooks";
@@ -53,7 +67,7 @@ export default function Home() {
   // Speech to text
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<_SpeechRecognition | null>(null);
 
   // Options
   const [options, setOptions] = useState<Option[]>([]);
@@ -64,10 +78,7 @@ export default function Home() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [newWebhook, setNewWebhook] = useState("");
   const [selectedWebhook, setSelectedWebhook] = useState<string>("");
-  // For editing headers
-  const [editingHeadersFor, setEditingHeadersFor] = useState<string | null>(null);
-  const [newHeaderKey, setNewHeaderKey] = useState("");
-  const [newHeaderValue, setNewHeaderValue] = useState("");
+  // (Removed: editingHeadersFor, newHeaderKey, newHeaderValue)
 
   // For simple secret/api key
   const [secretTypeFor, setSecretTypeFor] = useState<{ [webhookId: string]: 'secret' | 'bearer' }>({});
@@ -90,9 +101,9 @@ export default function Home() {
   // Speech recognition setup
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-    recognitionRef.current = new SpeechRecognition();
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) return;
+    recognitionRef.current = new SpeechRecognitionClass();
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = false;
     recognitionRef.current.lang = "en-US";
@@ -209,38 +220,7 @@ export default function Home() {
   const editWebhook = (id: string, url: string) => {
     setWebhooks(webhooks.map(w => w.id === id ? { ...w, url } : w));
   };
-  // Header management
-  const addHeader = (webhookId: string) => {
-    if (!newHeaderKey.trim()) return;
-    setWebhooks(webhooks.map(w => {
-      if (w.id !== webhookId) return w;
-      const headers = w.headers || [];
-      return {
-        ...w,
-        headers: [...headers, { id: Date.now().toString(), key: newHeaderKey.trim(), value: newHeaderValue }],
-      };
-    }));
-    setNewHeaderKey("");
-    setNewHeaderValue("");
-  };
-  const editHeader = (webhookId: string, headerId: string, key: string, value: string) => {
-    setWebhooks(webhooks.map(w => {
-      if (w.id !== webhookId) return w;
-      return {
-        ...w,
-        headers: (w.headers || []).map(h => h.id === headerId ? { ...h, key, value } : h),
-      };
-    }));
-  };
-  const deleteHeader = (webhookId: string, headerId: string) => {
-    setWebhooks(webhooks.map(w => {
-      if (w.id !== webhookId) return w;
-      return {
-        ...w,
-        headers: (w.headers || []).filter(h => h.id !== headerId),
-      };
-    }));
-  };
+  // (Removed: addHeader, editHeader, deleteHeader)
 
   // Send to webhook
   const [sending, setSending] = useState(false);
