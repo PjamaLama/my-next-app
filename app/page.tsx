@@ -90,6 +90,9 @@ export default function Home() {
   const [stepperIndex, setStepperIndex] = useState(0);
   const [stepperValues, setStepperValues] = useState<{ [cell: string]: string }>({});
   const [stepperComplete, setStepperComplete] = useState(false);
+  // New: state for final webhook selection and submission status
+  const [selectedFinalWebhook, setSelectedFinalWebhook] = useState<string>("");
+  const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
 
   // Handler for updating a value
   const handleStepperChange = (cell: string, value: string) => {
@@ -315,6 +318,56 @@ export default function Home() {
     }
   }, [sendResult]);
 
+  // When stepperFields are set, default the final webhook to the initial one
+  useEffect(() => {
+    if (stepperFields.length > 0 && selectedWebhook) {
+      setSelectedFinalWebhook(selectedWebhook);
+    }
+  }, [stepperFields, selectedWebhook]);
+
+  // Handler for final submit
+  const handleFinalSubmit = async () => {
+    setFinalSubmitStatus(null);
+    const webhook = webhooks.find(w => w.id === selectedFinalWebhook);
+    if (!webhook) {
+      setFinalSubmitStatus("No webhook selected.");
+      return;
+    }
+    const webhookUrl = webhook.url;
+    // Build headers
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (webhook.headers) {
+      webhook.headers.forEach(h => {
+        if (h.key) headers[h.key] = h.value;
+      });
+    }
+    // Build payload from stepperValues
+    const payload = stepperFields.map(field => ({
+      column: field.column,
+      cell: field.cell,
+      value: stepperValues[field.cell] ?? field.suggested_value ?? field.value ?? ""
+    }));
+    try {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+      let responseText = "";
+      try {
+        responseText = await res.text();
+      } catch {}
+      if (res.ok) {
+        setFinalSubmitStatus("Successfully submitted to webhook!" + (responseText ? `\n${responseText}` : ""));
+      } else {
+        setFinalSubmitStatus(`Failed to submit. Status: ${res.status} ${res.statusText}\n${responseText}`);
+      }
+    } catch (e) {
+      const error = e as Error;
+      setFinalSubmitStatus("Error: " + (error?.message || error?.toString()));
+    }
+  };
+
   // UI rendering
   if (loading) {
     return (
@@ -510,6 +563,19 @@ export default function Home() {
               ) : (
                 <>
                   <h2 className="text-xl font-bold mb-4 text-center">Review Complete</h2>
+                  {/* Webhook selection dropdown */}
+                  <div className="w-full mb-4">
+                    <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Select Webhook to Submit To:</label>
+                    <select
+                      className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
+                      value={selectedFinalWebhook}
+                      onChange={e => setSelectedFinalWebhook(e.target.value)}
+                    >
+                      {webhooks.map(w => (
+                        <option key={w.id} value={w.id}>{w.url}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="w-full">
                     <ul className="space-y-2">
                       {stepperFields.map(field => (
@@ -521,8 +587,17 @@ export default function Home() {
                     </ul>
                   </div>
                   <button
-                    onClick={() => { setStepperComplete(false); setStepperIndex(0); }}
-                    className="mt-6 px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-base"
+                    onClick={handleFinalSubmit}
+                    className="mt-6 px-6 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-base w-full"
+                  >Confirm & Submit</button>
+                  {finalSubmitStatus && (
+                    <div className="mt-4 text-sm text-center whitespace-pre-line max-w-xl mx-auto">
+                      {finalSubmitStatus}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { setStepperComplete(false); setStepperIndex(0); setFinalSubmitStatus(null); }}
+                    className="mt-4 px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-base"
                   >Edit Again</button>
                 </>
               )}
