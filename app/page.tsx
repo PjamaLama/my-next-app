@@ -24,6 +24,8 @@ interface WebhookHeader {
 interface Webhook {
   id: string;
   url: string;
+  name?: string; // Add name for user-friendly label
+  type?: 'initial' | 'final' | 'backup' | 'other'; // Add type for purpose
   headers?: WebhookHeader[];
 }
 
@@ -206,20 +208,34 @@ export default function Home() {
   };
 
   // Webhook management
+  const [newWebhookName, setNewWebhookName] = useState("");
+  const [newWebhookType, setNewWebhookType] = useState<'initial' | 'final' | 'backup' | 'other'>('final');
   const addWebhook = async () => {
     if (!newWebhook.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "webhooks"), { url: newWebhook.trim(), headers: [] });
+    await addDoc(collection(db, "users", user.uid, "webhooks"), {
+      url: newWebhook.trim(),
+      name: newWebhookName.trim() || undefined,
+      type: newWebhookType,
+      headers: []
+    });
     setNewWebhook("");
+    setNewWebhookName("");
+    setNewWebhookType('final');
   };
   const deleteWebhook = async (id: string) => {
     if (!user) return;
     await deleteDoc(doc(db, "users", user.uid, "webhooks", id));
     if (selectedWebhook === id) setSelectedWebhook("");
   };
-  const editWebhook = async (id: string, url: string) => {
+  const editWebhook = async (id: string, url: string, name?: string, type?: 'initial' | 'final' | 'backup' | 'other') => {
     if (!user) return;
     const webhook = webhooks.find(w => w.id === id);
-    await setDoc(doc(db, "users", user.uid, "webhooks", id), { ...webhook, url });
+    await setDoc(doc(db, "users", user.uid, "webhooks", id), {
+      ...webhook,
+      url,
+      name: (name ?? webhook?.name) || "",
+      type: (type ?? webhook?.type) || "final",
+    });
   };
   // (Removed: addHeader, editHeader, deleteHeader)
 
@@ -318,12 +334,17 @@ export default function Home() {
     }
   }, [sendResult]);
 
-  // When stepperFields are set, default the final webhook to the initial one
+  // When stepperFields are set, auto-select the first 'final' webhook if available
   useEffect(() => {
-    if (stepperFields.length > 0 && selectedWebhook) {
-      setSelectedFinalWebhook(selectedWebhook);
+    if (stepperFields.length > 0) {
+      const finalWebhook = webhooks.find(w => w.type === 'final');
+      if (finalWebhook) {
+        setSelectedFinalWebhook(finalWebhook.id);
+      } else if (selectedWebhook) {
+        setSelectedFinalWebhook(selectedWebhook);
+      }
     }
-  }, [stepperFields, selectedWebhook]);
+  }, [stepperFields, webhooks, selectedWebhook]);
 
   // Handler for final submit
   const handleFinalSubmit = async () => {
@@ -455,6 +476,13 @@ export default function Home() {
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-2">Webhooks</h2>
           <div className="flex gap-2 mb-3">
+            <input value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} placeholder="Webhook Name..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+            <select value={newWebhookType} onChange={e => setNewWebhookType(e.target.value as any)} className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
+              <option value="initial">Initial</option>
+              <option value="final">Final</option>
+              <option value="backup">Backup</option>
+              <option value="other">Other</option>
+            </select>
             <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
             <button onClick={addWebhook} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
           </div>
@@ -466,8 +494,24 @@ export default function Home() {
                   <input
                     className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
                     value={webhook.url}
-                    onChange={e => editWebhook(webhook.id, e.target.value)}
+                    onChange={e => editWebhook(webhook.id, e.target.value, webhook.name, webhook.type)}
                   />
+                  <input
+                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-32 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                    value={webhook.name || ''}
+                    placeholder="Name"
+                    onChange={e => editWebhook(webhook.id, webhook.url, e.target.value, webhook.type)}
+                  />
+                  <select
+                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-28 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                    value={webhook.type || 'final'}
+                    onChange={e => editWebhook(webhook.id, webhook.url, webhook.name, e.target.value as any)}
+                  >
+                    <option value="initial">Initial</option>
+                    <option value="final">Final</option>
+                    <option value="backup">Backup</option>
+                    <option value="other">Other</option>
+                  </select>
                   <button onClick={() => deleteWebhook(webhook.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
                 </div>
                 {/* Make.com API Key UI */}
@@ -572,7 +616,7 @@ export default function Home() {
                       onChange={e => setSelectedFinalWebhook(e.target.value)}
                     >
                       {webhooks.map(w => (
-                        <option key={w.id} value={w.id}>{w.url}</option>
+                        <option key={w.id} value={w.id}>{w.name ? `${w.name} (${w.type || 'final'})` : w.url}</option>
                       ))}
                     </select>
                   </div>
