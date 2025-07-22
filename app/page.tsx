@@ -124,6 +124,9 @@ export default function Home() {
   const [selectedFinalWebhook, setSelectedFinalWebhook] = useState<string>("");
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
 
+  // Collapsible state for recent activity
+  const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
+
   // Handler for updating a value
   const handleStepperChange = (cell: string, value: string) => {
     setStepperValues(v => ({ ...v, [cell]: value }));
@@ -147,6 +150,18 @@ export default function Home() {
   };
   // Handler for finish
   const handleStepperFinish = () => {
+    setStepperComplete(true);
+  };
+
+  // Accept all remaining stepper fields with suggested or default values
+  const handleStepperAcceptAll = () => {
+    const newValues = { ...stepperValues };
+    stepperFields.forEach(field => {
+      if (newValues[field.cell] === undefined || newValues[field.cell] === "") {
+        newValues[field.cell] = field.suggested_value ?? field.value ?? "";
+      }
+    });
+    setStepperValues(newValues);
     setStepperComplete(true);
   };
 
@@ -310,6 +325,8 @@ export default function Home() {
       } catch {}
       if (res.ok) {
         setSendResult("Sent successfully! Response: " + responseText);
+        setFlowStep(0);
+        setTranscript("");
       } else {
         setSendResult(
           `Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`
@@ -724,9 +741,9 @@ export default function Home() {
                         className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:text-gray-600 transition text-sm font-medium disabled:opacity-50"
                       >Back</button>
                       <button
-                        onClick={() => handleStepperSkip(stepperFields[stepperIndex].cell)}
+                        onClick={handleStepperAcceptAll}
                         className="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium transition text-sm"
-                      >Skip</button>
+                      >Accept All</button>
                       {stepperIndex < stepperFields.length - 1 ? (
                         <button
                           onClick={handleStepperNext}
@@ -906,68 +923,80 @@ export default function Home() {
           <div className="text-gray-400 text-xs">No recent edits yet.</div>
         ) : (
           <ul className="space-y-2 w-full">
-            {activity.slice(0, 5).map((item, i) => (
-              <li key={i} className="flex flex-col gap-1 text-xs w-full p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5">
-                    {item.type === 'add' && <svg width="14" height="14" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
-                    {item.type === 'edit' && <svg width="14" height="14" fill="none" stroke="#f59e42" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
-                    {item.type === 'delete' && <svg width="14" height="14" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M9 6v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6m-6 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>}
-                  </span>
-                  <span className="truncate flex-1">
-                    {item.entity === 'sheet' ? (
-                      <>
-                        <span className="font-medium text-gray-700 dark:text-gray-200">Sheet</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
-                        {item.type === 'edit' && item.oldValue && item.newValue && (
-                          <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium text-purple-700 dark:text-purple-300">Webhook</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
-                        {item.webhookType && (
-                          <span className="ml-1 text-gray-500">({item.webhookType})</span>
-                        )}
-                        {item.type === 'edit' && item.oldValue && item.newValue && (
-                          <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
-                        )}
-                        {/* Show sheet and row info for webhook add */}
-                        {item.type === 'add' && item.entity === 'webhook' && (
-                          <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                            {item.sheetName && <span>Sheet: <span className="font-semibold text-blue-700 dark:text-blue-300">{item.sheetName}</span></span>}
-                            {item.rowNumber && <span className="ml-2">Row: <span className="font-semibold text-green-700 dark:text-green-300">{item.rowNumber}</span></span>}
-                          </div>
-                        )}
-                      </>
-                    )}
-                    <span className="ml-2 text-gray-400">&middot; {dayjs(item.timestamp).fromNow()}</span>
-                  </span>
-                </div>
-                {/* Show row data for webhook add */}
-                {item.type === 'add' && item.entity === 'webhook' && item.rowData && item.rowData.length > 0 && (
-                  <div className="mt-2 overflow-x-auto">
-                    <table className="min-w-[200px] border border-gray-200 dark:border-gray-700 rounded text-xs">
-                      <thead>
-                        <tr>
-                          <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Column</th>
-                          <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Cell</th>
-                          <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Value</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {item.rowData.map((cell, idx) => (
-                          <tr key={idx}>
-                            <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.column}</td>
-                            <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.cell}</td>
-                            <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.value}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {activity.slice(0, 5).map((item, i) => {
+              const expanded = expandedActivity === i;
+              return (
+                <li key={i} className="flex flex-col gap-1 text-xs w-full p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                  <div className="flex items-start gap-3 cursor-pointer" onClick={() => setExpandedActivity(expanded ? null : i)}>
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5">
+                      {item.type === 'add' && <svg width="14" height="14" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
+                      {item.type === 'edit' && <svg width="14" height="14" fill="none" stroke="#f59e42" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+                      {item.type === 'delete' && <svg width="14" height="14" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M9 6v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6m-6 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>}
+                    </span>
+                    <span className="truncate flex-1">
+                      {item.entity === 'sheet' ? (
+                        <>
+                          <span className="font-medium text-gray-700 dark:text-gray-200">Sheet</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
+                          {item.type === 'edit' && item.oldValue && item.newValue && (
+                            <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-medium text-purple-700 dark:text-purple-300">Webhook</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
+                          {item.webhookType && (
+                            <span className="ml-1 text-gray-500">({item.webhookType})</span>
+                          )}
+                          {item.type === 'edit' && item.oldValue && item.newValue && (
+                            <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
+                          )}
+                        </>
+                      )}
+                      <span className="ml-2 text-gray-400">&middot; {dayjs(item.timestamp).fromNow()}</span>
+                    </span>
+                    <button
+                      className="ml-2 text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none"
+                      onClick={e => { e.stopPropagation(); setExpandedActivity(expanded ? null : i); }}
+                      aria-label={expanded ? "Collapse details" : "Expand details"}
+                    >{expanded ? "Hide" : "Show"}</button>
                   </div>
-                )}
-              </li>
-            ))}
+                  {expanded && (
+                    <div className="mt-2">
+                      {/* Show sheet and row info for webhook add */}
+                      {item.type === 'add' && item.entity === 'webhook' && (
+                        <div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
+                          {item.sheetName && <span>Sheet: <span className="font-semibold text-blue-700 dark:text-blue-300">{item.sheetName}</span></span>}
+                          {item.rowNumber && <span className="ml-2">Row: <span className="font-semibold text-green-700 dark:text-green-300">{item.rowNumber}</span></span>}
+                        </div>
+                      )}
+                      {/* Show row data for webhook add */}
+                      {item.type === 'add' && item.entity === 'webhook' && item.rowData && item.rowData.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-[200px] border border-gray-200 dark:border-gray-700 rounded text-xs">
+                            <thead>
+                              <tr>
+                                <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Column</th>
+                                <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Cell</th>
+                                <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Value</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {item.rowData.map((cell, idx) => (
+                                <tr key={idx}>
+                                  <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.column}</td>
+                                  <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.cell}</td>
+                                  <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.value}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
