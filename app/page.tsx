@@ -88,6 +88,8 @@ export default function Home() {
   const [lastPayload, setLastPayload] = useState<Record<string, unknown> | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
+  // Add state for webhook modal visibility
+  const [webhooksModalOpen, setWebhooksModalOpen] = useState(false);
 
   // Stepper UI state
   const [stepperIndex, setStepperIndex] = useState(0);
@@ -499,58 +501,23 @@ export default function Home() {
           </ul>
         </section>
 
-        {/* Webhook Management */}
+        {/* Webhooks Display (Read-only, with Manage button) */}
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-2">Webhooks</h2>
-          <div className="flex gap-2 mb-3">
-            <input value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} placeholder="Webhook Name..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
-            <select value={newWebhookType} onChange={e => setNewWebhookType(e.target.value as any)} className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
-              <option value="initial">Initial</option>
-              <option value="final">Final</option>
-              <option value="backup">Backup</option>
-              <option value="other">Other</option>
-            </select>
-            <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
-            <button onClick={addWebhook} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-gray-500 text-sm">Select a webhook below.</span>
+            <button
+              onClick={() => setWebhooksModalOpen(true)}
+              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
+            >
+              Manage Webhooks
+            </button>
           </div>
           <ul className="space-y-3">
-            {webhooks.map(webhook => (
-              <li key={webhook.id} className={`flex flex-col gap-2 p-3 rounded-lg border ${selectedWebhook === webhook.id ? 'border-blue-500 shadow-lg' : 'border-gray-300 dark:border-gray-700'}`} style={{ background: 'rgba(0,0,0,0.02)' }}>
-                <div className="flex items-center gap-2">
-                  <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} className="accent-blue-600 w-4 h-4" />
-                  <input
-                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
-                    value={webhook.url}
-                    onChange={e => editWebhook(webhook.id, e.target.value, webhook.name, webhook.type)}
-                  />
-                  <input
-                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-32 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
-                    value={webhook.name || ''}
-                    placeholder="Name"
-                    onChange={e => editWebhook(webhook.id, webhook.url, e.target.value, webhook.type)}
-                  />
-                  <select
-                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-28 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
-                    value={webhook.type || 'final'}
-                    onChange={e => editWebhook(webhook.id, webhook.url, webhook.name, e.target.value as any)}
-                  >
-                    <option value="initial">Initial</option>
-                    <option value="final">Final</option>
-                    <option value="backup">Backup</option>
-                    <option value="other">Other</option>
-                  </select>
-                  <button onClick={() => deleteWebhook(webhook.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
-                </div>
-                {/* Make.com API Key UI */}
-                <div className="flex items-center gap-2 ml-6">
-                  <input
-                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                    style={{ width: 260 }}
-                    value={makeApiKeyFor[webhook.id] || ''}
-                    placeholder="Make.com API Key (x-make-apikey)"
-                    onChange={e => setMakeApiKeyForWebhook(webhook.id, e.target.value)}
-                  />
-                </div>
+            {webhooks.filter(w => (w.type || 'final') === 'initial').map(webhook => (
+              <li key={webhook.id} className={`flex items-center gap-2 p-3 rounded-lg border ${selectedWebhook === webhook.id ? 'border-blue-500 shadow-lg' : 'border-gray-300 dark:border-gray-700'}`} style={{ background: 'rgba(0,0,0,0.02)' }}>
+                <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} className="accent-blue-600 w-4 h-4" />
+                <span className="text-base text-gray-800 dark:text-gray-200">{webhook.name ? `${webhook.name} (${webhook.type || 'final'})` : webhook.url}</span>
               </li>
             ))}
           </ul>
@@ -642,7 +609,7 @@ export default function Home() {
                       value={selectedFinalWebhook}
                       onChange={e => setSelectedFinalWebhook(e.target.value)}
                     >
-                      {webhooks.map(w => (
+                      {webhooks.filter(w => (w.type || 'final') === 'final').map(w => (
                         <option key={w.id} value={w.id}>{w.name ? `${w.name} (${w.type || 'final'})` : w.url}</option>
                       ))}
                     </select>
@@ -702,6 +669,72 @@ export default function Home() {
                     onChange={e => editOption(option.id, e.target.value)}
                   />
                   <button onClick={() => deleteOption(option.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      )}
+
+      {/* Webhooks Management Modal */}
+      {webhooksModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <section className="w-full max-w-2xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
+            <button
+              onClick={() => setWebhooksModalOpen(false)}
+              className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
+              aria-label="Close"
+              style={{ position: 'absolute', top: 16, right: 16 }}
+            >&times;</button>
+            <h2 className="text-xl font-bold mb-4 text-center">Manage Webhooks</h2>
+            <div className="flex gap-2 mb-3 w-full">
+              <input value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} placeholder="Webhook Name..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+              <select value={newWebhookType} onChange={e => setNewWebhookType(e.target.value as any)} className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
+                <option value="initial">Initial</option>
+                <option value="final">Final</option>
+                <option value="backup">Backup</option>
+                <option value="other">Other</option>
+              </select>
+              <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+              <button onClick={addWebhook} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
+            </div>
+            <ul className="space-y-3 w-full">
+              {webhooks.map(webhook => (
+                <li key={webhook.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-300 dark:border-gray-700" style={{ background: 'rgba(0,0,0,0.02)' }}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                      value={webhook.url}
+                      onChange={e => editWebhook(webhook.id, e.target.value, webhook.name, webhook.type)}
+                    />
+                    <input
+                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-32 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                      value={webhook.name || ''}
+                      placeholder="Name"
+                      onChange={e => editWebhook(webhook.id, webhook.url, e.target.value, webhook.type)}
+                    />
+                    <select
+                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-28 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                      value={webhook.type || 'final'}
+                      onChange={e => editWebhook(webhook.id, webhook.url, webhook.name, e.target.value as any)}
+                    >
+                      <option value="initial">Initial</option>
+                      <option value="final">Final</option>
+                      <option value="backup">Backup</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <button onClick={() => deleteWebhook(webhook.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
+                  </div>
+                  {/* Make.com API Key UI */}
+                  <div className="flex items-center gap-2 ml-6">
+                    <input
+                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                      style={{ width: 260 }}
+                      value={makeApiKeyFor[webhook.id] || ''}
+                      placeholder="Make.com API Key (x-make-apikey)"
+                      onChange={e => setMakeApiKeyForWebhook(webhook.id, e.target.value)}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>
