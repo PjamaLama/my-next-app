@@ -66,6 +66,23 @@ const HEADER_TYPE_MAKE_APIKEY = 'x-make-apikey';
 
 export default function Home() {
   const { user, loading, signInWithGoogle, signOutUser } = useFirebase();
+  // All hooks must be called before any return!
+  const [transcript, setTranscript] = useState("");
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<_SpeechRecognition | null>(null);
+  const [options, setOptions] = useState<Option[]>([]);
+  const [newOption, setNewOption] = useState("");
+  const [selectedOption, setSelectedOption] = useState<string>("");
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [newWebhook, setNewWebhook] = useState("");
+  const [selectedWebhook, setSelectedWebhook] = useState<string>("");
+  const [secretTypeFor, setSecretTypeFor] = useState<{ [webhookId: string]: 'secret' | 'bearer' }>({});
+  const [secretValueFor, setSecretValueFor] = useState<{ [webhookId: string]: string }>({});
+  const [makeApiKeyFor, setMakeApiKeyFor] = useState<{ [webhookId: string]: string }>({});
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
+  const [lastPayload, setLastPayload] = useState<any>(null);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
@@ -91,29 +108,6 @@ export default function Home() {
     );
   }
   // Speech to text
-  const [transcript, setTranscript] = useState("");
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<_SpeechRecognition | null>(null);
-
-  // Options
-  const [options, setOptions] = useState<Option[]>([]);
-  const [newOption, setNewOption] = useState("");
-  const [selectedOption, setSelectedOption] = useState<string>("");
-
-  // Webhooks
-  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
-  const [newWebhook, setNewWebhook] = useState("");
-  const [selectedWebhook, setSelectedWebhook] = useState<string>("");
-  // (Removed: editingHeadersFor, newHeaderKey, newHeaderValue)
-
-  // For simple secret/api key
-  const [secretTypeFor, setSecretTypeFor] = useState<{ [webhookId: string]: 'secret' | 'bearer' }>({});
-  const [secretValueFor, setSecretValueFor] = useState<{ [webhookId: string]: string }>({});
-  const [showAdvancedHeadersFor, setShowAdvancedHeadersFor] = useState<{ [webhookId: string]: boolean }>({});
-
-  // For Make.com API key
-  const [makeApiKeyFor, setMakeApiKeyFor] = useState<{ [webhookId: string]: string }>({});
-
   // Load from localStorage on mount
   useEffect(() => {
     setOptions(loadOptions());
@@ -249,9 +243,6 @@ export default function Home() {
   // (Removed: addHeader, editHeader, deleteHeader)
 
   // Send to webhook
-  const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState<string | null>(null);
-  const [lastPayload, setLastPayload] = useState<any>(null);
   const sendToWebhook = async () => {
     if (!transcript || !selectedOption || !selectedWebhook) {
       setSendResult("Please provide transcript, select an option, and a webhook.");
