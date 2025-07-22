@@ -3,6 +3,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --box-bg: #f4f4f4;
+  --box-fg: #171717;
+  --input-bg: #fff;
+  --input-fg: #171717;
+  --button-bg: #171717;
+  --button-fg: #fff;
 }
 
 @theme inline {
@@ -16,6 +22,12 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --box-bg: #18181b;
+    --box-fg: #ededed;
+    --input-bg: #23232a;
+    --input-fg: #ededed;
+    --button-bg: #ededed;
+    --button-fg: #18181b;
   }
 }
 
@@ -23,4 +35,23 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Transcript box and input styles */
+.transcript-box {
+  background: var(--box-bg);
+  color: var(--box-fg);
+  border: 1px solid #3333;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  min-height: 40px;
+  font-size: 1rem;
+}
+input, textarea {
+  background: var(--input-bg);
+  color: var(--input-fg);
+}
+button {
+  background: var(--button-bg);
+  color: var(--button-fg);
 }

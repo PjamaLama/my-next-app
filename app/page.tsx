@@ -158,10 +158,10 @@ export default function Home() {
       {/* Speech to Text */}
       <section className="space-y-2">
         <div className="flex gap-2">
-          <button onClick={startListening} disabled={listening} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50">Start Listening</button>
-          <button onClick={stopListening} disabled={!listening} className="px-4 py-2 bg-gray-400 text-white rounded disabled:opacity-50">Stop</button>
+          <button onClick={startListening} disabled={listening} className="px-4 py-2 rounded disabled:opacity-50">Start Listening</button>
+          <button onClick={stopListening} disabled={!listening} className="px-4 py-2 rounded disabled:opacity-50">Stop</button>
         </div>
-        <div className="border p-2 rounded min-h-[40px] bg-gray-50">{transcript || <span className="text-gray-400">Transcript will appear here...</span>}</div>
+        <div className="transcript-box">{transcript || <span style={{ opacity: 0.5 }}>Transcript will appear here...</span>}</div>
       </section>
 
       {/* Options Management */}
@@ -169,7 +169,7 @@ export default function Home() {
         <h2 className="font-semibold mb-2">Manage Options</h2>
         <div className="flex gap-2 mb-2">
           <input value={newOption} onChange={e => setNewOption(e.target.value)} placeholder="Add option..." className="border rounded px-2 py-1 flex-1" />
-          <button onClick={addOption} className="px-3 py-1 bg-green-600 text-white rounded">Add</button>
+          <button onClick={addOption} className="px-3 py-1 rounded">Add</button>
         </div>
         <ul className="space-y-1">
           {options.map(option => (
@@ -180,7 +180,7 @@ export default function Home() {
                 value={option.label}
                 onChange={e => editOption(option.id, e.target.value)}
               />
-              <button onClick={() => deleteOption(option.id)} className="text-red-600">Delete</button>
+              <button onClick={() => deleteOption(option.id)} style={{ color: 'red', background: 'transparent' }}>Delete</button>
             </li>
           ))}
         </ul>
@@ -191,7 +191,7 @@ export default function Home() {
         <h2 className="font-semibold mb-2">Manage Webhooks</h2>
         <div className="flex gap-2 mb-2">
           <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border rounded px-2 py-1 flex-1" />
-          <button onClick={addWebhook} className="px-3 py-1 bg-green-600 text-white rounded">Add</button>
+          <button onClick={addWebhook} className="px-3 py-1 rounded">Add</button>
         </div>
         <ul className="space-y-1">
           {webhooks.map(webhook => (
@@ -202,7 +202,7 @@ export default function Home() {
                 value={webhook.url}
                 onChange={e => editWebhook(webhook.id, e.target.value)}
               />
-              <button onClick={() => deleteWebhook(webhook.id)} className="text-red-600">Delete</button>
+              <button onClick={() => deleteWebhook(webhook.id)} style={{ color: 'red', background: 'transparent' }}>Delete</button>
             </li>
           ))}
         </ul>
@@ -213,7 +213,7 @@ export default function Home() {
         <button
           onClick={sendToWebhook}
           disabled={sending || !transcript || !selectedOption || !selectedWebhook}
-          className="px-6 py-2 bg-purple-700 text-white rounded disabled:opacity-50"
+          className="px-6 py-2 rounded disabled:opacity-50"
         >
           {sending ? "Sending..." : "Send to Webhook"}
         </button>
