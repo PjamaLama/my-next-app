@@ -131,11 +131,6 @@ export default function Home() {
   const handleStepperChange = (cell: string, value: string) => {
     setStepperValues(v => ({ ...v, [cell]: value }));
   };
-  // Handler for skipping a field
-  const handleStepperSkip = (cell: string) => {
-    setStepperValues(v => ({ ...v, [cell]: "" }));
-    handleStepperNext();
-  };
   // Handler for next
   const handleStepperNext = () => {
     if (stepperIndex < stepperFields.length - 1) {
@@ -532,11 +527,13 @@ export default function Home() {
   // Validation for each step
   const canProceedInput = transcript.trim().length > 0;
   const canProceedSheet = !!selectedOption;
-  const canProceedWebhook = !!selectedWebhook;
+  // (canProceedWebhook removed as unused)
 
   // UI rendering
   // NavBar component
   function NavBar() {
+    // Defensive: user should never be null here, but fallback to empty string just in case
+    const display = user?.displayName || user?.email || "";
     return (
       <nav className="sticky top-0 z-40 w-full bg-white/90 dark:bg-[#18181b] border-b border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between px-6 py-3 mb-8">
         <div className="flex items-center gap-2">
@@ -552,7 +549,7 @@ export default function Home() {
           <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Report Ai</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{user.displayName || user.email}</span>
+          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{display}</span>
           <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
         </div>
       </nav>
