@@ -87,6 +87,7 @@ export default function Home() {
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [lastPayload, setLastPayload] = useState<Record<string, unknown> | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
+  const [optionsModalOpen, setOptionsModalOpen] = useState(false);
 
   // Stepper UI state
   const [stepperIndex, setStepperIndex] = useState(0);
@@ -476,23 +477,23 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Options Management */}
+        {/* Options Display (Read-only, with Manage button) */}
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-2">Options</h2>
-          <div className="flex gap-2 mb-3">
-            <input value={newOption} onChange={e => setNewOption(e.target.value)} placeholder="Add option..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
-            <button onClick={addOption} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-gray-500 text-sm">Select an option below.</span>
+            <button
+              onClick={() => setOptionsModalOpen(true)}
+              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
+            >
+              Manage Options
+            </button>
           </div>
           <ul className="space-y-2">
             {options.map(option => (
               <li key={option.id} className="flex items-center gap-3">
                 <input type="radio" name="option" checked={selectedOption === option.id} onChange={() => setSelectedOption(option.id)} className="accent-blue-600 w-4 h-4" />
-                <input
-                  className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
-                  value={option.label}
-                  onChange={e => editOption(option.id, e.target.value)}
-                />
-                <button onClick={() => deleteOption(option.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
+                <span className="text-base text-gray-800 dark:text-gray-200">{option.label}</span>
               </li>
             ))}
           </ul>
@@ -676,6 +677,37 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Options Management Modal */}
+      {optionsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <section className="w-full max-w-md mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
+            <button
+              onClick={() => setOptionsModalOpen(false)}
+              className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
+              aria-label="Close"
+              style={{ position: 'absolute', top: 16, right: 16 }}
+            >&times;</button>
+            <h2 className="text-xl font-bold mb-4 text-center">Manage Options</h2>
+            <div className="flex gap-2 mb-3 w-full">
+              <input value={newOption} onChange={e => setNewOption(e.target.value)} placeholder="Add option..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+              <button onClick={addOption} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
+            </div>
+            <ul className="space-y-2 w-full">
+              {options.map(option => (
+                <li key={option.id} className="flex items-center gap-3">
+                  <input
+                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+                    value={option.label}
+                    onChange={e => editOption(option.id, e.target.value)}
+                  />
+                  <button onClick={() => deleteOption(option.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
