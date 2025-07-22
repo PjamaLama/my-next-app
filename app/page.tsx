@@ -6,9 +6,15 @@ interface Option {
   id: string;
   label: string;
 }
+interface WebhookHeader {
+  id: string;
+  key: string;
+  value: string;
+}
 interface Webhook {
   id: string;
   url: string;
+  headers?: WebhookHeader[];
 }
 
 // Helpers for localStorage
@@ -38,6 +44,11 @@ function saveWebhooks(webhooks: Webhook[]) {
   localStorage.setItem(WEBHOOKS_KEY, JSON.stringify(webhooks));
 }
 
+// Helper for default header types
+const HEADER_TYPE_SECRET = 'X-Webhook-Secret';
+const HEADER_TYPE_BEARER = 'Authorization';
+const HEADER_TYPE_MAKE_APIKEY = 'x-make-apikey';
+
 export default function Home() {
   // Speech to text
   const [transcript, setTranscript] = useState("");
@@ -53,6 +64,18 @@ export default function Home() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [newWebhook, setNewWebhook] = useState("");
   const [selectedWebhook, setSelectedWebhook] = useState<string>("");
+  // For editing headers
+  const [editingHeadersFor, setEditingHeadersFor] = useState<string | null>(null);
+  const [newHeaderKey, setNewHeaderKey] = useState("");
+  const [newHeaderValue, setNewHeaderValue] = useState("");
+
+  // For simple secret/api key
+  const [secretTypeFor, setSecretTypeFor] = useState<{ [webhookId: string]: 'secret' | 'bearer' }>({});
+  const [secretValueFor, setSecretValueFor] = useState<{ [webhookId: string]: string }>({});
+  const [showAdvancedHeadersFor, setShowAdvancedHeadersFor] = useState<{ [webhookId: string]: boolean }>({});
+
+  // For Make.com API key
+  const [makeApiKeyFor, setMakeApiKeyFor] = useState<{ [webhookId: string]: string }>({});
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -80,6 +103,71 @@ export default function Home() {
     recognitionRef.current.onerror = () => setListening(false);
     recognitionRef.current.onend = () => setListening(false);
   }, []);
+
+  // When secret/api key changes, update the headers for that webhook
+  const setSecretForWebhook = (webhookId: string, value: string, type: 'secret' | 'bearer') => {
+    setSecretValueFor(v => ({ ...v, [webhookId]: value }));
+    setSecretTypeFor(t => ({ ...t, [webhookId]: type }));
+    setWebhooks(webhooks.map(w => {
+      if (w.id !== webhookId) return w;
+      let headers = (w.headers || []).filter(h => h.key !== HEADER_TYPE_SECRET && h.key !== HEADER_TYPE_BEARER);
+      if (value) {
+        if (type === 'secret') {
+          headers = [...headers, { id: 'secret', key: HEADER_TYPE_SECRET, value }];
+        } else {
+          headers = [...headers, { id: 'bearer', key: HEADER_TYPE_BEARER, value: `Bearer ${value}` }];
+        }
+      }
+      return { ...w, headers };
+    }));
+  };
+  // When loading webhooks, initialize secret fields
+  useEffect(() => {
+    const newSecretType: { [webhookId: string]: 'secret' | 'bearer' } = {};
+    const newSecretValue: { [webhookId: string]: string } = {};
+    webhooks.forEach(w => {
+      const secretHeader = (w.headers || []).find(h => h.key === HEADER_TYPE_SECRET);
+      const bearerHeader = (w.headers || []).find(h => h.key === HEADER_TYPE_BEARER);
+      if (bearerHeader) {
+        newSecretType[w.id] = 'bearer';
+        newSecretValue[w.id] = bearerHeader.value.replace(/^Bearer /, '');
+      } else if (secretHeader) {
+        newSecretType[w.id] = 'secret';
+        newSecretValue[w.id] = secretHeader.value;
+      } else {
+        newSecretType[w.id] = 'secret';
+        newSecretValue[w.id] = '';
+      }
+    });
+    setSecretTypeFor(newSecretType);
+    setSecretValueFor(newSecretValue);
+  }, [webhooks.length]);
+
+  // When Make.com API key changes, update the headers for that webhook
+  const setMakeApiKeyForWebhook = (webhookId: string, value: string) => {
+    setMakeApiKeyFor(v => ({ ...v, [webhookId]: value }));
+    setWebhooks(webhooks.map(w => {
+      if (w.id !== webhookId) return w;
+      let headers = (w.headers || []).filter(h => h.key !== HEADER_TYPE_MAKE_APIKEY);
+      if (value) {
+        headers = [...headers, { id: 'make-apikey', key: HEADER_TYPE_MAKE_APIKEY, value }];
+      }
+      return { ...w, headers };
+    }));
+  };
+  // When loading webhooks, initialize Make.com API key fields
+  useEffect(() => {
+    const newMakeApiKey: { [webhookId: string]: string } = {};
+    webhooks.forEach(w => {
+      const makeHeader = (w.headers || []).find(h => h.key === HEADER_TYPE_MAKE_APIKEY);
+      if (makeHeader) {
+        newMakeApiKey[w.id] = makeHeader.value;
+      } else {
+        newMakeApiKey[w.id] = '';
+      }
+    });
+    setMakeApiKeyFor(newMakeApiKey);
+  }, [webhooks.length]);
 
   const startListening = () => {
     if (!recognitionRef.current) return alert("Speech recognition not supported in this browser.");
@@ -110,7 +198,7 @@ export default function Home() {
   // Webhook management
   const addWebhook = () => {
     if (!newWebhook.trim()) return;
-    const webhook: Webhook = { id: Date.now().toString(), url: newWebhook.trim() };
+    const webhook: Webhook = { id: Date.now().toString(), url: newWebhook.trim(), headers: [] };
     setWebhooks([...webhooks, webhook]);
     setNewWebhook("");
   };
@@ -120,6 +208,38 @@ export default function Home() {
   };
   const editWebhook = (id: string, url: string) => {
     setWebhooks(webhooks.map(w => w.id === id ? { ...w, url } : w));
+  };
+  // Header management
+  const addHeader = (webhookId: string) => {
+    if (!newHeaderKey.trim()) return;
+    setWebhooks(webhooks.map(w => {
+      if (w.id !== webhookId) return w;
+      const headers = w.headers || [];
+      return {
+        ...w,
+        headers: [...headers, { id: Date.now().toString(), key: newHeaderKey.trim(), value: newHeaderValue }],
+      };
+    }));
+    setNewHeaderKey("");
+    setNewHeaderValue("");
+  };
+  const editHeader = (webhookId: string, headerId: string, key: string, value: string) => {
+    setWebhooks(webhooks.map(w => {
+      if (w.id !== webhookId) return w;
+      return {
+        ...w,
+        headers: (w.headers || []).map(h => h.id === headerId ? { ...h, key, value } : h),
+      };
+    }));
+  };
+  const deleteHeader = (webhookId: string, headerId: string) => {
+    setWebhooks(webhooks.map(w => {
+      if (w.id !== webhookId) return w;
+      return {
+        ...w,
+        headers: (w.headers || []).filter(h => h.id !== headerId),
+      };
+    }));
   };
 
   // Send to webhook
@@ -133,7 +253,8 @@ export default function Home() {
     }
     setSending(true);
     setSendResult(null);
-    const webhookUrl = webhooks.find(w => w.id === selectedWebhook)?.url;
+    const webhook = webhooks.find(w => w.id === selectedWebhook);
+    const webhookUrl = webhook?.url;
     const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
     setLastPayload(payload);
     if (!webhookUrl) {
@@ -141,10 +262,17 @@ export default function Home() {
       setSending(false);
       return;
     }
+    // Build headers
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (webhook?.headers) {
+      webhook.headers.forEach(h => {
+        if (h.key) headers[h.key] = h.value;
+      });
+    }
     try {
       const res = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
       let responseText = "";
@@ -211,14 +339,99 @@ export default function Home() {
         </div>
         <ul className="space-y-1">
           {webhooks.map(webhook => (
-            <li key={webhook.id} className="flex items-center gap-2">
-              <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} />
-              <input
-                className="border rounded px-1 py-0.5 flex-1"
-                value={webhook.url}
-                onChange={e => editWebhook(webhook.id, e.target.value)}
-              />
-              <button onClick={() => deleteWebhook(webhook.id)} style={{ color: 'red', background: 'transparent' }}>Delete</button>
+            <li key={webhook.id} className="flex flex-col gap-1 border-b pb-2 mb-2">
+              <div className="flex items-center gap-2">
+                <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} />
+                <input
+                  className="border rounded px-1 py-0.5 flex-1"
+                  value={webhook.url}
+                  onChange={e => editWebhook(webhook.id, e.target.value)}
+                />
+                <button onClick={() => deleteWebhook(webhook.id)} style={{ color: 'red', background: 'transparent' }}>Delete</button>
+              </div>
+              {/* Make.com API Key UI */}
+              <div className="ml-6 mt-2 flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    className="border rounded px-1 py-0.5 text-xs"
+                    style={{ width: 260 }}
+                    value={makeApiKeyFor[webhook.id] || ''}
+                    placeholder="Make.com API Key (x-make-apikey)"
+                    onChange={e => setMakeApiKeyForWebhook(webhook.id, e.target.value)}
+                  />
+                </div>
+              </div>
+              {/* Simple Secret/API Key UI (for other services) */}
+              <div className="ml-6 mt-2 flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    className="border rounded px-1 py-0.5 text-xs"
+                    style={{ width: 200 }}
+                    value={secretValueFor[webhook.id] || ''}
+                    placeholder="Secret/API Key (optional)"
+                    onChange={e => setSecretForWebhook(webhook.id, e.target.value, secretTypeFor[webhook.id] || 'secret')}
+                  />
+                  <select
+                    className="border rounded px-1 py-0.5 text-xs"
+                    value={secretTypeFor[webhook.id] || 'secret'}
+                    onChange={e => setSecretForWebhook(webhook.id, secretValueFor[webhook.id] || '', e.target.value as 'secret' | 'bearer')}
+                  >
+                    <option value="secret">X-Webhook-Secret</option>
+                    <option value="bearer">Authorization: Bearer</option>
+                  </select>
+                  <button
+                    className="text-xs px-2 py-1 rounded"
+                    style={{ background: '#4442', color: 'inherit' }}
+                    onClick={() => setShowAdvancedHeadersFor(s => ({ ...s, [webhook.id]: !s[webhook.id] }))}
+                  >
+                    {showAdvancedHeadersFor[webhook.id] ? 'Hide Advanced' : 'Advanced'}
+                  </button>
+                </div>
+              </div>
+              {/* Advanced custom headers UI (excluding x-make-apikey) */}
+              {showAdvancedHeadersFor[webhook.id] && (
+                <div className="ml-6 mt-2 mb-2">
+                  <div className="font-semibold text-xs mb-1">Custom Headers</div>
+                  <ul className="space-y-1 mb-2">
+                    {(webhook.headers || []).filter(h => h.key !== HEADER_TYPE_SECRET && h.key !== HEADER_TYPE_BEARER && h.key !== HEADER_TYPE_MAKE_APIKEY).map(header => (
+                      <li key={header.id} className="flex items-center gap-2">
+                        <input
+                          className="border rounded px-1 py-0.5 text-xs"
+                          style={{ width: 120 }}
+                          value={header.key}
+                          placeholder="Header key"
+                          onChange={e => editHeader(webhook.id, header.id, e.target.value, header.value)}
+                        />
+                        <input
+                          className="border rounded px-1 py-0.5 text-xs"
+                          style={{ width: 160 }}
+                          value={header.value}
+                          placeholder="Header value"
+                          onChange={e => editHeader(webhook.id, header.id, header.key, e.target.value)}
+                        />
+                        <button onClick={() => deleteHeader(webhook.id, header.id)} style={{ color: 'red', background: 'transparent' }}>Delete</button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2 mt-1">
+                    <input
+                      className="border rounded px-1 py-0.5 text-xs"
+                      style={{ width: 120 }}
+                      value={newHeaderKey}
+                      placeholder="Header key"
+                      onChange={e => setNewHeaderKey(e.target.value)}
+                    />
+                    <input
+                      className="border rounded px-1 py-0.5 text-xs"
+                      style={{ width: 160 }}
+                      value={newHeaderValue}
+                      placeholder="Header value"
+                      onChange={e => setNewHeaderValue(e.target.value)}
+                    />
+                    <button onClick={() => addHeader(webhook.id)} className="text-xs px-2 py-1 rounded" style={{ background: '#2222', color: 'inherit' }}>Add</button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
