@@ -86,6 +86,9 @@ interface ActivityItem {
   oldValue?: string; // For edit activity
   newValue?: string; // For edit activity
   webhookType?: 'initial' | 'final' | 'backup' | 'other'; // For webhook edit activity
+  sheetName?: string; // For webhook add activity
+  rowNumber?: string; // For webhook add activity
+  rowData?: { column: string; cell: string; value: string }[]; // For webhook add activity
 }
 
 export default function Home() {
@@ -454,7 +457,10 @@ export default function Home() {
           type: 'add',
           entity: 'webhook',
           label: webhook.name || webhook.url,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          sheetName: selectedSheetName,
+          rowNumber: row,
+          rowData: cells_to_update
         });
       } else {
         setFinalSubmitStatus(`Failed to submit. Status: ${res.status} ${res.statusText}\n${responseText}`);
@@ -881,33 +887,65 @@ export default function Home() {
         ) : (
           <ul className="space-y-2 w-full">
             {activity.slice(0, 5).map((item, i) => (
-              <li key={i} className="flex items-start gap-3 text-xs w-full">
-                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5">
-                  {item.type === 'add' && <svg width="14" height="14" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
-                  {item.type === 'edit' && <svg width="14" height="14" fill="none" stroke="#f59e42" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
-                  {item.type === 'delete' && <svg width="14" height="14" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M9 6v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6m-6 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>}
-                </span>
-                <span className="truncate">
-                  {item.entity === 'sheet' ? (
-                    <>
-                      <span className="font-medium text-gray-700 dark:text-gray-200">Sheet</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
-                      {item.type === 'edit' && item.oldValue && item.newValue && (
-                        <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-medium text-purple-700 dark:text-purple-300">Webhook</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
-                      {item.webhookType && (
-                        <span className="ml-1 text-gray-500">({item.webhookType})</span>
-                      )}
-                      {item.type === 'edit' && item.oldValue && item.newValue && (
-                        <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
-                      )}
-                    </>
-                  )}
-                  <span className="ml-2 text-gray-400">&middot; {dayjs(item.timestamp).fromNow()}</span>
-                </span>
+              <li key={i} className="flex flex-col gap-1 text-xs w-full p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5">
+                    {item.type === 'add' && <svg width="14" height="14" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
+                    {item.type === 'edit' && <svg width="14" height="14" fill="none" stroke="#f59e42" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+                    {item.type === 'delete' && <svg width="14" height="14" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M9 6v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6m-6 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>}
+                  </span>
+                  <span className="truncate flex-1">
+                    {item.entity === 'sheet' ? (
+                      <>
+                        <span className="font-medium text-gray-700 dark:text-gray-200">Sheet</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
+                        {item.type === 'edit' && item.oldValue && item.newValue && (
+                          <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-purple-700 dark:text-purple-300">Webhook</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
+                        {item.webhookType && (
+                          <span className="ml-1 text-gray-500">({item.webhookType})</span>
+                        )}
+                        {item.type === 'edit' && item.oldValue && item.newValue && (
+                          <span className="ml-1 text-gray-500">(from <span className="italic">{item.oldValue}</span> to <span className="italic">{item.newValue}</span>)</span>
+                        )}
+                        {/* Show sheet and row info for webhook add */}
+                        {item.type === 'add' && item.entity === 'webhook' && (
+                          <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {item.sheetName && <span>Sheet: <span className="font-semibold text-blue-700 dark:text-blue-300">{item.sheetName}</span></span>}
+                            {item.rowNumber && <span className="ml-2">Row: <span className="font-semibold text-green-700 dark:text-green-300">{item.rowNumber}</span></span>}
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <span className="ml-2 text-gray-400">&middot; {dayjs(item.timestamp).fromNow()}</span>
+                  </span>
+                </div>
+                {/* Show row data for webhook add */}
+                {item.type === 'add' && item.entity === 'webhook' && item.rowData && item.rowData.length > 0 && (
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="min-w-[200px] border border-gray-200 dark:border-gray-700 rounded text-xs">
+                      <thead>
+                        <tr>
+                          <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Column</th>
+                          <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Cell</th>
+                          <th className="px-2 py-1 border-b border-gray-200 dark:border-gray-700 text-left">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {item.rowData.map((cell, idx) => (
+                          <tr key={idx}>
+                            <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.column}</td>
+                            <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.cell}</td>
+                            <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
