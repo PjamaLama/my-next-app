@@ -491,29 +491,38 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Options Display (Read-only, with Manage button) */}
+        {/* Sheet Names Display (Read-only, with Manage button) */}
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold mb-2">Options</h2>
+          <h2 className="text-lg font-semibold mb-2">Sheet Names</h2>
           <div className="flex justify-between items-center mb-3">
-            <span className="text-gray-500 text-sm">Select an option below.</span>
+            <span className="text-gray-500 text-sm">Select a sheet name below.</span>
             <button
               onClick={() => setOptionsModalOpen(true)}
               className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
             >
-              Manage Options
+              Manage Sheet Names
             </button>
           </div>
-          <ul className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {options.map(option => (
-              <li key={option.id} className="flex items-center gap-3">
-                <input type="radio" name="option" checked={selectedOption === option.id} onChange={() => setSelectedOption(option.id)} className="accent-blue-600 w-4 h-4" />
-                <span className="text-base text-gray-800 dark:text-gray-200">{option.label}</span>
-              </li>
+              <div
+                key={option.id}
+                className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
+                  ${selectedOption === option.id ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
+                onClick={() => setSelectedOption(option.id)}
+                tabIndex={0}
+                role="button"
+                aria-pressed={selectedOption === option.id}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedOption(option.id); }}
+              >
+                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedOption === option.id ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedOption === option.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
 
-        {/* Webhooks Display (Read-only, with Manage button) */}
+        {/* Webhooks selection UI */}
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-2">Webhooks</h2>
           <div className="flex justify-between items-center mb-3">
@@ -525,14 +534,23 @@ export default function Home() {
               Manage Webhooks
             </button>
           </div>
-          <ul className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {webhooks.filter(w => (w.type || 'final') === 'initial').map(webhook => (
-              <li key={webhook.id} className={`flex items-center gap-2 p-3 rounded-lg border ${selectedWebhook === webhook.id ? 'border-blue-500 shadow-lg' : 'border-gray-300 dark:border-gray-700'}`} style={{ background: 'rgba(0,0,0,0.02)' }}>
-                <input type="radio" name="webhook" checked={selectedWebhook === webhook.id} onChange={() => setSelectedWebhook(webhook.id)} className="accent-blue-600 w-4 h-4" />
-                <span className="text-base text-gray-800 dark:text-gray-200">{webhook.name ? `${webhook.name} (${webhook.type || 'final'})` : webhook.url}</span>
-              </li>
+              <div
+                key={webhook.id}
+                className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
+                  ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
+                onClick={() => setSelectedWebhook(webhook.id)}
+                tabIndex={0}
+                role="button"
+                aria-pressed={selectedWebhook === webhook.id}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedWebhook(webhook.id); }}
+              >
+                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedWebhook === webhook.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{webhook.name ? `${webhook.name} (${webhook.type || 'final'})` : webhook.url}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
 
         {/* Send to Webhook */}
@@ -667,7 +685,7 @@ export default function Home() {
               aria-label="Close"
               style={{ position: 'absolute', top: 16, right: 16 }}
             >&times;</button>
-            <h2 className="text-xl font-bold mb-4 text-center">Manage Options</h2>
+            <h2 className="text-xl font-bold mb-6 text-center">Manage Sheet Names</h2>
             <div className="flex gap-2 mb-3 w-full">
               <input value={newOption} onChange={e => setNewOption(e.target.value)} placeholder="Add option..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
               <button onClick={addOption} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
