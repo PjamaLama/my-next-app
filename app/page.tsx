@@ -647,48 +647,98 @@ export default function Home() {
 
           {/* Step 1: Speech/Text Input */}
           {flowStep === 0 && (
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
-          <div className="flex items-end gap-2 w-full">
-            <textarea
-              id="manual-transcript"
-              className="flex-1 min-h-[48px] border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-sm resize-none"
-              value={transcript}
-              onChange={e => setTranscript(e.target.value)}
-              placeholder="Type or hold mic to speak..."
-              aria-label="Transcript"
-              style={{marginBottom: 0}}
-            />
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center min-h-[120px]">
+          {/* If not listening and no transcript, show only centered mic button */}
+          {(!listening && !transcript.trim()) ? (
             <button
               onClick={handleMicButton}
-              aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
-              className={`ml-1 rounded-full p-3 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
-              style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              aria-label="Start Listening"
+              className="rounded-full p-5 transition focus:outline-none shadow-md border-2 bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600"
+              style={{ width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}
             >
-              {listening ? (
-                paused ? (
-                  // Resume icon
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="8,5 19,12 8,19" />
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="2" width="6" height="12" rx="3"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+                <line x1="8" y1="22" x2="16" y2="22"/>
+              </svg>
+            </button>
+          ) : (
+            <div className="flex items-end gap-2 w-full justify-center">
+              {/* Transcript text box, only visible if listening or transcript exists */}
+              <textarea
+                id="manual-transcript"
+                className="flex-1 min-h-[48px] max-w-xs border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-sm resize-none"
+                value={transcript}
+                onChange={e => setTranscript(e.target.value)}
+                placeholder="Type or hold mic to speak..."
+                aria-label="Transcript"
+                style={{marginBottom: 0, display: (listening || transcript.trim()) ? 'block' : 'none'}}
+              />
+              {/* X button to clear transcript and hide text box */}
+              {(transcript.trim() || listening) && (
+                <button
+                  type="button"
+                  onClick={() => { setTranscript(""); stopListening(); }}
+                  aria-label="Clear"
+                  className="rounded-full p-2 ml-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                  style={{ height: 36, width: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="4" y1="4" x2="16" y2="16" />
+                    <line x1="16" y1="4" x2="4" y2="16" />
                   </svg>
+                </button>
+              )}
+              {/* Mic button, always visible when editing or listening */}
+              <button
+                onClick={handleMicButton}
+                aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
+                className={`ml-1 rounded-full p-3 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
+                style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {listening ? (
+                  paused ? (
+                    // Resume icon
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="8,5 19,12 8,19" />
+                    </svg>
+                  ) : (
+                    // Mic off or animated mic icon
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="2" width="6" height="12" rx="3"/>
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                      <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                    </svg>
+                  )
                 ) : (
-                  // Mic off or animated mic icon
+                  // Mic icon
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="9" y="2" width="6" height="12" rx="3"/>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                    <line x1="12" y1="19" x2="12" y2="22"/>
+                    <line x1="8" y1="22" x2="16" y2="22"/>
                   </svg>
-                )
-              ) : (
-                // Mic icon
+                )}
+              </button>
+              {/* Next button as animated arrow icon, only if transcript has data */}
+              <button
+                type="button"
+                onClick={() => { stopListening(); setFlowStep(1); }}
+                aria-label="Next"
+                disabled={!transcript.trim()}
+                className={`ml-1 rounded-full p-3 transition focus:outline-none shadow-md border-2 bg-blue-600 border-blue-600 text-white flex items-center justify-center
+                  ${transcript.trim() ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'}
+                  duration-200 ease-in-out`}
+                style={{ width: 44, height: 44 }}
+              >
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="2" width="6" height="12" rx="3"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" y1="19" x2="12" y2="22"/>
-                  <line x1="8" y1="22" x2="16" y2="22"/>
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
                 </svg>
-              )}
-            </button>
-          </div>
+              </button>
+            </div>
+          )}
         </section>
           )}
 
