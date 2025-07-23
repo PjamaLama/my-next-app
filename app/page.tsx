@@ -449,7 +449,7 @@ export default function Home() {
         valueToSend !== undefined &&
         valueToSend !== null &&
         valueToSend !== "" &&
-        !(valueToSend === 0 || valueToSend === "0")
+        !((typeof valueToSend === 'number' && valueToSend === 0) || (typeof valueToSend === 'string' && valueToSend === '0'))
       ) {
         cells_to_update.push({ column: field.column, cell: field.cell, value: valueToSend });
       } else if (aiValue !== undefined && aiValue !== null && aiValue !== "") {
