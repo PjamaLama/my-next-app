@@ -642,39 +642,7 @@ export default function Home() {
           {flowStep === 0 && (
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-2">Speech Recognition</h2>
-              <div className="flex gap-3 flex-wrap items-center">
-                <button
-                  onClick={handleMicButton}
-                  aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
-                  className={`rounded-full p-4 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
-                  style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  {listening ? (
-                    paused ? (
-                      // Resume icon
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <polygon points="8,5 19,12 8,19" />
-                      </svg>
-                    ) : (
-                      // Mic off or animated mic icon
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="9" y="2" width="6" height="12" rx="3"/>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                        <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
-                      </svg>
-                    )
-                  ) : (
-                    // Mic icon
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="2" width="6" height="12" rx="3"/>
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                      <line x1="12" y1="19" x2="12" y2="22"/>
-                      <line x1="8" y1="22" x2="16" y2="22"/>
-                    </svg>
-                  )}
-                </button>
-                <span className={`ml-2 text-base font-medium ${listening ? (paused ? 'text-yellow-600' : 'text-red-600') : 'text-blue-600'}`}>{listening ? (paused ? 'Paused' : 'Listening...') : 'Tap to speak'}</span>
-          </div>
+              {/* Remove mic button from here, only show transcript and textarea */}
           <div className="mt-4">
                 <label htmlFor="manual-transcript" className="block mb-2 text-base font-semibold text-gray-700 dark:text-gray-200" style={{letterSpacing: '0.01em'}}>Transcript</label>
             <textarea
@@ -686,15 +654,65 @@ export default function Home() {
                   aria-label="Transcript"
             />
           </div>
-              <div className="flex justify-end mt-4">
-                <button
-                  className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50"
-                  onClick={() => setFlowStep(1)}
-                  disabled={!canProceedInput}
-                >Next</button>
-              </div>
         </section>
           )}
+
+      {/* Floating mic/next button area for step 0 */}
+      {flowStep === 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 100,
+            display: 'flex',
+            gap: 12,
+            alignItems: 'center',
+          }}
+        >
+          {/* Mic button always visible in step 0 */}
+          <button
+            onClick={handleMicButton}
+            aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
+            className={`rounded-full p-4 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
+            style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {listening ? (
+              paused ? (
+                // Resume icon
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="8,5 19,12 8,19" />
+                </svg>
+              ) : (
+                // Mic off or animated mic icon
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                </svg>
+              )
+            ) : (
+              // Mic icon
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="2" width="6" height="12" rx="3"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+                <line x1="8" y1="22" x2="16" y2="22"/>
+              </svg>
+            )}
+          </button>
+          {/* Next button only if transcript has data */}
+          {transcript.trim().length > 0 && (
+            <button
+              className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
+              onClick={() => {
+                stopListening();
+                setFlowStep(1);
+              }}
+            >Next</button>
+          )}
+        </div>
+      )}
 
           {/* Step 2: Sheet Selection */}
           {flowStep === 1 && (
