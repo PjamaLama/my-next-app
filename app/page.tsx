@@ -432,18 +432,29 @@ export default function Home() {
       if (!row && /^([A-Z]+)(\d+)$/.test(field.cell)) {
         row = field.cell.match(/^([A-Z]+)(\d+)$/)?.[2];
       }
-      let value: string = "";
-      if (stepperValues[field.cell] !== undefined && stepperValues[field.cell] !== "") {
-        value = stepperValues[field.cell];
-      } else if (field.suggested_value !== undefined && field.suggested_value !== "") {
-        value = field.suggested_value;
-      } else if (field.value !== undefined && field.value !== "") {
-        value = field.value;
+      // Prefer user value if present, else suggested, else default
+      const userValue = stepperValues[field.cell];
+      const aiValue = field.suggested_value;
+      const defaultValue = field.value;
+      let valueToSend = undefined;
+      if (userValue !== undefined && userValue !== null && userValue !== "") {
+        valueToSend = userValue;
+      } else if (aiValue !== undefined && aiValue !== null && aiValue !== "") {
+        valueToSend = aiValue;
+      } else if (defaultValue !== undefined && defaultValue !== null && defaultValue !== "") {
+        valueToSend = defaultValue;
       }
-      if (value !== "") {
-        cells_to_update.push({ column: field.column, cell: field.cell, value });
-      } else if (field.suggested_value !== undefined) {
-        missing_columns.push({ column: field.column, cell: field.cell, suggested_value: field.suggested_value });
+      // Only send if valueToSend is not null/empty/zero (as string or number)
+      if (
+        valueToSend !== undefined &&
+        valueToSend !== null &&
+        valueToSend !== "" &&
+        !(valueToSend === 0 || valueToSend === "0")
+      ) {
+        cells_to_update.push({ column: field.column, cell: field.cell, value: valueToSend });
+      } else if (aiValue !== undefined && aiValue !== null && aiValue !== "") {
+        // If not sending, but there is an AI suggestion, add to missing_columns
+        missing_columns.push({ column: field.column, cell: field.cell, suggested_value: aiValue });
       }
     });
     const payload: Record<string, unknown> = {
