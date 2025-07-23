@@ -650,6 +650,11 @@ export default function Home() {
       }
     });
     setStepperValues(newValues);
+    // Also update the current input if on a field that was just filled
+    const currentField = stepperFields[stepperIndex];
+    if (currentField && newValues[currentField.cell]) {
+      handleStepperChange(currentField.cell, newValues[currentField.cell]);
+    }
   };
 
   return (
