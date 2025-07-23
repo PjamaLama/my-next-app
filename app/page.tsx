@@ -612,8 +612,8 @@ export default function Home() {
 
           {/* Step 1: Speech/Text Input */}
           {flowStep === 0 && (
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center min-h-[120px]">
-          {/* Centered mic and next button row */}
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center min-h-[120px] relative">
+          {/* Centered mic button row */}
           <div className="flex items-center justify-center gap-2 w-full mb-2">
             <button
               onClick={handleMicButton}
@@ -645,18 +645,20 @@ export default function Home() {
                 </svg>
               )}
             </button>
-            {/* Next button as animated arrow icon, only if transcript has data */}
+          </div>
+          {/* Next button absolutely positioned in bottom right of section */}
+          <div className="absolute bottom-3 right-3 z-30">
             <button
               type="button"
               onClick={() => { stopListening(); setFlowStep(1); }}
               aria-label="Next"
               disabled={!transcript.trim()}
-              className={`rounded-full p-5 transition focus:outline-none shadow-md border-2 bg-blue-600 border-blue-600 text-white flex items-center justify-center
+              className={`rounded-full p-3 transition focus:outline-none shadow-md border-2 bg-blue-600 border-blue-600 text-white flex items-center justify-center
                 ${transcript.trim() ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'}
                 duration-200 ease-in-out`}
-              style={{ width: 64, height: 64 }}
+              style={{ width: 44, height: 44 }}
             >
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>
@@ -664,7 +666,7 @@ export default function Home() {
           </div>
           {/* Sleek transcript box below, only if transcript or listening */}
           {(listening || transcript.trim()) && (
-            <div className="relative w-full max-w-xs mx-auto">
+            <div className="relative w-full">
               {/* Slot machine style transcript view using react-vertical-ticker - REMOVED */}
               {!editingTranscript ? (
                 <div className="relative flex flex-col items-center group" style={{minHeight: 64}}>
