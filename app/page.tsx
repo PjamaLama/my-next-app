@@ -643,106 +643,73 @@ export default function Home() {
       <div className="min-h-screen w-full bg-gray-100 dark:bg-[#18181b] p-4">
           <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
           {/* Stepper/flow indicator */}
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <div className={`flex flex-col items-center ${flowStep === 0 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>1<div className="text-xs">Input</div></div>
-            <div className="w-8 h-0.5 bg-gray-300" />
-            <div className={`flex flex-col items-center ${flowStep === 1 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>2<div className="text-xs">Sheet</div></div>
-          </div>
+          {/* Remove the stepper/flow indicator (the row showing Input and Sheet steps) */}
 
           {/* Step 1: Speech/Text Input */}
           {flowStep === 0 && (
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold mb-2">Speech Recognition</h2>
-              {/* Remove mic button from here, only show transcript and textarea */}
-          <div className="mt-4">
-                <label htmlFor="manual-transcript" className="block mb-2 text-base font-semibold text-gray-700 dark:text-gray-200" style={{letterSpacing: '0.01em'}}>Transcript</label>
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
+          <div className="flex items-end gap-2 w-full">
             <textarea
               id="manual-transcript"
-                  className="w-full min-h-[60px] border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-4 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
+              className="flex-1 min-h-[48px] border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-sm resize-none"
               value={transcript}
               onChange={e => setTranscript(e.target.value)}
-                  placeholder="Type or use the mic to enter your transcript..."
-                  aria-label="Transcript"
+              placeholder="Type or hold mic to speak..."
+              aria-label="Transcript"
+              style={{marginBottom: 0}}
             />
+            <button
+              onClick={handleMicButton}
+              aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
+              className={`ml-1 rounded-full p-3 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
+              style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {listening ? (
+                paused ? (
+                  // Resume icon
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="8,5 19,12 8,19" />
+                  </svg>
+                ) : (
+                  // Mic off or animated mic icon
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="2" width="6" height="12" rx="3"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                  </svg>
+                )
+              ) : (
+                // Mic icon
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="22"/>
+                  <line x1="8" y1="22" x2="16" y2="22"/>
+                </svg>
+              )}
+            </button>
           </div>
         </section>
           )}
 
-      {/* Floating mic/next button area for step 0 */}
-      {flowStep === 0 && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 100,
-            display: 'flex',
-            gap: 12,
-            alignItems: 'center',
-          }}
-        >
-          {/* Mic button always visible in step 0 */}
-                <button
-                  onClick={handleMicButton}
-            aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
-            className={`rounded-full p-4 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
-                  style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  {listening ? (
-              paused ? (
-                // Resume icon
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="8,5 19,12 8,19" />
-                </svg>
-              ) : (
-                    // Mic off or animated mic icon
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="2" width="6" height="12" rx="3"/>
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                      <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
-                    </svg>
-              )
-                  ) : (
-                    // Mic icon
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="2" width="6" height="12" rx="3"/>
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                      <line x1="12" y1="19" x2="12" y2="22"/>
-                      <line x1="8" y1="22" x2="16" y2="22"/>
-                    </svg>
-                  )}
-                </button>
-          {/* Next button only if transcript has data */}
-          {transcript.trim().length > 0 && (
-                <button
-              className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
-              onClick={() => {
-                stopListening();
-                setFlowStep(1);
-              }}
-                >Next</button>
-          )}
-              </div>
-          )}
-
           {/* Step 2: Sheet Selection */}
           {flowStep === 1 && (
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold mb-2">Sheet Names</h2>
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-gray-500 text-sm">Select a sheet name below.</span>
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
+          <h2 className="text-base sm:text-lg font-semibold mb-1">Sheet Names</h2>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-gray-500 text-xs sm:text-sm">Select a sheet name below.</span>
             <button
               onClick={() => setOptionsModalOpen(true)}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
+              className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-xs sm:text-sm"
             >
               Manage Sheet Names
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {options.map(option => (
               <div
                 key={option.id}
-                className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
+                className={`flex items-center gap-2 p-3 rounded-lg border transition cursor-pointer shadow-sm select-none
                   ${selectedOption === option.id ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
                 onClick={() => setSelectedOption(option.id)}
                 tabIndex={0}
@@ -750,75 +717,75 @@ export default function Home() {
                 aria-pressed={selectedOption === option.id}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedOption(option.id); }}
               >
-                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedOption === option.id ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedOption === option.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
+                <div className={`w-4 h-4 flex items-center justify-center rounded-full border-2 ${selectedOption === option.id ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedOption === option.id && <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
               </div>
             ))}
           </div>
-              <div className="flex justify-between mt-4">
-                <button
-                  className="px-6 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold transition"
-                  onClick={() => setFlowStep(0)}
-                >Back</button>
-                <button
-                  className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50"
-                  onClick={async () => {
-                    const initialWebhook = webhooks.find(w => w.type === 'initial');
-                    if (initialWebhook) {
-                      setSelectedWebhook(initialWebhook.id);
-                      setSending(true);
-                      setSendResult(null);
-                      const webhookUrl = initialWebhook.url;
-                      const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
-                      // Build headers
-                      const headers = { "Content-Type": "application/json" };
-                      if (initialWebhook.headers) {
-                        initialWebhook.headers.forEach(h => {
-                          if (h.key) (headers as any)[h.key] = h.value;
-                        });
-                      }
-                      try {
-                        const res = await fetch(webhookUrl, {
-                          method: "POST",
-                          headers,
-                          body: JSON.stringify(payload),
-                        });
-                        let responseText = "";
-                        try {
-                          responseText = await res.text();
-                        } catch {}
-                        if (res.ok) {
-                          setSendResult("Sent successfully! Response: " + responseText);
-                          setFlowStep(2); // Go to stepper/modal if needed
-                          setTranscript("");
-                        } else {
-                          setSendResult(`Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`);
-                        }
-                      } catch (e) {
-                        const error = e as any;
-                        setSendResult("Error: " + (error?.message || error?.toString()));
-                        if (typeof window !== "undefined" && window.console) {
-                          console.error("Webhook send error:", error);
-                        }
-                      }
-                      setSending(false);
+          <div className="flex justify-between mt-3">
+            <button
+              className="px-4 py-1 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold transition text-xs sm:text-sm"
+              onClick={() => setFlowStep(0)}
+            >Back</button>
+            <button
+              className="px-4 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm"
+              onClick={async () => {
+                const initialWebhook = webhooks.find(w => w.type === 'initial');
+                if (initialWebhook) {
+                  setSelectedWebhook(initialWebhook.id);
+                  setSending(true);
+                  setSendResult(null);
+                  const webhookUrl = initialWebhook.url;
+                  const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
+                  // Build headers
+                  const headers = { "Content-Type": "application/json" };
+                  if (initialWebhook.headers) {
+                    initialWebhook.headers.forEach(h => {
+                      if (h.key) (headers as any)[h.key] = h.value;
+                    });
+                  }
+                  try {
+                    const res = await fetch(webhookUrl, {
+                      method: "POST",
+                      headers,
+                      body: JSON.stringify(payload),
+                    });
+                    let responseText = "";
+                    try {
+                      responseText = await res.text();
+                    } catch {}
+                    if (res.ok) {
+                      setSendResult("Sent successfully! Response: " + responseText);
+                      setFlowStep(2); // Go to stepper/modal if needed
+                      setTranscript("");
                     } else {
-                      alert("No initial webhook configured. Please add one in the settings.");
+                      setSendResult(`Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`);
                     }
-                  }}
-                  disabled={!canProceedSheet || sending}
-                >
-                  {sending && (
-                    <svg className="animate-spin mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                    </svg>
-                  )}
-                  {sending ? 'Sending...' : 'Next'}
-                </button>
-              </div>
+                  } catch (e) {
+                    const error = e as any;
+                    setSendResult("Error: " + (error?.message || error?.toString()));
+                    if (typeof window !== "undefined" && window.console) {
+                      console.error("Webhook send error:", error);
+                    }
+                  }
+                  setSending(false);
+                } else {
+                  alert("No initial webhook configured. Please add one in the settings.");
+                }
+              }}
+              disabled={!canProceedSheet || sending}
+            >
+              {sending && (
+                <svg className="animate-spin mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+              )}
+              {sending ? 'Sending...' : 'Next'}
+            </button>
+          </div>
         </section>
-          )}
+      )}
 
           {/* Step 3: Webhook Selection and Send */}
           {flowStep === 2 && (
