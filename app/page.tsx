@@ -98,6 +98,8 @@ export default function Home() {
   // All hooks must be called before any return!
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const listeningRef = useRef(listening);
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
   const [options, setOptions] = useState<Option[]>([]);
   const [newOption, setNewOption] = useState("");
@@ -178,63 +180,80 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
+
+  // Remove the useEffect that creates the SpeechRecognition instance
+  // useEffect(() => { ... }, [listening]);
+
+  const startListening = (clearTranscript = true) => {
     if (typeof window === "undefined") return;
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) return;
-    recognitionRef.current = new SpeechRecognitionClass();
-    recognitionRef.current.continuous = false;
-    recognitionRef.current.interimResults = false;
-    recognitionRef.current.lang = "en-US";
-    recognitionRef.current.onresult = (event: MinimalSpeechRecognitionEvent) => {
-      setTranscript(event.results[0][0].transcript);
-      setListening(false);
-    };
-    recognitionRef.current.onerror = () => setListening(false);
-    recognitionRef.current.onend = () => setListening(false);
-  }, []);
-
-  useEffect(() => {
-    const newMakeApiKey: { [webhookId: string]: string } = {};
-    webhooks.forEach(w => {
-      const makeHeader = (w.headers || []).find(h => h.key === HEADER_TYPE_MAKE_APIKEY);
-      if (makeHeader) {
-        newMakeApiKey[w.id] = makeHeader.value;
-      } else {
-        newMakeApiKey[w.id] = '';
+    if (!SpeechRecognitionClass) return alert("Speech recognition not supported in this browser.");
+    // Create a new instance every time
+    const recognition = new SpeechRecognitionClass();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event: any) => {
+      let interimTranscript = "";
+      let finalTranscript = transcript; // Use current transcript as base
+      for (let i = 0; i < event.results.length; ++i) {
+        const transcriptPiece = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcriptPiece;
+        } else {
+          interimTranscript += transcriptPiece;
+        }
       }
-    });
-    setMakeApiKeyFor(newMakeApiKey);
-  }, [webhooks]);
-
-  // When Make.com API key changes, update the headers for that webhook
-  const setMakeApiKeyForWebhook = async (webhookId: string, value: string) => {
-    setMakeApiKeyFor(v => ({ ...v, [webhookId]: value }));
-    const webhook = webhooks.find(w => w.id === webhookId);
-    if (!user || !webhook) return;
-    let headers = (webhook.headers || []).filter(h => h.key !== HEADER_TYPE_MAKE_APIKEY);
-    if (value) {
-      headers = [...headers, { id: 'make-apikey', key: HEADER_TYPE_MAKE_APIKEY, value }];
-    }
-    await setDoc(doc(db, "users", user.uid, "webhooks", webhookId), { ...webhook, headers });
-  };
-
-  const startListening = () => {
-    if (!recognitionRef.current) return alert("Speech recognition not supported in this browser.");
-    setTranscript("");
+      setTranscript(finalTranscript + interimTranscript);
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => {
+      if (listeningRef.current && !paused) {
+        try {
+          recognition.start();
+        } catch (e) {
+          // ignore
+        }
+      } else {
+        setListening(false);
+      }
+    };
+    recognitionRef.current = recognition;
+    if (clearTranscript) setTranscript("");
     setListening(true);
-    recognitionRef.current.start();
+    setPaused(false);
+    recognition.start();
   };
+
   const stopListening = () => {
-    if (recognitionRef.current) recognitionRef.current.stop();
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null; // Prevent auto-restart
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
     setListening(false);
   };
 
-  // Mic button handler
+  const pauseListening = () => {
+    setPaused(true);
+    stopListening();
+  };
+
+  const resumeListening = () => {
+    setPaused(false);
+    startListening(false); // Do not clear transcript
+  };
+
+  // Mic button handler (single button for all states)
   const handleMicButton = () => {
-    if (listening) {
-      stopListening();
+    if (listening && !paused) {
+      pauseListening();
+    } else if (paused) {
+      resumeListening();
     } else {
-      startListening();
+      startListening(); // New recording, clear transcript
     }
   };
 
@@ -609,7 +628,7 @@ export default function Home() {
       {/* NavBar (only if user is signed in) */}
       {user && <NavBar />}
       <div className="min-h-screen w-full bg-gray-100 dark:bg-[#18181b] p-4">
-          <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
+        <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
           {/* Stepper/flow indicator */}
           <div className="flex items-center justify-center gap-4 mb-6">
             <div className={`flex flex-col items-center ${flowStep === 0 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>1<div className="text-xs">Input</div></div>
@@ -626,17 +645,24 @@ export default function Home() {
               <div className="flex gap-3 flex-wrap items-center">
                 <button
                   onClick={handleMicButton}
-                  aria-label={listening ? 'Stop Listening' : 'Start Listening'}
-                  className={`rounded-full p-4 transition focus:outline-none shadow-md border-2 ${listening ? 'bg-red-100 border-red-500 text-red-600 animate-pulse' : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
+                  aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
+                  className={`rounded-full p-4 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
                   style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {listening ? (
-                    // Mic off or animated mic icon
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="2" width="6" height="12" rx="3"/>
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                      <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
-                    </svg>
+                    paused ? (
+                      // Resume icon
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="8,5 19,12 8,19" />
+                      </svg>
+                    ) : (
+                      // Mic off or animated mic icon
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="2" width="6" height="12" rx="3"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                      </svg>
+                    )
                   ) : (
                     // Mic icon
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -647,7 +673,7 @@ export default function Home() {
                     </svg>
                   )}
                 </button>
-                <span className={`ml-2 text-base font-medium ${listening ? 'text-red-600' : 'text-blue-600'}`}>{listening ? 'Listening...' : 'Tap to speak'}</span>
+                <span className={`ml-2 text-base font-medium ${listening ? (paused ? 'text-yellow-600' : 'text-red-600') : 'text-blue-600'}`}>{listening ? (paused ? 'Paused' : 'Listening...') : 'Tap to speak'}</span>
           </div>
           <div className="mt-4">
                 <label htmlFor="manual-transcript" className="block mb-2 text-base font-semibold text-gray-700 dark:text-gray-200" style={{letterSpacing: '0.01em'}}>Transcript</label>
