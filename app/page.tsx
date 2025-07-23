@@ -92,6 +92,23 @@ interface ActivityItem {
   rowData?: { column: string; cell: string; value: string }[]; // For webhook add activity
 }
 
+function playBeep() {
+  if (typeof window === 'undefined') return;
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = 880;
+    g.gain.value = 0.15;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.18);
+    o.onended = () => ctx.close();
+  } catch {}
+}
+
 export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -155,6 +172,8 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognitionClass) return alert("Speech recognition not supported in this browser.");
+    // Play beep when starting to record
+    playBeep();
     // Create a new instance every time
     const recognition = new SpeechRecognitionClass();
     recognition.continuous = true;
@@ -614,37 +633,44 @@ export default function Home() {
           {flowStep === 0 && (
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center min-h-[120px] relative">
           {/* Centered mic button row */}
-          <div className="flex items-center justify-center gap-2 w-full mb-2">
-            <button
-              onClick={handleMicButton}
-              aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
-              className={`rounded-full p-5 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
-              style={{ width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              {listening ? (
-                paused ? (
-                  // Resume icon
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="8,5 19,12 8,19" />
-                  </svg>
+          <div className="relative flex items-center justify-center gap-2 w-full mb-2">
+            <div className="relative">
+              {listening && (
+                <span className={`absolute inset-0 rounded-full pointer-events-none z-0 ${paused ? 'animate-breath-yellow' : 'animate-breath-rainbow'}`}></span>
+              )}
+              <button
+                onClick={handleMicButton}
+                aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
+                className={`relative z-10 rounded-full p-5 transition focus:outline-none shadow-md border-2 flex items-center justify-center
+                  ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-blue-100 border-blue-500 text-blue-600') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600 active:scale-105'}
+                `}
+                style={{ width: 72, height: 72, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s' }}
+              >
+                {listening ? (
+                  paused ? (
+                    // Pause icon
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="6" y="4" width="4" height="16" rx="1.5"/>
+                      <rect x="14" y="4" width="4" height="16" rx="1.5"/>
+                    </svg>
+                  ) : (
+                    // Recording icon: pulsing red dot with white ring
+                    <span style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center',width:32,height:32}}>
+                      <span className="absolute left-0 top-0 w-8 h-8 rounded-full border-4 border-white opacity-80"></span>
+                      <span className="inline-block w-8 h-8 rounded-full bg-red-500 animate-pulse"></span>
+                    </span>
+                  )
                 ) : (
-                  // Mic off or animated mic icon
+                  // Default mic icon
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="9" y="2" width="6" height="12" rx="3"/>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                    <line x1="12" y1="19" x2="12" y2="22"/>
+                    <line x1="8" y1="22" x2="16" y2="22"/>
                   </svg>
-                )
-              ) : (
-                // Mic icon
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="2" width="6" height="12" rx="3"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" y1="19" x2="12" y2="22"/>
-                  <line x1="8" y1="22" x2="16" y2="22"/>
-                </svg>
-              )}
-            </button>
+                )}
+              </button>
+            </div>
           </div>
           {/* Next button absolutely positioned in bottom right of section */}
           <div className="absolute bottom-3 right-3 z-30">
@@ -738,7 +764,7 @@ export default function Home() {
             </div>
           )}
         </section>
-          )}
+        )}
 
           {/* Step 2: Sheet Selection */}
           {flowStep === 1 && (

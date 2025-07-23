@@ -13,10 +13,29 @@ export default function VerticalTicker({ transcript }) {
   const textRef = useRef(null);
   const [displayed, setDisplayed] = useState('');
   const [isOverflowing, setIsOverflowing] = useState(false);
+  // Track which words are new for pulsing
+  const [newWordIndices, setNewWordIndices] = useState([]);
+  const [prevWordCount, setPrevWordCount] = useState(0);
 
   // Animate in new transcript as it grows
   useEffect(() => {
-    setDisplayed(transcript);
+    if (transcript !== displayed) {
+      const oldWords = displayed.split(/(\s+)/);
+      const newWords = transcript.split(/(\s+)/);
+      // Only pulse words that are truly new (not re-pulsing all after a batch)
+      let indices = [];
+      if (newWords.length > oldWords.length) {
+        for (let i = oldWords.length; i < newWords.length; i++) {
+          if (newWords[i].trim() !== '') indices.push(i);
+        }
+      }
+      setNewWordIndices(indices);
+      setDisplayed(transcript);
+      setPrevWordCount(newWords.length);
+      if (indices.length > 0) {
+        setTimeout(() => setNewWordIndices([]), 900);
+      }
+    }
   }, [transcript]);
 
   // Auto-scroll to end as text grows
@@ -70,7 +89,7 @@ export default function VerticalTicker({ transcript }) {
   }, [displayed, lines.length]);
 
   return (
-    <div className="relative h-32 max-h-40 w-full overflow-hidden" style={{ background: 'transparent', border: 'none', boxShadow: 'none', WebkitOverflowScrolling: 'touch', padding: 0, margin: 0 }}>
+    <div className="relative h-32 max-h-40 w-full" style={{ background: 'transparent', border: 'none', boxShadow: 'none', WebkitOverflowScrolling: 'touch', padding: 0, margin: 0 }}>
       {/* Top fade overlay for text fade-out */}
       <div className="pointer-events-none absolute top-0 left-0 w-full h-8 z-10 ticker-fade-top" />
       {/* Bottom fade overlay for text fade-out */}
@@ -129,7 +148,19 @@ export default function VerticalTicker({ transcript }) {
             className={`text-base sm:text-base font-medium leading-relaxed break-words bg-transparent border-none shadow-none whitespace-pre-line w-full text-center`}
             style={{ margin: 0, padding: 0 }}
           >
-            {lines[lines.length - 1]}
+            {/* Highlight new words in the last line */}
+            {(() => {
+              const words = lines[lines.length - 1].split(/(\s+)/);
+              return words.map((word, i) => (
+                <span
+                  key={i}
+                  className={newWordIndices.includes(i) && word.trim() !== '' ? 'ticker-word-pulse' : ''}
+                  style={{ display: 'inline', transition: 'color 0.3s, filter 0.3s' }}
+                >
+                  {word}
+                </span>
+              ));
+            })()}
           </motion.div>
         </div>
       </div>
@@ -155,6 +186,16 @@ export default function VerticalTicker({ transcript }) {
           height: 2rem;
           z-index: 10;
           background: linear-gradient(to top, var(--box-bg) 70%, transparent 100%);
+        }
+        .ticker-word-pulse {
+           animation: tickerWordPulse 0.9s cubic-bezier(0.4,0,0.2,1) 1;
+           color: #0ff;
+           filter: drop-shadow(0 0 12px #0ff) drop-shadow(0 0 6px #38bdf8);
+        }
+        @keyframes tickerWordPulse {
+           0% { color: #0ff; filter: drop-shadow(0 0 24px #0ff) drop-shadow(0 0 12px #38bdf8); }
+           60% { color: #38bdf8; filter: drop-shadow(0 0 12px #0ff) drop-shadow(0 0 6px #38bdf8); }
+           100% { color: inherit; filter: none; }
         }
       `}</style>
     </div>
