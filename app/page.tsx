@@ -202,7 +202,7 @@ export default function Home() {
         const transcriptPiece = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
           finalTranscript += transcriptPiece;
-        } else {
+      } else {
           interimTranscript += transcriptPiece;
         }
       }
@@ -229,7 +229,7 @@ export default function Home() {
 
   const stopListening = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.onend = null; // Prevent auto-restart
+      recognitionRef.current.onend = () => {}; // Prevent auto-restart
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
@@ -238,7 +238,7 @@ export default function Home() {
 
   const pauseListening = () => {
     setPaused(true);
-    stopListening();
+      stopListening();
   };
 
   const resumeListening = () => {
@@ -580,6 +580,19 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{display}</span>
+          {/* Settings icon for managing webhooks */}
+          <button
+            onClick={() => setWebhooksModalOpen(true)}
+            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition text-gray-700 dark:text-gray-200"
+            aria-label="Manage Webhooks"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4l3 3" />
+              <circle cx="12" cy="12" r="3.5" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09c0 .66.39 1.25 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c.13.16.24.33.33.51.09.18.13.37.13.57s-.04.39-.13.57c-.09.18-.2.35-.33.51z" />
+            </svg>
+          </button>
           <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
         </div>
       </nav>
@@ -628,14 +641,12 @@ export default function Home() {
       {/* NavBar (only if user is signed in) */}
       {user && <NavBar />}
       <div className="min-h-screen w-full bg-gray-100 dark:bg-[#18181b] p-4">
-        <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
+          <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
           {/* Stepper/flow indicator */}
           <div className="flex items-center justify-center gap-4 mb-6">
             <div className={`flex flex-col items-center ${flowStep === 0 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>1<div className="text-xs">Input</div></div>
             <div className="w-8 h-0.5 bg-gray-300" />
             <div className={`flex flex-col items-center ${flowStep === 1 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>2<div className="text-xs">Sheet</div></div>
-            <div className="w-8 h-0.5 bg-gray-300" />
-            <div className={`flex flex-col items-center ${flowStep === 2 ? 'font-bold text-blue-600' : 'text-gray-400'}`}>3<div className="text-xs">Webhook</div></div>
           </div>
 
           {/* Step 1: Speech/Text Input */}
@@ -671,48 +682,48 @@ export default function Home() {
           }}
         >
           {/* Mic button always visible in step 0 */}
-          <button
-            onClick={handleMicButton}
+                <button
+                  onClick={handleMicButton}
             aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
             className={`rounded-full p-4 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
-            style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            {listening ? (
+                  style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {listening ? (
               paused ? (
                 // Resume icon
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="8,5 19,12 8,19" />
                 </svg>
               ) : (
-                // Mic off or animated mic icon
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="2" width="6" height="12" rx="3"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
-                </svg>
+                    // Mic off or animated mic icon
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="2" width="6" height="12" rx="3"/>
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                      <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
+                    </svg>
               )
-            ) : (
-              // Mic icon
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="2" width="6" height="12" rx="3"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="22"/>
-                <line x1="8" y1="22" x2="16" y2="22"/>
-              </svg>
-            )}
-          </button>
+                  ) : (
+                    // Mic icon
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="2" width="6" height="12" rx="3"/>
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                      <line x1="12" y1="19" x2="12" y2="22"/>
+                      <line x1="8" y1="22" x2="16" y2="22"/>
+                    </svg>
+                  )}
+                </button>
           {/* Next button only if transcript has data */}
           {transcript.trim().length > 0 && (
-            <button
+                <button
               className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
               onClick={() => {
                 stopListening();
                 setFlowStep(1);
               }}
-            >Next</button>
+                >Next</button>
           )}
-        </div>
-      )}
+              </div>
+          )}
 
           {/* Step 2: Sheet Selection */}
           {flowStep === 1 && (
@@ -751,9 +762,60 @@ export default function Home() {
                 >Back</button>
                 <button
                   className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50"
-                  onClick={() => setFlowStep(2)}
-                  disabled={!canProceedSheet}
-                >Next</button>
+                  onClick={async () => {
+                    const initialWebhook = webhooks.find(w => w.type === 'initial');
+                    if (initialWebhook) {
+                      setSelectedWebhook(initialWebhook.id);
+                      setSending(true);
+                      setSendResult(null);
+                      const webhookUrl = initialWebhook.url;
+                      const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
+                      // Build headers
+                      const headers = { "Content-Type": "application/json" };
+                      if (initialWebhook.headers) {
+                        initialWebhook.headers.forEach(h => {
+                          if (h.key) (headers as any)[h.key] = h.value;
+                        });
+                      }
+                      try {
+                        const res = await fetch(webhookUrl, {
+                          method: "POST",
+                          headers,
+                          body: JSON.stringify(payload),
+                        });
+                        let responseText = "";
+                        try {
+                          responseText = await res.text();
+                        } catch {}
+                        if (res.ok) {
+                          setSendResult("Sent successfully! Response: " + responseText);
+                          setFlowStep(2); // Go to stepper/modal if needed
+                          setTranscript("");
+                        } else {
+                          setSendResult(`Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`);
+                        }
+                      } catch (e) {
+                        const error = e as any;
+                        setSendResult("Error: " + (error?.message || error?.toString()));
+                        if (typeof window !== "undefined" && window.console) {
+                          console.error("Webhook send error:", error);
+                        }
+                      }
+                      setSending(false);
+                    } else {
+                      alert("No initial webhook configured. Please add one in the settings.");
+                    }
+                  }}
+                  disabled={!canProceedSheet || sending}
+                >
+                  {sending && (
+                    <svg className="animate-spin mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                    </svg>
+                  )}
+                  {sending ? 'Sending...' : 'Next'}
+                </button>
               </div>
         </section>
           )}
@@ -812,7 +874,13 @@ export default function Home() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <section className="w-full max-w-xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
               <button
-                onClick={() => { setStepperFields([]); setStepperComplete(false); setStepperIndex(0); setStepperValues({}); }}
+                onClick={() => {
+                  setStepperFields([]);
+                  setStepperComplete(false);
+                  setStepperIndex(0);
+                  setStepperValues({});
+                  setFlowStep(1); // Return to Sheet step
+                }}
                 className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
                 aria-label="Close"
                 style={{ position: 'absolute', top: 16, right: 16 }}
@@ -953,7 +1021,15 @@ export default function Home() {
               aria-label="Close"
               style={{ position: 'absolute', top: 16, right: 16 }}
             >&times;</button>
-            <h2 className="text-xl font-bold mb-4 text-center">Manage Webhooks</h2>
+            <h2 className="text-xl font-bold mb-4 text-center flex items-center gap-2">
+              {/* Hook icon for webhooks */}
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-700 dark:text-blue-300">
+                <path d="M12 2v10a4 4 0 1 0 8 0" />
+                <circle cx="12" cy="2" r="1.5" />
+                <path d="M12 12c0 4-4 4-4 0" />
+              </svg>
+              Manage Webhooks
+            </h2>
             <div className="flex gap-2 mb-3 w-full">
               <input value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} placeholder="Webhook Name..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
               <select value={newWebhookType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewWebhookType(e.target.value as 'initial' | 'final' | 'backup' | 'other')} className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
@@ -999,7 +1075,7 @@ export default function Home() {
                       style={{ width: 260 }}
                       value={makeApiKeyFor[webhook.id] || ''}
                       placeholder="Make.com API Key (x-make-apikey)"
-                      onChange={e => setMakeApiKeyForWebhook(webhook.id, e.target.value)}
+                      onChange={e => setMakeApiKeyFor(prev => ({ ...prev, [webhook.id]: e.target.value }))}
                     />
                   </div>
                 </li>
