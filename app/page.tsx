@@ -668,9 +668,6 @@ export default function Home() {
               {/* Slot machine style transcript view using react-vertical-ticker - REMOVED */}
               {!editingTranscript ? (
                 <div className="relative flex flex-col items-center group" style={{minHeight: 64}}>
-                  {/* Fade overlays */}
-                  <div className="pointer-events-none absolute top-0 left-0 w-full h-6 z-10" style={{background: 'linear-gradient(to bottom, rgba(255,255,255,0.85) 60%, transparent)'}} />
-                  <div className="pointer-events-none absolute bottom-0 left-0 w-full h-6 z-10" style={{background: 'linear-gradient(to top, rgba(255,255,255,0.85) 60%, transparent)'}} />
                   {/* Use new VerticalTicker component */}
                   <VerticalTicker transcript={transcript} />
                   {/* Edit and Clear buttons remain unchanged */}

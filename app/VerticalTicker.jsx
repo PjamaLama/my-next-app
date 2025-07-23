@@ -31,10 +31,8 @@ export default function VerticalTicker({ transcript }) {
 
   return (
     <div className="relative h-48 max-h-60 w-full overflow-hidden" style={{ background: 'transparent', border: 'none', boxShadow: 'none', WebkitOverflowScrolling: 'touch', padding: 0, margin: 0 }}>
-      {/* Gradient fade top (fully transparent) */}
-      <div className="pointer-events-none absolute top-0 left-0 w-full h-8 z-10" style={{background: 'linear-gradient(to bottom,rgba(0,0,0,0) 0%,rgba(0,0,0,0) 100%)'}} />
-      {/* Gradient fade bottom (fully transparent) */}
-      <div className="pointer-events-none absolute bottom-0 left-0 w-full h-8 z-10" style={{background: 'linear-gradient(to top,rgba(0,0,0,0) 0%,rgba(0,0,0,0) 100%)'}} />
+      {/* Top fade overlay for text fade-out */}
+      <div className="pointer-events-none absolute top-0 left-0 w-full h-8 z-10 ticker-fade-top" />
       <div
         ref={containerRef}
         className="h-full w-full overflow-y-auto scrollbar-hide flex flex-col justify-end"
@@ -46,7 +44,7 @@ export default function VerticalTicker({ transcript }) {
           initial={{ opacity: 0.7 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, ease: 'easeOut' }}
-          className="text-base sm:text-base text-gray-100 font-medium leading-relaxed break-words bg-transparent p-0 m-0 border-none shadow-none whitespace-pre-line"
+          className="text-base sm:text-base font-medium leading-relaxed break-words bg-transparent p-0 m-0 border-none shadow-none whitespace-pre-line"
           style={{ margin: 0, padding: 0, background: 'transparent' }}
         >
           {displayed}
@@ -55,6 +53,16 @@ export default function VerticalTicker({ transcript }) {
       {/* Hide scrollbar for Webkit browsers */}
       <style>{`
         .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .ticker-fade-top {
+          pointer-events: none;
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 2rem;
+          z-index: 10;
+          background: linear-gradient(to bottom, var(--box-bg) 70%, transparent 100%);
+        }
       `}</style>
     </div>
   );
