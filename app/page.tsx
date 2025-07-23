@@ -75,9 +75,6 @@ interface StepperField {
   suggested_value?: string;
 }
 
-// Helper for default header types
-const HEADER_TYPE_MAKE_APIKEY = 'x-make-apikey';
-
 // Add activity tracking state
 interface ActivityItem {
   type: 'add' | 'edit' | 'delete';
@@ -95,7 +92,10 @@ interface ActivityItem {
 function playBeep() {
   if (typeof window === 'undefined') return;
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = new (
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    )();
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = 'sine';
@@ -179,14 +179,14 @@ export default function Home() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: MinimalSpeechRecognitionEvent) => {
       let interimTranscript = "";
       let finalTranscript = transcript; // Use current transcript as base
-      for (let i = 0; i < event.results.length; ++i) {
-        const transcriptPiece = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
+      for (const [, result] of Object.entries(event.results)) {
+        const transcriptPiece = result[0].transcript;
+        if ((result as { isFinal?: boolean }).isFinal) {
           finalTranscript += transcriptPiece;
-      } else {
+        } else {
           interimTranscript += transcriptPiece;
         }
       }
@@ -197,7 +197,7 @@ export default function Home() {
       if (listeningRef.current && !paused) {
         try {
           recognition.start();
-        } catch (e) {
+        } catch {
           // ignore
         }
       } else {
@@ -337,8 +337,8 @@ export default function Home() {
           `Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`
         );
       }
-    } catch (e) {
-      const error = e as Error;
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e : new Error(String(e));
       setSendResult("Error: " + (error?.message || error?.toString()));
       if (typeof window !== "undefined" && window.console) {
         // Log full error to browser console
@@ -498,8 +498,8 @@ export default function Home() {
       } else {
         setFinalSubmitStatus(`Failed to submit. Status: ${res.status} ${res.statusText}\n${responseText}`);
       }
-    } catch (e) {
-      const error = e as Error;
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e : new Error(String(e));
       setFinalSubmitStatus("Error: " + (error?.message || error?.toString()));
     }
   };
@@ -534,7 +534,6 @@ export default function Home() {
   }, [user]);
 
   // Validation for each step
-  const canProceedInput = transcript.trim().length > 0;
   const canProceedSheet = !!selectedOption;
   // (canProceedWebhook removed as unused)
 
@@ -619,6 +618,39 @@ export default function Home() {
     );
   }
   // (The two useEffect hooks after the return have been removed)
+
+  // Stepper Handlers
+  const handleStepperChange = (cell: string, value: string) => {
+    setStepperValues(prev => ({ ...prev, [cell]: value }));
+  };
+
+  const handleStepperBack = () => {
+    setStepperIndex(idx => Math.max(0, idx - 1));
+  };
+
+  const handleStepperNext = () => {
+    setStepperIndex(idx => Math.min(stepperFields.length - 1, idx + 1));
+  };
+
+  const handleStepperFinish = () => {
+    setStepperComplete(true);
+  };
+
+  const handleStepperAcceptAll = () => {
+    // Accept all suggested values for fields that don't have a user value
+    const newValues: { [cell: string]: string } = { ...stepperValues };
+    stepperFields.forEach(field => {
+      if (
+        (newValues[field.cell] === undefined || newValues[field.cell] === "") &&
+        field.suggested_value !== undefined &&
+        field.suggested_value !== null &&
+        field.suggested_value !== ""
+      ) {
+        newValues[field.cell] = field.suggested_value;
+      }
+    });
+    setStepperValues(newValues);
+  };
 
   return (
     <>
@@ -812,10 +844,10 @@ export default function Home() {
                   const webhookUrl = initialWebhook.url;
                   const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
                   // Build headers
-                  const headers = { "Content-Type": "application/json" };
+                  const headers: Record<string, string> = { "Content-Type": "application/json" };
                   if (initialWebhook.headers) {
                     initialWebhook.headers.forEach(h => {
-                      if (h.key) (headers as any)[h.key] = h.value;
+                      if (h.key) headers[h.key] = h.value;
                     });
                   }
                   try {
@@ -835,8 +867,8 @@ export default function Home() {
                     } else {
                       setSendResult(`Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`);
                     }
-                  } catch (e) {
-                    const error = e as any;
+                  } catch (e: unknown) {
+                    const error = e instanceof Error ? e : new Error(String(e));
                     setSendResult("Error: " + (error?.message || error?.toString()));
                     if (typeof window !== "undefined" && window.console) {
                       console.error("Webhook send error:", error);
