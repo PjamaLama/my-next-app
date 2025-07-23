@@ -17,6 +17,7 @@ import {
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
+import VerticalTicker from './VerticalTicker';
 
 // Types
 interface Option {
@@ -92,10 +93,10 @@ interface ActivityItem {
 }
 
 export default function Home() {
+  // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, signOutUser } = useFirebase();
-  // All hooks must be called before any return!
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -112,57 +113,21 @@ export default function Home() {
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
-  // Add state for webhook modal visibility
   const [webhooksModalOpen, setWebhooksModalOpen] = useState(false);
-  // Add state for stepper modal visibility and confirmation message
   const [stepperModalOpen, setStepperModalOpen] = useState(false);
   const [finalSubmitConfirmation, setFinalSubmitConfirmation] = useState<string | null>(null);
-
-  // Stepper UI state
   const [stepperIndex, setStepperIndex] = useState(0);
   const [stepperValues, setStepperValues] = useState<{ [cell: string]: string }>({});
   const [stepperComplete, setStepperComplete] = useState(false);
-  // New: state for final webhook selection and submission status
   const [selectedFinalWebhook, setSelectedFinalWebhook] = useState<string>("");
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
-
-  // Collapsible state for recent activity
   const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
+  const [newWebhookName, setNewWebhookName] = useState("");
+  const [newWebhookType, setNewWebhookType] = useState<'initial' | 'final' | 'backup' | 'other'>('final');
+  const [flowStep, setFlowStep] = useState(0); // 0: input, 1: sheet, 2: webhook
+  const [editingTranscript, setEditingTranscript] = useState(false);
 
-  // Handler for updating a value
-  const handleStepperChange = (cell: string, value: string) => {
-    setStepperValues(v => ({ ...v, [cell]: value }));
-  };
-  // Handler for next
-  const handleStepperNext = () => {
-    if (stepperIndex < stepperFields.length - 1) {
-      setStepperIndex(i => i + 1);
-    } else {
-      setStepperComplete(true);
-    }
-  };
-  // Handler for back
-  const handleStepperBack = () => {
-    if (stepperIndex > 0) setStepperIndex(i => i - 1);
-  };
-  // Handler for finish
-  const handleStepperFinish = () => {
-    setStepperComplete(true);
-  };
-
-  // Accept all remaining stepper fields with suggested or default values
-  const handleStepperAcceptAll = () => {
-    const newValues = { ...stepperValues };
-    stepperFields.forEach(field => {
-      if (newValues[field.cell] === undefined || newValues[field.cell] === "") {
-        newValues[field.cell] = field.suggested_value ?? field.value ?? "";
-      }
-    });
-    setStepperValues(newValues);
-    setStepperComplete(true);
-  };
-
-  // Always call hooks, only run logic if user exists
+  // All useEffect and other hooks remain here, before any return
   useEffect(() => {
     if (!user) return;
     const optionsRef = collection(db, "users", user.uid, "options");
@@ -278,8 +243,6 @@ export default function Home() {
   };
 
   // Webhook management
-  const [newWebhookName, setNewWebhookName] = useState("");
-  const [newWebhookType, setNewWebhookType] = useState<'initial' | 'final' | 'backup' | 'other'>('final');
   const addWebhook = async () => {
     if (!newWebhook.trim() || !user) return;
     await addDoc(collection(db, "users", user.uid, "webhooks"), {
@@ -551,9 +514,6 @@ export default function Home() {
     return () => unsub();
   }, [user]);
 
-  // Step flow state
-  const [flowStep, setFlowStep] = useState(0); // 0: input, 1: sheet, 2: webhook
-
   // Validation for each step
   const canProceedInput = transcript.trim().length > 0;
   const canProceedSheet = !!selectedOption;
@@ -580,17 +540,22 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{display}</span>
-          {/* Settings icon for managing webhooks */}
+          {/* Only one settings icon for managing webhooks */}
           <button
             onClick={() => setWebhooksModalOpen(true)}
             className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition text-gray-700 dark:text-gray-200"
             aria-label="Manage Webhooks"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 8v4l3 3" />
-              <circle cx="12" cy="12" r="3.5" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09c0 .66.39 1.25 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c.13.16.24.33.33.51.09.18.13.37.13.57s-.04.39-.13.57c-.09.18-.2.35-.33.51z" />
+              <line x1="4" y1="21" x2="4" y2="14" />
+              <line x1="4" y1="10" x2="4" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12" y2="3" />
+              <line x1="20" y1="21" x2="20" y2="16" />
+              <line x1="20" y1="12" x2="20" y2="3" />
+              <circle cx="4" cy="12" r="2.5" />
+              <circle cx="12" cy="8" r="2.5" />
+              <circle cx="20" cy="16" r="2.5" />
             </svg>
           </button>
           <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
@@ -648,95 +613,129 @@ export default function Home() {
           {/* Step 1: Speech/Text Input */}
           {flowStep === 0 && (
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center min-h-[120px]">
-          {/* If not listening and no transcript, show only centered mic button */}
-          {(!listening && !transcript.trim()) ? (
+          {/* Centered mic and next button row */}
+          <div className="flex items-center justify-center gap-2 w-full mb-2">
             <button
               onClick={handleMicButton}
-              aria-label="Start Listening"
-              className="rounded-full p-5 transition focus:outline-none shadow-md border-2 bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600"
-              style={{ width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}
+              aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
+              className={`rounded-full p-5 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
+              style={{ width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="2" width="6" height="12" rx="3"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="22"/>
-                <line x1="8" y1="22" x2="16" y2="22"/>
-              </svg>
-            </button>
-          ) : (
-            <div className="flex items-end gap-2 w-full justify-center">
-              {/* Transcript text box, only visible if listening or transcript exists */}
-              <textarea
-                id="manual-transcript"
-                className="flex-1 min-h-[48px] max-w-xs border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-sm resize-none"
-                value={transcript}
-                onChange={e => setTranscript(e.target.value)}
-                placeholder="Type or hold mic to speak..."
-                aria-label="Transcript"
-                style={{marginBottom: 0, display: (listening || transcript.trim()) ? 'block' : 'none'}}
-              />
-              {/* X button to clear transcript and hide text box */}
-              {(transcript.trim() || listening) && (
-                <button
-                  type="button"
-                  onClick={() => { setTranscript(""); stopListening(); }}
-                  aria-label="Clear"
-                  className="rounded-full p-2 ml-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-                  style={{ height: 36, width: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="4" y1="4" x2="16" y2="16" />
-                    <line x1="16" y1="4" x2="4" y2="16" />
+              {listening ? (
+                paused ? (
+                  // Resume icon
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="8,5 19,12 8,19" />
                   </svg>
-                </button>
-              )}
-              {/* Mic button, always visible when editing or listening */}
-              <button
-                onClick={handleMicButton}
-                aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
-                className={`ml-1 rounded-full p-3 transition focus:outline-none shadow-md border-2 ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-red-100 border-red-500 text-red-600 animate-pulse') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600'}`}
-                style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                {listening ? (
-                  paused ? (
-                    // Resume icon
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="8,5 19,12 8,19" />
-                    </svg>
-                  ) : (
-                    // Mic off or animated mic icon
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="2" width="6" height="12" rx="3"/>
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                      <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
-                    </svg>
-                  )
                 ) : (
-                  // Mic icon
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  // Mic off or animated mic icon
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="9" y="2" width="6" height="12" rx="3"/>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="22"/>
-                    <line x1="8" y1="22" x2="16" y2="22"/>
+                    <line x1="1" y1="1" x2="23" y2="23" stroke="red" strokeWidth="2.2"/>
                   </svg>
-                )}
-              </button>
-              {/* Next button as animated arrow icon, only if transcript has data */}
-              <button
-                type="button"
-                onClick={() => { stopListening(); setFlowStep(1); }}
-                aria-label="Next"
-                disabled={!transcript.trim()}
-                className={`ml-1 rounded-full p-3 transition focus:outline-none shadow-md border-2 bg-blue-600 border-blue-600 text-white flex items-center justify-center
-                  ${transcript.trim() ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'}
-                  duration-200 ease-in-out`}
-                style={{ width: 44, height: 44 }}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
+                )
+              ) : (
+                // Mic icon
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="22"/>
+                  <line x1="8" y1="22" x2="16" y2="22"/>
                 </svg>
-              </button>
+              )}
+            </button>
+            {/* Next button as animated arrow icon, only if transcript has data */}
+            <button
+              type="button"
+              onClick={() => { stopListening(); setFlowStep(1); }}
+              aria-label="Next"
+              disabled={!transcript.trim()}
+              className={`rounded-full p-5 transition focus:outline-none shadow-md border-2 bg-blue-600 border-blue-600 text-white flex items-center justify-center
+                ${transcript.trim() ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'}
+                duration-200 ease-in-out`}
+              style={{ width: 64, height: 64 }}
+            >
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </button>
+          </div>
+          {/* Sleek transcript box below, only if transcript or listening */}
+          {(listening || transcript.trim()) && (
+            <div className="relative w-full max-w-xs mx-auto">
+              {/* Slot machine style transcript view using react-vertical-ticker - REMOVED */}
+              {!editingTranscript ? (
+                <div className="relative flex flex-col items-center group" style={{minHeight: 64}}>
+                  {/* Fade overlays */}
+                  <div className="pointer-events-none absolute top-0 left-0 w-full h-6 z-10" style={{background: 'linear-gradient(to bottom, rgba(255,255,255,0.85) 60%, transparent)'}} />
+                  <div className="pointer-events-none absolute bottom-0 left-0 w-full h-6 z-10" style={{background: 'linear-gradient(to top, rgba(255,255,255,0.85) 60%, transparent)'}} />
+                  {/* Use new VerticalTicker component */}
+                  <VerticalTicker transcript={transcript} />
+                  {/* Edit and Clear buttons remain unchanged */}
+                  <button
+                    type="button"
+                    onClick={() => setEditingTranscript(true)}
+                    aria-label="Edit Transcript"
+                    className="absolute top-2 right-10 p-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
+                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14.7 5.3l-9.4 9.4-1.3 4.7 4.7-1.3 9.4-9.4a2 2 0 0 0-2.8-2.8z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
+                    aria-label="Clear"
+                    className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
+                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="4" y1="4" x2="16" y2="16" />
+                      <line x1="16" y1="4" x2="4" y2="16" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <textarea
+                    id="manual-transcript"
+                    className="w-full rounded-xl shadow border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#23232a] px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 transition resize-none"
+                    style={{ minHeight: 48, fontSize: '1.08rem', lineHeight: 1.5, boxShadow: '0 2px 8px 0 rgba(0,0,0,0.04)' }}
+                    value={transcript}
+                    onChange={e => setTranscript(e.target.value)}
+                    placeholder="Type or hold mic to speak..."
+                    aria-label="Transcript"
+                  />
+                  {/* Save button */}
+                  <button
+                    type="button"
+                    onClick={() => setEditingTranscript(false)}
+                    aria-label="Save"
+                    className="absolute top-2 right-10 rounded-full p-1 bg-blue-600 text-white hover:bg-blue-700 transition z-20"
+                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="5 10 9 14 15 7" />
+                    </svg>
+                  </button>
+                  {/* X button to clear transcript, inside the box top right */}
+                  <button
+                    type="button"
+                    onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
+                    aria-label="Clear"
+                    className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
+                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="4" y1="4" x2="16" y2="16" />
+                      <line x1="16" y1="4" x2="4" y2="16" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>
