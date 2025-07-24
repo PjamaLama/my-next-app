@@ -25,6 +25,9 @@ const NavBar = () => {
             <span className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 drop-shadow-sm">
               Report AI
             </span>
+            <span className="block text-xs font-medium text-white/70 mt-0.5 ml-1">
+              Your Automated Report Assistant
+            </span>
             <span className="absolute left-0 -bottom-1 w-full h-1 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 group-hover:scale-x-100 transition-all duration-300 origin-left" />
           </Link>
         </div>
