@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { google } from 'googleapis';
 import { getGoogleSheetsClient } from '../../lib/googleSheets';
 
 type Data = {
@@ -66,8 +65,8 @@ export default async function handler(
     });
 
     res.status(200).json({ message: 'Data saved successfully' });
-  } catch (error: any) {
-    console.error('Error saving data to sheet:', error.message, error.stack);
+  } catch (error: unknown) {
+    console.error('Error saving data to sheet:', (error as Error).message, (error as Error).stack);
     res.status(500).json({ error: 'Failed to save data to sheet' });
   }
 }

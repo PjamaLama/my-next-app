@@ -27,18 +27,6 @@ interface Option {
   spreadsheetId: string;
   sheetNames: string[];
 }
-interface WebhookHeader {
-  id: string;
-  key: string;
-  value: string;
-}
-interface Webhook {
-  id: string;
-  url: string;
-  name?: string; // Add name for user-friendly label
-  type?: 'initial' | 'final' | 'backup' | 'other'; // Add type for purpose
-  headers?: WebhookHeader[];
-}
 
 // Add minimal interfaces for SpeechRecognition and SpeechRecognitionEvent
 interface MinimalSpeechRecognition {
@@ -115,7 +103,7 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user, loading, signInWithGoogle, signOutUser } = useFirebase();
+  const { user } = useFirebase();
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -129,11 +117,9 @@ export default function Home() {
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const [stepperModalOpen, setStepperModalOpen] = useState(false);
-  const [finalSubmitConfirmation, setFinalSubmitConfirmation] = useState<string | null>(null);
   const [stepperIndex, setStepperIndex] = useState(0);
   const [stepperValues, setStepperValues] = useState<{ [cell: string]: string }>({});
   const [stepperComplete, setStepperComplete] = useState(false);
-  const [selectedFinalWebhook, setSelectedFinalWebhook] = useState<string>("");
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
@@ -150,7 +136,7 @@ export default function Home() {
   const [newAiApiUrl, setNewAiApiUrl] = useState("");
   const [newAiApiName, setNewAiApiName] = useState("");
   const [selectedAiApi, setSelectedAiApi] = useState<string>("gemini");
-  const [sheetData, setSheetData] = useState<any[][]>([]);
+  const [sheetData, setSheetData] = useState<(string | number)[][]>([]);
 
   // Default Gemini API (non-removable)
   const GEMINI_API = {
@@ -419,10 +405,6 @@ export default function Home() {
     return () => unsub();
   }, [user]);
 
-  // Validation for each step
-  const canProceedSheet = !!selectedOption;
-  // (canProceedWebhook removed as unused)
-
   // Stepper Handlers
   const handleStepperChange = (cell: string, value: string) => {
     setStepperValues(prev => ({ ...prev, [cell]: value }));
@@ -464,83 +446,10 @@ export default function Home() {
     setSelectedSheetName("");
   };
 
-  const sendToParseAndFill = async () => {
-    if (!transcript || !defaultSpreadsheetId || !selectedSheetName) {
-      setSendResult("Please provide transcript, select a spreadsheet, and a sheet.");
-      return;
-    }
-    setSending(true);
-    setSendResult(null);
-    const option = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
-    if (!option) {
-      setSendResult("Invalid spreadsheet selected.");
-      setSending(false);
-      return;
-    }
-    try {
-      const res = await fetch("/api/parse-and-fill", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript,
-          spreadsheetId: option.spreadsheetId,
-          sheetName: selectedSheetName,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.aiResponse) {
-        let fields = [
-          ...(data.aiResponse.cells_to_update || []),
-        ];
-        // If no fields are returned, add a default field for manual entry
-        if (fields.length === 0) {
-          fields = [{ column: 'Column', cell: '', value: '' }];
-        }
-        // Build modal fields from sheet headers and AI output, so all columns are shown in order
-        const allFields = buildStepperFieldsForAllColumns(fields, sheetData);
-        setStepperFields(allFields);
-        // Initialize stepperValues with AI values for each cell
-        const initialStepperValues: { [cell: string]: string } = {};
-        allFields.forEach(field => {
-          if (field.cell && field.value !== undefined) {
-            initialStepperValues[field.cell] = field.value;
-          }
-        });
-        setStepperValues(initialStepperValues);
-        setStepperModalOpen(true);
-        setSendResult("AI suggestions ready. Confirm and edit as needed.");
-      } else {
-        setSendResult(data.error || "Failed to get AI response.");
-      }
-    } catch (e) {
-      setSendResult("Error: " + (e instanceof Error ? e.message : String(e)));
-    }
-    setSending(false);
-  };
-
-
-
-  // Add custom AI API
-  const addAiApi = async () => {
-    if (!newAiApiUrl.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "aiApis"), {
-      url: newAiApiUrl.trim(),
-      name: newAiApiName.trim() || newAiApiUrl.trim(),
-    });
-    setNewAiApiUrl("");
-    setNewAiApiName("");
-  };
-  // Delete custom AI API
-  const deleteAiApi = async (id: string) => {
-    if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "aiApis", id));
-    if (selectedAiApi === id) setSelectedAiApi("gemini");
-  };
-
   // Helper to build stepper fields for all columns
-  function buildStepperFieldsForAllColumns(aiFields: StepperField[] = [], sheetData: any[][] = []): StepperField[] {
+  function buildStepperFieldsForAllColumns(aiFields: StepperField[] = [], sheetData: (string | number)[][] = []): StepperField[] {
     if (!sheetData || sheetData.length === 0) return [];
-    const headers: string[] = sheetData[0];
+    const headers: string[] = sheetData[0].map(String);
     // Map AI suggestions by exact column name for easy lookup
     const aiMap: { [col: string]: StepperField } = {};
     aiFields.forEach((f: StepperField) => {
@@ -658,7 +567,7 @@ export default function Home() {
       console.log("AI API parsed response:", data);
       if (res.ok && data.aiResponse) {
         // Support both array and object response for aiResponse
-        let aiFields = Array.isArray(data.aiResponse)
+        const aiFields = Array.isArray(data.aiResponse)
           ? data.aiResponse
           : [
               ...(data.aiResponse.cells_to_update || []),
