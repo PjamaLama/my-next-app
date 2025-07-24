@@ -595,6 +595,24 @@ export default function Home() {
     setSending(false);
   };
 
+  // Add custom AI API
+  const addAiApi = async () => {
+    if (!newAiApiUrl.trim() || !user) return;
+    await addDoc(collection(db, "users", user.uid, "aiApis"), {
+      url: newAiApiUrl.trim(),
+      name: newAiApiName.trim() || newAiApiUrl.trim(),
+    });
+    setNewAiApiUrl("");
+    setNewAiApiName("");
+  };
+
+  // Delete custom AI API
+  const deleteAiApi = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, "users", user.uid, "aiApis", id));
+    if (selectedAiApi === id) setSelectedAiApi("gemini");
+  };
+
   return (
     <>
       {/* NavBar (only if user is signed in) */}
