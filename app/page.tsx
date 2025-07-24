@@ -18,6 +18,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 import VerticalTicker from './VerticalTicker';
+import NavBar from './NavBar';
 
 // Types
 interface Option {
@@ -124,15 +125,10 @@ export default function Home() {
   const [options, setOptions] = useState<Option[]>([]);
   const [newOption, setNewOption] = useState("");
   const [selectedOption, setSelectedOption] = useState<string>("");
-  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
-  const [newWebhook, setNewWebhook] = useState("");
-  const [selectedWebhook, setSelectedWebhook] = useState<string>("");
-  const [makeApiKeyFor, setMakeApiKeyFor] = useState<{ [webhookId: string]: string }>({});
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
-  const [webhooksModalOpen, setWebhooksModalOpen] = useState(false);
   const [stepperModalOpen, setStepperModalOpen] = useState(false);
   const [finalSubmitConfirmation, setFinalSubmitConfirmation] = useState<string | null>(null);
   const [stepperIndex, setStepperIndex] = useState(0);
@@ -141,8 +137,7 @@ export default function Home() {
   const [selectedFinalWebhook, setSelectedFinalWebhook] = useState<string>("");
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
-  const [newWebhookName, setNewWebhookName] = useState("");
-  const [newWebhookType, setNewWebhookType] = useState<'initial' | 'final' | 'backup' | 'other'>('final');
+  
   const [flowStep, setFlowStep] = useState(0); // 0: input, 1: sheet, 2: webhook
   const [editingTranscript, setEditingTranscript] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState<string>("");
@@ -167,20 +162,15 @@ export default function Home() {
   useEffect(() => {
     if (!user) return;
     const optionsRef = collection(db, "users", user.uid, "options");
-    const webhooksRef = collection(db, "users", user.uid, "webhooks");
     const aiApisRef = collection(db, "users", user.uid, "aiApis");
     const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
       setOptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Option));
-    });
-    const unsubWebhooks = onSnapshot(webhooksRef, (snapshot) => {
-      setWebhooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Webhook));
     });
     const unsubAiApis = onSnapshot(aiApisRef, (snapshot) => {
       setAiApis(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as { id: string; url: string; name: string }));
     });
     return () => {
       unsubOptions();
-      unsubWebhooks();
       unsubAiApis();
     };
   }, [user]);
@@ -328,92 +318,7 @@ export default function Home() {
     await addActivity({ type: 'edit', entity: 'sheet', label, timestamp: Date.now() });
   };
 
-  // Webhook management
-  const addWebhook = async () => {
-    if (!newWebhook.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "webhooks"), {
-      url: newWebhook.trim(),
-      name: newWebhookName.trim() || undefined,
-      type: newWebhookType,
-      headers: []
-    });
-    await addActivity({ type: 'add', entity: 'webhook', label: newWebhookName.trim() || newWebhook.trim(), timestamp: Date.now() });
-    setNewWebhook("");
-    setNewWebhookName("");
-    setNewWebhookType('final');
-  };
-  const deleteWebhook = async (id: string) => {
-    if (!user) return;
-    const wh = webhooks.find(w => w.id === id);
-    await deleteDoc(doc(db, "users", user.uid, "webhooks", id));
-    await addActivity({ type: 'delete', entity: 'webhook', label: wh?.name || wh?.url || '', timestamp: Date.now() });
-    if (selectedWebhook === id) setSelectedWebhook("");
-  };
-  const editWebhook = async (id: string, url: string, name?: string, type?: 'initial' | 'final' | 'backup' | 'other') => {
-    if (!user) return;
-    const webhook = webhooks.find(w => w.id === id);
-    await setDoc(doc(db, "users", user.uid, "webhooks", id), {
-      ...webhook,
-      url,
-      name: (name ?? webhook?.name) || "",
-      type: (type ?? webhook?.type) || "final",
-    });
-    await addActivity({ type: 'edit', entity: 'webhook', label: name || url, timestamp: Date.now() });
-  };
-  // (Removed: addHeader, editHeader, deleteHeader)
-
-  // Send to webhook
-  const sendToWebhook = async () => {
-    if (!transcript || !selectedOption || !selectedWebhook) {
-      setSendResult("Please provide transcript, select an option, and a webhook.");
-      return;
-    }
-    setSending(true);
-    setSendResult(null);
-    const webhook = webhooks.find(w => w.id === selectedWebhook);
-    const webhookUrl = webhook?.url;
-    const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
-    if (!webhookUrl) {
-      setSendResult("Invalid webhook selected.");
-      setSending(false);
-      return;
-    }
-    // Build headers
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (webhook?.headers) {
-      webhook.headers.forEach(h => {
-        if (h.key) headers[h.key] = h.value;
-      });
-    }
-    try {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-      let responseText = "";
-      try {
-        responseText = await res.text();
-      } catch {}
-      if (res.ok) {
-        setSendResult("Sent successfully! Response: " + responseText);
-        setFlowStep(0);
-        setTranscript("");
-      } else {
-        setSendResult(
-          `Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`
-        );
-      }
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setSendResult("Error: " + (error?.message || error?.toString()));
-      if (typeof window !== "undefined" && window.console) {
-        // Log full error to browser console
-        console.error("Webhook send error:", error);
-      }
-    }
-    setSending(false);
-  };
+  
 
   // Helper to parse webhook response for stepper fields
   function parseStepperFields(response: string): StepperField[] {
@@ -461,116 +366,6 @@ export default function Home() {
     }
   }, [sendResult]);
 
-  // When stepperFields are set, auto-select the first 'final' webhook if available
-  useEffect(() => {
-    if (stepperFields.length > 0) {
-      const finalWebhook = webhooks.find(w => w.type === 'final');
-      if (finalWebhook) {
-        setSelectedFinalWebhook(finalWebhook.id);
-      } else if (selectedWebhook) {
-        setSelectedFinalWebhook(selectedWebhook);
-      }
-    }
-  }, [stepperFields, webhooks, selectedWebhook]);
-
-  // Handler for final submit
-  const handleFinalSubmit = async () => {
-    setFinalSubmitStatus(null);
-    const webhook = webhooks.find(w => w.id === selectedFinalWebhook);
-    if (!webhook) {
-      setFinalSubmitStatus("No webhook selected.");
-      return;
-    }
-    const webhookUrl = webhook.url;
-    // Build headers
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (webhook.headers) {
-      webhook.headers.forEach(h => {
-        if (h.key) headers[h.key] = h.value;
-      });
-    }
-    // Build payload: match requested format
-    let row: string | undefined = undefined;
-    // Get sheet name from selected option
-    const selectedSheetName = options.find(o => o.id === selectedOption)?.label || '';
-    const cells_to_update: { column: string; cell: string; value: string }[] = [];
-    const missing_columns: { column: string; cell: string; suggested_value: string }[] = [];
-    stepperFields.forEach(field => {
-      // Try to extract row number from cell (e.g., 'A12' -> '12')
-      if (!row && /^([A-Z]+)(\d+)$/.test(field.cell)) {
-        row = field.cell.match(/^([A-Z]+)(\d+)$/)?.[2];
-      }
-      // Prefer user value if present, else suggested, else default
-      const userValue = stepperValues[field.cell];
-      const aiValue = field.suggested_value;
-      const defaultValue = field.value;
-      let valueToSend = undefined;
-      if (userValue !== undefined && userValue !== null && userValue !== "") {
-        valueToSend = userValue;
-      } else if (aiValue !== undefined && aiValue !== null && aiValue !== "") {
-        valueToSend = aiValue;
-      } else if (defaultValue !== undefined && defaultValue !== null && defaultValue !== "") {
-        valueToSend = defaultValue;
-      }
-      // Only send if valueToSend is not null/empty/zero (as string or number)
-      if (
-        valueToSend !== undefined &&
-        valueToSend !== null &&
-        valueToSend !== "" &&
-        !((typeof valueToSend === 'number' && valueToSend === 0) || (typeof valueToSend === 'string' && valueToSend === '0'))
-      ) {
-        cells_to_update.push({ column: field.column, cell: field.cell, value: valueToSend });
-      } else if (aiValue !== undefined && aiValue !== null && aiValue !== "") {
-        // If not sending, but there is an AI suggestion, add to missing_columns
-        missing_columns.push({ column: field.column, cell: field.cell, suggested_value: aiValue });
-      }
-    });
-    const payload: Record<string, unknown> = {
-      row_to_update: row,
-      sheet_name: selectedSheetName,
-      cells_to_update,
-      missing_columns
-    };
-    console.log('Final webhook payload:', payload);
-    try {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-      let responseText = "";
-      try {
-        responseText = await res.text();
-      } catch {}
-      if (res.ok) {
-        setFinalSubmitStatus("Successfully submitted to webhook!" + (responseText ? `\n${responseText}` : ""));
-        setStepperModalOpen(false);
-        setFinalSubmitConfirmation("done"); // Use a flag for modal
-        setTimeout(() => setFinalSubmitConfirmation(null), 3000);
-        setStepperFields([]);
-        setStepperComplete(false);
-        setStepperIndex(0);
-        setStepperValues({});
-        setTranscript(""); // Clear transcript input
-        // Add activity for final webhook submission
-        await addActivity({
-          type: 'add',
-          entity: 'webhook',
-          label: webhook.name || webhook.url,
-          timestamp: Date.now(),
-          sheetName: selectedSheetName,
-          rowNumber: row,
-          rowData: cells_to_update
-        });
-      } else {
-        setFinalSubmitStatus(`Failed to submit. Status: ${res.status} ${res.statusText}\n${responseText}`);
-      }
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setFinalSubmitStatus("Error: " + (error?.message || error?.toString()));
-    }
-  };
-
   // Add activity to Firestore
   const addActivity = async (activity: ActivityItem) => {
     if (!user) return;
@@ -603,88 +398,6 @@ export default function Home() {
   // Validation for each step
   const canProceedSheet = !!selectedOption;
   // (canProceedWebhook removed as unused)
-
-  // UI rendering
-  // NavBar component
-  function NavBar() {
-    // Defensive: user should never be null here, but fallback to empty string just in case
-    const display = user?.displayName || user?.email || "";
-    return (
-      <nav className="sticky top-0 z-40 w-full bg-white/90 dark:bg-[#18181b] border-b border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-green-400 shadow-lg">
-            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="6" y="6" width="20" height="20" rx="4" fill="#fff" stroke="#6366f1" strokeWidth="2"/>
-              <path d="M12 20c2-2 6-2 8 0" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M16 14v2" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"/>
-              <circle cx="16" cy="12" r="1.5" fill="#a21caf"/>
-              <path d="M10 12c2-4 10-4 12 0" stroke="#a21caf" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </span>
-          <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Report Ai</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{display}</span>
-          {/* Only one settings icon for managing webhooks */}
-          <button
-            onClick={() => setWebhooksModalOpen(true)}
-            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition text-gray-700 dark:text-gray-200"
-            aria-label="Manage Webhooks"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14" />
-              <line x1="4" y1="10" x2="4" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12" y2="3" />
-              <line x1="20" y1="21" x2="20" y2="16" />
-              <line x1="20" y1="12" x2="20" y2="3" />
-              <circle cx="4" cy="12" r="2.5" />
-              <circle cx="12" cy="8" r="2.5" />
-              <circle cx="20" cy="16" r="2.5" />
-            </svg>
-          </button>
-          <button onClick={signOutUser} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium">Sign out</button>
-        </div>
-      </nav>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
-        <div className="text-lg text-white">Loading...</div>
-      </div>
-    );
-  }
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#0a0a0a]">
-        <div className="bg-white/90 dark:bg-[#18181b] rounded-xl shadow-lg p-10 flex flex-col items-center gap-6 border border-gray-200 dark:border-gray-800">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <span className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-green-400 shadow-lg">
-              <svg width="36" height="36" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="6" y="6" width="20" height="20" rx="4" fill="#fff" stroke="#6366f1" strokeWidth="2"/>
-                <path d="M12 20c2-2 6-2 8 0" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round"/>
-                <path d="M16 14v2" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"/>
-                <circle cx="16" cy="12" r="1.5" fill="#a21caf"/>
-                <path d="M10 12c2-4 10-4 12 0" stroke="#a21caf" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </span>
-            <h1 className="text-3xl font-extrabold tracking-tight">Report Ai</h1>
-          </div>
-          <p className="text-base text-gray-500 dark:text-gray-300 mb-4 text-center">Sign in with Google to manage your webhooks and sheet names securely.</p>
-          <button
-            onClick={signInWithGoogle}
-            className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg shadow-md transition flex items-center gap-2"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path><path d="M3.272 7.545l3.273 2.402c.891-1.07 2.18-2.188 4.242-2.188 1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-2.953 0-5.453 1.68-6.617 4.088z" fill="#34A853"></path><path d="M12.487 21.5c2.789 0 5.125-.922 6.836-2.516l-3.164-2.594c-.867.617-2.055 1.055-3.672 1.055-2.367 0-4.367-1.555-5.086-3.703l-3.242 2.5c1.547 3.07 4.789 5.258 8.328 5.258z" fill="#FBBC05"></path><path d="M21.805 10.023h-9.765v3.977h5.617c-.242 1.242-1.242 3.023-3.617 3.023-2.18 0-3.961-1.805-3.961-4.023s1.781-4.023 3.961-4.023c1.242 0 2.07.492 2.547.914l2.484-2.414c-1.086-.992-2.484-1.602-5.031-1.602-4.023 0-7.289 3.266-7.289 7.125s3.266 7.125 7.289 7.125c4.195 0 6.969-2.953 6.969-7.117 0-.477-.055-.836-.125-1.188z" fill="#4285F4"></path></g></svg>
-            Sign in with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
-  // (The two useEffect hooks after the return have been removed)
 
   // Stepper Handlers
   const handleStepperChange = (cell: string, value: string) => {
@@ -1153,12 +866,7 @@ export default function Home() {
           <h2 className="text-lg font-semibold mb-2">AI APIs</h2>
           <div className="flex justify-between items-center mb-3">
             <span className="text-gray-500 text-sm">Select an AI API below.</span>
-            <button
-              onClick={() => setWebhooksModalOpen(true)}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
-            >
-              Manage AI APIs
-            </button>
+            
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Gemini default */}
@@ -1307,19 +1015,7 @@ export default function Home() {
               ) : (
                 <>
                   <h2 className="text-xl font-bold mb-4 text-center">Review Complete</h2>
-                  {/* Webhook selection dropdown */}
-                  <div className="w-full mb-4">
-                    <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Select Webhook to Submit To:</label>
-                    <select
-                      className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base"
-                      value={selectedFinalWebhook}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedFinalWebhook(e.target.value)}
-                    >
-                      {webhooks.filter(w => (w.type || 'final') === 'final').map(w => (
-                        <option key={w.id} value={w.id}>{w.name ? `${w.name} (${w.type || 'final'})` : w.url}</option>
-                      ))}
-                    </select>
-                  </div>
+                  
                   <div className="w-full">
                     <ul className="space-y-2">
                       {stepperFields.map(field => (
@@ -1330,15 +1026,8 @@ export default function Home() {
                       ))}
                     </ul>
                   </div>
-                  <button
-                    onClick={handleFinalSubmit}
-                    className="mt-6 px-6 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-base w-full"
-                  >Confirm & Submit</button>
-                  {finalSubmitStatus && (
-                    <div className="mt-4 text-sm text-center whitespace-pre-line max-w-xl mx-auto">
-                      {finalSubmitStatus}
-                    </div>
-                  )}
+                  
+                  
                   <button
                     onClick={() => { setStepperComplete(false); setStepperIndex(0); setFinalSubmitStatus(null); }}
                     className="mt-4 px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-base"
@@ -1381,88 +1070,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Webhooks Management Modal */}
-      {webhooksModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <section className="w-full max-w-2xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
-            <button
-              onClick={() => setWebhooksModalOpen(false)}
-              className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
-              aria-label="Close"
-              style={{ position: 'absolute', top: 16, right: 16 }}
-            >&times;</button>
-            <h2 className="text-xl font-bold mb-4 text-center flex items-center gap-2">
-              {/* Hook icon for webhooks */}
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-700 dark:text-blue-300">
-                <path d="M12 2v10a4 4 0 1 0 8 0" />
-                <circle cx="12" cy="2" r="1.5" />
-                <path d="M12 12c0 4-4 4-4 0" />
-              </svg>
-              Manage Webhooks
-            </h2>
-            <div className="flex gap-2 mb-3 w-full">
-              <input value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} placeholder="Webhook Name..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
-              <select value={newWebhookType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewWebhookType(e.target.value as 'initial' | 'final' | 'backup' | 'other')} className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
-                <option value="initial">Initial</option>
-                <option value="final">Final</option>
-                <option value="backup">Backup</option>
-                <option value="other">Other</option>
-              </select>
-              <input value={newWebhook} onChange={e => setNewWebhook(e.target.value)} placeholder="Add webhook URL..." className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
-              <button onClick={addWebhook} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
-            </div>
-            <ul className="space-y-3 w-full">
-              {webhooks.map(webhook => (
-                <li key={webhook.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-300 dark:border-gray-700" style={{ background: 'rgba(0,0,0,0.02)' }}>
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
-                      value={webhook.url}
-                      onChange={e => editWebhook(webhook.id, e.target.value, webhook.name, webhook.type)}
-                    />
-                    <input
-                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-32 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
-                      value={webhook.name || ''}
-                      placeholder="Name"
-                      onChange={e => editWebhook(webhook.id, webhook.url, e.target.value, webhook.type)}
-                    />
-                    <select
-                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 w-28 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
-                      value={webhook.type || 'final'}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => editWebhook(webhook.id, webhook.url, webhook.name, e.target.value as 'initial' | 'final' | 'backup' | 'other')}
-                    >
-                      <option value="initial">Initial</option>
-                      <option value="final">Final</option>
-                      <option value="backup">Backup</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <button onClick={() => deleteWebhook(webhook.id)} className="text-red-600 hover:text-red-800 bg-transparent px-2 py-1 rounded transition">Delete</button>
-                  </div>
-                  {/* Make.com API Key UI */}
-                  <div className="flex items-center gap-2 ml-6">
-                    <input
-                      className="border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                      style={{ width: 260 }}
-                      value={makeApiKeyFor[webhook.id] || ''}
-                      placeholder="Make.com API Key (x-make-apikey)"
-                      onChange={e => setMakeApiKeyFor(prev => ({ ...prev, [webhook.id]: e.target.value }))}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      )}
-      {finalSubmitConfirmation && finalSubmitConfirmation === "done" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-[#23232a] rounded-xl shadow-2xl px-8 py-10 flex flex-col items-center border border-green-400">
-            <svg className="mb-4" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2.5" fill="#dcfce7"/><path d="M8 12l2.5 2.5L16 9" stroke="#22c55e" strokeWidth="2.5"/></svg>
-            <div className="text-2xl font-bold text-green-700 dark:text-green-400 mb-2">Done!</div>
-            <div className="text-base text-gray-700 dark:text-gray-200 text-center">Your submission was successful.</div>
-          </div>
-        </div>
-      )}
+      
+      
 
         {/* Recent Activity section - moved here to be at the bottom of the main content column */}
       <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 border border-gray-200 dark:border-gray-800 mt-12">

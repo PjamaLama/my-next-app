@@ -1,10 +1,11 @@
-export const sendToGemini = async ({ transcript, sheetData, sheetName }) => {
+export const sendToGemini = async ({ transcript, sheetData, sheetName }: { transcript: string; sheetData: (string | number)[][]; sheetName: string }) => {
   const prompt = `You are assisting a user in updating a Google Sheet named "${sheetName}".
+
 User's request:
 ${transcript}
 
 Current sheet data (including headers and rows):
-${sheetData.map(row => row.join(',')).join('\n')}
+${sheetData.map((row: (string | number)[]) => row.join(',')).join('\n')}
 
 ---
 Your task:
@@ -26,7 +27,20 @@ Your task:
   ]
 }
 
+---
+### DO NOT:
+- Use backticks, triple quotes, or markdown.
+- Return any explanation — just the JSON object.
+
+### DO:
+- Accurately detect the next available row.
+- Match columns using column headers.
+- Return exact A1 cell references.
+- Use previous rows to guess likely values for missing fields.
+- If unsure, leave suggested_value as an empty string ('').
+
 Return only clean and valid JSON — no extra text.`;
+
   const result = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GOOGLE_GEMINI_API_KEY}`,
     {
@@ -41,5 +55,6 @@ Return only clean and valid JSON — no extra text.`;
   const json = await result.json();
   const text = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
 
+  // Remove any backticks or markdown, just in case
   return JSON.parse(text.replace(/```json|```/g, '').trim());
 }; 
