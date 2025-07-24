@@ -10,10 +10,9 @@ ${sheetData.map((row: (string | number)[]) => row.join(',')).join('\n')}
 ---
 Your task:
 1. Determine the **next available empty row**.
-2. From the user's request and the existing sheet data:
-   - Return a list of values you are confident about.
-   - For fields you're not 100% confident about, suggest values based on the **most recent relevant row(s)** or **frequent historical patterns**. The \`suggested_value\` field must always be present for each missing column, even if empty.
-3. Output your result in this **EXACT JSON format**:
+2. Based on the user's request, extract all possible values for the columns in the sheet.
+3. For any columns not explicitly mentioned in the user's request, or for which you are not 100% confident, suggest values based on the **most recent relevant row(s)** or **frequent historical patterns** from the provided sheet data. Every column from the sheet headers must have a \`suggested_value\`.
+4. Output your result in this **EXACT JSON format**:
 
 {
   "row_to_update": <next_available_row>,

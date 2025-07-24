@@ -460,6 +460,7 @@ export default function Home() {
     if (currentField && newValues[currentField.cell]) {
       handleStepperChange(currentField.cell, newValues[currentField.cell]);
     }
+    handleStepperFinish(); // Automatically move to review complete after accepting all
   };
 
   // When a spreadsheet is selected, set it as default
@@ -553,6 +554,52 @@ export default function Home() {
   }
 
   // Send to selected AI API
+  const saveToSheet = async () => {
+    if (!user || !defaultSpreadsheetId || !selectedSheetName || Object.keys(stepperValues).length === 0) {
+      setFinalSubmitStatus('error');
+      return;
+    }
+    setFinalSubmitStatus('sending');
+    try {
+      const res = await fetch('/api/save-sheet-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheetId: defaultSpreadsheetId,
+          sheetName: selectedSheetName,
+          data: stepperValues,
+        }),
+      });
+      if (res.ok) {
+        setFinalSubmitStatus('success');
+        // Add activity for saving to sheet
+        await addActivity({
+          type: 'add',
+          entity: 'webhook', // Re-using webhook entity for now, could be 'sheet_row'
+          label: `Row added to ${selectedSheetName}`,
+          timestamp: Date.now(),
+          sheetName: selectedSheetName,
+          rowData: Object.entries(stepperValues).map(([cell, value]) => ({
+            column: stepperFields.find(f => f.cell === cell)?.column || '',
+            cell,
+            value,
+          })),
+        });
+        // Optionally close modal or reset state after successful save
+        // setStepperModalOpen(false);
+        // setStepperFields([]);
+        // setStepperComplete(false);
+        // setStepperIndex(0);
+        // setStepperValues({});
+      } else {
+        setFinalSubmitStatus('error');
+      }
+    } catch (e) {
+      console.error("Error saving to sheet:", e);
+      setFinalSubmitStatus('error');
+    }
+  };
+
   const sendToAiApi = async () => {
     if (!transcript || !defaultSpreadsheetId || !selectedSheetName) {
       setSendResult("Please provide transcript, select a spreadsheet, and a sheet.");
@@ -1083,10 +1130,22 @@ export default function Home() {
                   </div>
                   
                   
-                  <button
-                    onClick={() => { setStepperComplete(false); setStepperIndex(0); setFinalSubmitStatus(null); }}
-                    className="mt-4 px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-base"
-                  >Edit Again</button>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={() => { setStepperComplete(false); setStepperIndex(0); setFinalSubmitStatus(null); }}
+                      className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-base"
+                    >Edit Again</button>
+                    <button
+                      onClick={saveToSheet}
+                      disabled={finalSubmitStatus === 'sending'}
+                      className="px-6 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-base disabled:opacity-50"
+                    >{finalSubmitStatus === 'sending' ? 'Saving...' : 'Save to Sheet'}</button>
+                  </div>
+                  {finalSubmitStatus && finalSubmitStatus !== 'sending' && (
+                    <p className={`mt-2 text-sm ${finalSubmitStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                      {finalSubmitStatus === 'success' ? 'Data saved successfully!' : 'Failed to save data.'}
+                    </p>
+                  )}
                 </>
               )}
               </div>

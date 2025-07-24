@@ -9,7 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sheets = await getGoogleSheetsClient();
     const sheetDataRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${sheetName}!A1:T40`,
+      range: `${sheetName}!A:Z`,
       valueRenderOption: 'FORMATTED_VALUE',
     });
 
