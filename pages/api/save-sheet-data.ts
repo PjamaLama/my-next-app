@@ -15,15 +15,30 @@ export default async function handler(
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const { spreadsheetId, sheetName, data } = req.body;
+  const { spreadsheetId, sheetName, data, updates } = req.body;
 
-  if (!spreadsheetId || !sheetName || !data) {
-    return res.status(400).json({ error: 'Missing spreadsheetId, sheetName, or data' });
+  if (!spreadsheetId || !sheetName || (!data && !updates)) {
+    return res.status(400).json({ error: 'Missing spreadsheetId, sheetName, or data/updates' });
   }
 
   try {
     const sheets = await getGoogleSheetsClient();
 
+    // If updates array is provided, update specific cells
+    if (Array.isArray(updates) && updates.length > 0) {
+      for (const update of updates) {
+        if (!update.cell) continue;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${sheetName}!${update.cell}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [[update.value ?? '']] },
+        });
+      }
+      return res.status(200).json({ message: 'Cells updated successfully' });
+    }
+
+    // Fallback: old row append logic
     // Get existing sheet data to find the next empty row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,

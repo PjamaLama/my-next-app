@@ -566,13 +566,18 @@ export default function Home() {
     }
     setFinalSubmitStatus('sending');
     try {
+      // Prepare updates array: [{ cell, value }]
+      const updates = stepperFields.map(field => ({
+        cell: field.cell,
+        value: stepperValues[field.cell] ?? '',
+      }));
       const res = await fetch('/api/save-sheet-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           spreadsheetId: defaultSpreadsheetId,
           sheetName: selectedSheetName,
-          data: stepperValues,
+          updates,
         }),
       });
       if (res.ok) {
@@ -584,7 +589,7 @@ export default function Home() {
           label: `Row added to ${selectedSheetName}`,
           timestamp: Date.now(),
           sheetName: selectedSheetName,
-          rowData: Object.entries(stepperValues).map(([cell, value]) => ({
+          rowData: updates.map(({ cell, value }) => ({
             column: stepperFields.find(f => f.cell === cell)?.column || '',
             cell,
             value,
@@ -600,7 +605,7 @@ export default function Home() {
         setFinalSubmitStatus('error');
       }
     } catch (e) {
-      console.error("Error saving to sheet:", e);
+      console.error('Error saving to sheet:', e);
       setFinalSubmitStatus('error');
     }
   };
