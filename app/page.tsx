@@ -22,7 +22,9 @@ import VerticalTicker from './VerticalTicker';
 // Types
 interface Option {
   id: string;
-  label: string;
+  label: string; // Spreadsheet label or user-friendly name
+  spreadsheetId: string;
+  sheetNames: string[];
 }
 interface WebhookHeader {
   id: string;
@@ -143,6 +145,8 @@ export default function Home() {
   const [newWebhookType, setNewWebhookType] = useState<'initial' | 'final' | 'backup' | 'other'>('final');
   const [flowStep, setFlowStep] = useState(0); // 0: input, 1: sheet, 2: webhook
   const [editingTranscript, setEditingTranscript] = useState(false);
+  const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+  const [defaultSpreadsheetId, setDefaultSpreadsheetId] = useState<string>("");
 
   // All useEffect and other hooks remain here, before any return
   useEffect(() => {
@@ -244,7 +248,24 @@ export default function Home() {
   // Option management
   const addOption = async () => {
     if (!newOption.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "options"), { label: newOption.trim() });
+    // newOption is expected to be the spreadsheetId
+    // Call backend to fetch sheet names
+    const res = await fetch('/api/get-sheet-names', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spreadsheetId: newOption.trim() }),
+    });
+    if (!res.ok) {
+      setActivityError('Failed to fetch sheet names. Make sure the spreadsheet is shared with the service account.');
+      return;
+    }
+    const { sheetNames } = await res.json();
+    // Store spreadsheetId and sheetNames in Option
+    await addDoc(collection(db, 'users', user.uid, 'options'), {
+      label: newOption.trim(), // You may want to prompt for a friendly name
+      spreadsheetId: newOption.trim(),
+      sheetNames,
+    });
     await addActivity({ type: 'add', entity: 'sheet', label: newOption.trim(), timestamp: Date.now() });
     setNewOption("");
   };
@@ -657,6 +678,56 @@ export default function Home() {
     }
   };
 
+  // When a spreadsheet is selected, set it as default
+  const handleSelectSpreadsheet = (spreadsheetId: string) => {
+    setDefaultSpreadsheetId(spreadsheetId);
+    setSelectedOption(spreadsheetId);
+    setSelectedSheetName("");
+  };
+
+  const sendToParseAndFill = async () => {
+    if (!transcript || !defaultSpreadsheetId || !selectedSheetName) {
+      setSendResult("Please provide transcript, select a spreadsheet, and a sheet.");
+      return;
+    }
+    setSending(true);
+    setSendResult(null);
+    const option = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
+    if (!option) {
+      setSendResult("Invalid spreadsheet selected.");
+      setSending(false);
+      return;
+    }
+    try {
+      const res = await fetch("/api/parse-and-fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript,
+          spreadsheetId: option.spreadsheetId,
+          sheetName: selectedSheetName,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.aiResponse) {
+        const fields = [
+          ...(data.aiResponse.cells_to_update || []),
+          ...(data.aiResponse.missing_columns || []),
+        ];
+        if (fields.length > 0) {
+          setStepperFields(fields);
+          setStepperModalOpen(true);
+        }
+        setSendResult("AI suggestions ready. Confirm and edit as needed.");
+      } else {
+        setSendResult(data.error || "Failed to parse and fill sheet.");
+      }
+    } catch (e) {
+      setSendResult("Error: " + (e instanceof Error ? e.message : String(e)));
+    }
+    setSending(false);
+  };
+
   return (
     <>
       {/* NavBar (only if user is signed in) */}
@@ -668,235 +739,144 @@ export default function Home() {
 
           {/* Step 1: Speech/Text Input */}
           {flowStep === 0 && (
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center min-h-[120px] relative">
-          {/* Centered mic button row */}
-          <div className="relative flex items-center justify-center gap-2 w-full mb-2">
-            <div className="relative">
-              {listening && (
-                <span className={`absolute inset-0 rounded-full pointer-events-none z-0 ${paused ? 'animate-breath-yellow' : 'animate-breath-rainbow'}`}></span>
-              )}
-              <button
-                onClick={handleMicButton}
-                aria-label={listening ? (paused ? 'Resume Listening' : 'Pause Listening') : 'Start Listening'}
-                className={`relative z-10 rounded-full p-5 transition focus:outline-none shadow-md border-2 flex items-center justify-center
-                  ${listening ? (paused ? 'bg-yellow-100 border-yellow-500 text-yellow-600' : 'bg-blue-100 border-blue-500 text-blue-600') : 'bg-blue-100 border-blue-500 text-blue-600 hover:bg-blue-200 hover:border-blue-600 active:scale-105'}
-                `}
-                style={{ width: 72, height: 72, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s' }}
-              >
-                {listening ? (
-                  paused ? (
-                    // Pause icon
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="6" y="4" width="4" height="16" rx="1.5"/>
-                      <rect x="14" y="4" width="4" height="16" rx="1.5"/>
-                    </svg>
-                  ) : (
-                    // Recording icon: pulsing red dot with white ring
-                    <span style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center',width:32,height:32}}>
-                      <span className="absolute left-0 top-0 w-8 h-8 rounded-full border-4 border-white opacity-80"></span>
-                      <span className="inline-block w-8 h-8 rounded-full bg-red-500 animate-pulse"></span>
-                    </span>
-                  )
-                ) : (
-                  // Default mic icon
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="2" width="6" height="12" rx="3"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="22"/>
-                    <line x1="8" y1="22" x2="16" y2="22"/>
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-          {/* Next button absolutely positioned in bottom right of section */}
-          <div className="absolute bottom-3 right-3 z-30">
-            <button
-              type="button"
-              onClick={() => { stopListening(); setFlowStep(1); }}
-              aria-label="Next"
-              disabled={!transcript.trim()}
-              className={`rounded-full p-3 transition focus:outline-none shadow-md border-2 bg-blue-600 border-blue-600 text-white flex items-center justify-center
-                ${transcript.trim() ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'}
-                duration-200 ease-in-out`}
-              style={{ width: 44, height: 44 }}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
-            </button>
-          </div>
-          {/* Sleek transcript box below, only if transcript or listening */}
-          {(listening || transcript.trim()) && (
-            <div className="relative w-full">
-              {/* Slot machine style transcript view using react-vertical-ticker - REMOVED */}
-              {!editingTranscript ? (
-                <div className="relative flex flex-col items-center group" style={{minHeight: 64}}>
-                  {/* Use new VerticalTicker component */}
-                  <VerticalTicker transcript={transcript} />
-                  {/* Edit and Clear buttons remain unchanged */}
-                  <button
-                    type="button"
-                    onClick={() => setEditingTranscript(true)}
-                    aria-label="Edit Transcript"
-                    className="absolute top-2 right-10 p-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
+          <h2 className="text-base sm:text-lg font-semibold mb-1">Sheet Selection</h2>
+          {defaultSpreadsheetId ? (
+            <>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  Using spreadsheet: {options.find(o => o.spreadsheetId === defaultSpreadsheetId)?.label}
+                </span>
+                <button
+                  onClick={() => { setDefaultSpreadsheetId(""); setSelectedSheetName(""); }}
+                  className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs font-semibold"
+                >
+                  Change Spreadsheet
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                {console.log('Rendering sheet cards. selectedSheetName:', selectedSheetName, 'sheetNames:', options.find(o => o.spreadsheetId === defaultSpreadsheetId)?.sheetNames)}
+                {options.find(o => o.spreadsheetId === defaultSpreadsheetId)?.sheetNames.map(name => (
+                  <div
+                    key={`sheet-card-${name}`}
+                    id={`sheet-card-${name}`}
+                    className={`flex items-center gap-2 p-3 rounded-lg border transition cursor-pointer shadow-sm select-none
+                      ${selectedSheetName === name ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
+                    onClick={() => setSelectedSheetName(String(name))}
+                    tabIndex={0}
+                    role="button"
+                    aria-pressed={selectedSheetName === name}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedSheetName(String(name)); }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14.7 5.3l-9.4 9.4-1.3 4.7 4.7-1.3 9.4-9.4a2 2 0 0 0-2.8-2.8z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                    aria-label="Clear"
-                    className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="4" y1="4" x2="16" y2="16" />
-                      <line x1="16" y1="4" x2="4" y2="16" />
-                    </svg>
-                  </button>
+                    <div className={`w-4 h-4 flex items-center justify-center rounded-full border-2 ${selectedSheetName === name ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedSheetName === name && <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                    <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">{name}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {options.map(option => (
+                <div
+                  key={option.id}
+                  className={`flex items-center gap-2 p-3 rounded-lg border transition cursor-pointer shadow-sm select-none
+                    ${defaultSpreadsheetId === option.spreadsheetId ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
+                  onClick={() => { handleSelectSpreadsheet(option.spreadsheetId); setSelectedSheetName(""); }}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={defaultSpreadsheetId === option.spreadsheetId}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { handleSelectSpreadsheet(option.spreadsheetId); setSelectedSheetName(""); } }}
+                >
+                  <div className={`w-4 h-4 flex items-center justify-center rounded-full border-2 ${defaultSpreadsheetId === option.spreadsheetId ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{defaultSpreadsheetId === option.spreadsheetId && <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                  <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
                 </div>
-              ) : (
-                <div className="relative">
-                  <textarea
-                    id="manual-transcript"
-                    className="w-full rounded-xl shadow border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#23232a] px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 transition resize-none"
-                    style={{ minHeight: 48, fontSize: '1.08rem', lineHeight: 1.5, boxShadow: '0 2px 8px 0 rgba(0,0,0,0.04)' }}
-                    value={transcript}
-                    onChange={e => setTranscript(e.target.value)}
-                    placeholder="Type or hold mic to speak..."
-                    aria-label="Transcript"
-                  />
-                  {/* Save button */}
-                  <button
-                    type="button"
-                    onClick={() => setEditingTranscript(false)}
-                    aria-label="Save"
-                    className="absolute top-2 right-10 rounded-full p-1 bg-blue-600 text-white hover:bg-blue-700 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="5 10 9 14 15 7" />
-                    </svg>
-                  </button>
-                  {/* X button to clear transcript, inside the box top right */}
-                  <button
-                    type="button"
-                    onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                    aria-label="Clear"
-                    className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="4" y1="4" x2="16" y2="16" />
-                      <line x1="16" y1="4" x2="4" y2="16" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+              ))}
             </div>
           )}
+          <button
+            onClick={() => setFlowStep(1)}
+            disabled={!defaultSpreadsheetId || !selectedSheetName}
+            className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50 mt-4"
+          >
+            Next
+          </button>
         </section>
         )}
 
           {/* Step 2: Sheet Selection */}
           {flowStep === 1 && (
-        <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-base sm:text-lg font-semibold mb-1">Sheet Names</h2>
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-gray-500 text-xs sm:text-sm">Select a sheet name below.</span>
+  <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
+    {/* Transcript/voice chat UI only, no sheet selection cards */}
+    {(listening || transcript.trim()) && (
+      <div className="relative w-full">
+        {!editingTranscript ? (
+          <div className="relative flex flex-col items-center group" style={{minHeight: 64}}>
+            <VerticalTicker transcript={transcript} />
             <button
-              onClick={() => setOptionsModalOpen(true)}
-              className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-xs sm:text-sm"
+              type="button"
+              onClick={() => setEditingTranscript(true)}
+              aria-label="Edit Transcript"
+              className="absolute top-2 right-10 p-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
+              style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              Manage Sheet Names
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14.7 5.3l-9.4 9.4-1.3 4.7 4.7-1.3 9.4-9.4a2 2 0 0 0-2.8-2.8z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
+              aria-label="Clear"
+              className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
+              style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="4" x2="16" y2="16" />
+                <line x1="16" y1="4" x2="4" y2="16" />
+              </svg>
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {options.map(option => (
-              <div
-                key={option.id}
-                className={`flex items-center gap-2 p-3 rounded-lg border transition cursor-pointer shadow-sm select-none
-                  ${selectedOption === option.id ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
-                onClick={() => setSelectedOption(option.id)}
-                tabIndex={0}
-                role="button"
-                aria-pressed={selectedOption === option.id}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedOption(option.id); }}
-              >
-                <div className={`w-4 h-4 flex items-center justify-center rounded-full border-2 ${selectedOption === option.id ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedOption === option.id && <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-3">
+        ) : (
+          <div className="relative">
+            <textarea
+              id="manual-transcript"
+              className="w-full rounded-xl shadow border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#23232a] px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 transition resize-none"
+              style={{ minHeight: 48, fontSize: '1.08rem', lineHeight: 1.5, boxShadow: '0 2px 8px 0 rgba(0,0,0,0.04)' }}
+              value={transcript}
+              onChange={e => setTranscript(e.target.value)}
+              placeholder="Type or hold mic to speak..."
+              aria-label="Transcript"
+            />
             <button
-              className="px-4 py-1 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold transition text-xs sm:text-sm"
-              onClick={() => setFlowStep(0)}
-            >Back</button>
-            <button
-              className="px-4 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm"
-              onClick={async () => {
-                const initialWebhook = webhooks.find(w => w.type === 'initial');
-                if (initialWebhook) {
-                  setSelectedWebhook(initialWebhook.id);
-                  setSending(true);
-                  setSendResult(null);
-                  const webhookUrl = initialWebhook.url;
-                  const payload = { transcript, option: options.find(o => o.id === selectedOption)?.label };
-                  // Build headers
-                  const headers: Record<string, string> = { "Content-Type": "application/json" };
-                  if (initialWebhook.headers) {
-                    initialWebhook.headers.forEach(h => {
-                      if (h.key) headers[h.key] = h.value;
-                    });
-                  }
-                  try {
-                    const res = await fetch(webhookUrl, {
-                      method: "POST",
-                      headers,
-                      body: JSON.stringify(payload),
-                    });
-                    let responseText = "";
-                    try {
-                      responseText = await res.text();
-                    } catch {}
-                    if (res.ok) {
-                      setSendResult("Sent successfully! Response: " + responseText);
-                      setFlowStep(2); // Go to stepper/modal if needed
-                      setTranscript("");
-                    } else {
-                      setSendResult(`Failed to send. Status: ${res.status} ${res.statusText}\nResponse: ${responseText}`);
-                    }
-                  } catch (e: unknown) {
-                    const error = e instanceof Error ? e : new Error(String(e));
-                    setSendResult("Error: " + (error?.message || error?.toString()));
-                    if (typeof window !== "undefined" && window.console) {
-                      console.error("Webhook send error:", error);
-                    }
-                  }
-                  setSending(false);
-                } else {
-                  alert("No initial webhook configured. Please add one in the settings.");
-                }
-              }}
-              disabled={!canProceedSheet || sending}
+              type="button"
+              onClick={() => setEditingTranscript(false)}
+              aria-label="Save"
+              className="absolute top-2 right-10 rounded-full p-1 bg-blue-600 text-white hover:bg-blue-700 transition z-20"
+              style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              {sending && (
-                <svg className="animate-spin mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                </svg>
-              )}
-              {sending ? 'Sending...' : 'Next'}
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="5 10 9 14 15 7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
+              aria-label="Clear"
+              className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
+              style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="4" x2="16" y2="16" />
+                <line x1="16" y1="4" x2="4" y2="16" />
+              </svg>
             </button>
           </div>
-        </section>
-      )}
+        )}
+      </div>
+    )}
+    {/* Add your mic button and any other transcript controls here */}
+  </section>
+)}
 
           {/* Step 3: Webhook Selection and Send */}
           {flowStep === 2 && (
