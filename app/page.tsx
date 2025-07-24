@@ -249,7 +249,7 @@ export default function Home() {
   const addOption = async () => {
     if (!newOption.trim() || !user) return;
     // newOption is expected to be the spreadsheetId
-    // Call backend to fetch sheet names
+    // Call backend to fetch sheet names and spreadsheet title
     const res = await fetch('/api/get-sheet-names', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -259,14 +259,14 @@ export default function Home() {
       setActivityError('Failed to fetch sheet names. Make sure the spreadsheet is shared with the service account.');
       return;
     }
-    const { sheetNames } = await res.json();
-    // Store spreadsheetId and sheetNames in Option
+    const { sheetNames, spreadsheetTitle } = await res.json();
+    // Store spreadsheetId and sheetNames in Option, use spreadsheetTitle as label
     await addDoc(collection(db, 'users', user.uid, 'options'), {
-      label: newOption.trim(), // You may want to prompt for a friendly name
+      label: spreadsheetTitle || newOption.trim(),
       spreadsheetId: newOption.trim(),
       sheetNames,
     });
-    await addActivity({ type: 'add', entity: 'sheet', label: newOption.trim(), timestamp: Date.now() });
+    await addActivity({ type: 'add', entity: 'sheet', label: spreadsheetTitle || newOption.trim(), timestamp: Date.now() });
     setNewOption("");
   };
   const deleteOption = async (id: string) => {
@@ -741,7 +741,37 @@ export default function Home() {
           {flowStep === 0 && (
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
           <h2 className="text-base sm:text-lg font-semibold mb-1">Sheet Selection</h2>
-          {defaultSpreadsheetId ? (
+          {/* Always show add spreadsheet UI */}
+          <div className="flex items-center gap-2 w-full max-w-xs mb-4 relative">
+            <input
+              value={newOption}
+              onChange={e => setNewOption(e.target.value)}
+              placeholder="Enter Google Spreadsheet ID..."
+              className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition pr-10"
+              aria-label="Google Spreadsheet ID"
+              onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
+            />
+            <button
+              onClick={addOption}
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-full bg-green-600 hover:bg-green-700 text-white transition shadow focus:outline-none focus:ring-2 focus:ring-green-400"
+              aria-label="Add Spreadsheet"
+              style={{ zIndex: 2 }}
+            >
+              <svg width="20" height="20" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="2">
+                <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="2" fill="none"/>
+                <path d="M10 6v8M6 10h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div className="text-xs text-gray-400 mb-4 text-center max-w-xs">
+            Make sure your spreadsheet is shared with the service account.<br/>
+            <span className="font-mono select-all">reportai@reportai-a721b.iam.gserviceaccount.com</span>
+          </div>
+          {options.length === 0 ? (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <div className="text-gray-500 text-center text-sm mb-2">No spreadsheets found.<br/>Add a new spreadsheet to get started.</div>
+            </div>
+          ) : defaultSpreadsheetId ? (
             <>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs text-gray-500">
@@ -755,7 +785,6 @@ export default function Home() {
                 </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                {console.log('Rendering sheet cards. selectedSheetName:', selectedSheetName, 'sheetNames:', options.find(o => o.spreadsheetId === defaultSpreadsheetId)?.sheetNames)}
                 {options.find(o => o.spreadsheetId === defaultSpreadsheetId)?.sheetNames.map(name => (
                   <div
                     key={`sheet-card-${name}`}
@@ -779,7 +808,7 @@ export default function Home() {
               {options.map(option => (
                 <div
                   key={option.id}
-                  className={`flex items-center gap-2 p-3 rounded-lg border transition cursor-pointer shadow-sm select-none
+                  className={`relative flex items-center gap-2 p-3 rounded-lg border transition cursor-pointer shadow-sm select-none
                     ${defaultSpreadsheetId === option.spreadsheetId ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-blue-400 hover:shadow-md'}`}
                   onClick={() => { handleSelectSpreadsheet(option.spreadsheetId); setSelectedSheetName(""); }}
                   tabIndex={0}
@@ -788,7 +817,19 @@ export default function Home() {
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { handleSelectSpreadsheet(option.spreadsheetId); setSelectedSheetName(""); } }}
                 >
                   <div className={`w-4 h-4 flex items-center justify-center rounded-full border-2 ${defaultSpreadsheetId === option.spreadsheetId ? 'border-blue-600 bg-blue-600' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{defaultSpreadsheetId === option.spreadsheetId && <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                  <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">{option.label}</span>
+                  <span className="text-sm text-gray-800 dark:text-gray-200 font-medium truncate pr-8">{option.label}</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); if (window.confirm('Delete this spreadsheet?')) deleteOption(option.id); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-full transition shadow focus:outline-none focus:ring-2 focus:ring-red-400"
+                    aria-label="Delete Spreadsheet"
+                    style={{ zIndex: 3 }}
+                  >
+                    <svg width="16" height="16" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="2">
+                      <path d="M6 8v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V8"/>
+                      <path d="M9 4h2a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2z"/>
+                      <line x1="4" y1="7" x2="16" y2="7"/>
+                    </svg>
+                  </button>
                 </div>
               ))}
             </div>
