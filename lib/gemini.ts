@@ -26,19 +26,7 @@ Your task:
   ]
 }
 
-### DO NOT:
-- Use backticks (```), triple quotes ("""), or markdown.
-- Return any explanation — just the JSON object.
-
-### DO:
-- Accurately detect the next available row.
-- Match columns using **column headers**.
-- Return exact `A1` cell references.
-- Use previous rows to **guess likely values** for missing fields.
-- If unsure, leave `suggested_value` as an empty string ("").
-
 Return only clean and valid JSON — no extra text.`;
-
   const result = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GOOGLE_GEMINI_API_KEY}`,
     {

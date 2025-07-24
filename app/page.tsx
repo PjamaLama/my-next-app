@@ -733,17 +733,19 @@ export default function Home() {
       });
       const data = await res.json();
       if (res.ok && data.aiResponse) {
-        const fields = [
+        let fields = [
           ...(data.aiResponse.cells_to_update || []),
           ...(data.aiResponse.missing_columns || []),
         ];
-        if (fields.length > 0) {
-          setStepperFields(fields);
-          setStepperModalOpen(true);
+        // If no fields are returned, add a default field for manual entry
+        if (fields.length === 0) {
+          fields = [{ column: 'Column', cell: '', value: '', suggested_value: '' }];
         }
+        setStepperFields(fields);
+        setStepperModalOpen(true);
         setSendResult("AI suggestions ready. Confirm and edit as needed.");
       } else {
-        setSendResult(data.error || "Failed to parse and fill sheet.");
+        setSendResult(data.error || "Failed to get AI response.");
       }
     } catch (e) {
       setSendResult("Error: " + (e instanceof Error ? e.message : String(e)));
@@ -787,6 +789,11 @@ export default function Home() {
       return;
     }
     try {
+      console.log("Sending to AI API:", {
+        transcript,
+        spreadsheetId: defaultSpreadsheetId,
+        sheetName: selectedSheetName,
+      });
       const res = await fetch(api.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -796,16 +803,28 @@ export default function Home() {
           sheetName: selectedSheetName,
         }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      console.log("Gemini API raw response text:", text);
+      console.log("Gemini API HTTP status:", res.status, res.statusText);
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse Gemini API response as JSON:", e);
+        data = {};
+      }
+      console.log("Gemini API parsed response:", data);
       if (res.ok && data.aiResponse) {
-        const fields = [
+        let fields = [
           ...(data.aiResponse.cells_to_update || []),
           ...(data.aiResponse.missing_columns || []),
         ];
-        if (fields.length > 0) {
-          setStepperFields(fields);
-          setStepperModalOpen(true);
+        // If no fields are returned, add a default field for manual entry
+        if (fields.length === 0) {
+          fields = [{ column: 'Column', cell: '', value: '', suggested_value: '' }];
         }
+        setStepperFields(fields);
+        setStepperModalOpen(true);
         setSendResult("AI suggestions ready. Confirm and edit as needed.");
       } else {
         setSendResult(data.error || "Failed to get AI response.");
