@@ -147,6 +147,8 @@ export default function Home() {
   const [editingTranscript, setEditingTranscript] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState<string>("");
   const [defaultSpreadsheetId, setDefaultSpreadsheetId] = useState<string>("");
+  // Add state for text input at the top of the Home component
+  const [textInputValue, setTextInputValue] = useState("");
 
   // All useEffect and other hooks remain here, before any return
   useEffect(() => {
@@ -169,8 +171,12 @@ export default function Home() {
     listeningRef.current = listening;
   }, [listening]);
 
-  // Remove the useEffect that creates the SpeechRecognition instance
-  // useEffect(() => { ... }, [listening]);
+  // When a spreadsheet and a sheet are selected, advance to the voice-to-text section
+  useEffect(() => {
+    if (flowStep === 0 && defaultSpreadsheetId && selectedSheetName) {
+      setFlowStep(1);
+    }
+  }, [flowStep, defaultSpreadsheetId, selectedSheetName]);
 
   const startListening = (clearTranscript = true) => {
     if (typeof window === "undefined") return;
@@ -778,7 +784,7 @@ export default function Home() {
                   Using spreadsheet: {options.find(o => o.spreadsheetId === defaultSpreadsheetId)?.label}
                 </span>
                 <button
-                  onClick={() => { setDefaultSpreadsheetId(""); setSelectedSheetName(""); }}
+                  onClick={() => { setDefaultSpreadsheetId(""); setSelectedSheetName(""); setFlowStep(0); }}
                   className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs font-semibold"
                 >
                   Change Spreadsheet
@@ -846,13 +852,43 @@ export default function Home() {
 
           {/* Step 2: Sheet Selection */}
           {flowStep === 1 && (
-  <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
-    {/* Transcript/voice chat UI only, no sheet selection cards */}
-    {(listening || transcript.trim()) && (
-      <div className="relative w-full">
+    <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
+      {/* Transcript/voice chat UI always visible */}
+      <div className="relative w-full flex flex-col items-center">
+        {/* Transcript display/edit area */}
         {!editingTranscript ? (
-          <div className="relative flex flex-col items-center group" style={{minHeight: 64}}>
+          <div className="relative flex flex-col items-center group" style={{minHeight: 64, width: '100%'}}>
+            {/* VerticalTicker always visible */}
             <VerticalTicker transcript={transcript} />
+            {/* Text input for manual entry */}
+            <form
+              className="flex items-center gap-2 w-full max-w-md mt-4"
+              onSubmit={e => {
+                e.preventDefault();
+                if (textInputValue.trim()) {
+                  setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
+                  setTextInputValue('');
+                }
+              }}
+            >
+              <input
+                type="text"
+                value={textInputValue || ''}
+                onChange={e => setTextInputValue(e.target.value)}
+                placeholder="Type and press Enter..."
+                className="flex-1 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                aria-label="Type transcript"
+              />
+              <button
+                type="submit"
+                className="p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white transition focus:outline-none focus:ring-2 focus:ring-blue-400"
+                aria-label="Send text"
+              >
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 10l13-6-6 13-1.5-4.5L3 10z" />
+                </svg>
+              </button>
+            </form>
             <button
               type="button"
               onClick={() => setEditingTranscript(true)}
@@ -878,7 +914,7 @@ export default function Home() {
             </button>
           </div>
         ) : (
-          <div className="relative">
+          <div className="relative w-full">
             <textarea
               id="manual-transcript"
               className="w-full rounded-xl shadow border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#23232a] px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 transition resize-none"
@@ -911,13 +947,64 @@ export default function Home() {
                 <line x1="16" y1="4" x2="4" y2="16" />
               </svg>
             </button>
+            {/* VerticalTicker always visible below textarea */}
+            <div className="mt-2">
+              <VerticalTicker transcript={transcript} />
+            </div>
           </div>
         )}
+        {/* Mic button always visible below transcript */}
+        <div className="flex justify-center mt-6">
+          <button
+            type="button"
+            onClick={handleMicButton}
+            aria-label={listening ? (paused ? "Resume Listening" : "Pause Listening") : "Start Listening"}
+            className={`relative flex items-center justify-center w-20 h-20 rounded-full transition focus:outline-none focus:ring-2 focus:ring-blue-400
+              ${listening ? (paused ? 'bg-yellow-400 animate-pulse' : 'bg-blue-600 animate-mic-glow') : 'bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-800'}`}
+            style={{ boxShadow: listening && !paused ? '0 0 0 8px #3b82f6aa, 0 0 0 16px #3b82f633' : undefined }}
+          >
+            <svg
+              width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+              className={listening && !paused ? 'animate-mic' : ''}
+            >
+              <rect x="9" y="2" width="6" height="12" rx="3" fill={listening && !paused ? '#fff' : 'currentColor'} stroke="currentColor" />
+              <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
+              <line x1="12" y1="22" x2="12" y2="18" />
+              <line x1="8" y1="22" x2="16" y2="22" />
+            </svg>
+            {listening && !paused && (
+              <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-sm text-blue-600 font-semibold">Listening...</span>
+            )}
+            {listening && paused && (
+              <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-sm text-yellow-600 font-semibold">Paused</span>
+            )}
+          </button>
+        </div>
+        {/* Next/Send button below mic and input */}
+        <div className="flex justify-center mt-8">
+          <button
+            type="button"
+            onClick={() => setFlowStep(2)}
+            disabled={!transcript.trim()}
+            className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+        {/* Mic button animation styles */}
+        <style>{`
+          @keyframes micGlow {
+            0% { box-shadow: 0 0 0 8px #3b82f6aa, 0 0 0 16px #3b82f633; }
+            50% { box-shadow: 0 0 0 16px #3b82f6aa, 0 0 0 32px #3b82f633; }
+            100% { box-shadow: 0 0 0 8px #3b82f6aa, 0 0 0 16px #3b82f633; }
+          }
+          .animate-mic-glow { animation: micGlow 1.2s infinite cubic-bezier(0.4,0,0.2,1); }
+          @keyframes micAnim { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
+          .animate-mic { animation: micAnim 1.1s infinite cubic-bezier(0.4,0,0.2,1); }
+        `}</style>
       </div>
-    )}
-    {/* Add your mic button and any other transcript controls here */}
-  </section>
-)}
+    </section>
+  )}
 
           {/* Step 3: Webhook Selection and Send */}
           {flowStep === 2 && (
