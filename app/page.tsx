@@ -559,25 +559,29 @@ export default function Home() {
         }),
       });
       const text = await res.text();
-      console.log("Gemini API raw response text:", text);
-      console.log("Gemini API HTTP status:", res.status, res.statusText);
+      console.log("AI API raw response text:", text);
+      console.log("AI API HTTP status:", res.status, res.statusText);
       let data;
       try {
         data = JSON.parse(text);
       } catch (e) {
-        console.error("Failed to parse Gemini API response as JSON:", e);
+        console.error("Failed to parse AI API response as JSON:", e);
         data = {};
       }
-      console.log("Gemini API parsed response:", data);
+      console.log("AI API parsed response:", data);
       if (res.ok && data.aiResponse) {
+        console.log("AI Response received:", data.aiResponse);
         let aiFields = [
           ...(data.aiResponse.cells_to_update || []),
           ...(data.aiResponse.missing_columns || []),
         ];
+        console.log("AI Fields extracted:", aiFields);
         // Always build fields for all columns, prefilled with AI suggestions if available
         const fields = buildStepperFieldsForAllColumns(aiFields, sheetData);
+        console.log("Stepper fields generated:", fields);
         setStepperFields(fields);
         setStepperModalOpen(true);
+        console.log("Stepper modal should now be open.");
         setSendResult("AI suggestions ready. Confirm and edit as needed.");
       } else {
         setSendResult(data.error || "Failed to get AI response.");
