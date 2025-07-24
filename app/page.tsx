@@ -137,6 +137,8 @@ export default function Home() {
   const [selectedFinalWebhook, setSelectedFinalWebhook] = useState<string>("");
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>("");
+  const [geminiApiKeySaved, setGeminiApiKeySaved] = useState<boolean>(false);
   
   const [flowStep, setFlowStep] = useState(0); // 0: input, 1: sheet, 2: webhook
   const [editingTranscript, setEditingTranscript] = useState(false);
@@ -163,17 +165,40 @@ export default function Home() {
     if (!user) return;
     const optionsRef = collection(db, "users", user.uid, "options");
     const aiApisRef = collection(db, "users", user.uid, "aiApis");
+    const userDocRef = doc(db, "users", user.uid);
+
     const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
       setOptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Option));
     });
     const unsubAiApis = onSnapshot(aiApisRef, (snapshot) => {
       setAiApis(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as { id: string; url: string; name: string }));
     });
+    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.geminiApiKey) {
+          setGeminiApiKey(data.geminiApiKey);
+        }
+      }
+    });
+
     return () => {
       unsubOptions();
       unsubAiApis();
+      unsubUserDoc();
     };
   }, [user]);
+
+  const saveGeminiApiKey = async () => {
+    if (!user || !geminiApiKey.trim()) return;
+    try {
+      await setDoc(doc(db, "users", user.uid), { geminiApiKey: geminiApiKey.trim() }, { merge: true });
+      setGeminiApiKeySaved(true);
+      setTimeout(() => setGeminiApiKeySaved(false), 3000);
+    } catch (e) {
+      console.error("Error saving Gemini API key:", e);
+    }
+  };
 
   useEffect(() => {
     listeningRef.current = listening;
@@ -544,11 +569,11 @@ export default function Home() {
       return;
     }
     try {
-      console.log("Sending to AI API:", {
+      console.log("Sending to AI API:", JSON.stringify({
         transcript,
         spreadsheetId: defaultSpreadsheetId,
         sheetName: selectedSheetName,
-      });
+      }, null, 2));
       const res = await fetch(api.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -556,6 +581,7 @@ export default function Home() {
           transcript,
           spreadsheetId: defaultSpreadsheetId,
           sheetName: selectedSheetName,
+          geminiApiKey: geminiApiKey, // Pass the user's Gemini API key
         }),
       });
       const text = await res.text();
@@ -575,11 +601,20 @@ export default function Home() {
           ...(data.aiResponse.cells_to_update || []),
           ...(data.aiResponse.missing_columns || []),
         ];
-        console.log("AI Fields extracted:", aiFields);
+        console.log("AI Fields extracted (before building all columns):", aiFields);
         // Always build fields for all columns, prefilled with AI suggestions if available
         const fields = buildStepperFieldsForAllColumns(aiFields, sheetData);
-        console.log("Stepper fields generated:", fields);
+        console.log("Stepper fields generated (after building all columns):", fields);
         setStepperFields(fields);
+        // Initialize stepperValues with suggested_value for each field
+        const initialStepperValues: { [cell: string]: string } = {};
+        fields.forEach(field => {
+          if (field.suggested_value) {
+            initialStepperValues[field.cell] = field.suggested_value;
+          }
+        });
+        setStepperValues(initialStepperValues);
+        console.log("Initial stepper values set:", initialStepperValues);
         setStepperModalOpen(true);
         console.log("Stepper modal should now be open.");
         setSendResult("AI suggestions ready. Confirm and edit as needed.");
@@ -870,7 +905,23 @@ export default function Home() {
           <h2 className="text-lg font-semibold mb-2">AI APIs</h2>
           <div className="flex justify-between items-center mb-3">
             <span className="text-gray-500 text-sm">Select an AI API below.</span>
-            
+          </div>
+          <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+            <h3 className="text-md font-semibold mb-2 text-gray-800 dark:text-gray-100">Google Gemini API Key</h3>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={geminiApiKey}
+                onChange={e => setGeminiApiKey(e.target.value)}
+                placeholder="Enter your Gemini API Key..."
+                className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              />
+              <button
+                onClick={saveGeminiApiKey}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition"
+              >Save</button>
+            </div>
+            {geminiApiKeySaved && <p className="text-green-600 text-sm mt-2">API Key saved!</p>}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Gemini default */}

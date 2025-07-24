@@ -1,4 +1,4 @@
-export const sendToGemini = async ({ transcript, sheetData, sheetName }: { transcript: string; sheetData: (string | number)[][]; sheetName: string }) => {
+export const sendToGemini = async ({ transcript, sheetData, sheetName, geminiApiKey }: { transcript: string; sheetData: (string | number)[][]; sheetName: string; geminiApiKey: string }) => {
   const prompt = `You are assisting a user in updating a Google Sheet named "${sheetName}".
 
 User's request:
@@ -12,7 +12,7 @@ Your task:
 1. Determine the **next available empty row**.
 2. From the user's request and the existing sheet data:
    - Return a list of values you are confident about.
-   - For fields you're not 100% confident about, suggest values based on the **most recent relevant row(s)** or **frequent historical patterns**.
+   - For fields you're not 100% confident about, suggest values based on the **most recent relevant row(s)** or **frequent historical patterns**. The \`suggested_value\` field must always be present for each missing column, even if empty.
 3. Output your result in this **EXACT JSON format**:
 
 {
@@ -37,12 +37,15 @@ Your task:
 - Match columns using column headers.
 - Return exact A1 cell references.
 - Use previous rows to guess likely values for missing fields.
-- If unsure, leave suggested_value as an empty string ('').
+- Always include \`suggested_value\` for each missing column, even if it's an empty string ('').
 
 Return only clean and valid JSON — no extra text.`;
 
+  console.log("Prompt sent to Gemini:", prompt);
+  console.log("Sheet data sent to Gemini:", sheetData);
+
   const result = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GOOGLE_GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,6 +57,8 @@ Return only clean and valid JSON — no extra text.`;
 
   const json = await result.json();
   const text = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+
+  console.log("Raw Gemini response text:", text);
 
   // Remove any backticks or markdown, just in case
   return JSON.parse(text.replace(/```json|```/g, '').trim());

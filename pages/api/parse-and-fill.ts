@@ -3,7 +3,7 @@ import { sendToGemini } from '@/lib/gemini';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { transcript, spreadsheetId, sheetName } = req.body;
+  const { transcript, spreadsheetId, sheetName, geminiApiKey } = req.body;
 
   try {
     const sheets = await getGoogleSheetsClient();
@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     const sheetData = sheetDataRes.data.values;
-    const aiResponse = await sendToGemini({ transcript, sheetData, sheetName });
+    const aiResponse = await sendToGemini({ transcript, sheetData, sheetName, geminiApiKey });
 
     res.status(200).json({ aiResponse });
   } catch (e) {
