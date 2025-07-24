@@ -154,6 +154,7 @@ export default function Home() {
   const [newAiApiUrl, setNewAiApiUrl] = useState("");
   const [newAiApiName, setNewAiApiName] = useState("");
   const [selectedAiApi, setSelectedAiApi] = useState<string>("gemini");
+  const [sheetData, setSheetData] = useState<any[][]>([]);
 
   // Default Gemini API (non-removable)
   const GEMINI_API = {
@@ -194,6 +195,28 @@ export default function Home() {
       setFlowStep(1);
     }
   }, [flowStep, defaultSpreadsheetId, selectedSheetName]);
+
+  // Fetch sheet data when spreadsheet and sheet are selected
+  useEffect(() => {
+    if (!defaultSpreadsheetId || !selectedSheetName) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/get-sheet-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: selectedSheetName }),
+        });
+        if (res.ok) {
+          const { data } = await res.json();
+          setSheetData(data || []);
+        } else {
+          setSheetData([]);
+        }
+      } catch {
+        setSheetData([]);
+      }
+    })();
+  }, [defaultSpreadsheetId, selectedSheetName]);
 
   const startListening = (clearTranscript = true) => {
     if (typeof window === "undefined") return;
@@ -772,6 +795,25 @@ export default function Home() {
     if (selectedAiApi === id) setSelectedAiApi("gemini");
   };
 
+  // Helper to build stepper fields for all columns
+  function buildStepperFieldsForAllColumns(aiFields: StepperField[] = [], sheetData: any[][] = []): StepperField[] {
+    if (!sheetData || sheetData.length === 0) return [];
+    const headers: string[] = sheetData[0];
+    // Map AI suggestions by column name for easy lookup
+    const aiMap: { [column: string]: StepperField } = {};
+    aiFields.forEach((f: StepperField) => {
+      if (f.column) aiMap[f.column] = f;
+    });
+    // Find the next available row number
+    const nextRowNum = sheetData.length + 1;
+    return headers.map((header: string, idx: number) => ({
+      column: header,
+      cell: aiMap[header]?.cell || `${String.fromCharCode(65 + idx)}${nextRowNum}`,
+      value: aiMap[header]?.value || '',
+      suggested_value: aiMap[header]?.suggested_value || '',
+    }));
+  }
+
   // Send to selected AI API
   const sendToAiApi = async () => {
     if (!transcript || !defaultSpreadsheetId || !selectedSheetName) {
@@ -815,14 +857,12 @@ export default function Home() {
       }
       console.log("Gemini API parsed response:", data);
       if (res.ok && data.aiResponse) {
-        let fields = [
+        let aiFields = [
           ...(data.aiResponse.cells_to_update || []),
           ...(data.aiResponse.missing_columns || []),
         ];
-        // If no fields are returned, add a default field for manual entry
-        if (fields.length === 0) {
-          fields = [{ column: 'Column', cell: '', value: '', suggested_value: '' }];
-        }
+        // Always build fields for all columns, prefilled with AI suggestions if available
+        const fields = buildStepperFieldsForAllColumns(aiFields, sheetData);
         setStepperFields(fields);
         setStepperModalOpen(true);
         setSendResult("AI suggestions ready. Confirm and edit as needed.");
