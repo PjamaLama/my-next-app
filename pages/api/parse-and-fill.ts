@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       valueRenderOption: 'FORMATTED_VALUE',
     });
 
-    const sheetData = sheetDataRes.data.values;
+    const sheetData = sheetDataRes.data.values ?? [];
     const aiResponse = await sendToGemini({ transcript, sheetData, sheetName, geminiApiKey });
 
     res.status(200).json({ aiResponse });
