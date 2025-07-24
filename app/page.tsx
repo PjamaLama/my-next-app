@@ -496,10 +496,12 @@ export default function Home() {
         if (fields.length === 0) {
           fields = [{ column: 'Column', cell: '', value: '' }];
         }
-        setStepperFields(fields);
+        // Build modal fields from sheet headers and AI output, so all columns are shown in order
+        const allFields = buildStepperFieldsForAllColumns(fields, sheetData);
+        setStepperFields(allFields);
         // Initialize stepperValues with AI values for each cell
         const initialStepperValues: { [cell: string]: string } = {};
-        fields.forEach(field => {
+        allFields.forEach(field => {
           if (field.cell && field.value !== undefined) {
             initialStepperValues[field.cell] = field.value;
           }
@@ -539,18 +541,21 @@ export default function Home() {
   function buildStepperFieldsForAllColumns(aiFields: StepperField[] = [], sheetData: any[][] = []): StepperField[] {
     if (!sheetData || sheetData.length === 0) return [];
     const headers: string[] = sheetData[0];
-    // Map AI suggestions by column name for easy lookup
-    const aiMap: { [column: string]: StepperField } = {};
+    // Map AI suggestions by exact column name for easy lookup
+    const aiMap: { [col: string]: StepperField } = {};
     aiFields.forEach((f: StepperField) => {
       if (f.column) aiMap[f.column] = f;
     });
     // Find the next available row number
     const nextRowNum = sheetData.length + 1;
-    return headers.map((header: string, idx: number) => ({
-      column: header,
-      cell: aiMap[header]?.cell || `${String.fromCharCode(65 + idx)}${nextRowNum}`,
-      value: aiMap[header]?.value || '',
-    }));
+    return headers.map((header: string, idx: number) => {
+      const aiField = aiMap[header];
+      return {
+        column: header,
+        cell: aiField?.cell || `${String.fromCharCode(65 + idx)}${nextRowNum}`,
+        value: aiField && typeof aiField.value !== 'undefined' ? aiField.value : '',
+      };
+    });
   }
 
   // Send to selected AI API
@@ -643,18 +648,21 @@ export default function Home() {
       }
       console.log("AI API parsed response:", data);
       if (res.ok && data.aiResponse) {
-        // Combine all cell suggestions (cells_to_update and missing_columns)
-        let aiFields = [
-          ...(data.aiResponse.cells_to_update || []),
-        ];
+        // Support both array and object response for aiResponse
+        let aiFields = Array.isArray(data.aiResponse)
+          ? data.aiResponse
+          : [
+              ...(data.aiResponse.cells_to_update || []),
+              ...(data.aiResponse.missing_columns || []),
+            ];
         // Always build fields for all columns, prefilled with AI suggestions if available
         const fields = buildStepperFieldsForAllColumns(aiFields, sheetData);
         setStepperFields(fields);
         // Initialize stepperValues with value for each field
         const initialStepperValues: { [cell: string]: string } = {};
         fields.forEach(field => {
-          if (field.value) {
-            initialStepperValues[field.cell] = field.value;
+          if (field.cell) {
+            initialStepperValues[field.cell] = field.value ?? '';
           }
         });
         setStepperValues(initialStepperValues);
