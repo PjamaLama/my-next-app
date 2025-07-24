@@ -643,15 +643,18 @@ export default function Home() {
       }
       console.log("AI API parsed response:", data);
       if (res.ok && data.aiResponse) {
-        console.log("AI Response received:", data.aiResponse);
+        // Combine all cell suggestions (cells_to_update and missing_columns)
         let aiFields = [
           ...(data.aiResponse.cells_to_update || []),
           ...(data.aiResponse.missing_columns || []),
         ];
-        console.log("AI Fields extracted (before building all columns):", aiFields);
+        // Map Gemini's 'value' field to 'suggested_value' for the stepper
+        aiFields = aiFields.map(f => ({
+          ...f,
+          suggested_value: f.value ?? f.suggested_value ?? '',
+        }));
         // Always build fields for all columns, prefilled with AI suggestions if available
         const fields = buildStepperFieldsForAllColumns(aiFields, sheetData);
-        console.log("Stepper fields generated (after building all columns):", fields);
         setStepperFields(fields);
         // Initialize stepperValues with suggested_value for each field
         const initialStepperValues: { [cell: string]: string } = {};
@@ -661,9 +664,7 @@ export default function Home() {
           }
         });
         setStepperValues(initialStepperValues);
-        console.log("Initial stepper values set:", initialStepperValues);
         setStepperModalOpen(true);
-        console.log("Stepper modal should now be open.");
         setSendResult("AI suggestions ready. Confirm and edit as needed.");
       } else {
         setSendResult(data.error || "Failed to get AI response.");
