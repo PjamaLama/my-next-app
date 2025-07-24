@@ -149,21 +149,38 @@ export default function Home() {
   const [defaultSpreadsheetId, setDefaultSpreadsheetId] = useState<string>("");
   // Add state for text input at the top of the Home component
   const [textInputValue, setTextInputValue] = useState("");
+  // Add state for AI APIs (replaces webhooks)
+  const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
+  const [newAiApiUrl, setNewAiApiUrl] = useState("");
+  const [newAiApiName, setNewAiApiName] = useState("");
+  const [selectedAiApi, setSelectedAiApi] = useState<string>("gemini");
+
+  // Default Gemini API (non-removable)
+  const GEMINI_API = {
+    id: "gemini",
+    url: "/api/parse-and-fill",
+    name: "Google Gemini (default)"
+  };
 
   // All useEffect and other hooks remain here, before any return
   useEffect(() => {
     if (!user) return;
     const optionsRef = collection(db, "users", user.uid, "options");
     const webhooksRef = collection(db, "users", user.uid, "webhooks");
+    const aiApisRef = collection(db, "users", user.uid, "aiApis");
     const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
       setOptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Option));
     });
     const unsubWebhooks = onSnapshot(webhooksRef, (snapshot) => {
       setWebhooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Webhook));
     });
+    const unsubAiApis = onSnapshot(aiApisRef, (snapshot) => {
+      setAiApis(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as { id: string; url: string; name: string }));
+    });
     return () => {
       unsubOptions();
       unsubWebhooks();
+      unsubAiApis();
     };
   }, [user]);
 
@@ -734,6 +751,79 @@ export default function Home() {
     setSending(false);
   };
 
+  // Load custom AI APIs from Firestore
+  useEffect(() => {
+    if (!user) return;
+    const aiApisRef = collection(db, "users", user.uid, "aiApis");
+    const unsub = onSnapshot(aiApisRef, (snapshot) => {
+      setAiApis(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as { id: string; url: string; name: string }));
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Add custom AI API
+  const addAiApi = async () => {
+    if (!newAiApiUrl.trim() || !user) return;
+    await addDoc(collection(db, "users", user.uid, "aiApis"), {
+      url: newAiApiUrl.trim(),
+      name: newAiApiName.trim() || newAiApiUrl.trim(),
+    });
+    setNewAiApiUrl("");
+    setNewAiApiName("");
+  };
+  // Delete custom AI API
+  const deleteAiApi = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, "users", user.uid, "aiApis", id));
+    if (selectedAiApi === id) setSelectedAiApi("gemini");
+  };
+
+  // Send to selected AI API
+  const sendToAiApi = async () => {
+    if (!transcript || !defaultSpreadsheetId || !selectedSheetName) {
+      setSendResult("Please provide transcript, select a spreadsheet, and a sheet.");
+      return;
+    }
+    setSending(true);
+    setSendResult(null);
+    const api = selectedAiApi === "gemini"
+      ? GEMINI_API
+      : aiApis.find(a => a.id === selectedAiApi);
+    if (!api) {
+      setSendResult("Invalid AI API selected.");
+      setSending(false);
+      return;
+    }
+    try {
+      const res = await fetch(api.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript,
+          spreadsheetId: defaultSpreadsheetId,
+          sheetName: selectedSheetName,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.aiResponse) {
+        const fields = [
+          ...(data.aiResponse.cells_to_update || []),
+          ...(data.aiResponse.missing_columns || []),
+        ];
+        if (fields.length > 0) {
+          setStepperFields(fields);
+          setStepperModalOpen(true);
+        }
+        setSendResult("AI suggestions ready. Confirm and edit as needed.");
+      } else {
+        setSendResult(data.error || "Failed to get AI response.");
+      }
+    } catch (e) {
+      setSendResult("Error: " + (e instanceof Error ? e.message : String(e)));
+    }
+    setSending(false);
+  };
+
   return (
     <>
       {/* NavBar (only if user is signed in) */}
@@ -1009,44 +1099,87 @@ export default function Home() {
           {/* Step 3: Webhook Selection and Send */}
           {flowStep === 2 && (
         <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold mb-2">Webhooks</h2>
+          <h2 className="text-lg font-semibold mb-2">AI APIs</h2>
           <div className="flex justify-between items-center mb-3">
-            <span className="text-gray-500 text-sm">Select a webhook below.</span>
+            <span className="text-gray-500 text-sm">Select an AI API below.</span>
             <button
               onClick={() => setWebhooksModalOpen(true)}
               className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition text-sm"
             >
-              Manage Webhooks
+              Manage AI APIs
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {webhooks.filter(w => (w.type || 'final') === 'initial').map(webhook => (
+            {/* Gemini default */}
+            <div
+              key={GEMINI_API.id}
+              className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
+                ${selectedAiApi === GEMINI_API.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
+              onClick={() => setSelectedAiApi(GEMINI_API.id)}
+              tabIndex={0}
+              role="button"
+              aria-pressed={selectedAiApi === GEMINI_API.id}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedAiApi(GEMINI_API.id); }}
+            >
+              <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedAiApi === GEMINI_API.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedAiApi === GEMINI_API.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+              <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{GEMINI_API.name}</span>
+              <span className="text-xs text-gray-400 ml-2">(default)</span>
+            </div>
+            {/* Custom AI APIs */}
+            {aiApis.map(api => (
               <div
-                key={webhook.id}
+                key={api.id}
                 className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
-                  ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
-                onClick={() => setSelectedWebhook(webhook.id)}
+                  ${selectedAiApi === api.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
+                onClick={() => setSelectedAiApi(api.id)}
                 tabIndex={0}
                 role="button"
-                aria-pressed={selectedWebhook === webhook.id}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedWebhook(webhook.id); }}
+                aria-pressed={selectedAiApi === api.id}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedAiApi(api.id); }}
               >
-                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedWebhook === webhook.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedWebhook === webhook.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{webhook.name ? `${webhook.name} (${webhook.type || 'final'})` : webhook.url}</span>
+                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedAiApi === api.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedAiApi === api.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{api.name}</span>
+                <span className="text-xs text-gray-400 ml-2 truncate">{api.url}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); if (window.confirm('Delete this AI API?')) deleteAiApi(api.id); }}
+                  className="ml-auto px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold"
+                  aria-label="Delete AI API"
+                  style={{ zIndex: 3 }}
+                >Delete</button>
               </div>
             ))}
           </div>
-              <div className="flex justify-between mt-4">
-                <button
-                  className="px-6 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold transition"
-                  onClick={() => setFlowStep(1)}
-                >Back</button>
-          <button
-            onClick={sendToWebhook}
-            disabled={sending || !transcript || !selectedOption || !selectedWebhook}
-            className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
-                >{sending ? "Sending..." : "Send to Webhook"}</button>
-              </div>
+          {/* Add AI API UI */}
+          <form
+            className="flex items-center gap-2 w-full max-w-xl mt-4"
+            onSubmit={e => { e.preventDefault(); addAiApi(); }}
+          >
+            <input
+              value={newAiApiName}
+              onChange={e => setNewAiApiName(e.target.value)}
+              placeholder="AI API Name (optional)"
+              className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+            />
+            <input
+              value={newAiApiUrl}
+              onChange={e => setNewAiApiUrl(e.target.value)}
+              placeholder="AI API URL..."
+              className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              required
+            />
+            <button type="submit" className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
+          </form>
+          <div className="flex justify-between mt-4">
+            <button
+              className="px-6 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold transition"
+              onClick={() => setFlowStep(1)}
+            >Back</button>
+            <button
+              onClick={sendToAiApi}
+              disabled={sending || !transcript || !selectedAiApi}
+              className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
+            >{sending ? "Sending..." : "Send to AI"}</button>
+          </div>
           {sendResult && (
             <div className="mt-2 text-sm whitespace-pre-line text-center max-w-xl">
               {/* Only show status, not raw JSON response */}
