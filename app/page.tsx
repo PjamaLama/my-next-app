@@ -75,7 +75,6 @@ interface StepperField {
   column: string;
   cell: string;
   value?: string;
-  suggested_value?: string;
 }
 
 // Add activity tracking state
@@ -442,16 +441,11 @@ export default function Home() {
   };
 
   const handleStepperAcceptAll = () => {
-    // Accept all suggested values for fields that don't have a user value
+    // Accept all AI values for fields that don't have a user value
     const newValues: { [cell: string]: string } = { ...stepperValues };
     stepperFields.forEach(field => {
-      if (
-        (newValues[field.cell] === undefined || newValues[field.cell] === "") &&
-        field.suggested_value !== undefined &&
-        field.suggested_value !== null &&
-        field.suggested_value !== ""
-      ) {
-        newValues[field.cell] = field.suggested_value;
+      if ((newValues[field.cell] === undefined || newValues[field.cell] === "") && field.value) {
+        newValues[field.cell] = field.value;
       }
     });
     setStepperValues(newValues);
@@ -497,13 +491,20 @@ export default function Home() {
       if (res.ok && data.aiResponse) {
         let fields = [
           ...(data.aiResponse.cells_to_update || []),
-          ...(data.aiResponse.missing_columns || []),
         ];
         // If no fields are returned, add a default field for manual entry
         if (fields.length === 0) {
-          fields = [{ column: 'Column', cell: '', value: '', suggested_value: '' }];
+          fields = [{ column: 'Column', cell: '', value: '' }];
         }
         setStepperFields(fields);
+        // Initialize stepperValues with AI values for each cell
+        const initialStepperValues: { [cell: string]: string } = {};
+        fields.forEach(field => {
+          if (field.cell && field.value !== undefined) {
+            initialStepperValues[field.cell] = field.value;
+          }
+        });
+        setStepperValues(initialStepperValues);
         setStepperModalOpen(true);
         setSendResult("AI suggestions ready. Confirm and edit as needed.");
       } else {
@@ -549,7 +550,6 @@ export default function Home() {
       column: header,
       cell: aiMap[header]?.cell || `${String.fromCharCode(65 + idx)}${nextRowNum}`,
       value: aiMap[header]?.value || '',
-      suggested_value: aiMap[header]?.suggested_value || '',
     }));
   }
 
@@ -646,21 +646,15 @@ export default function Home() {
         // Combine all cell suggestions (cells_to_update and missing_columns)
         let aiFields = [
           ...(data.aiResponse.cells_to_update || []),
-          ...(data.aiResponse.missing_columns || []),
         ];
-        // Map Gemini's 'value' field to 'suggested_value' for the stepper
-        aiFields = aiFields.map(f => ({
-          ...f,
-          suggested_value: f.value ?? f.suggested_value ?? '',
-        }));
         // Always build fields for all columns, prefilled with AI suggestions if available
         const fields = buildStepperFieldsForAllColumns(aiFields, sheetData);
         setStepperFields(fields);
-        // Initialize stepperValues with suggested_value for each field
+        // Initialize stepperValues with value for each field
         const initialStepperValues: { [cell: string]: string } = {};
         fields.forEach(field => {
-          if (field.suggested_value) {
-            initialStepperValues[field.cell] = field.suggested_value;
+          if (field.value) {
+            initialStepperValues[field.cell] = field.value;
           }
         });
         setStepperValues(initialStepperValues);
@@ -1073,7 +1067,7 @@ export default function Home() {
                 `}</style>
               {!stepperComplete ? (
                 <>
-                  <h2 className="text-xl font-bold mb-4 text-center">Review & Edit Webhook Data</h2>
+                  <h2 className="text-xl font-bold mb-4 text-center">Review & Edit Sheet Row</h2>
                   <div className="w-full flex flex-col items-center">
                     <div className="mb-6 w-full">
                       <div className="flex items-center justify-between mb-2">
@@ -1083,13 +1077,10 @@ export default function Home() {
                       <label className="block text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200">{stepperFields[stepperIndex].column}</label>
                       <input
                         className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base mb-2"
-                        value={stepperValues[stepperFields[stepperIndex].cell] ?? stepperFields[stepperIndex].suggested_value ?? stepperFields[stepperIndex].value ?? ''}
+                        value={stepperValues[stepperFields[stepperIndex].cell] ?? stepperFields[stepperIndex].value ?? ''}
                         onChange={e => handleStepperChange(stepperFields[stepperIndex].cell, e.target.value)}
-                        placeholder={stepperFields[stepperIndex].suggested_value || 'Enter value...'}
+                        placeholder={`Enter value for ${stepperFields[stepperIndex].column}...`}
                       />
-                      {stepperFields[stepperIndex].suggested_value && (
-                        <div className="text-xs text-blue-600 dark:text-blue-300 mb-1">Suggested: <span className="font-mono">{stepperFields[stepperIndex].suggested_value}</span></div>
-                      )}
                     </div>
                     <div className="flex gap-3 w-full justify-between">
                       <button
@@ -1124,7 +1115,7 @@ export default function Home() {
                       {stepperFields.map(field => (
                         <li key={field.cell} className="flex flex-col gap-1 border-b border-gray-200 dark:border-gray-700 pb-2">
                           <span className="font-semibold">{field.column} <span className="text-xs text-gray-400">({field.cell})</span></span>
-                          <span className="text-base text-gray-700 dark:text-gray-200">{stepperValues[field.cell] ?? field.suggested_value ?? field.value ?? <span className='italic text-gray-400'>(empty)</span>}</span>
+                          <span className="text-base text-gray-700 dark:text-gray-200">{stepperValues[field.cell] ?? field.value ?? <span className='italic text-gray-400'>(empty)</span>}</span>
                         </li>
                       ))}
                     </ul>
