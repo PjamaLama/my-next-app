@@ -1,6 +1,7 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import type { NextApiRequest, NextApiResponse } from 'next';
 
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const sheets = await getGoogleSheetsClient();
     const { spreadsheetId, sheetName, range = 'A1:T40' } = req.body;
