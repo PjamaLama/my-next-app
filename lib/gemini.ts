@@ -59,6 +59,7 @@ Return only clean and valid JSON — no extra text.`;
   const text = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
 
   console.log("Raw Gemini response text:", text);
+  console.log("Full Gemini API response:", JSON.stringify(json, null, 2));
 
   // Remove any backticks or markdown, just in case
   return JSON.parse(text.replace(/```json|```/g, '').trim());
