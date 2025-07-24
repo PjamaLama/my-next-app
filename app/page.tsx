@@ -751,15 +751,7 @@ export default function Home() {
     setSending(false);
   };
 
-  // Load custom AI APIs from Firestore
-  useEffect(() => {
-    if (!user) return;
-    const aiApisRef = collection(db, "users", user.uid, "aiApis");
-    const unsub = onSnapshot(aiApisRef, (snapshot) => {
-      setAiApis(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as { id: string; url: string; name: string }));
-    });
-    return () => unsub();
-  }, [user]);
+
 
   // Add custom AI API
   const addAiApi = async () => {
