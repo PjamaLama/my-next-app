@@ -7,8 +7,6 @@ import Link from 'next/link';
 
 const NAV_LINKS = [
   { name: 'Home', href: '/' },
-  { name: 'About', href: '/about' },
-  { name: 'Contact', href: '/contact' },
 ];
 
 const NavBar = () => {
