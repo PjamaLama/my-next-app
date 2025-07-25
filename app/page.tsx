@@ -131,7 +131,7 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user, loading, signInWithGoogle, geminiApiKey } = useFirebase();
+  const { user, loading, signInWithGoogle, geminiApiKey, authError } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetName, setSelectedSheetName } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
@@ -494,12 +494,21 @@ export default function Home() {
           return groups;
         }, {} as { [sheetName: string]: typeof updates });
 
-        // Add activity for each sheet updated
+        // Enhanced activity tracking for multi-sheet/multi-row operations
         for (const [sheetName, sheetUpdates] of Object.entries(sheetGroups)) {
+          // Count unique rows affected in this sheet
+          const uniqueRowsInSheet = [...new Set(sheetUpdates.map(update => {
+            const field = stepperFields.find(f => f.cell === update.cell);
+            return field?.row;
+          }).filter(Boolean))].length;
+          
+          const updateLabel = `${sheetUpdates.length} update${sheetUpdates.length !== 1 ? 's' : ''} to ${sheetName}`;
+          const rowLabel = uniqueRowsInSheet > 0 ? ` (${uniqueRowsInSheet} row${uniqueRowsInSheet !== 1 ? 's' : ''})` : '';
+          
           await addActivity({
             type: 'add',
             entity: 'webhook', // Re-using webhook entity for compatibility
-            label: `${sheetUpdates.length} update${sheetUpdates.length !== 1 ? 's' : ''} to ${sheetName}`,
+            label: updateLabel + rowLabel,
             timestamp: Date.now(),
             sheetName,
             rowData: sheetUpdates.map(({ cell, value }) => ({
@@ -508,7 +517,7 @@ export default function Home() {
               value,
             })),
             sheetsAffected: Object.keys(sheetGroups),
-            rowsAffected: result.totalUpdated || 0,
+            rowsAffected: result.totalRowsAffected || result.totalUpdated || 0,
           });
         }
 
@@ -613,7 +622,18 @@ export default function Home() {
           });
           setStepperValues(initialStepperValues);
           setStepperModalOpen(true);
-          setSendResult(`AI suggestions ready for ${data.aiResponse.sheetsToUpdate?.length || 1} sheet(s). Confirm and edit as needed.`);
+          // Enhanced feedback for multi-sheet/multi-row operations
+          const sheetsCount = data.aiResponse.sheetsToUpdate?.length || 1;
+          const updatesCount = aiFields.length;
+          const rowsCount = [...new Set(aiFields.map((f: StepperField) => f.row).filter(Boolean))].length;
+          
+          let feedbackMsg = `AI suggestions ready: ${updatesCount} update${updatesCount !== 1 ? 's' : ''} across ${sheetsCount} sheet${sheetsCount !== 1 ? 's' : ''}`;
+          if (rowsCount > 0) {
+            feedbackMsg += ` (${rowsCount} row${rowsCount !== 1 ? 's' : ''})`;
+          }
+          feedbackMsg += '. Confirm and edit as needed.';
+          
+          setSendResult(feedbackMsg);
         } else {
           setSendResult(data.error || "Failed to get AI response.");
         }
@@ -658,6 +678,30 @@ export default function Home() {
           >
             Sign in with Google
           </button>
+          
+          {authError && (
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="font-medium">Authentication Error</p>
+                  <p className="mt-1">{authError}</p>
+                  {authError.includes('unauthorized-domain') && (
+                    <div className="mt-2 text-xs">
+                      <p className="font-medium">How to fix:</p>
+                      <ol className="list-decimal ml-4 mt-1 space-y-1">
+                        <li>Go to the <a href="https://console.firebase.google.com/project/report-ai-23599/authentication/settings" target="_blank" rel="noopener noreferrer" className="underline">Firebase Console</a></li>
+                        <li>Navigate to Authentication → Settings → Authorized domains</li>
+                        <li>Add "{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}" to the list</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -740,11 +784,11 @@ export default function Home() {
                 </div>
             
             {/* Transcript/voice chat UI - Mobile optimized */}
-            <div className="relative w-full flex flex-col items-center overflow-hidden">
+            <div className="relative w-full overflow-visible px-4">
               {!editingTranscript ? (
                 <div className="relative w-full">
                   {/* Editable VerticalTicker that combines input and display */}
-                  <div className="w-full min-h-[120px] sm:min-h-[128px] flex items-center justify-center relative overflow-hidden">
+                  <div className="w-full min-h-[120px] sm:min-h-[128px] flex items-center justify-center relative overflow-visible transition-all duration-500 my-2 mx-1">
                     <VerticalTicker 
                       transcript={transcript + (interimText ? ` ${interimText}` : '')} 
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
@@ -755,6 +799,7 @@ export default function Home() {
                       }}
                       placeholder="Type or speak your message..."
                       disabled={listening}
+                      isRecording={listening}
                     />
                     {/* Clear button overlay - Mobile optimized */}
                     {transcript && (
@@ -942,7 +987,9 @@ export default function Home() {
                       <label className="block text-base sm:text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200">
                         {stepperFields[stepperIndex].column}
                         {stepperFields[stepperIndex].row && (
-                          <span className="text-sm text-gray-500 ml-2">(Row {stepperFields[stepperIndex].row})</span>
+                          <span className="text-sm text-gray-500 ml-2 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                            Row {stepperFields[stepperIndex].row}
+                          </span>
                         )}
                       </label>
                       <input
@@ -1006,10 +1053,14 @@ export default function Home() {
                             {fields.map(field => (
                               <div key={field.cell} className="flex justify-between items-start py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
                                 <div className="flex-1 pr-2">
-                                  <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
-                                    {field.column}
-                                    {field.row && <span className="text-xs text-gray-500 ml-2">(Row {field.row})</span>}
-                                  </div>
+                                                        <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
+                        {field.column}
+                        {field.row && (
+                          <span className="text-xs text-gray-500 ml-2 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
+                            Row {field.row}
+                          </span>
+                        )}
+                      </div>
                                   <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mt-1 break-words">
                                     {stepperValues[field.cell] ?? field.value ?? <span className='italic text-gray-400'>(empty)</span>}
                                   </div>

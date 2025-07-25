@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--openssl-legacy-provider next dev",
+    "dev-no-trace": "cross-env NODE_OPTIONS=\"--openssl-legacy-provider --no-warnings\" NEXT_TELEMETRY_DISABLED=1 NEXT_TRACE_PROFILING_DISABLED=1 next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

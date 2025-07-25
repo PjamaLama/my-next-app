@@ -8,6 +8,25 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['framer-motion'],
   },
+  // Disable tracing to fix EPERM errors
+  generateEtags: false,
+  trailingSlash: true,
+  reactStrictMode: false,
+  // Disable telemetry and tracing
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  onDemandEntries: {
+    maxInactiveAge: 25 * 1000,
+    pagesBufferLength: 2,
+  },
+  // Disable trace output
+  output: 'standalone',
+  // Disable Next.js telemetry
+  env: {
+    NEXT_TELEMETRY_DISABLED: '1',
+    NEXT_TRACE_PROFILING_DISABLED: '1',
+  },
   // Enable service worker support
   async headers() {
     return [

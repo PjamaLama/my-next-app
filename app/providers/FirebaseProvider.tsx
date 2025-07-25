@@ -26,6 +26,7 @@ interface IFirebaseContext {
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
   saveGeminiApiKey: (key: string) => Promise<void>;
+  authError: string | null;
 }
 
 const FirebaseContext = createContext<IFirebaseContext>({
@@ -36,12 +37,14 @@ const FirebaseContext = createContext<IFirebaseContext>({
   geminiApiKey: "",
   setGeminiApiKey: () => {},
   saveGeminiApiKey: async () => {},
+  authError: null
 });
 
 export const FirebaseProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
@@ -67,13 +70,35 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   }, [user]);
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    try {
+      setAuthError(null);
+      const provider = new GoogleAuthProvider();
+      
+      // Set custom OAuth parameters to improve sign-in experience
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      console.error("Firebase auth error:", error);
+      
+      // Handle unauthorized domain error specifically
+      if (error.code === 'auth/unauthorized-domain') {
+        setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
+      } else {
+        setAuthError(error.message || "Authentication failed. Please try again.");
+      }
+    }
   };
 
   const signOutUser = async () => {
-    await signOut(auth);
-    setGeminiApiKey(""); // Clear API key on sign out
+    try {
+      await signOut(auth);
+      setGeminiApiKey(""); // Clear API key on sign out
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
   };
 
   // Save Gemini API key to Firestore
@@ -97,7 +122,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       signOutUser,
       geminiApiKey,
       setGeminiApiKey,
-      saveGeminiApiKey
+      saveGeminiApiKey,
+      authError
     }}>
       {children}
     </FirebaseContext.Provider>
