@@ -597,181 +597,117 @@ export default function Home() {
         <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
           
           {/* Main Voice/Text Input Section */}
-          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-3 sm:p-4 space-y-3 border border-gray-200 dark:border-gray-800">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base sm:text-lg font-semibold">Voice Input</h2>
-              {defaultSpreadsheetId && selectedSheetName && (
-                <div className="text-xs text-gray-500 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
-                  Ready to process
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between">
+              {defaultSpreadsheetId && selectedSheetName ? (
+                <div className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Ready
                 </div>
-              )}
-              {!defaultSpreadsheetId && (
-                <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded">
-                  Select sheet in navigation
+              ) : (
+                <div className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Select sheet above
                 </div>
               )}
             </div>
             
-            {/* Transcript/voice chat UI always visible */}
+            {/* Transcript/voice chat UI */}
             <div className="relative w-full flex flex-col items-center">
-              {/* Transcript display/edit area */}
               {!editingTranscript ? (
-                <div className="relative flex flex-col items-center group" style={{minHeight: 64, width: '100%'}}>
-                  {/* VerticalTicker always visible */}
-                  <VerticalTicker transcript={transcript} />
+                <div className="relative flex flex-col items-center w-full">
+                  {/* VerticalTicker */}
+                  <div className="w-full min-h-[100px] flex items-center justify-center">
+                    <VerticalTicker transcript={transcript} />
+                  </div>
                   
-                  {/* Text input for manual entry */}
-                  <form
-                    className="flex items-center gap-2 w-full max-w-md mt-4"
-                    onSubmit={e => {
-                      e.preventDefault();
-                      if (textInputValue.trim()) {
-                        setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
-                        setTextInputValue('');
-                      }
-                    }}
-                  >
-                    <input
-                      type="text"
-                      value={textInputValue || ''}
-                      onChange={e => setTextInputValue(e.target.value)}
-                      placeholder="Type and press Enter..."
-                      className="flex-1 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                      aria-label="Type transcript"
-                    />
+                  {/* Input Controls */}
+                  <div className="w-full flex items-center gap-3 mt-4">
+                    {/* Text Input */}
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={textInputValue || ''}
+                        onChange={e => setTextInputValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && textInputValue.trim()) {
+                            setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
+                            setTextInputValue('');
+                          }
+                        }}
+                        placeholder="Type your message..."
+                        className="w-full h-12 pl-4 pr-10 rounded-xl border border-gray-300 dark:border-gray-600 
+                                 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm
+                                 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500
+                                 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
+                                 transition-all duration-200"
+                      />
+                      {transcript && (
+                        <button
+                          type="button"
+                          onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full
+                                   text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
+                                   hover:bg-gray-100 dark:hover:bg-gray-700
+                                   transition-all duration-200"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="4" y1="4" x2="16" y2="16" />
+                            <line x1="16" y1="4" x2="4" y2="16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Voice Input Button */}
                     <button
-                      type="submit"
-                      className="p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white transition focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      aria-label="Send text"
+                      onClick={handleMicButton}
+                      className={`h-12 w-12 rounded-xl flex items-center justify-center transition-all duration-200
+                                ${listening 
+                                  ? 'bg-red-500 hover:bg-red-600 text-white' 
+                                  : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
                     >
-                      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 10l13-6-6 13-1.5-4.5L3 10z" />
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                          d={listening 
+                            ? "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M10 15l4-4m0 0l4-4m-4 4l-4-4m4 4l4 4"
+                            : "M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"} 
+                        />
                       </svg>
                     </button>
-                  </form>
-                  
-                  <button
-                    type="button"
-                    onClick={() => setEditingTranscript(true)}
-                    aria-label="Edit Transcript"
-                    className="absolute top-2 right-10 p-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14.7 5.3l-9.4 9.4-1.3 4.7 4.7-1.3 9.4-9.4a2 2 0 0 0-2.8-2.8z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                    aria-label="Clear"
-                    className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="4" y1="4" x2="16" y2="16" />
-                      <line x1="16" y1="4" x2="4" y2="16" />
-                    </svg>
-                  </button>
+                  </div>
                 </div>
               ) : (
                 <div className="relative w-full">
                   <textarea
                     id="manual-transcript"
-                    className="w-full rounded-xl shadow border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#23232a] px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 transition resize-none"
-                    style={{ minHeight: 48, fontSize: '1.08rem', lineHeight: 1.5, boxShadow: '0 2px 8px 0 rgba(0,0,0,0.04)' }}
+                    className="w-full rounded-xl border border-gray-300 dark:border-gray-600 
+                             bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm
+                             px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 
+                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
+                             transition-all duration-200 resize-none"
+                    style={{ minHeight: 120, fontSize: '1.08rem', lineHeight: 1.5 }}
                     value={transcript}
                     onChange={e => setTranscript(e.target.value)}
-                    placeholder="Type or hold mic to speak..."
-                    aria-label="Transcript"
+                    placeholder="Type or speak your message..."
                   />
                   <button
                     type="button"
                     onClick={() => setEditingTranscript(false)}
-                    aria-label="Save"
-                    className="absolute top-2 right-10 rounded-full p-1 bg-blue-600 text-white hover:bg-blue-700 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    className="absolute top-3 right-3 p-1.5 rounded-full
+                             bg-blue-500 text-white hover:bg-blue-600
+                             transition-all duration-200"
                   >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
                       <polyline points="5 10 9 14 15 7" />
                     </svg>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                    aria-label="Clear"
-                    className="absolute top-2 right-2 rounded-full p-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition z-20"
-                    style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="4" y1="4" x2="16" y2="16" />
-                      <line x1="16" y1="4" x2="4" y2="16" />
-                    </svg>
-                  </button>
-                  {/* VerticalTicker always visible below textarea */}
-                  <div className="mt-2">
-                    <VerticalTicker transcript={transcript} />
-                  </div>
                 </div>
               )}
-              
-              {/* Mic button always visible below transcript */}
-              <div className="flex justify-center mt-6">
-                <button
-                  type="button"
-                  onClick={handleMicButton}
-                  aria-label={listening ? (paused ? "Resume Listening" : "Pause Listening") : "Start Listening"}
-                  className={`relative flex items-center justify-center w-20 h-20 rounded-full transition focus:outline-none focus:ring-2 focus:ring-blue-400
-                    ${listening ? (paused ? 'bg-yellow-400 animate-pulse' : 'bg-blue-600 animate-mic-glow') : 'bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-800'}`}
-                  style={{ boxShadow: listening && !paused ? '0 0 0 8px #3b82f6aa, 0 0 0 16px #3b82f633' : undefined }}
-                >
-                  <svg
-                    width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-                    className={listening && !paused ? 'animate-mic' : ''}
-                  >
-                    <rect x="9" y="2" width="6" height="12" rx="3" fill={listening && !paused ? '#fff' : 'currentColor'} stroke="currentColor" />
-                    <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
-                    <line x1="12" y1="22" x2="12" y2="18" />
-                    <line x1="8" y1="22" x2="16" y2="22" />
-                  </svg>
-                  {listening && !paused && (
-                    <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-sm text-blue-600 font-semibold">Listening...</span>
-                  )}
-                  {listening && paused && (
-                    <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-sm text-yellow-600 font-semibold">Paused</span>
-                  )}
-                </button>
-              </div>
-              
-              {/* Process button */}
-              <div className="flex justify-center mt-8">
-                <button
-                  type="button"
-                  onClick={sendToAiApi}
-                  disabled={sending || !transcript.trim() || !defaultSpreadsheetId}
-                  className="px-8 py-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg shadow-md transition disabled:opacity-50"
-                >
-                  {sending ? "Processing..." : "Process with AI"}
-                </button>
-              </div>
-              
-              {sendResult && (
-                <div className="mt-4 text-sm text-center max-w-xl px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  {sendResult}
-                </div>
-              )}
-              
-              {/* Mic button animation styles */}
-              <style>{`
-                @keyframes micGlow {
-                  0% { box-shadow: 0 0 0 8px #3b82f6aa, 0 0 0 16px #3b82f633; }
-                  50% { box-shadow: 0 0 0 16px #3b82f6aa, 0 0 0 32px #3b82f633; }
-                  100% { box-shadow: 0 0 0 8px #3b82f6aa, 0 0 0 16px #3b82f633; }
-                }
-                .animate-mic-glow { animation: micGlow 1.2s infinite cubic-bezier(0.4,0,0.2,1); }
-                @keyframes micAnim { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
-                .animate-mic { animation: micAnim 1.1s infinite cubic-bezier(0.4,0,0.2,1); }
-              `}</style>
             </div>
           </section>
 
