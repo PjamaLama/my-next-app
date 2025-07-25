@@ -20,6 +20,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 import VerticalTicker from './VerticalTicker';
 import Image from 'next/image';
+import PWAInstaller from './components/PWAInstaller';
 
 // Types
 // Add minimal interfaces for SpeechRecognition and SpeechRecognitionEvent
@@ -530,21 +531,28 @@ export default function Home() {
 
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-[#18181b]">
-        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 flex flex-col items-center">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-[#18181b] px-4">
+        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 sm:p-8 flex flex-col items-center max-w-md w-full">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4">
             <Image src="/logo.png" alt="Logo" width={48} height={48} className="dark:invert" />
           </div>
-          <h1 className="text-3xl font-bold mb-2">Welcome to Report AI</h1>
-          <p className="text-gray-600 dark:text-gray-300 mb-6 text-center">Sign in with Google to get started and manage your spreadsheets with AI assistance.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2 text-center">Welcome to Report AI</h1>
+          <p className="text-gray-600 dark:text-gray-300 mb-6 text-center text-sm sm:text-base">Sign in with Google to get started and manage your spreadsheets with AI assistance.</p>
           <button
             onClick={signInWithGoogle}
-            className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-purple-500 hover:to-blue-500 text-white px-6 py-3 rounded-lg font-semibold shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+            className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-purple-500 hover:to-blue-500 text-white px-6 py-3 rounded-lg font-semibold shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 w-full min-h-[50px]"
           >
             Sign in with Google
           </button>
@@ -553,32 +561,34 @@ export default function Home() {
     );
   }
 
-  return (
-    <div className="min-h-screen w-full bg-gray-100 dark:bg-[#18181b] p-4">
-        <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
+      return (
+      <>
+        <PWAInstaller />
+        <div className="min-h-screen w-full bg-gray-100 dark:bg-[#18181b] p-3 sm:p-4 overflow-x-hidden">
+          <div className="w-full max-w-2xl mx-auto space-y-6 sm:space-y-8 pb-32 sm:pb-40 pt-2">
           
-          {/* Main Voice/Text Input Section */}
-          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+          {/* Main Voice/Text Input Section - Mobile optimized */}
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 space-y-4 border border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
               {defaultSpreadsheetId && selectedSheetName ? (
                 // Removed "Ready" status as per user request
                 <></>
               ) : (
                 <div className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                  Select sheet above
+                  <span className="text-xs sm:text-sm">Select sheet above</span>
                 </div>
               )}
             </div>
             
-            {/* Transcript/voice chat UI */}
-            <div className="relative w-full flex flex-col items-center">
+            {/* Transcript/voice chat UI - Mobile optimized */}
+            <div className="relative w-full flex flex-col items-center overflow-hidden">
               {!editingTranscript ? (
                 <div className="relative w-full">
                   {/* Editable VerticalTicker that combines input and display */}
-                  <div className="w-full min-h-[128px] flex items-center justify-center relative">
+                  <div className="w-full min-h-[120px] sm:min-h-[128px] flex items-center justify-center relative overflow-hidden">
                     <VerticalTicker 
                       transcript={transcript} 
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
@@ -590,16 +600,17 @@ export default function Home() {
                       placeholder="Type or speak your message..."
                       disabled={listening}
                     />
-                    {/* Clear button overlay */}
+                    {/* Clear button overlay - Mobile optimized */}
                     {transcript && (
                       <button
                         type="button"
                         onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                        className="absolute top-2 right-2 p-1.5 rounded-full z-30
+                        className="absolute top-2 right-2 p-2 rounded-full z-30
                                  text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
                                  hover:bg-gray-100 dark:hover:bg-gray-700
                                  bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm
-                                 transition-all duration-200 border border-gray-200 dark:border-gray-600"
+                                 transition-all duration-200 border border-gray-200 dark:border-gray-600
+                                 min-h-[44px] min-w-[44px] flex items-center justify-center"
                       >
                         <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
                           <line x1="4" y1="4" x2="16" y2="16" />
@@ -609,14 +620,14 @@ export default function Home() {
                     )}
                   </div>
                   
-                  {/* Input Controls */}
+                  {/* Input Controls - Mobile optimized */}
                   <div className="w-full flex flex-col items-center gap-4 mt-4">
-                    {/* Voice Input Button */}
-                    <div className="relative p-8">
+                    {/* Voice Input Button - Enhanced for mobile */}
+                    <div className="relative p-6 sm:p-8">
                       <button
                         onClick={handleMicButton}
-                        className={`relative h-32 w-32 rounded-full flex items-center justify-center transition-all duration-500
-                                  transform hover:scale-110 active:scale-95 group overflow-hidden
+                        className={`relative h-28 w-28 sm:h-32 sm:w-32 rounded-full flex items-center justify-center transition-all duration-500
+                                  transform hover:scale-105 active:scale-95 group overflow-hidden
                                   ${listening 
                                     ? 'bg-gradient-to-br from-red-500 via-pink-500 to-red-600 shadow-2xl shadow-red-500/50' 
                                     : 'bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 shadow-2xl shadow-blue-500/30 animate-gradient-x'}
@@ -634,7 +645,7 @@ export default function Home() {
                         {/* Inner button content */}
                         <div className="relative z-10 w-full h-full rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20">
                           <svg 
-                            className={`w-16 h-16 text-white transition-all duration-300 drop-shadow-lg
+                            className={`w-14 h-14 sm:w-16 sm:h-16 text-white transition-all duration-300 drop-shadow-lg
                                       ${listening ? 'animate-pulse' : 'group-hover:scale-110'}`} 
                             fill="none" 
                             viewBox="0 0 24 24" 
@@ -662,29 +673,30 @@ export default function Home() {
                       </button>
                     </div>
 
-                    <div className="w-full max-w-lg flex items-center gap-2 justify-center">
-                      {/* Process with AI Button */}
+                    <div className="w-full max-w-sm flex items-center gap-2 justify-center">
+                      {/* Process with AI Button - Mobile optimized */}
                       {transcript.trim() && (
                         <button
                           onClick={sendToAiApi}
                           disabled={sending || !defaultSpreadsheetId}
-                          className={`h-12 px-6 rounded-xl flex items-center gap-2 transition-all duration-200 text-base font-medium
+                          className={`h-12 sm:h-12 px-4 sm:px-6 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm sm:text-base font-medium flex-1 justify-center min-h-[50px]
                                     ${sending 
                                       ? 'bg-purple-600 text-white cursor-not-allowed opacity-70'
                                       : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl'}`}
                         >
                           {sending ? (
                             <>
-                              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                              <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                               </svg>
-                              <span>Processing...</span>
+                              <span className="hidden sm:inline">Processing...</span>
+                              <span className="sm:hidden">...</span>
                             </>
                           ) : (
                             <>
                               <span>Process with AI</span>
-                              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                               </svg>
                             </>
@@ -695,7 +707,7 @@ export default function Home() {
 
                     {/* Processing Result Message */}
                     {sendResult && (
-                      <div className="text-sm text-center text-gray-600 dark:text-gray-300">
+                      <div className="text-xs sm:text-sm text-center text-gray-600 dark:text-gray-300 px-4">
                         {sendResult}
                       </div>
                     )}
@@ -707,9 +719,9 @@ export default function Home() {
                     id="manual-transcript"
                     className="w-full rounded-xl border border-gray-300 dark:border-gray-600 
                              bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm
-                             px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 
+                             px-4 py-3 pr-12 text-sm sm:text-base text-gray-900 dark:text-gray-100 
                              focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
-                             transition-all duration-200 resize-none"
+                             transition-all duration-200 resize-none min-h-[50px]"
                     style={{ minHeight: 120, fontSize: '1.08rem', lineHeight: 1.5 }}
                     value={transcript}
                     onChange={e => setTranscript(e.target.value)}
@@ -718,9 +730,9 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setEditingTranscript(false)}
-                    className="absolute top-3 right-3 p-1.5 rounded-full
+                    className="absolute top-3 right-3 p-2 rounded-full
                              bg-blue-500 text-white hover:bg-blue-600
-                             transition-all duration-200"
+                             transition-all duration-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
                       <polyline points="5 10 9 14 15 7" />
@@ -731,10 +743,10 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Enhanced Stepper UI for multi-sheet, multi-row editing */}
+          {/* Enhanced Stepper UI for multi-sheet, multi-row editing - Mobile optimized */}
         {stepperModalOpen && stepperFields.length > 0 && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <section className="w-full max-w-4xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4">
+            <section className="w-full max-w-4xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-3 sm:p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[95vh] overflow-hidden">
               <button
                 onClick={() => {
                   setStepperFields([]);
@@ -743,9 +755,8 @@ export default function Home() {
                   setStepperValues({});
                   setStepperModalOpen(false);
                 }}
-                className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
+                className="absolute top-3 right-3 sm:top-4 sm:right-4 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="Close"
-                style={{ position: 'absolute', top: 16, right: 16 }}
               >&times;</button>
               <div className="w-full overflow-y-auto scrollbar-none" style={{ maxHeight: '70vh', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {/* Add custom CSS for Webkit browsers to hide scrollbar */}
@@ -754,30 +765,30 @@ export default function Home() {
                 `}</style>
               {!stepperComplete ? (
                 <>
-                  <h2 className="text-xl font-bold mb-4 text-center">Review & Edit Multi-Sheet Updates</h2>
+                  <h2 className="text-lg sm:text-xl font-bold mb-4 text-center pr-8">Review & Edit Multi-Sheet Updates</h2>
                   <div className="w-full flex flex-col items-center">
                     <div className="mb-6 w-full">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-gray-500">Field {stepperIndex + 1} of {stepperFields.length}</span>
+                        <span className="text-xs sm:text-sm text-gray-500">Field {stepperIndex + 1} of {stepperFields.length}</span>
                         <div className="flex items-center gap-2 text-xs text-gray-400">
                           {stepperFields[stepperIndex].sheetName && (
-                            <span className="bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded">
+                            <span className="bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded text-xs">
                               Sheet: {stepperFields[stepperIndex].sheetName}
                             </span>
                           )}
-                          <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded font-mono">
+                          <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded font-mono text-xs">
                             {stepperFields[stepperIndex].cell}
                           </span>
                         </div>
                       </div>
-                      <label className="block text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200">
+                      <label className="block text-base sm:text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200">
                         {stepperFields[stepperIndex].column}
                         {stepperFields[stepperIndex].row && (
                           <span className="text-sm text-gray-500 ml-2">(Row {stepperFields[stepperIndex].row})</span>
                         )}
                       </label>
                       <input
-                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-base mb-2"
+                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-sm sm:text-base mb-2 min-h-[50px]"
                         value={stepperValues[stepperFields[stepperIndex].cell] ?? stepperFields[stepperIndex].value ?? ''}
                         onChange={e => handleStepperChange(stepperFields[stepperIndex].cell, e.target.value)}
                         placeholder={`Enter value for ${stepperFields[stepperIndex].column}...`}
@@ -788,25 +799,25 @@ export default function Home() {
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-3 w-full justify-between">
+                    <div className="flex flex-col sm:flex-row gap-3 w-full">
                       <button
                         onClick={handleStepperBack}
                         disabled={stepperIndex === 0}
-                        className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:text-gray-600 transition text-sm font-medium disabled:opacity-50"
+                        className="px-4 py-3 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:text-gray-600 transition text-sm font-medium disabled:opacity-50 min-h-[50px]"
                       >Back</button>
                       <button
                           onClick={handleStepperAcceptAll}
-                        className="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium transition text-sm"
+                        className="px-4 py-3 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium transition text-sm min-h-[50px] flex-1"
                         >Accept All AI Suggestions</button>
                       {stepperIndex < stepperFields.length - 1 ? (
                         <button
                           onClick={handleStepperNext}
-                          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm"
+                          className="px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm min-h-[50px]"
                         >Next</button>
                       ) : (
                         <button
                           onClick={handleStepperFinish}
-                          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm"
+                          className="px-4 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm min-h-[50px]"
                         >Finish</button>
                       )}
                     </div>
@@ -814,10 +825,10 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <h2 className="text-xl font-bold mb-4 text-center">Review Multi-Sheet Updates</h2>
+                  <h2 className="text-lg sm:text-xl font-bold mb-4 text-center pr-8">Review Multi-Sheet Updates</h2>
                   
-                  {/* Group fields by sheet for better organization */}
-                  <div className="w-full max-h-80 overflow-y-auto">
+                  {/* Group fields by sheet for better organization - Mobile optimized */}
+                  <div className="w-full max-h-64 sm:max-h-80 overflow-y-auto">
                     {Object.entries(
                       stepperFields.reduce((groups, field) => {
                         const sheetName = field.sheetName || 'Unknown Sheet';
@@ -826,26 +837,26 @@ export default function Home() {
                         return groups;
                       }, {} as { [sheetName: string]: StepperField[] })
                     ).map(([sheetName, fields]) => (
-                      <div key={sheetName} className="mb-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                        <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                          <h3 className="font-semibold text-gray-800 dark:text-gray-100">
+                      <div key={sheetName} className="mb-4 sm:mb-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 px-3 sm:px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                          <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm sm:text-base">
                             {sheetName} ({fields.length} update{fields.length !== 1 ? 's' : ''})
                           </h3>
                         </div>
-                        <div className="p-4">
+                        <div className="p-3 sm:p-4">
                           <div className="space-y-3">
                             {fields.map(field => (
                               <div key={field.cell} className="flex justify-between items-start py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
-                                <div className="flex-1">
-                                  <div className="font-medium text-gray-900 dark:text-gray-100">
+                                <div className="flex-1 pr-2">
+                                  <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
                                     {field.column}
-                                    {field.row && <span className="text-sm text-gray-500 ml-2">(Row {field.row})</span>}
+                                    {field.row && <span className="text-xs text-gray-500 ml-2">(Row {field.row})</span>}
                                   </div>
-                                  <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                                  <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mt-1 break-words">
                                     {stepperValues[field.cell] ?? field.value ?? <span className='italic text-gray-400'>(empty)</span>}
                                   </div>
                                 </div>
-                                <div className="text-xs text-gray-400 font-mono ml-4">
+                                <div className="text-xs text-gray-400 font-mono ml-2 flex-shrink-0">
                                   {field.cell}
                                 </div>
                               </div>
@@ -856,23 +867,23 @@ export default function Home() {
                     ))}
                   </div>
                   
-                  <div className="flex gap-3 mt-6">
+                  <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full">
                     <button
                       onClick={() => { setStepperComplete(false); setStepperIndex(0); setFinalSubmitStatus(null); }}
-                      className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-base"
+                      className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm sm:text-base min-h-[50px]"
                     >Edit Again</button>
                     <button
                       onClick={saveToSheet}
                       disabled={finalSubmitStatus === 'sending'}
-                      className="px-6 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-base disabled:opacity-50"
+                      className="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm sm:text-base disabled:opacity-50 flex-1 min-h-[50px]"
                     >
                       {finalSubmitStatus === 'sending' ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 justify-center">
                           <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          Saving...
+                          <span>Saving...</span>
                         </div>
                       ) : (
                         `Save to ${Object.keys(stepperFields.reduce((groups, field) => {
@@ -899,10 +910,10 @@ export default function Home() {
           </div>
         )}
 
-          {/* Recent Activity section - moved here to be at the bottom of the main content column */}
-          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 border border-gray-200 dark:border-gray-800 mt-12">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <svg width="22" height="22" fill="none" stroke="#6366f1" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+          {/* Recent Activity section - Mobile optimized */}
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 border border-gray-200 dark:border-gray-800 mt-8 sm:mt-12">
+            <h2 className="text-base sm:text-lg font-semibold mb-4 flex items-center gap-2">
+              <svg width="20" height="20" className="sm:w-6 sm:h-6" fill="none" stroke="#6366f1" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
               Recent Activity
             </h2>
             {activityError && (
@@ -915,14 +926,14 @@ export default function Home() {
                   {activity.slice(0, 5).map((item, i) => {
                     const expanded = expandedActivity === i;
                     return (
-                      <li key={i} className="flex flex-col gap-1 text-xs w-full p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                        <div className="flex items-start gap-3 cursor-pointer" onClick={() => setExpandedActivity(expanded ? null : i)}>
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5">
-                      {item.type === 'add' && <svg width="14" height="14" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
-                      {item.type === 'edit' && <svg width="14" height="14" fill="none" stroke="#f59e42" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
-                      {item.type === 'delete' && <svg width="14" height="14" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M9 6v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6m-6 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>}
+                      <li key={i} className="flex flex-col gap-1 text-xs w-full p-2 sm:p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                        <div className="flex items-start gap-2 sm:gap-3 cursor-pointer" onClick={() => setExpandedActivity(expanded ? null : i)}>
+                    <span className="inline-flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5 flex-shrink-0">
+                      {item.type === 'add' && <svg width="12" height="12" className="sm:w-4 sm:h-4" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
+                      {item.type === 'edit' && <svg width="12" height="12" className="sm:w-4 sm:h-4" fill="none" stroke="#f59e42" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+                      {item.type === 'delete' && <svg width="12" height="12" className="sm:w-4 sm:h-4" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M9 6v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6m-6 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>}
                     </span>
-                        <span className="truncate flex-1">
+                        <span className="truncate flex-1 text-xs sm:text-sm">
                     {item.entity === 'sheet' ? (
                       <>
                         <span className="font-medium text-gray-700 dark:text-gray-200">Sheet</span> <span className="capitalize">{item.type}</span> <span className="font-semibold text-gray-900 dark:text-white">{item.label}</span>
@@ -944,13 +955,13 @@ export default function Home() {
                     <span className="ml-2 text-gray-400">&middot; {dayjs(item.timestamp).fromNow()}</span>
                   </span>
                         <button
-                          className="ml-2 text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none"
+                          className="ml-2 text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none flex-shrink-0 min-h-[32px]"
                           onClick={e => { e.stopPropagation(); setExpandedActivity(expanded ? null : i); }}
                           aria-label={expanded ? "Collapse details" : "Expand details"}
                         >{expanded ? "Hide" : "Show"}</button>
                       </div>
                       {expanded && (
-                        <div className="mt-2">
+                        <div className="mt-2 ml-7 sm:ml-9">
                           {/* Show sheet and row info for webhook add */}
                           {item.type === 'add' && item.entity === 'webhook' && (
                             <div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
@@ -991,6 +1002,7 @@ export default function Home() {
         </section>
       </div>
     </div>
+    </>
   );
 }
 
