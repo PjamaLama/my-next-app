@@ -129,7 +129,7 @@ const NavBar: React.FC = () => {
   const currentSpreadsheet = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
 
   return (
-    <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/20 dark:bg-gray-900/30 border-b border-white/20 dark:border-gray-800/60 shadow-xl rounded-b-2xl px-4 py-3 mb-4 transition-all duration-300">
+    <nav className="sticky top-0 z-40 backdrop-blur-md bg-white/20 dark:bg-gray-900/30 border-b border-white/20 dark:border-gray-800/60 shadow-xl rounded-b-2xl px-4 py-3 mb-4 transition-all duration-300">
       <div className="container mx-auto flex items-center justify-between">
         {/* Logo and Title */}
         <div className="flex items-center gap-3">
@@ -283,11 +283,14 @@ const NavBar: React.FC = () => {
           {/* Settings (gear) icon */}
           {user && (
             <button
-              className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/30 transition-colors duration-200 focus:outline-none"
+              className="flex items-center justify-center w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 border border-white/20"
               aria-label="Settings"
               onClick={() => setSettingsOpen(true)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20" className="w-6 h-6 text-gray-800 dark:text-gray-200"><path d="M11.3 1.046a1.75 1.75 0 0 0-2.6 0l-.2.22a2.25 2.25 0 0 1-2.7.5l-.25-.13a1.75 1.75 0 0 0-2.3.7l-.13.25a2.25 2.25 0 0 1-2.7 1.1l-.27-.1a1.75 1.75 0 0 0-2.1 1.2l-.07.28a2.25 2.25 0 0 1-1.1 2.7l-.25.13a1.75 1.75 0 0 0-.7 2.3l.13.25a2.25 2.25 0 0 1-.5 2.7l-.22.2a1.75 1.75 0 0 0 0 2.6l.22.2a2.25 2.25 0 0 1 .5 2.7l-.13.25a1.75 1.75 0 0 0 .7 2.3l.25.13a2.25 2.25 0 0 1 1.1 2.7l.1.27a1.75 1.75 0 0 0 1.2 2.1l.28.07a2.25 2.25 0 0 1 2.7 1.1l.13.25a1.75 1.75 0 0 0 2.3.7l.25-.13a2.25 2.25 0 0 1 2.7-.5l.2.22a1.75 1.75 0 0 0 2.6 0l.2-.22a2.25 2.25 0 0 1 2.7-.5l.25.13a1.75 1.75 0 0 0 2.3-.7l.13-.25a2.25 2.25 0 0 1 2.7-1.1l.27-.1a1.75 1.75 0 0 0 2.1-1.2l.07-.28a2.25 2.25 0 0 1 1.1-2.7l.25-.13a1.75 1.75 0 0 0 .7-2.3l-.13-.25a2.25 2.25 0 0 1 .5-2.7l.22-.2a1.75 1.75 0 0 0 0-2.6l-.22-.2a2.25 2.25 0 0 1-.5-2.7l.13-.25a1.75 1.75 0 0 0-.7-2.3l-.25-.13a2.25 2.25 0 0 1-1.1-2.7l-.1-.27a1.75 1.75 0 0 0-1.2-2.1l-.28-.07a2.25 2.25 0 0 1-2.7-1.1l-.13-.25a1.75 1.75 0 0 0-2.3-.7l-.25.13a2.25 2.25 0 0 1-2.7.5l-.2-.22ZM10 13.25a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.48.398.668 1.03.26 1.431l-1.296 2.247a1.125 1.125 0 0 1-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.075.124a6.57 6.57 0 0 1-.22.128c-.332.183-.582.495-.645.87l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 0 1-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 0 1-1.37-.49l-1.296-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 0 1-.26-1.431l1.296-2.247a1.125 1.125 0 0 1 1.37-.49l1.217.456c.355.133.75.072 1.075-.124.072-.044.146-.087.22-.128.332-.183.582-.495.645-.87l.213-1.28Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+              </svg>
             </button>
           )}
           {/* Mobile menu button */}
@@ -347,32 +350,106 @@ const NavBar: React.FC = () => {
 
       {/* Settings Modal */}
       {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <section className="w-full max-w-md mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
-            <button
-              onClick={() => setSettingsOpen(false)}
-              className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
-              aria-label="Close"
-              style={{ position: 'absolute', top: 16, right: 16 }}
-            >&times;</button>
-            <h2 className="text-xl font-bold mb-6 text-center">Settings</h2>
-            <div className="mb-4 w-full">
-              <label className="block text-md font-semibold mb-2 text-gray-800 dark:text-gray-100">Google Gemini API Key</label>
-              <input
-                type="password"
-                value={geminiApiKey}
-                onChange={e => setGeminiApiKey(e.target.value)}
-                placeholder="Enter your Gemini API Key..."
-                className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 w-full bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-              />
-              <button
-                onClick={saveGeminiApiKey}
-                className="mt-3 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition w-full"
-              >Save</button>
-              {geminiApiKeySaved && <p className="text-green-600 text-sm mt-2">API Key saved!</p>}
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/50 z-[60]" 
+            onClick={() => setSettingsOpen(false)} 
+          />
+          
+          {/* Modal Container */}
+          <div className="fixed inset-0 z-[70]">
+            <div className="min-h-screen p-8 flex items-center justify-center">
+              {/* Modal Panel */}
+              <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-[600px] transform transition-all">
+                {/* Header */}
+                <div className="flex items-center justify-between px-8 py-6 border-b border-gray-200 dark:border-gray-800">
+                  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Settings</h2>
+                  <button
+                    onClick={() => setSettingsOpen(false)}
+                    className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-yellow-300 rounded-lg p-2"
+                  >
+                    <span className="sr-only">Close</span>
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-8">
+                  {/* Info Box */}
+                  <div className="mb-8 bg-blue-50 dark:bg-blue-900/30 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4">
+                      How to get a Gemini API key
+                    </h3>
+                    <ol className="text-base text-blue-800 dark:text-blue-200 space-y-3">
+                      <li className="flex items-start">
+                        <span className="font-medium mr-3">1.</span>
+                        Visit <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-300 hover:underline">Google AI Studio</a>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="font-medium mr-3">2.</span>
+                        Sign in with your Google account
+                      </li>
+                      <li className="flex items-start">
+                        <span className="font-medium mr-3">3.</span>
+                        Click "Create API Key" and copy it
+                      </li>
+                      <li className="flex items-start">
+                        <span className="font-medium mr-3">4.</span>
+                        Paste it below and save
+                      </li>
+                    </ol>
+                  </div>
+
+                  {/* API Key Input */}
+                  <div className="space-y-6">
+                    <label className="block">
+                      <span className="text-base font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                        Google Gemini API Key
+                      </span>
+                      <input
+                        type="password"
+                        value={geminiApiKey}
+                        onChange={e => setGeminiApiKey(e.target.value)}
+                        placeholder="Enter your API key..."
+                        className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 
+                                 bg-white dark:bg-gray-800 px-4 py-3 text-base
+                                 placeholder-gray-400 dark:placeholder-gray-500
+                                 focus:border-yellow-300 dark:focus:border-yellow-300 
+                                 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+                      />
+                    </label>
+
+                    <button
+                      onClick={saveGeminiApiKey}
+                      disabled={!geminiApiKey.trim()}
+                      className="w-full flex justify-center py-3 px-6 border border-transparent 
+                               rounded-lg shadow-sm text-base font-medium text-white 
+                               bg-blue-600 hover:bg-blue-700 
+                               focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                               disabled:opacity-50 disabled:cursor-not-allowed
+                               transition-colors duration-200"
+                    >
+                      Save API Key
+                    </button>
+
+                    {/* Success Message */}
+                    {geminiApiKeySaved && (
+                      <div className="flex items-center justify-center text-base text-green-600 dark:text-green-400 mt-2">
+                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        API Key saved successfully!
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-          </section>
-        </div>
+          </div>
+        </>
       )}
     </nav>
   );
