@@ -117,7 +117,7 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
         ref={containerRef}
         className={`relative h-32 max-h-40 w-full rounded-2xl overflow-visible transition-all duration-300
                   ${isAnimating ? 'shadow-glow' : ''}
-                  ${isFocused ? 'ring-2 ring-blue-400 dark:ring-blue-500' : ''}
+                  ${isFocused ? 'ring-1 ring-blue-400/50 dark:ring-blue-500/50' : ''}
                   ${isRecording ? 'recording-active' : ''}`}
         style={{ 
           background: 'transparent',
@@ -132,8 +132,8 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
       >
         {/* Container with padding for content */}
         <div className="relative w-full h-full p-[2px]">
-          {/* Enhanced container with glass effect */}
-          <div className={`absolute inset-0 bg-white/30 dark:bg-gray-900/30 backdrop-blur-md rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg ${isRecording ? 'recording-border' : ''}`}></div>
+          {/* Enhanced container with transparent background */}
+          <div className={`absolute inset-0 bg-transparent rounded-2xl border-transparent shadow-none ${isRecording ? 'recording-border' : ''}`}></div>
           
           {/* Top fade overlay for text fade-out - only show when not focused */}
           {!isFocused && (
@@ -254,10 +254,10 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
           width: 100%;
           height: 2rem;
           z-index: 10;
-          background: linear-gradient(to bottom, rgba(255,255,255,0.7) 70%, transparent 100%);
+          background: transparent;
         }
         .dark .ticker-fade-top {
-          background: linear-gradient(to bottom, rgba(24,24,27,0.7) 70%, transparent 100%);
+          background: transparent;
         }
         .ticker-fade-bottom {
           pointer-events: none;
@@ -267,10 +267,10 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
           width: 100%;
           height: 2rem;
           z-index: 10;
-          background: linear-gradient(to top, rgba(255,255,255,0.7) 70%, transparent 100%);
+          background: transparent;
         }
         .dark .ticker-fade-bottom {
-          background: linear-gradient(to top, rgba(24,24,27,0.7) 70%, transparent 100%);
+          background: transparent;
         }
         .ticker-word-pulse {
            animation: tickerWordPulse 0.9s cubic-bezier(0.4,0,0.2,1) 1;
