@@ -118,7 +118,6 @@ export default function Home() {
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
-  const [geminiApiKeySaved, setGeminiApiKeySaved] = useState<boolean>(false);
   
   const [editingTranscript, setEditingTranscript] = useState(false);
   // Add state for text input at the top of the Home component
@@ -126,7 +125,6 @@ export default function Home() {
   // Add state for AI APIs (replaces webhooks)
   const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
   const [selectedAiApi, setSelectedAiApi] = useState<string>("gemini");
-  const [sheetData, setSheetData] = useState<(string | number)[][]>([]);
 
   // Default Gemini API (non-removable)
   const GEMINI_API = {
@@ -175,17 +173,6 @@ export default function Home() {
     return () => unsubUserDoc();
   }, [user]);
 
-  const saveGeminiApiKey = async () => {
-    if (!user || !geminiApiKey.trim()) return;
-    try {
-      await setDoc(doc(db, "users", user.uid), { geminiApiKey: geminiApiKey.trim() }, { merge: true });
-      setGeminiApiKeySaved(true);
-      setTimeout(() => setGeminiApiKeySaved(false), 3000);
-    } catch (e) {
-      console.error("Error saving Gemini API key:", e);
-    }
-  };
-
   useEffect(() => {
     listeningRef.current = listening;
   }, [listening]);
@@ -202,12 +189,12 @@ export default function Home() {
         });
         if (res.ok) {
           const { data } = await res.json();
-          setSheetData(data || []);
+          // setSheetData(data || []); // This state is removed
         } else {
-          setSheetData([]);
+          // setSheetData([]); // This state is removed
         }
       } catch {
-        setSheetData([]);
+        // setSheetData([]); // This state is removed
       }
     })();
   }, [defaultSpreadsheetId, selectedSheetName]);
@@ -536,11 +523,11 @@ export default function Home() {
   };
 
   // Delete custom AI API
-  const deleteAiApi = async (id: string) => {
-    if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "aiApis", id));
-    if (selectedAiApi === id) setSelectedAiApi("gemini");
-  };
+  // const deleteAiApi = async (id: string) => {
+  //   if (!user) return;
+  //   await deleteDoc(doc(db, "users", user.uid, "aiApis", id));
+  //   if (selectedAiApi === id) setSelectedAiApi("gemini");
+  // };
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
