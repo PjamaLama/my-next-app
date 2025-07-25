@@ -129,8 +129,8 @@ const NavBar: React.FC = () => {
   const currentSpreadsheet = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
 
   return (
-    <nav className="sticky top-0 z-40 backdrop-blur-md bg-white/20 dark:bg-gray-900/30 border-b border-white/20 dark:border-gray-800/60 shadow-xl rounded-b-2xl px-4 py-3 mb-4 transition-all duration-300">
-      <div className="container mx-auto flex items-center justify-between">
+    <nav className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm">
+      <div className="container mx-auto flex justify-between items-center px-4 py-2">
         {/* Logo and Title */}
         <div className="flex items-center gap-3">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2">
@@ -147,119 +147,6 @@ const NavBar: React.FC = () => {
           </Link>
         </div>
 
-        {/* Sheet Selection Dropdown - Only show when user is logged in */}
-        {user && (
-          <div className="relative">
-            <button
-              onClick={() => setSheetDropdownOpen(!sheetDropdownOpen)}
-              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 border border-white/20"
-            >
-              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M9 9h6v6H9z" />
-              </svg>
-              <span className="max-w-32 truncate">
-                {currentSpreadsheet?.label || 'Select Sheet'}
-                {selectedSheetName && ` • ${selectedSheetName}`}
-              </span>
-              <svg 
-                className={`w-4 h-4 transition-transform ${sheetDropdownOpen ? 'rotate-180' : ''}`} 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                viewBox="0 0 24 24"
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-
-            {sheetDropdownOpen && (
-              <div className="absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto z-50">
-                {/* Add new spreadsheet section */}
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                  <div className="flex gap-2">
-                    <input
-                      value={newOption}
-                      onChange={e => setNewOption(e.target.value)}
-                      placeholder="Enter Spreadsheet ID..."
-                      className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
-                    />
-                    <button
-                      onClick={addOption}
-                      disabled={addingSheet || !newOption.trim()}
-                      className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg font-medium transition disabled:opacity-50"
-                    >
-                      {addingSheet ? "..." : "Add"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Spreadsheet list */}
-                <div className="max-h-64 overflow-y-auto">
-                  {options.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 text-sm">
-                      No spreadsheets found. Add one above.
-                    </div>
-                  ) : (
-                    options.map(option => (
-                      <div key={option.id} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
-                        <div 
-                          className={`flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors ${
-                            defaultSpreadsheetId === option.spreadsheetId ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                          }`}
-                          onClick={() => handleSpreadsheetSelect(option.spreadsheetId)}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                              {option.label}
-                            </div>
-                            <div className="text-xs text-gray-500 truncate">
-                              {option.sheetNames.length} sheet{option.sheetNames.length !== 1 ? 's' : ''}
-                            </div>
-                          </div>
-                          <button
-                            onClick={e => { e.stopPropagation(); if (window.confirm('Delete this spreadsheet?')) deleteOption(option.id); }}
-                            className="ml-2 p-1 text-red-600 hover:text-red-800 text-xs"
-                          >
-                            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                              <path d="M6 8v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V8"/>
-                              <path d="M9 4h2a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2z"/>
-                              <line x1="4" y1="7" x2="16" y2="7"/>
-                            </svg>
-                          </button>
-                        </div>
-
-                        {/* Sheet names for selected spreadsheet */}
-                        {defaultSpreadsheetId === option.spreadsheetId && (
-                          <div className="bg-gray-50 dark:bg-gray-800 px-6 pb-3">
-                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">Select Sheet:</div>
-                            <div className="grid grid-cols-2 gap-1">
-                              {option.sheetNames.map(sheetName => (
-                                <button
-                                  key={sheetName}
-                                  onClick={() => handleSheetSelect(sheetName)}
-                                  className={`text-left px-2 py-1 text-xs rounded transition-colors ${
-                                    selectedSheetName === sheetName 
-                                      ? 'bg-blue-600 text-white' 
-                                      : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30'
-                                  }`}
-                                >
-                                  {sheetName}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Desktop Nav Links */}
         <div className="hidden md:flex items-center gap-6">
           {NAV_LINKS.map(link => (
@@ -274,22 +161,151 @@ const NavBar: React.FC = () => {
           ))}
         </div>
 
-        {/* User section & Mobile menu button */}
+        {/* User section: Spreadsheet selector, then settings button at the end */}
         <div className="flex items-center gap-4">
-          {/* Settings (gear) icon */}
           {user && (
-            <button
-              className="flex items-center justify-center w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 border border-white/20"
-              aria-label="Settings"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.48.398.668 1.03.26 1.431l-1.296 2.247a1.125 1.125 0 0 1-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.075.124a6.57 6.57 0 0 1-.22.128c-.332.183-.582.495-.645.87l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 0 1-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 0 1-1.37-.49l-1.296-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 0 1-.26-1.431l1.296-2.247a1.125 1.125 0 0 1 1.37-.49l1.217.456c.355.133.75.072 1.075-.124.072-.044.146-.087.22-.128.332-.183.582-.495.645-.87l.213-1.28Z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
-              </svg>
-            </button>
+            <>
+              {/* Spreadsheet Selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setSheetDropdownOpen(!sheetDropdownOpen)}
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 border border-white/20"
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M9 9h6v6H9z" />
+                  </svg>
+                  <span className="max-w-32 truncate">
+                    {currentSpreadsheet?.label || 'Select Sheet'}
+                    {selectedSheetName && ` • ${selectedSheetName}`}
+                  </span>
+                  <svg 
+                    className={`w-4 h-4 transition-transform ${sheetDropdownOpen ? 'rotate-180' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                {sheetDropdownOpen && (
+                  <div className="absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto z-50">
+                    {/* Add new spreadsheet section */}
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                      <div className="flex gap-2">
+                        <input
+                          value={newOption}
+                          onChange={e => setNewOption(e.target.value)}
+                          placeholder="Enter Spreadsheet ID..."
+                          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
+                        />
+                        <button
+                          onClick={addOption}
+                          disabled={addingSheet || !newOption.trim()}
+                          className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg font-medium transition disabled:opacity-50"
+                        >
+                          {addingSheet ? "..." : "Add"}
+                        </button>
+                      </div>
+                    </div>
+                    {/* Spreadsheet list */}
+                    <div className="max-h-64 overflow-y-auto">
+                      {options.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500 text-sm">
+                          No spreadsheets found. Add one above.
+                        </div>
+                      ) : (
+                        options.map(option => (
+                          <div key={option.id} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+                            <div 
+                              className={`flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors ${
+                                defaultSpreadsheetId === option.spreadsheetId ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                              }`}
+                              onClick={() => handleSpreadsheetSelect(option.spreadsheetId)}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                  {option.label}
+                                </div>
+                                <div className="text-xs text-gray-500 truncate">
+                                  {option.sheetNames.length} sheet{option.sheetNames.length !== 1 ? 's' : ''}
+                                </div>
+                              </div>
+                              <button
+                                onClick={e => { e.stopPropagation(); if (window.confirm('Delete this spreadsheet?')) deleteOption(option.id); }}
+                                className="ml-2 p-1 text-red-600 hover:text-red-800 text-xs"
+                              >
+                                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                  <path d="M6 8v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V8"/>
+                                  <path d="M9 4h2a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2z"/>
+                                  <line x1="4" y1="7" x2="16" y2="7"/>
+                                </svg>
+                              </button>
+                            </div>
+                            {/* Sheet names for selected spreadsheet */}
+                            {defaultSpreadsheetId === option.spreadsheetId && (
+                              <div className="bg-gray-50 dark:bg-gray-800 px-6 pb-3">
+                                <div className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">Select Sheet:</div>
+                                <div className="grid grid-cols-2 gap-1">
+                                  {option.sheetNames.map(sheetName => (
+                                    <button
+                                      key={sheetName}
+                                      onClick={() => handleSheetSelect(sheetName)}
+                                      className={`text-left px-2 py-1 text-xs rounded transition-colors ${
+                                        selectedSheetName === sheetName 
+                                          ? 'bg-blue-600 text-white' 
+                                          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                                      }`}
+                                    >
+                                      {sheetName}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* User avatar and settings button side by side */}
+              <div className="flex items-center gap-2">
+                {/* User avatar */}
+                {user?.photoURL ? (
+                  <Image
+                    src={user.photoURL}
+                    alt={user.displayName || 'User'}
+                    width={40}
+                    height={40}
+                    className="rounded-full object-cover w-10 h-10 border border-white/40 shadow cursor-pointer"
+                  />
+                ) : (
+                  <span className="rounded-full bg-gray-300 flex items-center justify-center w-10 h-10 cursor-pointer">
+                    <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="8" r="4" />
+                      <path d="M6 20c0-2.21 3.582-4 6-4s6 1.79 6 4" />
+                    </svg>
+                  </span>
+                )}
+                {/* Settings button: just a gear icon */}
+                <button
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 border border-white/20"
+                  aria-label="Settings"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.48.398.668 1.03.26 1.431l-1.296 2.247a1.125 1.125 0 0 1-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.075.124a6.57 6.57 0 0 1-.22.128c-.332.183-.582.495-.645.87l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 0 1-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 0 1-1.37-.49l-1.296-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 0 1-.26-1.431l1.296-2.247a1.125 1.125 0 0 1 1.37-.49l1.217.456c.355.133.75.072 1.075-.124.072-.044.146-.087.22-.128.332-.183.582-.495.645-.87l.213-1.28Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                  </svg>
+                </button>
+              </div>
+            </>
           )}
-          {/* Mobile menu button */}
+          {/* Mobile menu button remains unchanged */}
           <button
             className="md:hidden flex flex-col justify-center items-center w-10 h-10 rounded-lg hover:bg-white/30 transition-colors duration-200 focus:outline-none"
             aria-label="Toggle menu"
@@ -299,25 +315,6 @@ const NavBar: React.FC = () => {
             <span className={`block w-6 h-0.5 bg-white mb-1 rounded transition-all duration-300 ${menuOpen ? 'opacity-0' : ''}`}></span>
             <span className={`block w-6 h-0.5 bg-white rounded transition-all duration-300 ${menuOpen ? '-rotate-45 -translate-y-1.5' : ''}`}></span>
           </button>
-          {!loading && user ? (
-            <>
-              <span className="hidden sm:inline text-sm font-medium text-white/80 mr-2">Hi, {user.displayName?.split(' ')[0] || 'User'}!</span>
-              <Image
-                src={user.photoURL || '/file.svg'}
-                alt={user.displayName || 'User'}
-                width={40}
-                height={40}
-                className="rounded-full border-2 border-white shadow-md transition-transform duration-200 hover:scale-105 hover:ring-2 hover:ring-yellow-300 cursor-pointer"
-              />
-              <button
-                onClick={signOutUser}
-                className="bg-gradient-to-r from-red-500 to-pink-500 hover:from-pink-500 hover:to-red-500 text-white px-4 py-1.5 rounded-lg font-semibold shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300"
-                aria-label="Logout"
-              >
-                Logout
-              </button>
-            </>
-          ) : null}
         </div>
       </div>
       {/* Mobile Nav Links */}
@@ -352,7 +349,6 @@ const NavBar: React.FC = () => {
             className="fixed inset-0 bg-black/50 z-[60]" 
             onClick={() => setSettingsOpen(false)} 
           />
-          
           {/* Modal Container */}
           <div className="fixed inset-0 z-[70]">
             <div className="min-h-screen p-8 flex items-center justify-center">
@@ -371,7 +367,6 @@ const NavBar: React.FC = () => {
                     </svg>
                   </button>
                 </div>
-
                 {/* Content */}
                 <div className="p-8">
                   {/* Info Box */}
@@ -398,7 +393,6 @@ const NavBar: React.FC = () => {
                       </li>
                     </ol>
                   </div>
-
                   {/* API Key Input */}
                   <div className="space-y-6">
                     <label className="block">
@@ -417,7 +411,6 @@ const NavBar: React.FC = () => {
                                  focus:outline-none focus:ring-2 focus:ring-yellow-300"
                       />
                     </label>
-
                     <button
                       onClick={saveGeminiApiKey}
                       disabled={!geminiApiKey.trim()}
@@ -430,7 +423,6 @@ const NavBar: React.FC = () => {
                     >
                       Save API Key
                     </button>
-
                     {/* Success Message */}
                     {geminiApiKeySaved && (
                       <div className="flex items-center justify-center text-base text-green-600 dark:text-green-400 mt-2">
@@ -440,6 +432,13 @@ const NavBar: React.FC = () => {
                         API Key saved successfully!
                       </div>
                     )}
+                    {/* Logout Button */}
+                    <button
+                      onClick={() => { signOutUser(); setSettingsOpen(false); }}
+                      className="w-full flex justify-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-base font-medium text-white bg-gradient-to-r from-red-500 to-pink-500 hover:from-pink-500 hover:to-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 mt-8"
+                    >
+                      Logout
+                    </button>
                   </div>
                 </div>
               </div>
