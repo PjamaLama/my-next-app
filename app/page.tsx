@@ -616,7 +616,6 @@ export default function Home() {
   return (
     <>
       {/* NavBar (only if user is signed in) */}
-      {user && <NavBar />}
       <div className="min-h-screen w-full bg-gray-100 dark:bg-[#18181b] p-4">
           <div className="w-full max-w-2xl mx-auto space-y-8 pb-40 pt-2">
           {/* Stepper/flow indicator */}
@@ -648,9 +647,12 @@ export default function Home() {
               </svg>
             </button>
           </div>
+          {activityError && (
+            <div className="text-red-600 text-xs mb-2 text-center max-w-xs">{activityError}</div>
+          )}
           <div className="text-xs text-gray-400 mb-4 text-center max-w-xs">
             Make sure your spreadsheet is shared with the service account.<br/>
-            <span className="font-mono select-all">reportai@reportai-a721b.iam.gserviceaccount.com</span>
+            <span className="font-mono select-all">report-ai@report-ai-23599.iam.gserviceaccount.com</span>
           </div>
           {options.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-8">

@@ -5,9 +5,7 @@ import Image from 'next/image';
 import { useFirebase } from './providers/FirebaseProvider';
 import Link from 'next/link';
 
-const NAV_LINKS = [
-  { name: 'Home', href: '/' },
-];
+const NAV_LINKS: { name: string; href: string }[] = [];
 
 const NavBar = () => {
   const { user, loading, signOutUser } = useFirebase();

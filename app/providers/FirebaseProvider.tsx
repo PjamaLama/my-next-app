@@ -5,13 +5,13 @@ import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signO
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyATi7NQrUOmdXkAL2h_BkWW-XThjqYd0L4",
-  authDomain: "reportai-a721b.firebaseapp.com",
-  projectId: "reportai-a721b",
-  storageBucket: "reportai-a721b.firebasestorage.app",
-  messagingSenderId: "253447818330",
-  appId: "1:253447818330:web:4eee676588b7dcc9cd9c63",
-  measurementId: "G-133407X3RX"
+  apiKey: "AIzaSyB42SldA3_l6LZ6l2axTIdrMhvSrmcIMEU",
+  authDomain: "report-ai-23599.firebaseapp.com",
+  projectId: "report-ai-23599",
+  storageBucket: "report-ai-23599.firebasestorage.app",
+  messagingSenderId: "391138712655",
+  appId: "1:391138712655:web:9d235f416a4e2b3776de3a",
+  measurementId: "G-4PSKB5BJY1"
 };
 
 const app = initializeApp(firebaseConfig);
