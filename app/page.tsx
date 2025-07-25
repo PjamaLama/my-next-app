@@ -132,7 +132,7 @@ export default function Home() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, geminiApiKey } = useFirebase();
-  const { defaultSpreadsheetId, selectedSheetName } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetName, setSelectedSheetName } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
@@ -158,6 +158,8 @@ export default function Home() {
   // Add state for AI APIs (replaces webhooks)
   const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
   const [selectedAiApi] = useState<string>("gemini"); // Re-added selectedAiApi
+  // Add state for available spreadsheet options
+  const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
 
   // Default Gemini API (non-removable)
   const GEMINI_API = {
@@ -191,6 +193,19 @@ export default function Home() {
     return () => {
       unsubAiApis();
     };
+  }, [user]);
+
+  // Subscribe to user's spreadsheet options
+  useEffect(() => {
+    if (!user) return;
+    const optionsRef = collection(db, "users", user.uid, "options");
+    const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
+      setSpreadsheetOptions(snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      } as {id: string; spreadsheetId: string; sheetNames: string[]})));
+    });
+    return () => unsubOptions();
   }, [user]);
 
   useEffect(() => {
@@ -242,24 +257,23 @@ export default function Home() {
       let interimTranscript = '';
       let finalTranscript = '';
 
-      // Simple approach - just concatenate all results
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results[i];
-        console.log(`Processing result ${i}:`, result); // Debug log
-        
-        if (result.isFinal) {
-          finalTranscript += result[0].transcript;
-          console.log('Final result:', result[0].transcript); // Debug log
-        } else {
-          interimTranscript += result[0].transcript;
-          console.log('Interim result:', result[0].transcript); // Debug log
-        }
+      // Process only the newest results to avoid duplication
+      // Get the latest result only
+      const latestResultIndex = event.results.length - 1;
+      const latestResult = event.results[latestResultIndex];
+      
+      if (latestResult.isFinal) {
+        finalTranscript = latestResult[0].transcript;
+        console.log('Final result:', finalTranscript); // Debug log
+      } else {
+        interimTranscript = latestResult[0].transcript;
+        console.log('Interim result:', interimTranscript); // Debug log
       }
 
       // Update transcript immediately to test if it works at all
       if (finalTranscript) {
         console.log('Setting final transcript:', finalTranscript); // Debug log
-        setTranscript(prev => prev + finalTranscript);
+        setTranscript(prev => prev + finalTranscript + ' ');
         setInterimText('');
       }
       
@@ -528,6 +542,24 @@ export default function Home() {
       return;
     }
     
+    // Stop listening if currently active
+    if (listening) {
+      stopListening();
+    }
+    
+    // Find an available sheet if none is selected
+    let sheetNameToUse = selectedSheetName;
+    if (!sheetNameToUse) {
+      // Find the current spreadsheet option to get available sheets
+      const currentSpreadsheet = spreadsheetOptions.find(o => o.spreadsheetId === defaultSpreadsheetId);
+      if (currentSpreadsheet && currentSpreadsheet.sheetNames.length > 0) {
+        // Use the first available sheet
+        sheetNameToUse = currentSpreadsheet.sheetNames[0];
+        // Update the selected sheet name in the context
+        setSelectedSheetName(sheetNameToUse);
+      }
+    }
+    
     setSending(true);
     setSendResult(null);
     const api = selectedAiApi === "gemini"
@@ -542,7 +574,7 @@ export default function Home() {
       console.log("Sending to AI API:", JSON.stringify({
         transcript,
         spreadsheetId: defaultSpreadsheetId,
-        selectedSheetName: selectedSheetName || undefined,
+        selectedSheetName: sheetNameToUse || undefined,
       }, null, 2));
       const res = await fetch(api.url, {
         method: "POST",
@@ -550,7 +582,7 @@ export default function Home() {
         body: JSON.stringify({
           transcript,
           spreadsheetId: defaultSpreadsheetId,
-          selectedSheetName: selectedSheetName || undefined, // Optional - let AI decide if not set
+          selectedSheetName: sheetNameToUse || undefined, // Optional - let AI decide if not set
           geminiApiKey: geminiApiKey, // Pass the user's Gemini API key from the provider
         }),
       });
@@ -819,7 +851,7 @@ export default function Home() {
                             </>
                           ) : (
                             <>
-                              <span>Process with AI</span>
+                              <span>{listening ? "Stop & Process with AI" : "Process with AI"}</span>
                               <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                               </svg>
