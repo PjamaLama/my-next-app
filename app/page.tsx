@@ -132,8 +132,6 @@ export default function Home() {
   const [textInputValue, setTextInputValue] = useState("");
   // Add state for AI APIs (replaces webhooks)
   const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
-  const [newAiApiUrl, setNewAiApiUrl] = useState("");
-  const [newAiApiName, setNewAiApiName] = useState("");
   const [selectedAiApi, setSelectedAiApi] = useState<string>("gemini");
   const [sheetData, setSheetData] = useState<(string | number)[][]>([]);
 
@@ -565,17 +563,6 @@ export default function Home() {
     setSending(false);
   };
 
-  // Add custom AI API
-  const addAiApi = async () => {
-    if (!newAiApiUrl.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "aiApis"), {
-      url: newAiApiUrl.trim(),
-      name: newAiApiName.trim() || newAiApiUrl.trim(),
-    });
-    setNewAiApiUrl("");
-    setNewAiApiName("");
-  };
-
   // Delete custom AI API
   const deleteAiApi = async (id: string) => {
     if (!user) return;
@@ -788,101 +775,7 @@ export default function Home() {
             </div>
           </section>
 
-          {/* AI API Configuration Section */}
-          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-            <h2 className="text-lg font-semibold mb-2">AI Configuration</h2>
-            {/* Only show Gemini API key input if not present */}
-            {!geminiApiKey && (
-              <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h3 className="text-md font-semibold mb-2 text-gray-800 dark:text-gray-100">Google Gemini API Key</h3>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="password"
-                    value={geminiApiKey}
-                    onChange={e => setGeminiApiKey(e.target.value)}
-                    placeholder="Enter your Gemini API Key..."
-                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                  />
-                  <button
-                    onClick={async () => {
-                      if (!user || !geminiApiKey.trim()) return;
-                      await setDoc(doc(db, "users", user.uid), { geminiApiKey: geminiApiKey.trim() }, { merge: true });
-                      setGeminiApiKeySaved(true);
-                      setTimeout(() => setGeminiApiKeySaved(false), 3000);
-                    }}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition"
-                  >Save</button>
-                </div>
-                {geminiApiKeySaved && <p className="text-green-600 text-sm mt-2">API Key saved!</p>}
-              </div>
-            )}
-            
-            {/* AI API Selection */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Gemini default */}
-              <div
-                key={GEMINI_API.id}
-                className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
-                  ${selectedAiApi === GEMINI_API.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
-                onClick={() => setSelectedAiApi(GEMINI_API.id)}
-                tabIndex={0}
-                role="button"
-                aria-pressed={selectedAiApi === GEMINI_API.id}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedAiApi(GEMINI_API.id); }}
-              >
-                <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedAiApi === GEMINI_API.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedAiApi === GEMINI_API.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{GEMINI_API.name}</span>
-                <span className="text-xs text-gray-400 ml-2">(default)</span>
-              </div>
-              
-              {/* Custom AI APIs */}
-              {aiApis.map(api => (
-                <div
-                  key={api.id}
-                  className={`flex items-center gap-3 p-4 rounded-lg border transition cursor-pointer shadow-sm select-none
-                    ${selectedAiApi === api.id ? 'border-purple-700 bg-purple-50 dark:bg-purple-900/30 shadow-lg' : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-[#18181b] hover:border-purple-400 hover:shadow-md'}`}
-                  onClick={() => setSelectedAiApi(api.id)}
-                  tabIndex={0}
-                  role="button"
-                  aria-pressed={selectedAiApi === api.id}
-                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedAiApi(api.id); }}
-                >
-                  <div className={`w-5 h-5 flex items-center justify-center rounded-full border-2 ${selectedAiApi === api.id ? 'border-purple-700 bg-purple-700' : 'border-gray-400 bg-white dark:bg-[#18181b]'}`}>{selectedAiApi === api.id && <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
-                  <span className="text-base text-gray-800 dark:text-gray-200 font-medium">{api.name}</span>
-                  <span className="text-xs text-gray-400 ml-2 truncate">{api.url}</span>
-                  <button
-                    onClick={e => { e.stopPropagation(); if (window.confirm('Delete this AI API?')) deleteAiApi(api.id); }}
-                    className="ml-auto px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold"
-                    aria-label="Delete AI API"
-                    style={{ zIndex: 3 }}
-                  >Delete</button>
-                </div>
-              ))}
-            </div>
-            
-            {/* Add AI API UI */}
-            <form
-              className="flex items-center gap-2 w-full max-w-xl mt-4"
-              onSubmit={e => { e.preventDefault(); addAiApi(); }}
-            >
-              <input
-                value={newAiApiName}
-                onChange={e => setNewAiApiName(e.target.value)}
-                placeholder="AI API Name (optional)"
-                className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-              />
-              <input
-                value={newAiApiUrl}
-                onChange={e => setNewAiApiUrl(e.target.value)}
-                placeholder="AI API URL..."
-                className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                required
-              />
-              <button type="submit" className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition">Add</button>
-            </form>
-                    </section>
-
-                {/* Enhanced Stepper UI for multi-sheet, multi-row editing */}
+          {/* Enhanced Stepper UI for multi-sheet, multi-row editing */}
         {stepperModalOpen && stepperFields.length > 0 && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <section className="w-full max-w-4xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
@@ -1049,12 +942,6 @@ export default function Home() {
             </section>
           </div>
         )}
-
-          {/* Options Management Modal */}
-          {/* This modal is no longer needed as options are managed via NavBar */}
-
-          
-          
 
           {/* Recent Activity section - moved here to be at the bottom of the main content column */}
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 border border-gray-200 dark:border-gray-800 mt-12">
