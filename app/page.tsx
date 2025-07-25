@@ -578,7 +578,9 @@ export default function Home() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-[#18181b]">
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 flex flex-col items-center">
-          <Image src="/globe.svg" alt="Logo" width={64} height={64} className="mb-4" />
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4">
+            <Image src="/logo.png" alt="Logo" width={48} height={48} className="dark:invert" />
+          </div>
           <h1 className="text-3xl font-bold mb-2">Welcome to Report AI</h1>
           <p className="text-gray-600 dark:text-gray-300 mb-6 text-center">Sign in with Google to get started and manage your spreadsheets with AI assistance.</p>
           <button
@@ -619,59 +621,24 @@ export default function Home() {
             {/* Transcript/voice chat UI */}
             <div className="relative w-full flex flex-col items-center">
               {!editingTranscript ? (
-                <div className="relative flex flex-col items-center w-full">
+                <div className="relative w-full">
                   {/* VerticalTicker */}
                   <div className="w-full min-h-[100px] flex items-center justify-center">
                     <VerticalTicker transcript={transcript} />
                   </div>
                   
                   {/* Input Controls */}
-                  <div className="w-full flex items-center gap-3 mt-4">
-                    {/* Text Input */}
-                    <div className="flex-1 relative">
-                      <input
-                        type="text"
-                        value={textInputValue || ''}
-                        onChange={e => setTextInputValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && textInputValue.trim()) {
-                            setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
-                            setTextInputValue('');
-                          }
-                        }}
-                        placeholder="Type your message..."
-                        className="w-full h-12 pl-4 pr-10 rounded-xl border border-gray-300 dark:border-gray-600 
-                                 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm
-                                 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500
-                                 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
-                                 transition-all duration-200"
-                      />
-                      {transcript && (
-                        <button
-                          type="button"
-                          onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full
-                                   text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
-                                   hover:bg-gray-100 dark:hover:bg-gray-700
-                                   transition-all duration-200"
-                        >
-                          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="4" y1="4" x2="16" y2="16" />
-                            <line x1="16" y1="4" x2="4" y2="16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-
+                  <div className="w-full flex flex-col items-center gap-4 mt-4">
                     {/* Voice Input Button */}
                     <button
                       onClick={handleMicButton}
-                      className={`h-12 w-12 rounded-xl flex items-center justify-center transition-all duration-200
+                      className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300
+                                transform hover:scale-105 active:scale-95
                                 ${listening 
-                                  ? 'bg-red-500 hover:bg-red-600 text-white' 
-                                  : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
+                                  ? 'bg-red-500 hover:bg-red-600 text-white ring-4 ring-red-200 dark:ring-red-900/30' 
+                                  : 'bg-blue-500 hover:bg-blue-600 text-white ring-4 ring-blue-200 dark:ring-blue-900/30'}`}
                     >
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                           d={listening 
                             ? "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M10 15l4-4m0 0l4-4m-4 4l-4-4m4 4l4 4"
@@ -679,6 +646,80 @@ export default function Home() {
                         />
                       </svg>
                     </button>
+
+                    <div className="w-full max-w-lg flex items-center gap-2">
+                      {/* Text Input */}
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          value={textInputValue || ''}
+                          onChange={e => setTextInputValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && textInputValue.trim()) {
+                              setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
+                              setTextInputValue('');
+                            }
+                          }}
+                          placeholder="Or type your message..."
+                          className="w-full h-10 pl-4 pr-10 rounded-xl border border-gray-300 dark:border-gray-600 
+                                   bg-white/30 dark:bg-gray-800/30 backdrop-blur-sm
+                                   text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500
+                                   focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
+                                   transition-all duration-200 text-sm"
+                        />
+                        {transcript && (
+                          <button
+                            type="button"
+                            onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full
+                                     text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
+                                     hover:bg-gray-100 dark:hover:bg-gray-700
+                                     transition-all duration-200"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="4" y1="4" x2="16" y2="16" />
+                              <line x1="16" y1="4" x2="4" y2="16" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Process with AI Button */}
+                      {transcript.trim() && (
+                        <button
+                          onClick={sendToAiApi}
+                          disabled={sending || !defaultSpreadsheetId}
+                          className={`h-10 px-4 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm
+                                    ${sending 
+                                      ? 'bg-purple-600 text-white cursor-not-allowed opacity-70'
+                                      : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                        >
+                          {sending ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              <span className="font-medium">Processing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-medium">Process</span>
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                              </svg>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Processing Result Message */}
+                    {sendResult && (
+                      <div className="text-sm text-center text-gray-600 dark:text-gray-300">
+                        {sendResult}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (

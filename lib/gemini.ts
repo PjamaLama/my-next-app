@@ -91,11 +91,13 @@ export const sendToGeminiMulti = async ({
   const sheetsInfo = Object.entries(sheetsData).map(([sheetName, data]) => {
     const headers = data.length > 0 ? data[0].join(', ') : 'No headers';
     const rowCount = data.length - 1; // Subtract header row
+    const nextRow = data.length + 1; // Calculate next available row
     const sampleRows = data.slice(1, 4).map(row => row.join(', ')).join('\n');
     
     return `Sheet: "${sheetName}"
 Headers: ${headers}
-Row count: ${rowCount}
+Current row count: ${rowCount}
+Next available row: ${nextRow}
 Sample data:
 ${sampleRows}`;
   }).join('\n\n');
@@ -127,10 +129,12 @@ ANALYSIS INSTRUCTIONS:
    - Can update multiple sheets if the request logically spans multiple areas
 
 3. **Smart Data Population**:
+   - Use the provided "Next available row" number for each sheet when adding new rows
+   - IMPORTANT: Each sheet has its own next available row number - do not assume they are the same
    - Analyze existing data patterns to determine appropriate formats
    - Auto-fill reasonable defaults (dates, IDs, status fields)
    - Map user's natural language to structured data fields
-   - Determine if this should be a new row or update existing rows
+   - When adding new rows, ALWAYS use the exact "Next available row" number provided for that sheet
 
 4. **Output Format** - Use this **EXACT JSON structure**:
 
@@ -140,23 +144,16 @@ ANALYSIS INSTRUCTIONS:
   "updates": [
     {
       "sheetName": "Sheet1",
-      "row": 5,
+      "row": <use Next available row number for Sheet1>,
       "column": "Name",
-      "cell": "A5",
+      "cell": "A<row>",
       "value": "John Doe"
     },
     {
-      "sheetName": "Sheet1", 
-      "row": 5,
-      "column": "Date",
-      "cell": "B5",
-      "value": "2024-01-15"
-    },
-    {
       "sheetName": "Sheet2",
-      "row": 3,
+      "row": <use Next available row number for Sheet2>,
       "column": "Status",
-      "cell": "C3", 
+      "cell": "C<row>", 
       "value": "Updated"
     }
   ]
@@ -165,10 +162,11 @@ ANALYSIS INSTRUCTIONS:
 ---
 ### CRITICAL RULES:
 - WORK WITHIN THE SELECTED SPREADSHEET ONLY - never suggest creating new spreadsheets
+- USE CORRECT ROW NUMBERS: Always use the provided "Next available row" number for each sheet
 - ANALYZE SHEET CONTEXT: Match user request to appropriate sheet(s) based on column headers and existing data
 - SMART DEFAULTS: Use patterns from existing data to suggest realistic values
 - EXACT REFERENCES: Provide precise A1-style cell references (A1, B2, C3, etc.)
-- NEW VS UPDATE: Determine if this should add new rows or update existing ones based on the request
+- NEW VS UPDATE: For new rows, use the next available row number provided for each sheet
 - MULTI-SHEET LOGIC: Can update multiple sheets if the request spans different data areas
 - RETURN JSON ONLY: No explanations, markdown, or backticks - just the raw JSON object
 - SEMANTIC MAPPING: Match natural language to appropriate database fields intelligently

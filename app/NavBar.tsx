@@ -133,8 +133,8 @@ const NavBar: React.FC = () => {
       <div className="container mx-auto flex items-center justify-between">
         {/* Logo and Title */}
         <div className="flex items-center gap-3">
-          <div className="bg-white rounded-full p-1 shadow-md">
-            <Image src="/globe.svg" alt="Logo" width={36} height={36} />
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2">
+            <Image src="/logo.png" alt="Logo" width={32} height={32} className="dark:invert" />
           </div>
           <Link href="/" className="relative group select-none">
             <span className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 drop-shadow-sm">
