@@ -1,15 +1,100 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useFirebase } from './providers/FirebaseProvider';
+import { useSheet } from './providers/SheetProvider';
+import { db } from './providers/FirebaseProvider';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  addDoc,
+  deleteDoc
+} from "firebase/firestore";
 import Link from 'next/link';
 
 const NAV_LINKS: { name: string; href: string }[] = [];
 
-const NavBar = () => {
+// Types for sheet management
+interface Option {
+  id: string;
+  label: string;
+  spreadsheetId: string;
+  sheetNames: string[];
+}
+
+const NavBar: React.FC = () => {
   const { user, loading, signOutUser } = useFirebase();
+  const { defaultSpreadsheetId, selectedSheetName, setDefaultSpreadsheetId, setSelectedSheetName } = useSheet();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sheetDropdownOpen, setSheetDropdownOpen] = useState(false);
+  const [options, setOptions] = useState<Option[]>([]);
+  const [newOption, setNewOption] = useState("");
+  const [addingSheet, setAddingSheet] = useState(false);
+
+  // Subscribe to user's spreadsheet options
+  useEffect(() => {
+    if (!user) return;
+    const optionsRef = collection(db, "users", user.uid, "options");
+    const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
+      setOptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Option));
+    });
+    return () => unsubOptions();
+  }, [user]);
+
+
+
+  const addOption = async () => {
+    if (!newOption.trim() || !user) return;
+    setAddingSheet(true);
+    try {
+      const res = await fetch('/api/get-sheet-names', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetId: newOption.trim() }),
+      });
+      if (!res.ok) {
+        alert('Failed to fetch sheet names. Make sure the spreadsheet is shared with the service account.');
+        return;
+      }
+      const { sheetNames, spreadsheetTitle } = await res.json();
+      await addDoc(collection(db, 'users', user.uid, 'options'), {
+        label: spreadsheetTitle || newOption.trim(),
+        spreadsheetId: newOption.trim(),
+        sheetNames,
+      });
+      setNewOption("");
+    } catch (e) {
+      console.error('Error adding spreadsheet:', e);
+      alert('Error adding spreadsheet');
+    } finally {
+      setAddingSheet(false);
+    }
+  };
+
+  const deleteOption = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, "users", user.uid, "options", id));
+  };
+
+  const handleSpreadsheetSelect = (spreadsheetId: string) => {
+    setDefaultSpreadsheetId(spreadsheetId);
+    // Auto-select first sheet if available
+    const option = options.find(o => o.spreadsheetId === spreadsheetId);
+    if (option && option.sheetNames.length > 0) {
+      const firstSheet = option.sheetNames[0];
+      setSelectedSheetName(firstSheet);
+    }
+    setSheetDropdownOpen(false);
+  };
+
+  const handleSheetSelect = (sheetName: string) => {
+    setSelectedSheetName(sheetName);
+    setSheetDropdownOpen(false);
+  };
+
+  const currentSpreadsheet = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/20 dark:bg-gray-900/30 border-b border-white/20 dark:border-gray-800/60 shadow-xl rounded-b-2xl px-4 py-3 mb-4 transition-all duration-300">
@@ -29,6 +114,124 @@ const NavBar = () => {
             <span className="absolute left-0 -bottom-1 w-full h-1 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 group-hover:scale-x-100 transition-all duration-300 origin-left" />
           </Link>
         </div>
+
+        {/* Sheet Selection Dropdown - Only show when user is logged in */}
+        {user && (
+          <div className="relative">
+            <button
+              onClick={() => setSheetDropdownOpen(!sheetDropdownOpen)}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 border border-white/20"
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 9h6v6H9z" />
+              </svg>
+              <span className="max-w-32 truncate">
+                {currentSpreadsheet?.label || "Select Sheet"}
+              </span>
+              {selectedSheetName && (
+                <span className="text-xs text-yellow-300">
+                  • {selectedSheetName}
+                </span>
+              )}
+              <svg 
+                className={`w-4 h-4 transition-transform ${sheetDropdownOpen ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                viewBox="0 0 24 24"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+
+            {sheetDropdownOpen && (
+              <div className="absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto z-50">
+                {/* Add new spreadsheet section */}
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex gap-2">
+                    <input
+                      value={newOption}
+                      onChange={e => setNewOption(e.target.value)}
+                      placeholder="Enter Spreadsheet ID..."
+                      className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
+                    />
+                    <button
+                      onClick={addOption}
+                      disabled={addingSheet || !newOption.trim()}
+                      className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg font-medium transition disabled:opacity-50"
+                    >
+                      {addingSheet ? "..." : "Add"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Spreadsheet list */}
+                <div className="max-h-64 overflow-y-auto">
+                  {options.length === 0 ? (
+                    <div className="p-4 text-center text-gray-500 text-sm">
+                      No spreadsheets found. Add one above.
+                    </div>
+                  ) : (
+                    options.map(option => (
+                      <div key={option.id} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+                        <div 
+                          className={`flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors ${
+                            defaultSpreadsheetId === option.spreadsheetId ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                          }`}
+                          onClick={() => handleSpreadsheetSelect(option.spreadsheetId)}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                              {option.label}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate">
+                              {option.sheetNames.length} sheet{option.sheetNames.length !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); if (window.confirm('Delete this spreadsheet?')) deleteOption(option.id); }}
+                            className="ml-2 p-1 text-red-600 hover:text-red-800 text-xs"
+                          >
+                            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path d="M6 8v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V8"/>
+                              <path d="M9 4h2a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2z"/>
+                              <line x1="4" y1="7" x2="16" y2="7"/>
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Sheet names for selected spreadsheet */}
+                        {defaultSpreadsheetId === option.spreadsheetId && (
+                          <div className="bg-gray-50 dark:bg-gray-800 px-6 pb-3">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">Select Sheet:</div>
+                            <div className="grid grid-cols-2 gap-1">
+                              {option.sheetNames.map(sheetName => (
+                                <button
+                                  key={sheetName}
+                                  onClick={() => handleSheetSelect(sheetName)}
+                                  className={`text-left px-2 py-1 text-xs rounded transition-colors ${
+                                    selectedSheetName === sheetName 
+                                      ? 'bg-blue-600 text-white' 
+                                      : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                                  }`}
+                                >
+                                  {sheetName}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Desktop Nav Links */}
         <div className="hidden md:flex items-center gap-6">
           {NAV_LINKS.map(link => (
@@ -42,6 +245,7 @@ const NavBar = () => {
             </Link>
           ))}
         </div>
+
         {/* User section & Mobile menu button */}
         <div className="flex items-center gap-4">
           {/* Mobile menu button */}
@@ -89,6 +293,14 @@ const NavBar = () => {
             </Link>
           ))}
         </div>
+      )}
+
+      {/* Click outside to close dropdown */}
+      {sheetDropdownOpen && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setSheetDropdownOpen(false)}
+        />
       )}
     </nav>
   );
