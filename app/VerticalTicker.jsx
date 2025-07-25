@@ -94,20 +94,20 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
   }, [displayed]);
 
   return (
-    <div className="relative w-full mx-auto px-4 py-2 overflow-visible">
+    <div className="relative w-full mx-auto px-2 py-1">
       {/* Outer wrapper to contain the border animation */}
-      <div className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-        {/* Recording border container - positioned absolutely with more space */}
+      <div className="absolute inset-0 w-full h-full">
+        {/* Recording border container - positioned absolutely with precise spacing */}
         {isRecording && (
           <div 
             className="absolute z-50 rounded-2xl recording-border-animation pointer-events-none"
             style={{ 
-              top: '-4px', 
-              left: '-4px', 
-              right: '-4px', 
-              bottom: '-4px',
-              width: 'calc(100% + 8px)',
-              height: 'calc(100% + 8px)'
+              top: '-2px', 
+              left: '-2px', 
+              right: '-2px', 
+              bottom: '-2px',
+              width: 'calc(100% + 4px)',
+              height: 'calc(100% + 4px)'
             }}
           ></div>
         )}
@@ -115,18 +115,19 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
     
       <div 
         ref={containerRef}
-        className={`relative h-32 max-h-40 w-full rounded-2xl overflow-visible transition-all duration-300 
+        className={`relative h-32 max-h-40 w-full rounded-2xl overflow-visible transition-all duration-300
                   ${isAnimating ? 'shadow-glow' : ''}
                   ${isFocused ? 'ring-2 ring-blue-400 dark:ring-blue-500' : ''}
                   ${isRecording ? 'recording-active' : ''}`}
         style={{ 
           background: 'transparent',
-          boxShadow: 'none', 
-          WebkitOverflowScrolling: 'touch', 
-          padding: 0, 
+          boxShadow: 'none',
+          WebkitOverflowScrolling: 'touch',
+          padding: 0,
           margin: 0,
           width: '100%',
-          minWidth: '100%'
+          minWidth: '100%',
+          border: isFocused || isRecording ? 'none' : 'none', // Remove any default border
         }}
       >
         {/* Container with padding for content */}
@@ -296,7 +297,7 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
         }
         
         .recording-border-animation {
-          border: 3px solid transparent;
+          border: 2px solid transparent;
           background: linear-gradient(90deg, #ef4444, #f97316, #f59e0b, #84cc16, #10b981, #06b6d4, #3b82f6, #8b5cf6, #d946ef, #ec4899, #ef4444) border-box;
           background-size: 300% 100%;
           -webkit-mask: 
@@ -307,7 +308,7 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
           animation: border-rotate 4s linear infinite, border-glow 2s ease-in-out infinite alternate;
           box-sizing: border-box;
           overflow: visible;
-          filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5));
+          filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.7)) drop-shadow(0 0 6px rgba(239, 68, 68, 0.5));
           pointer-events: none;
           z-index: 100 !important;
         }
@@ -318,9 +319,9 @@ export default function VerticalTicker({ transcript, onChange, onKeyDown, placeh
         }
         
         @keyframes border-glow {
-          0% { filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5)); }
-          50% { filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.8)) drop-shadow(0 0 16px rgba(59, 130, 246, 0.5)); }
-          100% { filter: drop-shadow(0 0 6px rgba(236, 72, 153, 0.8)) drop-shadow(0 0 12px rgba(236, 72, 153, 0.5)); }
+          0% { filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.7)) drop-shadow(0 0 6px rgba(239, 68, 68, 0.5)); }
+          50% { filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.7)) drop-shadow(0 0 8px rgba(59, 130, 246, 0.5)); }
+          100% { filter: drop-shadow(0 0 3px rgba(236, 72, 153, 0.7)) drop-shadow(0 0 6px rgba(236, 72, 153, 0.5)); }
         }
         
         .recording-active {

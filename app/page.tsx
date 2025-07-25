@@ -694,7 +694,7 @@ export default function Home() {
                       <ol className="list-decimal ml-4 mt-1 space-y-1">
                         <li>Go to the <a href="https://console.firebase.google.com/project/report-ai-23599/authentication/settings" target="_blank" rel="noopener noreferrer" className="underline">Firebase Console</a></li>
                         <li>Navigate to Authentication → Settings → Authorized domains</li>
-                        <li>Add "{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}" to the list</li>
+                        <li>Add &quot;{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&quot; to the list</li>
                       </ol>
                     </div>
                   )}

@@ -2,6 +2,22 @@ import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { sendToGeminiMulti } from '@/lib/gemini';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+// Type definitions
+interface SheetUpdate {
+  sheetName: string;
+  row: number;
+  column: string;
+  value: string | number;
+  [key: string]: unknown; // Allow additional properties
+}
+
+interface SheetAnalysis {
+  sheetPurpose?: string;
+  columnTypes?: { [key: string]: string };
+  lastKmEnd?: number | string | null;
+  [key: string]: unknown; // Allow additional properties
+}
+
 // Helper function to analyze sheet content and detect common patterns
 function analyzeSheetContent(sheetName: string, data: (string | number)[][]) {
   if (!data || data.length <= 1) return {};
@@ -67,7 +83,7 @@ function analyzeSheetContent(sheetName: string, data: (string | number)[][]) {
   // Analyze common values in category columns
   const categoryValues: {[key: string]: string[]} = {};
   const categoryColumns = Object.entries(columnTypes)
-    .filter(([_, type]) => type === 'CATEGORY')
+    .filter(([, type]) => type === 'CATEGORY')
     .map(([header]) => header);
   
   categoryColumns.forEach(header => {
@@ -153,11 +169,11 @@ function analyzeSheetContent(sheetName: string, data: (string | number)[][]) {
 }
 
 // Helper function to validate and fix vehicle log entries
-function validateAndFixVehicleLogEntries(updates: any[], sheetAnalysis: any) {
+function validateAndFixVehicleLogEntries(updates: SheetUpdate[], sheetAnalysis: { [sheetName: string]: SheetAnalysis }) {
   if (!updates || !Array.isArray(updates)) return updates;
   
   // Group updates by sheet and row
-  const updatesBySheetAndRow: {[key: string]: any[]} = {};
+  const updatesBySheetAndRow: {[key: string]: SheetUpdate[]} = {};
   
   updates.forEach(update => {
     const key = `${update.sheetName}-${update.row}`;
@@ -215,8 +231,8 @@ function validateAndFixVehicleLogEntries(updates: any[], sheetAnalysis: any) {
         console.log(`Calculating KM Start: ${kmEnd} - ${kmTraveled} = ${calculatedKmStart}`);
         
         // Find column name for KM Start
-        const startColumnName = Object.keys(analysis.columnTypes).find(col => 
-          analysis.columnTypes[col] === 'KM_START');
+        const startColumnName = analysis.columnTypes ? Object.keys(analysis.columnTypes).find(col => 
+          analysis.columnTypes![col] === 'KM_START') : undefined;
         
         if (startColumnName) {
           // Add the missing KM Start update
@@ -235,8 +251,8 @@ function validateAndFixVehicleLogEntries(updates: any[], sheetAnalysis: any) {
         console.log(`Calculating KM End: ${kmStart} + ${kmTraveled} = ${calculatedKmEnd}`);
         
         // Find column name for KM End
-        const endColumnName = Object.keys(analysis.columnTypes).find(col => 
-          analysis.columnTypes[col] === 'KM_END');
+        const endColumnName = analysis.columnTypes ? Object.keys(analysis.columnTypes).find(col => 
+          analysis.columnTypes![col] === 'KM_END') : undefined;
         
         if (endColumnName) {
           // Add the missing KM End update
@@ -254,8 +270,8 @@ function validateAndFixVehicleLogEntries(updates: any[], sheetAnalysis: any) {
         console.log(`Using last KM End (${analysis.lastKmEnd}) as new KM Start`);
         
         // Find column name for KM Start
-        const startColumnName = Object.keys(analysis.columnTypes).find(col => 
-          analysis.columnTypes[col] === 'KM_START');
+        const startColumnName = analysis.columnTypes ? Object.keys(analysis.columnTypes).find(col => 
+          analysis.columnTypes![col] === 'KM_START') : undefined;
         
         if (startColumnName) {
           // Add the missing KM Start update
@@ -264,17 +280,17 @@ function validateAndFixVehicleLogEntries(updates: any[], sheetAnalysis: any) {
             row: rowUpdates[0].row,
             column: startColumnName,
             cell: startColumnName.charAt(0).toUpperCase() + rowUpdates[0].row, // Simplified cell reference
-            value: analysis.lastKmEnd.toString()
+            value: (analysis.lastKmEnd ?? 0).toString()
           });
           
           // If we also need to calculate KM Traveled
-          if (kmEnd !== null && !kmTraveled) {
+          if (kmEnd !== null && !kmTraveled && analysis.lastKmEnd !== undefined) {
             const calculatedKmTraveled = kmEnd - parseFloat(String(analysis.lastKmEnd));
             console.log(`Calculating KM Traveled: ${kmEnd} - ${analysis.lastKmEnd} = ${calculatedKmTraveled}`);
             
             // Find column name for KM Traveled
-            const traveledColumnName = Object.keys(analysis.columnTypes).find(col => 
-              analysis.columnTypes[col] === 'KM_TRAVELED');
+            const traveledColumnName = analysis.columnTypes ? Object.keys(analysis.columnTypes).find(col => 
+              analysis.columnTypes![col] === 'KM_TRAVELED') : undefined;
             
             if (traveledColumnName) {
               // Add the missing KM Traveled update
@@ -297,8 +313,8 @@ function validateAndFixVehicleLogEntries(updates: any[], sheetAnalysis: any) {
         console.log(`Using default distance (${defaultDistance}) to calculate KM End: ${kmStart} + ${defaultDistance} = ${calculatedKmEnd}`);
         
         // Find column name for KM End
-        const endColumnName = Object.keys(analysis.columnTypes).find(col => 
-          analysis.columnTypes[col] === 'KM_END');
+        const endColumnName = analysis.columnTypes ? Object.keys(analysis.columnTypes).find(col => 
+          analysis.columnTypes![col] === 'KM_END') : undefined;
         
         if (endColumnName) {
           // Add the missing KM End update
@@ -313,8 +329,8 @@ function validateAndFixVehicleLogEntries(updates: any[], sheetAnalysis: any) {
           // If we also need to calculate KM Traveled
           if (!kmTraveled) {
             // Find column name for KM Traveled
-            const traveledColumnName = Object.keys(analysis.columnTypes).find(col => 
-              analysis.columnTypes[col] === 'KM_TRAVELED');
+            const traveledColumnName = analysis.columnTypes ? Object.keys(analysis.columnTypes).find(col => 
+              analysis.columnTypes![col] === 'KM_TRAVELED') : undefined;
             
             if (traveledColumnName) {
               // Add the missing KM Traveled update
@@ -359,7 +375,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Enhanced: Get data for ALL sheets to enable better cross-sheet analysis
     // This allows the AI to understand the full context and make better decisions about which sheets to update
     const sheetsData: { [sheetName: string]: (string | number)[][] } = {};
-    const sheetAnalysis: { [sheetName: string]: any } = {};
+    const sheetAnalysis: { [sheetName: string]: SheetAnalysis } = {};
     
     // Fetch data from all available sheets for comprehensive analysis
     for (const sheetName of sheetNames) {
@@ -451,7 +467,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (detectedCategories.includes('VEHICLE')) {
       // Look for vehicle log sheets
       const vehicleSheets = Object.entries(sheetAnalysis)
-        .filter(([_, analysis]) => analysis.sheetPurpose === 'VEHICLE_LOG')
+        .filter(([, analysis]) => analysis.sheetPurpose === 'VEHICLE_LOG')
         .map(([name]) => name);
       
       if (vehicleSheets.length > 0) {
@@ -462,7 +478,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (detectedCategories.includes('FOOD') || detectedCategories.includes('TRAVEL')) {
       // Look for expense sheets
       const expenseSheets = Object.entries(sheetAnalysis)
-        .filter(([_, analysis]) => analysis.sheetPurpose === 'EXPENSE_TRACKING')
+        .filter(([, analysis]) => analysis.sheetPurpose === 'EXPENSE_TRACKING')
         .map(([name]) => name);
       
       if (expenseSheets.length > 0) {
@@ -543,8 +559,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`Final updates after validation: ${aiResponse.updates.length} updates`);
     
     // Group updates by sheet and row for better logging
-    const updatesBySheetAndRow: {[key: string]: any[]} = {};
-    aiResponse.updates.forEach((update: any) => {
+    const updatesBySheetAndRow: {[key: string]: SheetUpdate[]} = {};
+    aiResponse.updates.forEach((update: SheetUpdate) => {
       const key = `${update.sheetName}-${update.row}`;
       if (!updatesBySheetAndRow[key]) {
         updatesBySheetAndRow[key] = [];

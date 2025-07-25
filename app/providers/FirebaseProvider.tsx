@@ -80,14 +80,15 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       });
       
       await signInWithPopup(auth, provider);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Firebase auth error:", error);
       
       // Handle unauthorized domain error specifically
-      if (error.code === 'auth/unauthorized-domain') {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'auth/unauthorized-domain') {
         setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
       } else {
-        setAuthError(error.message || "Authentication failed. Please try again.");
+        const errorMessage = error && typeof error === 'object' && 'message' in error ? error.message : "Authentication failed. Please try again.";
+        setAuthError(errorMessage as string);
       }
     }
   };
