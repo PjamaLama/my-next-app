@@ -7,7 +7,6 @@ import ServiceAccountInfo from './components/ServiceAccountInfo';
 import { db } from "./providers/FirebaseProvider";
 import {
   collection,
-  doc,
   onSnapshot,
   addDoc,
   query,
@@ -80,6 +79,14 @@ interface ActivityItem {
   rowsAffected?: number; // For multi-row operations
 }
 
+interface AiApiResponse {
+  aiResponse: {
+    updates?: StepperField[];
+    sheetsToUpdate?: string[];
+  };
+  error?: string;
+}
+
 function playBeep() {
   if (typeof window === 'undefined') return;
   try {
@@ -107,7 +114,7 @@ export default function Home() {
   const { user, loading, signInWithGoogle, geminiApiKey } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetName } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
-  const { settingsOpen, setSettingsOpen } = useSettings();
+  // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -128,7 +135,7 @@ export default function Home() {
   const [editingTranscript, setEditingTranscript] = useState(false);
   // Add state for AI APIs (replaces webhooks)
   const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
-  const [selectedAiApi, setSelectedAiApi] = useState<string>("gemini");
+  const [selectedAiApi] = useState<string>("gemini"); // Re-added selectedAiApi
 
   // Default Gemini API (non-removable)
   const GEMINI_API = {
@@ -179,7 +186,7 @@ export default function Home() {
           body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: selectedSheetName }),
         });
         if (res.ok) {
-          const { data } = await res.json();
+          // const { data } = await res.json();
           // setSheetData(data || []); // This state is removed
         } else {
           // setSheetData([]); // This state is removed
@@ -485,34 +492,34 @@ export default function Home() {
       const text = await res.text();
       console.log("AI API raw response text:", text);
       console.log("AI API HTTP status:", res.status, res.statusText);
-      let data;
+      let data: AiApiResponse;
       try {
         data = JSON.parse(text);
       } catch (e) {
         console.error("Failed to parse AI API response as JSON:", e);
-        data = {};
+        data = { error: "Failed to parse response.", aiResponse: {} };
       }
       console.log("AI API parsed response:", data);
       if (res.ok && data.aiResponse) {
-        // Handle enhanced multi-sheet response
-        const aiFields = Array.isArray(data.aiResponse)
-          ? data.aiResponse
-          : data.aiResponse.updates || [];
-        
-        setStepperFields(aiFields);
-        // Initialize stepperValues with value for each field
-        const initialStepperValues: { [cell: string]: string } = {};
-        aiFields.forEach((field: StepperField) => {
-          if (field.cell) {
-            initialStepperValues[field.cell] = field.value ?? '';
-          }
-        });
-        setStepperValues(initialStepperValues);
-        setStepperModalOpen(true);
-        setSendResult(`AI suggestions ready for ${data.aiResponse.sheetsToUpdate?.length || 1} sheet(s). Confirm and edit as needed.`);
-      } else {
-        setSendResult(data.error || "Failed to get AI response.");
-      }
+          // Handle enhanced multi-sheet response
+          const aiFields = Array.isArray(data.aiResponse)
+            ? data.aiResponse
+            : data.aiResponse.updates || [];
+          
+          setStepperFields(aiFields);
+          // Initialize stepperValues with value for each field
+          const initialStepperValues: { [cell: string]: string } = {};
+          aiFields.forEach((field: StepperField) => {
+            if (field.cell) {
+              initialStepperValues[field.cell] = field.value ?? '';
+            }
+          });
+          setStepperValues(initialStepperValues);
+          setStepperModalOpen(true);
+          setSendResult(`AI suggestions ready for ${data.aiResponse.sheetsToUpdate?.length || 1} sheet(s). Confirm and edit as needed.`);
+        } else {
+          setSendResult(data.error || "Failed to get AI response.");
+        }
     } catch (e) {
       setSendResult("Error: " + (e instanceof Error ? e.message : String(e)));
     }

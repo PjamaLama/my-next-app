@@ -13,7 +13,6 @@ import {
   onSnapshot,
   addDoc,
   deleteDoc,
-  setDoc
 } from "firebase/firestore";
 import Link from 'next/link';
 import { useSettings } from './providers/SettingsProvider'; // Import useSettings from the new provider
