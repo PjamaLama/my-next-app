@@ -169,6 +169,21 @@ export default function Home() {
     };
   }, [user]);
 
+  // Load Gemini API key from Firestore
+  useEffect(() => {
+    if (!user) return;
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.geminiApiKey) {
+          setGeminiApiKey(data.geminiApiKey);
+        }
+      }
+    });
+    return () => unsubUserDoc();
+  }, [user]);
+
   const saveGeminiApiKey = async () => {
     if (!user || !geminiApiKey.trim()) return;
     try {
@@ -776,25 +791,31 @@ export default function Home() {
           {/* AI API Configuration Section */}
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
             <h2 className="text-lg font-semibold mb-2">AI Configuration</h2>
-            
-            {/* Gemini API Key */}
-            <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-              <h3 className="text-md font-semibold mb-2 text-gray-800 dark:text-gray-100">Google Gemini API Key</h3>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  value={geminiApiKey}
-                  onChange={e => setGeminiApiKey(e.target.value)}
-                  placeholder="Enter your Gemini API Key..."
-                  className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                />
-                <button
-                  onClick={saveGeminiApiKey}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition"
-                >Save</button>
+            {/* Only show Gemini API key input if not present */}
+            {!geminiApiKey && (
+              <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h3 className="text-md font-semibold mb-2 text-gray-800 dark:text-gray-100">Google Gemini API Key</h3>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={e => setGeminiApiKey(e.target.value)}
+                    placeholder="Enter your Gemini API Key..."
+                    className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 flex-1 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!user || !geminiApiKey.trim()) return;
+                      await setDoc(doc(db, "users", user.uid), { geminiApiKey: geminiApiKey.trim() }, { merge: true });
+                      setGeminiApiKeySaved(true);
+                      setTimeout(() => setGeminiApiKeySaved(false), 3000);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition"
+                  >Save</button>
+                </div>
+                {geminiApiKeySaved && <p className="text-green-600 text-sm mt-2">API Key saved!</p>}
               </div>
-              {geminiApiKeySaved && <p className="text-green-600 text-sm mt-2">API Key saved!</p>}
-            </div>
+            )}
             
             {/* AI API Selection */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

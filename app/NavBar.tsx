@@ -10,7 +10,8 @@ import {
   doc,
   onSnapshot,
   addDoc,
-  deleteDoc
+  deleteDoc,
+  setDoc
 } from "firebase/firestore";
 import Link from 'next/link';
 
@@ -32,6 +33,37 @@ const NavBar: React.FC = () => {
   const [options, setOptions] = useState<Option[]>([]);
   const [newOption, setNewOption] = useState("");
   const [addingSheet, setAddingSheet] = useState(false);
+  // Gemini API Key settings modal state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>("");
+  const [geminiApiKeySaved, setGeminiApiKeySaved] = useState<boolean>(false);
+
+  // Load Gemini API key from Firestore
+  useEffect(() => {
+    if (!user) return;
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.geminiApiKey) {
+          setGeminiApiKey(data.geminiApiKey);
+        }
+      }
+    });
+    return () => unsubUserDoc();
+  }, [user]);
+
+  const saveGeminiApiKey = async () => {
+    if (!user || !geminiApiKey.trim()) return;
+    try {
+      await setDoc(doc(db, "users", user.uid), { geminiApiKey: geminiApiKey.trim() }, { merge: true });
+      setGeminiApiKeySaved(true);
+      setTimeout(() => setGeminiApiKeySaved(false), 3000);
+      setSettingsOpen(false);
+    } catch (e) {
+      console.error("Error saving Gemini API key:", e);
+    }
+  };
 
   // Subscribe to user's spreadsheet options
   useEffect(() => {
@@ -248,6 +280,19 @@ const NavBar: React.FC = () => {
 
         {/* User section & Mobile menu button */}
         <div className="flex items-center gap-4">
+          {/* Settings (gear) icon */}
+          {user && (
+            <button
+              className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/30 transition-colors duration-200 focus:outline-none"
+              aria-label="Settings"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15.4a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 5 8.6a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09c.29.06.56.18.8.34.24.16.45.37.61.61.16.24.28.51.34.8H16a1.65 1.65 0 0 0 1.51 1z" />
+              </svg>
+            </button>
+          )}
           {/* Mobile menu button */}
           <button
             className="md:hidden flex flex-col justify-center items-center w-10 h-10 rounded-lg hover:bg-white/30 transition-colors duration-200 focus:outline-none"
@@ -301,6 +346,36 @@ const NavBar: React.FC = () => {
           className="fixed inset-0 z-40" 
           onClick={() => setSheetDropdownOpen(false)}
         />
+      )}
+
+      {/* Settings Modal */}
+      {settingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <section className="w-full max-w-md mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[90vh] overflow-hidden">
+            <button
+              onClick={() => setSettingsOpen(false)}
+              className="sticky top-4 right-4 float-right text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent"
+              aria-label="Close"
+              style={{ position: 'absolute', top: 16, right: 16 }}
+            >&times;</button>
+            <h2 className="text-xl font-bold mb-6 text-center">Settings</h2>
+            <div className="mb-4 w-full">
+              <label className="block text-md font-semibold mb-2 text-gray-800 dark:text-gray-100">Google Gemini API Key</label>
+              <input
+                type="password"
+                value={geminiApiKey}
+                onChange={e => setGeminiApiKey(e.target.value)}
+                placeholder="Enter your Gemini API Key..."
+                className="border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 w-full bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              />
+              <button
+                onClick={saveGeminiApiKey}
+                className="mt-3 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition w-full"
+              >Save</button>
+              {geminiApiKeySaved && <p className="text-green-600 text-sm mt-2">API Key saved!</p>}
+            </div>
+          </section>
+        </div>
       )}
     </nav>
   );
