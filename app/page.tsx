@@ -6,8 +6,6 @@ import { db } from "./providers/FirebaseProvider";
 import {
   collection,
   doc,
-  setDoc,
-  deleteDoc,
   onSnapshot,
   addDoc,
   query,
@@ -597,7 +595,7 @@ export default function Home() {
                     Welcome to Report AI! 🎉
                   </h3>
                   <p className="text-gray-600 dark:text-gray-300 text-sm sm:text-base max-w-md mx-auto">
-                    To get started, you'll need to add a Google Spreadsheet. Simply paste the share link from your Google Sheet in the navigation bar above.
+                    To get started, you&apos;ll need to add a Google Spreadsheet. Simply paste the share link from your Google Sheet in the navigation bar above.
                   </p>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-md mx-auto">
@@ -613,7 +611,7 @@ export default function Home() {
                       </p>
                       <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
                         <li>1. Open your Google Sheet</li>
-                        <li>2. Click "Share" → "Copy link"</li>
+                        <li>2. Click &quot;Share&quot; &rarr; &quot;Copy link&quot;</li>
                         <li>3. Paste the link in the navigation bar above</li>
                         <li>4. Start using voice-to-spreadsheet AI! 🎤</li>
                       </ol>

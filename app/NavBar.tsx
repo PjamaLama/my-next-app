@@ -26,8 +26,8 @@ interface Option {
 }
 
 const NavBar: React.FC = () => {
-  const { user, loading, signOutUser } = useFirebase();
-  const { defaultSpreadsheetId, selectedSheetName, setDefaultSpreadsheetId, setSelectedSheetName } = useSheet();
+  const { user, signOutUser } = useFirebase();
+  const { defaultSpreadsheetId, setDefaultSpreadsheetId, setSelectedSheetName } = useSheet();
   const [sheetDropdownOpen, setSheetDropdownOpen] = useState(false);
   const [options, setOptions] = useState<Option[]>([]);
   const [newOption, setNewOption] = useState("");
@@ -153,11 +153,6 @@ const NavBar: React.FC = () => {
       const firstSheet = option.sheetNames[0];
       setSelectedSheetName(firstSheet);
     }
-    setSheetDropdownOpen(false);
-  };
-
-  const handleSheetSelect = (sheetName: string) => {
-    setSelectedSheetName(sheetName);
     setSheetDropdownOpen(false);
   };
 
