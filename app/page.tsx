@@ -32,15 +32,20 @@ interface MinimalSpeechRecognition {
   start: () => void;
   stop: () => void;
   onresult: (event: MinimalSpeechRecognitionEvent) => void;
-  onerror: () => void;
+  onerror: (event: any) => void;
   onend: () => void;
+  onstart?: () => void;
 }
 interface MinimalSpeechRecognitionEvent {
   results: {
     length: number;
     [index: number]: {
-      [index: number]: { transcript: string };
+      length: number;
       isFinal: boolean;
+      [index: number]: { 
+        transcript: string;
+        confidence: number;
+      };
     };
   };
 }
@@ -208,7 +213,13 @@ export default function Home() {
   const startListening = (clearTranscript = true) => {
     if (typeof window === "undefined") return;
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) return alert("Speech recognition not supported in this browser.");
+    if (!SpeechRecognitionClass) {
+      alert("Speech recognition not supported in this browser.");
+      return;
+    }
+    
+    console.log('SpeechRecognition class found:', SpeechRecognitionClass); // Debug log
+    
     // Play beep when starting to record
     playBeep();
     // Create a new instance every time
@@ -216,43 +227,46 @@ export default function Home() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognition.onresult = (event: MinimalSpeechRecognitionEvent) => {
-      let finalTranscript = "";
-      let interimTranscript = "";
+    recognition.onresult = (event: any) => {
+      console.log('Speech recognition result received:', event); // Debug log
       
-      // Process all results to separate final from interim
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      // Simple approach - just concatenate all results
       for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
-        const transcriptPiece = result[0].transcript;
+        console.log(`Processing result ${i}:`, result); // Debug log
         
         if (result.isFinal) {
-          finalTranscript += transcriptPiece;
+          finalTranscript += result[0].transcript;
+          console.log('Final result:', result[0].transcript); // Debug log
         } else {
-          interimTranscript += transcriptPiece;
+          interimTranscript += result[0].transcript;
+          console.log('Interim result:', result[0].transcript); // Debug log
         }
+      }
+
+      // Update transcript immediately to test if it works at all
+      if (finalTranscript) {
+        console.log('Setting final transcript:', finalTranscript); // Debug log
+        setTranscript(prev => prev + finalTranscript);
+        setInterimText('');
       }
       
-      // Update final transcript when speech is finalized
-      if (finalTranscript.trim()) {
-        setTranscript(prev => prev + finalTranscript);
-        setInterimText(""); // Clear interim when final is received
-        // Clear any pending interim updates
-        if (interimTimeoutRef.current) {
-          clearTimeout(interimTimeoutRef.current);
-          interimTimeoutRef.current = null;
-        }
-      } else if (interimTranscript.trim()) {
-        // Throttle interim text updates to reduce flickering
-        if (interimTimeoutRef.current) {
-          clearTimeout(interimTimeoutRef.current);
-        }
-        interimTimeoutRef.current = setTimeout(() => {
-          setInterimText(interimTranscript);
-          interimTimeoutRef.current = null;
-        }, 200); // Update interim text every 200ms max
+      if (interimTranscript) {
+        console.log('Setting interim transcript:', interimTranscript); // Debug log
+        setInterimText(interimTranscript);
       }
     };
-    recognition.onerror = () => setListening(false);
+    recognition.onstart = () => {
+      console.log('Speech recognition started successfully!');
+    };
+    
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setListening(false);
+    };
     recognition.onend = () => {
       if (listeningRef.current && !paused) {
         try {
@@ -271,6 +285,7 @@ export default function Home() {
     }
     setListening(true);
     setPaused(false);
+    console.log('Starting speech recognition...'); // Debug log
     recognition.start();
   };
 
