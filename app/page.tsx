@@ -120,8 +120,6 @@ export default function Home() {
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
   
   const [editingTranscript, setEditingTranscript] = useState(false);
-  // Add state for text input at the top of the Home component
-  const [textInputValue, setTextInputValue] = useState("");
   // Add state for AI APIs (replaces webhooks)
   const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
   const [selectedAiApi, setSelectedAiApi] = useState<string>("gemini");
@@ -529,12 +527,7 @@ export default function Home() {
   //   if (selectedAiApi === id) setSelectedAiApi("gemini");
   // };
 
-  const handleTextInputSend = () => {
-    if (textInputValue.trim()) {
-      setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
-      setTextInputValue('');
-    }
-  };
+
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
@@ -584,9 +577,36 @@ export default function Home() {
             <div className="relative w-full flex flex-col items-center">
               {!editingTranscript ? (
                 <div className="relative w-full">
-                  {/* VerticalTicker */}
-                  <div className="w-full min-h-[100px] flex items-center justify-center">
-                    <VerticalTicker transcript={transcript} />
+                  {/* Editable VerticalTicker that combines input and display */}
+                  <div className="w-full min-h-[128px] flex items-center justify-center relative">
+                    <VerticalTicker 
+                      transcript={transcript} 
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                        if (e.key === 'Enter' && e.ctrlKey) {
+                          sendToAiApi();
+                        }
+                      }}
+                      placeholder="Type or speak your message..."
+                      disabled={listening}
+                    />
+                    {/* Clear button overlay */}
+                    {transcript && (
+                      <button
+                        type="button"
+                        onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
+                        className="absolute top-2 right-2 p-1.5 rounded-full z-30
+                                 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
+                                 hover:bg-gray-100 dark:hover:bg-gray-700
+                                 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm
+                                 transition-all duration-200 border border-gray-200 dark:border-gray-600"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="4" y1="4" x2="16" y2="16" />
+                          <line x1="16" y1="4" x2="4" y2="16" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   
                   {/* Input Controls */}
@@ -642,76 +662,29 @@ export default function Home() {
                       </button>
                     </div>
 
-                    <div className="w-full max-w-lg flex items-center gap-2">
-                      {/* Text Input */}
-                      <div className="flex-1 relative">
-                        <input
-                          type="text"
-                          value={textInputValue || ''}
-                          onChange={e => setTextInputValue(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              handleTextInputSend();
-                            }
-                          }}
-                          placeholder="Or type your message..."
-                          className="w-full h-10 pl-4 pr-10 rounded-xl border border-gray-300 dark:border-gray-600 
-                                   bg-white/30 dark:bg-gray-800/30 backdrop-blur-sm
-                                   text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500
-                                   focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
-                                   transition-all duration-200 text-sm"
-                        />
-                        {transcript && (
-                          <button
-                            type="button"
-                            onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full
-                                     text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
-                                     hover:bg-gray-100 dark:hover:bg-gray-700
-                                     transition-all duration-200"
-                          >
-                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                              <line x1="4" y1="4" x2="16" y2="16" />
-                              <line x1="16" y1="4" x2="4" y2="16" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                      {textInputValue.trim() && (
-                        <button
-                          onClick={handleTextInputSend}
-                          disabled={!textInputValue.trim()}
-                          className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm
-                                  bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Send
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                          </svg>
-                        </button>
-                      )}
+                    <div className="w-full max-w-lg flex items-center gap-2 justify-center">
                       {/* Process with AI Button */}
                       {transcript.trim() && (
                         <button
                           onClick={sendToAiApi}
                           disabled={sending || !defaultSpreadsheetId}
-                          className={`h-10 px-4 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm
+                          className={`h-12 px-6 rounded-xl flex items-center gap-2 transition-all duration-200 text-base font-medium
                                     ${sending 
                                       ? 'bg-purple-600 text-white cursor-not-allowed opacity-70'
-                                      : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                                      : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl'}`}
                         >
                           {sending ? (
                             <>
-                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                               </svg>
-                              <span className="font-medium">Processing...</span>
+                              <span>Processing...</span>
                             </>
                           ) : (
                             <>
-                              <span className="font-medium">Process</span>
-                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <span>Process with AI</span>
+                              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                               </svg>
                             </>

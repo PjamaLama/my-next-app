@@ -3,16 +3,21 @@ import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 
 /**
- * VerticalTicker - Live transcript/ticker component for Next.js using Framer Motion.
+ * VerticalTicker - Live transcript/ticker component that's also editable
  *
  * Props:
- *   transcript: string (updates live)
+ *   transcript: string (updates live from voice)
+ *   onChange: function (called when user types)
+ *   onKeyDown: function (called on key events)
+ *   placeholder: string
+ *   disabled: boolean
  */
-export default function VerticalTicker({ transcript }) {
+export default function VerticalTicker({ transcript, onChange, onKeyDown, placeholder = "Type or speak your message...", disabled = false }) {
   const containerRef = useRef(null);
-  const textRef = useRef(null);
+  const textareaRef = useRef(null);
   const [displayed, setDisplayed] = useState('');
   const [isOverflowing, setIsOverflowing] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   // Track which words are new for pulsing
   const [newWordIndices, setNewWordIndices] = useState([]);
   const [prevWordCount, setPrevWordCount] = useState(0);
@@ -40,133 +45,147 @@ export default function VerticalTicker({ transcript }) {
 
   // Auto-scroll to end as text grows
   useEffect(() => {
-    if (containerRef.current && textRef.current) {
-      containerRef.current.scrollTo({
-        left: 0,
-        top: containerRef.current.scrollHeight,
-        behavior: 'smooth',
-      });
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
     }
   }, [displayed]);
 
   // Detect overflow
   useEffect(() => {
-    if (containerRef.current && textRef.current) {
+    if (containerRef.current && textareaRef.current) {
       const container = containerRef.current;
-      const text = textRef.current;
-      setIsOverflowing(text.scrollHeight > container.clientHeight);
+      const textarea = textareaRef.current;
+      setIsOverflowing(textarea.scrollHeight > container.clientHeight);
     }
   }, [displayed]);
 
   // Split transcript into lines
   const lines = displayed.split('\n');
   const wrapperRef = useRef(null);
-  const lineRefs = useRef([]);
 
-  // Calculate the height of the last line for vertical alignment
-  const [lastLineHeight, setLastLineHeight] = useState(0);
-  useEffect(() => {
-    if (lineRefs.current[lines.length - 1]) {
-      setLastLineHeight(lineRefs.current[lines.length - 1].offsetHeight || 0);
+  // Handle input changes
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setDisplayed(value);
+    if (onChange) {
+      onChange(e);
     }
-  }, [displayed, lines.length]);
+  };
 
-  // Refs for each line
-  const [spacerHeight, setSpacerHeight] = useState(0);
-
-  // Calculate spacer height to center the last line
-  useEffect(() => {
-    if (!wrapperRef.current || lines.length === 0) return;
-    let prevHeight = 0;
-    for (let i = 0; i < lines.length - 1; i++) {
-      const ref = lineRefs.current[i];
-      if (ref) prevHeight += ref.offsetHeight;
+  // Handle key events
+  const handleKeyDown = (e) => {
+    if (onKeyDown) {
+      onKeyDown(e);
     }
-    const wrapperHeight = wrapperRef.current.clientHeight;
-    const lastLineRef = lineRefs.current[lines.length - 1];
-    const lastLineHeight = lastLineRef ? lastLineRef.offsetHeight : 0;
-    setSpacerHeight(Math.max(0, (wrapperHeight / 2) - (lastLineHeight / 2) - prevHeight - 8));
-  }, [displayed, lines.length]);
+  };
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    }
+  }, [displayed]);
 
   return (
     <div className="relative h-32 max-h-40 w-full" style={{ background: 'transparent', border: 'none', boxShadow: 'none', WebkitOverflowScrolling: 'touch', padding: 0, margin: 0 }}>
-      {/* Top fade overlay for text fade-out */}
-      <div className="pointer-events-none absolute top-0 left-0 w-full h-8 z-10 ticker-fade-top" />
-      {/* Bottom fade overlay for text fade-out */}
-      <div className="pointer-events-none absolute bottom-0 left-0 w-full h-8 z-10 ticker-fade-bottom" />
+      {/* Top fade overlay for text fade-out - only show when not focused */}
+      {!isFocused && (
+        <div className="pointer-events-none absolute top-0 left-0 w-full h-8 z-10 ticker-fade-top" />
+      )}
+      {/* Bottom fade overlay for text fade-out - only show when not focused */}
+      {!isFocused && (
+        <div className="pointer-events-none absolute bottom-0 left-0 w-full h-8 z-10 ticker-fade-bottom" />
+      )}
+      
       <div
         ref={wrapperRef}
         className="h-full w-full overflow-hidden relative"
         style={{ background: 'transparent', padding: 0, margin: 0 }}
       >
-        {/* Previous lines above center */}
-        <div
+        {/* Invisible textarea for input handling */}
+        <textarea
+          ref={textareaRef}
+          value={displayed}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          disabled={disabled}
+          placeholder={!displayed ? placeholder : ""}
+          className={`absolute inset-0 w-full h-full resize-none bg-transparent border-none outline-none 
+                     text-transparent caret-current z-20 overflow-hidden
+                     ${isFocused ? 'text-gray-900 dark:text-gray-100' : 'text-transparent'}
+                     placeholder-gray-400 dark:placeholder-gray-500`}
           style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: `calc(50% + ${lastLineHeight / 2}px)`,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            width: '100%',
-            pointerEvents: 'none',
+            padding: '16px',
+            fontSize: '1rem',
+            lineHeight: '1.6',
+            fontFamily: 'inherit',
+            fontWeight: '500',
+            textAlign: 'center',
+            caretColor: isFocused ? 'currentColor' : 'transparent',
           }}
-        >
-          {lines.slice(0, -1).map((line, idx) => (
-            <motion.div
-              key={idx}
-              ref={el => lineRefs.current[idx] = el}
-              initial={{ opacity: 1 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className={`text-base sm:text-base font-medium leading-relaxed break-words bg-transparent border-none shadow-none whitespace-pre-line w-full text-center`}
-              style={{ margin: 0, padding: 0 }}
-            >
-              {line}
-            </motion.div>
-          ))}
-        </div>
-        {/* Current line centered */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: '100%',
-            pointerEvents: 'none',
-          }}
-        >
-          <motion.div
-            ref={el => lineRefs.current[lines.length - 1] = el}
-            initial={{ opacity: 0.7 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            className={`text-base sm:text-base font-medium leading-relaxed break-words bg-transparent border-none shadow-none whitespace-pre-line w-full text-center`}
-            style={{ margin: 0, padding: 0 }}
+        />
+
+        {/* Display layer - shown when not focused or when there's content */}
+        {(!isFocused || !displayed) && (
+          <div
+            className="absolute inset-0 pointer-events-none flex flex-col justify-center items-center p-4"
+            style={{ zIndex: 10 }}
           >
-            {/* Highlight new words in the last line */}
-            {(() => {
-              const words = lines[lines.length - 1].split(/(\s+)/);
-              return words.map((word, i) => (
-                <span
-                  key={i}
-                  className={newWordIndices.includes(i) && word.trim() !== '' ? 'ticker-word-pulse' : ''}
-                  style={{ display: 'inline', transition: 'color 0.3s, filter 0.3s' }}
+            {displayed ? (
+              // Show vertical ticker display
+              <div className="w-full text-center">
+                {/* Previous lines above center */}
+                <div className="flex flex-col items-center justify-end mb-2">
+                  {lines.slice(0, -1).map((line, idx) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 1 }}
+                      animate={{ opacity: 0.7 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                      className="text-base font-medium leading-relaxed break-words whitespace-pre-line text-gray-600 dark:text-gray-400"
+                    >
+                      {line}
+                    </motion.div>
+                  ))}
+                </div>
+                
+                {/* Current/last line centered and highlighted */}
+                <motion.div
+                  initial={{ opacity: 0.7 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="text-base font-medium leading-relaxed break-words whitespace-pre-line text-gray-900 dark:text-gray-100"
                 >
-                  {word}
-                </span>
-              ));
-            })()}
-          </motion.div>
-        </div>
+                  {/* Highlight new words in the last line */}
+                  {(() => {
+                    const words = lines[lines.length - 1].split(/(\s+)/);
+                    return words.map((word, i) => (
+                      <span
+                        key={i}
+                        className={newWordIndices.includes(i) && word.trim() !== '' ? 'ticker-word-pulse' : ''}
+                        style={{ display: 'inline', transition: 'color 0.3s, filter 0.3s' }}
+                      >
+                        {word}
+                      </span>
+                    ));
+                  })()}
+                </motion.div>
+              </div>
+            ) : (
+              // Show placeholder when empty
+              <div className="text-gray-400 dark:text-gray-500 text-base font-medium text-center">
+                {placeholder}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      {/* Hide scrollbar for Webkit browsers */}
+
+      {/* Styles */}
       <style>{`
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
         .ticker-fade-top {
           pointer-events: none;
           position: absolute;
@@ -175,7 +194,10 @@ export default function VerticalTicker({ transcript }) {
           width: 100%;
           height: 2rem;
           z-index: 10;
-          background: linear-gradient(to bottom, var(--box-bg) 70%, transparent 100%);
+          background: linear-gradient(to bottom, rgba(255,255,255,0.9) 70%, transparent 100%);
+        }
+        .dark .ticker-fade-top {
+          background: linear-gradient(to bottom, rgba(24,24,27,0.9) 70%, transparent 100%);
         }
         .ticker-fade-bottom {
           pointer-events: none;
@@ -185,7 +207,10 @@ export default function VerticalTicker({ transcript }) {
           width: 100%;
           height: 2rem;
           z-index: 10;
-          background: linear-gradient(to top, var(--box-bg) 70%, transparent 100%);
+          background: linear-gradient(to top, rgba(255,255,255,0.9) 70%, transparent 100%);
+        }
+        .dark .ticker-fade-bottom {
+          background: linear-gradient(to top, rgba(24,24,27,0.9) 70%, transparent 100%);
         }
         .ticker-word-pulse {
            animation: tickerWordPulse 0.9s cubic-bezier(0.4,0,0.2,1) 1;
@@ -204,4 +229,8 @@ export default function VerticalTicker({ transcript }) {
 
 VerticalTicker.propTypes = {
   transcript: PropTypes.string.isRequired,
+  onChange: PropTypes.func,
+  onKeyDown: PropTypes.func,
+  placeholder: PropTypes.string,
+  disabled: PropTypes.bool,
 }; 
