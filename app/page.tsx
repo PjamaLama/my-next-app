@@ -21,10 +21,15 @@ import VerticalTicker from './VerticalTicker';
 import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
-import { useSettings } from './providers/SettingsProvider'; // Corrected import path
+// import { useSettings } from './providers/SettingsProvider'; // Corrected import path
 
 // Types
 // Add minimal interfaces for SpeechRecognition and SpeechRecognitionEvent
+interface SpeechRecognitionErrorEvent {
+  error: string;
+  message?: string;
+}
+
 interface MinimalSpeechRecognition {
   continuous: boolean;
   interimResults: boolean;
@@ -32,22 +37,26 @@ interface MinimalSpeechRecognition {
   start: () => void;
   stop: () => void;
   onresult: (event: MinimalSpeechRecognitionEvent) => void;
-  onerror: (event: any) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
   onend: () => void;
   onstart?: () => void;
 }
-interface MinimalSpeechRecognitionEvent {
-  results: {
-    length: number;
-    [index: number]: {
-      length: number;
-      isFinal: boolean;
-      [index: number]: { 
-        transcript: string;
-        confidence: number;
-      };
-    };
+interface SpeechRecognitionResult {
+  length: number;
+  isFinal: boolean;
+  [index: number]: { 
+    transcript: string;
+    confidence: number;
   };
+}
+
+interface SpeechRecognitionResultList {
+  length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface MinimalSpeechRecognitionEvent {
+  results: SpeechRecognitionResultList;
 }
 
 // TypeScript: Add SpeechRecognition types if missing (for browser compatibility)
@@ -227,7 +236,7 @@ export default function Home() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: MinimalSpeechRecognitionEvent) => {
       console.log('Speech recognition result received:', event); // Debug log
       
       let interimTranscript = '';
@@ -263,7 +272,7 @@ export default function Home() {
       console.log('Speech recognition started successfully!');
     };
     
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error:', event.error);
       setListening(false);
     };
