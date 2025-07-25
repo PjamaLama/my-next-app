@@ -19,6 +19,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 import VerticalTicker from './VerticalTicker';
 import NavBar from './NavBar';
+import Image from 'next/image';
 
 // Types
 interface Option {
@@ -103,7 +104,7 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user } = useFirebase();
+  const { user, loading, signInWithGoogle } = useFirebase();
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -293,25 +294,34 @@ export default function Home() {
 
   // Option management
   const addOption = async () => {
-    if (!newOption.trim() || !user) return;
+    console.log('addOption called');
+    if (!newOption.trim() || !user) {
+      console.log('addOption: missing newOption or user');
+      return;
+    }
     // newOption is expected to be the spreadsheetId
     // Call backend to fetch sheet names and spreadsheet title
+    console.log('addOption: fetching /api/get-sheet-names', newOption.trim());
     const res = await fetch('/api/get-sheet-names', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ spreadsheetId: newOption.trim() }),
     });
+    console.log('addOption: fetch response', res.status);
     if (!res.ok) {
       setActivityError('Failed to fetch sheet names. Make sure the spreadsheet is shared with the service account.');
+      console.log('addOption: fetch failed');
       return;
     }
     const { sheetNames, spreadsheetTitle } = await res.json();
+    console.log('addOption: fetched sheetNames', sheetNames, 'spreadsheetTitle', spreadsheetTitle);
     // Store spreadsheetId and sheetNames in Option, use spreadsheetTitle as label
     await addDoc(collection(db, 'users', user.uid, 'options'), {
       label: spreadsheetTitle || newOption.trim(),
       spreadsheetId: newOption.trim(),
       sheetNames,
     });
+    console.log('addOption: added to Firestore');
     await addActivity({ type: 'add', entity: 'sheet', label: spreadsheetTitle || newOption.trim(), timestamp: Date.now() });
     setNewOption("");
   };
@@ -612,6 +622,28 @@ export default function Home() {
     await deleteDoc(doc(db, "users", user.uid, "aiApis", id));
     if (selectedAiApi === id) setSelectedAiApi("gemini");
   };
+
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-[#18181b]">
+        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 flex flex-col items-center">
+          <Image src="/globe.svg" alt="Logo" width={64} height={64} className="mb-4" />
+          <h1 className="text-3xl font-bold mb-2">Welcome to Report AI</h1>
+          <p className="text-gray-600 dark:text-gray-300 mb-6 text-center">Sign in with Google to get started and manage your spreadsheets with AI assistance.</p>
+          <button
+            onClick={signInWithGoogle}
+            className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-purple-500 hover:to-blue-500 text-white px-6 py-3 rounded-lg font-semibold shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
