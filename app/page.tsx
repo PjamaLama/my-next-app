@@ -22,13 +22,6 @@ import VerticalTicker from './VerticalTicker';
 import Image from 'next/image';
 
 // Types
-interface Option {
-  id: string;
-  label: string; // Spreadsheet label or user-friendly name
-  spreadsheetId: string;
-  sheetNames: string[];
-}
-
 // Add minimal interfaces for SpeechRecognition and SpeechRecognitionEvent
 interface MinimalSpeechRecognition {
   continuous: boolean;
@@ -401,27 +394,6 @@ export default function Home() {
     handleStepperFinish(); // Automatically move to review complete after accepting all
   };
 
-  // Helper to build stepper fields for all columns
-  function buildStepperFieldsForAllColumns(aiFields: StepperField[] = [], sheetData: (string | number)[][] = []): StepperField[] {
-    if (!sheetData || sheetData.length === 0) return [];
-    const headers: string[] = sheetData[0].map(String);
-    // Map AI suggestions by exact column name for easy lookup
-    const aiMap: { [col: string]: StepperField } = {};
-    aiFields.forEach((f: StepperField) => {
-      if (f.column) aiMap[f.column] = f;
-    });
-    // Find the next available row number
-    const nextRowNum = sheetData.length + 1;
-    return headers.map((header: string, idx: number) => {
-      const aiField = aiMap[header];
-      return {
-        column: header,
-        cell: aiField?.cell || `${String.fromCharCode(65 + idx)}${nextRowNum}`,
-        value: aiField && typeof aiField.value !== 'undefined' ? aiField.value : '',
-      };
-    });
-  }
-
   // Enhanced save function for multi-sheet support
   const saveToSheet = async () => {
     if (!user || !defaultSpreadsheetId || Object.keys(stepperValues).length === 0) {
@@ -602,12 +574,8 @@ export default function Home() {
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
               {defaultSpreadsheetId && selectedSheetName ? (
-                <div className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Ready
-                </div>
+                // Removed "Ready" status as per user request
+                <></>
               ) : (
                 <div className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -805,7 +773,7 @@ export default function Home() {
                       />
                       {stepperFields[stepperIndex].value && (
                         <div className="text-xs text-gray-500 mt-1">
-                          AI suggested: <span className="italic">"{stepperFields[stepperIndex].value}"</span>
+                          AI suggested: <span className="italic">&quot;{stepperFields[stepperIndex].value}&quot;</span>
                         </div>
                       )}
                     </div>

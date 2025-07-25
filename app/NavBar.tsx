@@ -390,7 +390,7 @@ const NavBar: React.FC = () => {
                       </li>
                       <li className="flex items-start">
                         <span className="font-medium mr-3">3.</span>
-                        Click 'Create API Key' and copy it
+                        Click &apos;Create API Key&apos; and copy it
                       </li>
                       <li className="flex items-start">
                         <span className="font-medium mr-3">4.</span>
