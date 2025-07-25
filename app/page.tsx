@@ -104,6 +104,8 @@ export default function Home() {
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetName } = useSheet();
+  // Track user's available spreadsheets
+  const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -131,6 +133,19 @@ export default function Home() {
     url: "/api/parse-and-fill-multi",
     name: "Google Gemini (default)"
   };
+
+  // Check if user has any spreadsheets configured
+  useEffect(() => {
+    if (!user) {
+      setHasSpreadsheets(false);
+      return;
+    }
+    const optionsRef = collection(db, "users", user.uid, "options");
+    const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
+      setHasSpreadsheets(snapshot.docs.length > 0);
+    });
+    return () => unsubOptions();
+  }, [user]);
 
   // Load user's API key and AI APIs from Firebase
   useEffect(() => {
@@ -569,19 +584,59 @@ export default function Home() {
           
           {/* Main Voice/Text Input Section - Mobile optimized */}
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 space-y-4 border border-gray-200 dark:border-gray-800">
-            <div className="flex items-center justify-between">
-              {defaultSpreadsheetId && selectedSheetName ? (
-                // Removed "Ready" status as per user request
-                <></>
-              ) : (
-                <div className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            {!hasSpreadsheets ? (
+              /* No Spreadsheets - Show Setup Prompt */
+              <div className="text-center py-8 sm:py-12 space-y-6">
+                <div className="w-20 h-20 mx-auto bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded-full flex items-center justify-center">
+                  <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
-                  <span className="text-xs sm:text-sm">Select sheet above</span>
                 </div>
-              )}
-            </div>
+                <div className="space-y-3">
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+                    Welcome to Report AI! 🎉
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-300 text-sm sm:text-base max-w-md mx-auto">
+                    To get started, you'll need to add a Google Spreadsheet. Simply paste the share link from your Google Sheet in the navigation bar above.
+                  </p>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-md mx-auto">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-blue-500 rounded-full p-1 flex-shrink-0 mt-0.5">
+                      <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                        Quick Setup:
+                      </p>
+                      <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
+                        <li>1. Open your Google Sheet</li>
+                        <li>2. Click "Share" → "Copy link"</li>
+                        <li>3. Paste the link in the navigation bar above</li>
+                        <li>4. Start using voice-to-spreadsheet AI! 🎤</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Has Spreadsheets - Show Normal Interface */
+              <>
+                <div className="flex items-center justify-between">
+                  {defaultSpreadsheetId && selectedSheetName ? (
+                    // Removed "Ready" status as per user request
+                    <></>
+                  ) : (
+                    <div className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <span className="text-xs sm:text-sm">Select sheet above</span>
+                    </div>
+                  )}
+                </div>
             
             {/* Transcript/voice chat UI - Mobile optimized */}
             <div className="relative w-full flex flex-col items-center overflow-hidden">
@@ -741,6 +796,8 @@ export default function Home() {
                 </div>
               )}
             </div>
+            </>
+            )}
           </section>
 
           {/* Enhanced Stepper UI for multi-sheet, multi-row editing - Mobile optimized */}

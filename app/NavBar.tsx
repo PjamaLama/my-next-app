@@ -74,14 +74,52 @@ const NavBar: React.FC = () => {
     return () => unsubOptions();
   }, [user]);
 
+  // Function to extract spreadsheet ID from Google Sheets URL
+  const extractSpreadsheetId = (input: string): string => {
+    const trimmedInput = input.trim();
+    
+    // If it's already a spreadsheet ID (no slashes, proper length), return as is
+    if (!trimmedInput.includes('/') && trimmedInput.length > 20) {
+      return trimmedInput;
+    }
+    
+    // Extract from various Google Sheets URL formats
+    const patterns = [
+      // Standard sharing link: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit...
+      /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/,
+      // Alternative format: https://docs.google.com/spreadsheets/u/0/d/SPREADSHEET_ID/edit...
+      /\/spreadsheets\/u\/\d+\/d\/([a-zA-Z0-9-_]+)/,
+      // Mobile format: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/
+      /\/d\/([a-zA-Z0-9-_]+)\//,
+    ];
+    
+    for (const pattern of patterns) {
+      const match = trimmedInput.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    // If no pattern matches, return the original input (might be a direct ID)
+    return trimmedInput;
+  };
+
   const addOption = async () => {
     if (!newOption.trim() || !user) return;
     setAddingSheet(true);
     try {
+      const spreadsheetId = extractSpreadsheetId(newOption);
+      
+      if (!spreadsheetId) {
+        alert('Please enter a valid Google Sheets URL or spreadsheet ID.');
+        setAddingSheet(false);
+        return;
+      }
+
       const res = await fetch('/api/get-sheet-names', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetId: newOption.trim() }),
+        body: JSON.stringify({ spreadsheetId }),
       });
       if (!res.ok) {
         alert('Failed to fetch sheet names. Make sure the spreadsheet is shared with the service account.');
@@ -89,14 +127,14 @@ const NavBar: React.FC = () => {
       }
       const { sheetNames, spreadsheetTitle } = await res.json();
       await addDoc(collection(db, 'users', user.uid, 'options'), {
-        label: spreadsheetTitle || newOption.trim(),
-        spreadsheetId: newOption.trim(),
+        label: spreadsheetTitle || spreadsheetId,
+        spreadsheetId,
         sheetNames,
       });
       setNewOption("");
     } catch (e) {
       console.error('Error adding spreadsheet:', e);
-      alert('Error adding spreadsheet');
+      alert('Error adding spreadsheet. Please check the URL or ID and try again.');
     } finally {
       setAddingSheet(false);
     }
@@ -215,13 +253,18 @@ const NavBar: React.FC = () => {
                           {/* Add new spreadsheet section */}
                           <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
                             <div className="space-y-3">
-                              <input
-                                value={newOption}
-                                onChange={e => setNewOption(e.target.value)}
-                                placeholder="Enter Spreadsheet ID..."
-                                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-base bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
-                              />
+                              <div>
+                                <input
+                                  value={newOption}
+                                  onChange={e => setNewOption(e.target.value)}
+                                  placeholder="Paste Google Sheets share link or ID..."
+                                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-base bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                  onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
+                                />
+                                <p className="text-xs text-gray-500 mt-2">
+                                  💡 Just paste the share link from Google Sheets (Share → Copy link)
+                                </p>
+                              </div>
                               <button
                                 onClick={addOption}
                                 disabled={addingSheet || !newOption.trim()}
