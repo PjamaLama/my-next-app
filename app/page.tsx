@@ -585,22 +585,55 @@ export default function Home() {
                   {/* Input Controls */}
                   <div className="w-full flex flex-col items-center gap-4 mt-4">
                     {/* Voice Input Button */}
-                    <button
-                      onClick={handleMicButton}
-                      className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300
-                                transform hover:scale-105 active:scale-95
-                                ${listening 
-                                  ? 'bg-red-500 hover:bg-red-600 text-white ring-4 ring-red-200 dark:ring-red-900/30' 
-                                  : 'bg-blue-500 hover:bg-blue-600 text-white ring-4 ring-blue-200 dark:ring-blue-900/30'}`}
-                    >
-                      <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                          d={listening 
-                            ? "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M10 15l4-4m0 0l4-4m-4 4l-4-4m4 4l4 4"
-                            : "M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"} 
-                        />
-                      </svg>
-                    </button>
+                    <div className="relative p-8">
+                      <button
+                        onClick={handleMicButton}
+                        className={`relative h-32 w-32 rounded-full flex items-center justify-center transition-all duration-500
+                                  transform hover:scale-110 active:scale-95 group overflow-hidden
+                                  ${listening 
+                                    ? 'bg-gradient-to-br from-red-500 via-pink-500 to-red-600 shadow-2xl shadow-red-500/50' 
+                                    : 'bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 shadow-2xl shadow-blue-500/30 animate-gradient-x'}
+                                  before:absolute before:inset-0 before:rounded-full before:p-[3px]
+                                  ${listening 
+                                    ? 'before:bg-gradient-to-br before:from-red-400 before:via-pink-400 before:to-red-500 before:animate-pulse' 
+                                    : 'before:bg-gradient-to-r before:from-yellow-300 before:via-pink-300 before:to-blue-300 before:animate-gradient-x'}`}
+                      >
+                        {/* Animated gradient border effect */}
+                        <div className={`absolute inset-[3px] rounded-full transition-all duration-500
+                                       ${listening 
+                                         ? 'bg-gradient-to-br from-red-500 via-pink-500 to-red-600' 
+                                         : 'bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 animate-gradient-x'}`} />
+                        
+                        {/* Inner button content */}
+                        <div className="relative z-10 w-full h-full rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20">
+                          <svg 
+                            className={`w-16 h-16 text-white transition-all duration-300 drop-shadow-lg
+                                      ${listening ? 'animate-pulse' : 'group-hover:scale-110'}`} 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                          >
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2.5} 
+                              d={listening 
+                                ? "M6 6l12 12M6 18L18 6"
+                                : "M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"} 
+                            />
+                          </svg>
+                        </div>
+                        
+                        {/* Animated pulse rings */}
+                        {listening && (
+                          <>
+                            <div className="absolute inset-0 rounded-full border-4 border-yellow-300/50 animate-ping" />
+                            <div className="absolute inset-0 rounded-full border-4 border-pink-300/50 animate-ping animation-delay-300" />
+                            <div className="absolute inset-0 rounded-full border-4 border-blue-300/50 animate-ping animation-delay-700" />
+                          </>
+                        )}
+                      </button>
+                    </div>
 
                     <div className="w-full max-w-lg flex items-center gap-2">
                       {/* Text Input */}

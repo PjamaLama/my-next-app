@@ -77,3 +77,29 @@ button {
 .animate-breath-rainbow {
   animation: glow-rainbow 1.5s infinite;
 }
+
+/* Animation delay utilities */
+.animation-delay-300 {
+  animation-delay: 300ms;
+}
+
+.animation-delay-700 {
+  animation-delay: 700ms;
+}
+
+/* Gradient animation for mic button */
+@keyframes gradient-x {
+  0%, 100% {
+    background-size: 200% 200%;
+    background-position: left center;
+  }
+  50% {
+    background-size: 200% 200%;
+    background-position: right center;
+  }
+}
+
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 3s ease infinite;
+}
