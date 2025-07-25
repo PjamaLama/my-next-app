@@ -529,6 +529,13 @@ export default function Home() {
   //   if (selectedAiApi === id) setSelectedAiApi("gemini");
   // };
 
+  const handleTextInputSend = () => {
+    if (textInputValue.trim()) {
+      setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
+      setTextInputValue('');
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
@@ -643,9 +650,8 @@ export default function Home() {
                           value={textInputValue || ''}
                           onChange={e => setTextInputValue(e.target.value)}
                           onKeyDown={e => {
-                            if (e.key === 'Enter' && textInputValue.trim()) {
-                              setTranscript(t => (t ? t + '\n' : '') + textInputValue.trim());
-                              setTextInputValue('');
+                            if (e.key === 'Enter') {
+                              handleTextInputSend();
                             }
                           }}
                           placeholder="Or type your message..."
@@ -671,7 +677,19 @@ export default function Home() {
                           </button>
                         )}
                       </div>
-
+                      {textInputValue.trim() && (
+                        <button
+                          onClick={handleTextInputSend}
+                          disabled={!textInputValue.trim()}
+                          className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm
+                                  bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Send
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      )}
                       {/* Process with AI Button */}
                       {transcript.trim() && (
                         <button
