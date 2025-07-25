@@ -16,20 +16,7 @@ import {
   setDoc
 } from "firebase/firestore";
 import Link from 'next/link';
-import { createContext, useContext } from 'react';
-
-// Create a context for the settings state
-interface SettingsContextType {
-  settingsOpen: boolean;
-  setSettingsOpen: (open: boolean) => void;
-}
-
-export const SettingsContext = createContext<SettingsContextType>({
-  settingsOpen: false,
-  setSettingsOpen: () => {},
-});
-
-export const useSettings = () => useContext(SettingsContext);
+import { useSettings } from './providers/SettingsProvider'; // Import useSettings from the new provider
 
 const NAV_LINKS: { name: string; href: string }[] = [];
 
@@ -45,12 +32,13 @@ const NavBar: React.FC = () => {
   const { user, signOutUser, geminiApiKey, saveGeminiApiKey } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, setSelectedSheetName } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
+  const { settingsOpen, setSettingsOpen } = useSettings(); // Use settingsOpen and setSettingsOpen from the new provider
   const [sheetDropdownOpen, setSheetDropdownOpen] = useState(false);
   const [options, setOptions] = useState<Option[]>([]);
   const [newOption, setNewOption] = useState("");
   const [addingSheet, setAddingSheet] = useState(false);
-  // Gemini API Key settings modal state
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Removed: Gemini API Key settings modal state
+  // const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState<string>("");
   const [geminiApiKeySaved, setGeminiApiKeySaved] = useState<boolean>(false);
 
@@ -161,16 +149,15 @@ const NavBar: React.FC = () => {
       await saveGeminiApiKey(apiKeyInput.trim());
       setGeminiApiKeySaved(true);
       setTimeout(() => setGeminiApiKeySaved(false), 3000);
-      setSettingsOpen(false);
+      // Removed: setSettingsOpen(false);
     } catch (e) {
       console.error("Error saving Gemini API key:", e);
     }
   };
 
   return (
-    <SettingsContext.Provider value={{ settingsOpen, setSettingsOpen }}>
-      <nav className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm overflow-x-hidden">
-        <div className="container mx-auto flex justify-between items-center px-3 sm:px-4 py-2 max-w-full">
+    <nav className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm overflow-x-hidden">
+      <div className="container mx-auto flex justify-between items-center px-3 sm:px-4 py-2 max-w-full">
           {/* Logo and Title - Properly aligned for mobile */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Link href="/" className="flex items-center gap-2 sm:gap-3 group select-none min-w-0">
@@ -383,8 +370,6 @@ const NavBar: React.FC = () => {
         </div>
 
 
-
-
         {/* Settings Modal - Mobile optimized */}
         {settingsOpen && (
           <>
@@ -491,8 +476,7 @@ const NavBar: React.FC = () => {
           </>
         )}
       </nav>
-    </SettingsContext.Provider>
-  );
-};
+    );
+  };
 
 export default NavBar;

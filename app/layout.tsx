@@ -4,6 +4,7 @@ import "./globals.css";
 import { FirebaseProvider } from "./providers/FirebaseProvider";
 import { SheetProvider } from "./providers/SheetProvider";
 import { ServiceAccountProvider } from "./providers/ServiceAccountProvider";
+import { SettingsProvider } from "./providers/SettingsProvider"; // Import the new SettingsProvider
 import NavBar from "./NavBar";
 
 const geistSans = Geist({
@@ -86,8 +87,10 @@ export default function RootLayout({
         <FirebaseProvider>
           <SheetProvider>
             <ServiceAccountProvider>
-              <NavBar />
-              {children}
+              <SettingsProvider> {/* Wrap with SettingsProvider */}
+                <NavBar />
+                {children}
+              </SettingsProvider>
             </ServiceAccountProvider>
           </SheetProvider>
         </FirebaseProvider>

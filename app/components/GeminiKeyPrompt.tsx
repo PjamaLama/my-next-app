@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { useSettings } from '../NavBar';
+import { useSettings } from '../providers/SettingsProvider';
 
 const GeminiKeyPrompt: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);

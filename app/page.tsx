@@ -22,7 +22,7 @@ import VerticalTicker from './VerticalTicker';
 import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
-import { useSettings } from './NavBar';
+import { useSettings } from './providers/SettingsProvider'; // Corrected import path
 
 // Types
 // Add minimal interfaces for SpeechRecognition and SpeechRecognitionEvent
