@@ -159,13 +159,9 @@ const NavBar: React.FC = () => {
                 <path d="M9 9h6v6H9z" />
               </svg>
               <span className="max-w-32 truncate">
-                {currentSpreadsheet?.label || "Select Sheet"}
+                {currentSpreadsheet?.label || 'Select Sheet'}
+                {selectedSheetName && ` • ${selectedSheetName}`}
               </span>
-              {selectedSheetName && (
-                <span className="text-xs text-yellow-300">
-                  • {selectedSheetName}
-                </span>
-              )}
               <svg 
                 className={`w-4 h-4 transition-transform ${sheetDropdownOpen ? 'rotate-180' : ''}`} 
                 fill="none" 
@@ -394,7 +390,7 @@ const NavBar: React.FC = () => {
                       </li>
                       <li className="flex items-start">
                         <span className="font-medium mr-3">3.</span>
-                        Click "Create API Key" and copy it
+                        Click 'Create API Key' and copy it
                       </li>
                       <li className="flex items-start">
                         <span className="font-medium mr-3">4.</span>
