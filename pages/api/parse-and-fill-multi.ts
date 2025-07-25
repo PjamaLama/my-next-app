@@ -5,6 +5,13 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { transcript, spreadsheetId, selectedSheetName, geminiApiKey } = req.body;
 
+  // Check if we have a Gemini API key from the user or fallback to environment variable
+  const apiKey = geminiApiKey || process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    return res.status(400).json({ error: 'Gemini API key is required. Please add it in your settings.' });
+  }
+
   try {
     const sheets = await getGoogleSheetsClient();
     
@@ -40,7 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sheetsData, 
       allSheetNames: sheetNames,
       selectedSheetName,
-      geminiApiKey 
+      geminiApiKey: apiKey 
     });
 
     res.status(200).json({ aiResponse });

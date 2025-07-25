@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { FirebaseProvider } from "./providers/FirebaseProvider";
 import { SheetProvider } from "./providers/SheetProvider";
+import { ServiceAccountProvider } from "./providers/ServiceAccountProvider";
 import NavBar from "./NavBar";
 
 const geistSans = Geist({
@@ -84,8 +85,10 @@ export default function RootLayout({
       >
         <FirebaseProvider>
           <SheetProvider>
-            <NavBar />
-            {children}
+            <ServiceAccountProvider>
+              <NavBar />
+              {children}
+            </ServiceAccountProvider>
           </SheetProvider>
         </FirebaseProvider>
       </body>

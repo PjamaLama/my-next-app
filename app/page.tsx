@@ -2,6 +2,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
+import { useServiceAccount } from './providers/ServiceAccountProvider';
+import ServiceAccountInfo from './components/ServiceAccountInfo';
 import { db } from "./providers/FirebaseProvider";
 import {
   collection,
@@ -19,6 +21,8 @@ dayjs.extend(relativeTime);
 import VerticalTicker from './VerticalTicker';
 import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
+import GeminiKeyPrompt from './components/GeminiKeyPrompt';
+import { useSettings } from './NavBar';
 
 // Types
 // Add minimal interfaces for SpeechRecognition and SpeechRecognitionEvent
@@ -100,8 +104,10 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user, loading, signInWithGoogle } = useFirebase();
+  const { user, loading, signInWithGoogle, geminiApiKey } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetName } = useSheet();
+  const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
+  const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -118,7 +124,6 @@ export default function Home() {
   const [stepperComplete, setStepperComplete] = useState(false);
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
-  const [geminiApiKey, setGeminiApiKey] = useState<string>("");
   
   const [editingTranscript, setEditingTranscript] = useState(false);
   // Add state for AI APIs (replaces webhooks)
@@ -145,44 +150,18 @@ export default function Home() {
     return () => unsubOptions();
   }, [user]);
 
-  // Load user's API key and AI APIs from Firebase
+  // Load user's AI APIs from Firebase
   useEffect(() => {
     if (!user) return;
-    const userDocRef = doc(db, "users", user.uid);
     const aiApisRef = collection(db, "users", user.uid, "aiApis");
-
-    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.geminiApiKey) {
-          setGeminiApiKey(data.geminiApiKey);
-        }
-      }
-    });
 
     const unsubAiApis = onSnapshot(aiApisRef, (snapshot) => {
       setAiApis(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as { id: string; url: string; name: string }));
     });
 
     return () => {
-      unsubUserDoc();
       unsubAiApis();
     };
-  }, [user]);
-
-  // Load Gemini API key from Firestore
-  useEffect(() => {
-    if (!user) return;
-    const userDocRef = doc(db, "users", user.uid);
-    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.geminiApiKey) {
-          setGeminiApiKey(data.geminiApiKey);
-        }
-      }
-    });
-    return () => unsubUserDoc();
   }, [user]);
 
   useEffect(() => {
@@ -471,6 +450,12 @@ export default function Home() {
       setSendResult("Please provide transcript and select a spreadsheet in the navigation.");
       return;
     }
+    
+    if (!geminiApiKey && selectedAiApi === "gemini") {
+      setSendResult("Please add your Gemini API key in settings first.");
+      return;
+    }
+    
     setSending(true);
     setSendResult(null);
     const api = selectedAiApi === "gemini"
@@ -494,7 +479,7 @@ export default function Home() {
           transcript,
           spreadsheetId: defaultSpreadsheetId,
           selectedSheetName: selectedSheetName || undefined, // Optional - let AI decide if not set
-          geminiApiKey: geminiApiKey, // Pass the user's Gemini API key
+          geminiApiKey: geminiApiKey, // Pass the user's Gemini API key from the provider
         }),
       });
       const text = await res.text();
@@ -598,6 +583,16 @@ export default function Home() {
                     To get started, you&apos;ll need to add a Google Spreadsheet. Simply paste the share link from your Google Sheet in the navigation bar above.
                   </p>
                 </div>
+                {!geminiApiKey && (
+                  <div className="max-w-md mx-auto">
+                    <GeminiKeyPrompt />
+                  </div>
+                )}
+                {!serviceAccountLoading && serviceAccountEmail && (
+                  <div className="max-w-md mx-auto">
+                    <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
+                  </div>
+                )}
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-md mx-auto">
                   <div className="flex items-start gap-3">
                     <div className="bg-blue-500 rounded-full p-1 flex-shrink-0 mt-0.5">
@@ -607,21 +602,25 @@ export default function Home() {
                     </div>
                     <div className="text-left">
                       <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                        Quick Setup:
+                        How to add a spreadsheet:
                       </p>
-                      <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
-                        <li>1. Open your Google Sheet</li>
-                        <li>2. Click &quot;Share&quot; &rarr; &quot;Copy link&quot;</li>
-                        <li>3. Paste the link in the navigation bar above</li>
-                        <li>4. Start using voice-to-spreadsheet AI! 🎤</li>
+                      <ol className="list-decimal text-xs text-blue-700 dark:text-blue-300 pl-4 space-y-1">
+                        <li>Open your Google Sheet</li>
+                        <li>Click &quot;Share&quot; in the top-right</li>
+                        <li>Share with the service account email above</li>
+                        <li>Copy the share link</li>
+                        <li>Paste it in the dropdown menu above</li>
                       </ol>
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
-              /* Has Spreadsheets - Show Normal Interface */
+              /* Has spreadsheets - Show main UI */
               <>
+                {!geminiApiKey && (
+                  <GeminiKeyPrompt />
+                )}
                 <div className="flex items-center justify-between">
                   {defaultSpreadsheetId && selectedSheetName ? (
                     // Removed "Ready" status as per user request
