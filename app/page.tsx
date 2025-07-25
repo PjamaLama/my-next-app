@@ -36,7 +36,13 @@ interface MinimalSpeechRecognition {
   onend: () => void;
 }
 interface MinimalSpeechRecognitionEvent {
-  results: { [index: number]: { [index: number]: { transcript: string } } };
+  results: {
+    length: number;
+    [index: number]: {
+      [index: number]: { transcript: string };
+      isFinal: boolean;
+    };
+  };
 }
 
 // TypeScript: Add SpeechRecognition types if missing (for browser compatibility)
@@ -118,10 +124,12 @@ export default function Home() {
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [interimText, setInterimText] = useState("");
   const [listening, setListening] = useState(false);
   const [paused, setPaused] = useState(false);
   const listeningRef = useRef(listening);
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
+  const interimTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
@@ -209,17 +217,40 @@ export default function Home() {
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognition.onresult = (event: MinimalSpeechRecognitionEvent) => {
+      let finalTranscript = "";
       let interimTranscript = "";
-      let finalTranscript = transcript; // Use current transcript as base
-      for (const [, result] of Object.entries(event.results)) {
+      
+      // Process all results to separate final from interim
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
         const transcriptPiece = result[0].transcript;
-        if ((result as { isFinal?: boolean }).isFinal) {
+        
+        if (result.isFinal) {
           finalTranscript += transcriptPiece;
         } else {
           interimTranscript += transcriptPiece;
         }
       }
-      setTranscript(finalTranscript + interimTranscript);
+      
+      // Update final transcript when speech is finalized
+      if (finalTranscript.trim()) {
+        setTranscript(prev => prev + finalTranscript);
+        setInterimText(""); // Clear interim when final is received
+        // Clear any pending interim updates
+        if (interimTimeoutRef.current) {
+          clearTimeout(interimTimeoutRef.current);
+          interimTimeoutRef.current = null;
+        }
+      } else if (interimTranscript.trim()) {
+        // Throttle interim text updates to reduce flickering
+        if (interimTimeoutRef.current) {
+          clearTimeout(interimTimeoutRef.current);
+        }
+        interimTimeoutRef.current = setTimeout(() => {
+          setInterimText(interimTranscript);
+          interimTimeoutRef.current = null;
+        }, 200); // Update interim text every 200ms max
+      }
     };
     recognition.onerror = () => setListening(false);
     recognition.onend = () => {
@@ -234,7 +265,10 @@ export default function Home() {
       }
     };
     recognitionRef.current = recognition;
-    if (clearTranscript) setTranscript("");
+    if (clearTranscript) {
+      setTranscript("");
+      setInterimText("");
+    }
     setListening(true);
     setPaused(false);
     recognition.start();
@@ -246,12 +280,19 @@ export default function Home() {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
+    // Clear any pending interim updates
+    if (interimTimeoutRef.current) {
+      clearTimeout(interimTimeoutRef.current);
+      interimTimeoutRef.current = null;
+    }
     setListening(false);
+    setInterimText(""); // Clear interim text when stopping
   };
 
   const pauseListening = () => {
     setPaused(true);
-      stopListening();
+    setInterimText(""); // Clear interim text when pausing
+    stopListening();
   };
 
   const resumeListening = () => {
@@ -649,7 +690,7 @@ export default function Home() {
                   {/* Editable VerticalTicker that combines input and display */}
                   <div className="w-full min-h-[120px] sm:min-h-[128px] flex items-center justify-center relative overflow-hidden">
                     <VerticalTicker 
-                      transcript={transcript} 
+                      transcript={transcript + (interimText ? ` ${interimText}` : '')} 
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
                       onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
                         if (e.key === 'Enter' && e.ctrlKey) {
@@ -1066,4 +1107,5 @@ export default function Home() {
     </>
   );
 }
+
 
