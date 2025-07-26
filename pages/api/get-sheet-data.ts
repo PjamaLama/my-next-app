@@ -132,7 +132,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.log(`✅ [${requestId}] Success with: ${strategy}, rows: ${response.data.values?.length || 0}`);
             return res.status(200).json({ data: response.data.values });
             
-          } catch (strategyError: any) {
+          } catch (strategyError: unknown) {
             const errorMsg = strategyError instanceof Error ? strategyError.message : String(strategyError);
             console.log(`❌ [${requestId}] Failed strategy: ${strategy} - ${errorMsg}`);
             
@@ -162,7 +162,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           requestId
         });
         
-      } catch (metadataError: any) {
+      } catch (metadataError: unknown) {
         const metaErrorMsg = metadataError instanceof Error ? metadataError.message : String(metadataError);
         console.warn(`⚠️ [${requestId}] Could not get sheet metadata: ${metaErrorMsg}`);
         
@@ -204,7 +204,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.log(`✅ [${requestId}] Fallback success: ${fallback}, rows: ${response.data.values?.length || 0}`);
             return res.status(200).json({ data: response.data.values });
             
-          } catch (fallbackError: any) {
+          } catch (fallbackError: unknown) {
             const fbErrorMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
             console.log(`❌ [${requestId}] Fallback failed: ${fallback} - ${fbErrorMsg}`);
             
@@ -249,7 +249,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       console.log(`✅ [${requestId}] Final success: ${finalRange}, rows: ${response.data.values?.length || 0}`);
       res.status(200).json({ data: response.data.values });
-    } catch (finalError: any) {
+    } catch (finalError: unknown) {
       const finalErrorMsg = finalError instanceof Error ? finalError.message : String(finalError);
       
       // Check if this is a sheet not found error
@@ -267,7 +267,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       throw finalError; // Re-throw if it's not a sheet not found error
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
     

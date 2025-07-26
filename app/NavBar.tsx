@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useFirebase } from './providers/FirebaseProvider';
 import { useSheet } from './providers/SheetProvider';
@@ -14,7 +14,6 @@ import {
   addDoc,
   deleteDoc,
   updateDoc,
-  setDoc,
 } from "firebase/firestore";
 import Link from 'next/link';
 import { useSettings } from './providers/SettingsProvider'; // Import useSettings from the new provider
@@ -132,7 +131,7 @@ const NavBar: React.FC = () => {
   };
 
   // Debug function to log all spreadsheet options
-  const debugSpreadsheetOptions = () => {
+  const debugSpreadsheetOptions = useCallback(() => {
     console.log('🔍 Current spreadsheet options:');
     options.forEach((option, index) => {
       console.log(`  ${index + 1}. "${option.label}" (ID: ${option.spreadsheetId})`);
@@ -140,34 +139,9 @@ const NavBar: React.FC = () => {
       console.log(`     Firebase Doc ID: ${option.id}`);
     });
     console.log(`Current selection: spreadsheet="${defaultSpreadsheetId}", sheet="${selectedSheetName}"`);
-  };
+  }, [options, defaultSpreadsheetId, selectedSheetName]);
 
-  // Function to clear invalid selections and refresh
-  const clearInvalidSelections = async () => {
-    console.log('🧹 Clearing potentially invalid selections...');
-    
-    // Clear current selections
-    setSelectedSheetName('');
-    setDefaultSpreadsheetId('');
-    
-    // Clear localStorage cache
-    localStorage.removeItem('currentSpreadsheetId');
-    
-    // Clear Firebase stored selections
-    if (user) {
-      try {
-        await setDoc(doc(db, "users", user.uid), { 
-          defaultSpreadsheetId: '',
-          defaultSheetName: '' 
-        }, { merge: true });
-        console.log('✅ Cleared Firebase selections');
-      } catch (e) {
-        console.error("Error clearing Firebase selections:", e);
-      }
-    }
-    
-    console.log('✅ Cleared all selections. Please select spreadsheet again.');
-  };
+
 
   // Call debug on options change
   useEffect(() => {
@@ -183,7 +157,7 @@ const NavBar: React.FC = () => {
         }
       }
     }
-  }, [options, defaultSpreadsheetId, selectedSheetName]);
+  }, [options, defaultSpreadsheetId, selectedSheetName, debugSpreadsheetOptions]);
 
   const handleSpreadsheetSelect = async (spreadsheetId: string) => {
     console.log(`🎯 Selected spreadsheet: ${spreadsheetId}`);

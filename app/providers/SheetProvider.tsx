@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useFirebase } from './FirebaseProvider';
 import { db } from './FirebaseProvider';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -28,7 +28,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedSheetName, setSelectedSheetNameState] = useState<string>("");
   const isInitialLoad = useRef(true);
 
-  const validateAndCorrectSelection = async (spreadsheetId: string, sheetName: string) => {
+  const validateAndCorrectSelection = useCallback(async (spreadsheetId: string, sheetName: string) => {
     console.log(`🚀 Validating selection: ${spreadsheetId} -> ${sheetName}`);
     
     // Don't validate if either is empty
@@ -74,7 +74,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (error) {
       console.error("Error validating sheet selection:", error);
     }
-  };
+  }, [user, setSelectedSheetNameState]);
 
   // Validate whenever spreadsheet ID changes (not just on initial load)
   useEffect(() => {
@@ -82,7 +82,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.log(`🔍 Spreadsheet changed to ${defaultSpreadsheetId}, validating sheet "${selectedSheetName}"`);
       validateAndCorrectSelection(defaultSpreadsheetId, selectedSheetName);
     }
-  }, [defaultSpreadsheetId]); // Trigger validation when spreadsheet changes
+  }, [defaultSpreadsheetId, selectedSheetName, validateAndCorrectSelection]); // Trigger validation when spreadsheet changes
 
   useEffect(() => {
     if (!user) return;
@@ -104,7 +104,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
     return () => unsubUserDoc();
-  }, [user]);
+  }, [user, validateAndCorrectSelection]);
 
   const saveDefaultSelections = async (spreadsheetId: string, sheetName: string) => {
     if (!user) return;

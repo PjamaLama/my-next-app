@@ -315,7 +315,7 @@ export default function Home() {
     }, 300); // 300ms delay to allow selection to stabilize
     
     return () => clearTimeout(timeoutId);
-  }, [defaultSpreadsheetId, selectedSheetName]);
+  }, [defaultSpreadsheetId, selectedSheetName, setSelectedSheetName]);
 
   const startListening = (clearTranscript = true) => {
     if (typeof window === "undefined") return;
