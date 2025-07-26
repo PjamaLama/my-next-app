@@ -594,7 +594,7 @@ export default function Home() {
     }
 
     // Prepare images for the API call
-    let imageData: Array<{ data: string; mimeType: string; }> = [];
+    const imageData: Array<{ data: string; mimeType: string; }> = [];
     
     if (uploadedImages.length > 0) {
       try {
@@ -1102,9 +1102,11 @@ export default function Home() {
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             {uploadedImages.map((image) => (
                               <div key={image.id} className="relative group">
-                                <img
+                                <Image
                                   src={image.preview}
                                   alt="Uploaded"
+                                  width={96}
+                                  height={96}
                                   className="w-full h-20 sm:h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
                                 />
                                 <button
