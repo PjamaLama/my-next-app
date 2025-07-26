@@ -27,11 +27,13 @@ export const sendToGemini = async ({
   sheetData,
   sheetName,
   geminiApiKey,
+  images = [],
 }: {
   transcript: string;
   sheetData: (string | number)[][];
   sheetName: string;
   geminiApiKey: string;
+  images?: Array<{ data: string; mimeType: string; }>;
 }) => {
   const nextRow = sheetData.length + 1;
 
@@ -193,13 +195,35 @@ Your task:
 
   console.log("Sending prompt to Gemini:", prompt);
 
+  // Prepare the content for multimodal input
+  const contents = [];
+  
+  // Add images first if any
+  if (images && images.length > 0) {
+    images.forEach(image => {
+      contents.push({
+        parts: [{
+          inline_data: {
+            mime_type: image.mimeType,
+            data: image.data
+          }
+        }]
+      });
+    });
+  }
+  
+  // Add the text prompt
+  contents.push({
+    parts: [{ text: prompt }]
+  });
+
   const result = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents,
         generationConfig: {
           maxOutputTokens: 8192,  // Use maximum available output tokens
           temperature: 0.1,       // Lower temperature for more consistent, structured output
@@ -243,12 +267,14 @@ export const sendToGeminiMulti = async ({
   allSheetNames,
   selectedSheetName,
   geminiApiKey,
+  images = [],
 }: {
   transcript: string;
   sheetsData: { [sheetName: string]: (string | number)[][] };
   allSheetNames: string[];
   selectedSheetName?: string;
   geminiApiKey: string;
+  images?: Array<{ data: string; mimeType: string; }>;
 }) => {
   // Create a comprehensive prompt for multi-sheet reasoning with enhanced row tracking and pattern analysis
   const sheetsInfo = Object.entries(sheetsData).map(([sheetName, data]) => {
@@ -671,13 +697,35 @@ EXAMPLE SCENARIOS WITH PATTERN-BASED SUGGESTIONS:
 
   console.log("Sending enhanced multi-sheet prompt to Gemini:", prompt);
 
+  // Prepare the content for multimodal input
+  const contents = [];
+  
+  // Add images first if any
+  if (images && images.length > 0) {
+    images.forEach(image => {
+      contents.push({
+        parts: [{
+          inline_data: {
+            mime_type: image.mimeType,
+            data: image.data
+          }
+        }]
+      });
+    });
+  }
+  
+  // Add the text prompt
+  contents.push({
+    parts: [{ text: prompt }]
+  });
+
   const result = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents,
         generationConfig: {
           maxOutputTokens: 8192,  // Use maximum available output tokens
           temperature: 0.1,       // Lower temperature for more consistent, structured output  

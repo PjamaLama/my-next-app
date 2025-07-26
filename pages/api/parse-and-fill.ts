@@ -3,7 +3,7 @@ import { sendToGemini } from '@/lib/gemini';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { transcript, spreadsheetId, sheetName, geminiApiKey } = req.body;
+  const { transcript, spreadsheetId, sheetName, geminiApiKey, images } = req.body;
 
   // Check if we have a Gemini API key from the user or fallback to environment variable
   const apiKey = geminiApiKey || process.env.GEMINI_API_KEY;
@@ -25,7 +25,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       transcript, 
       sheetData, 
       sheetName, 
-      geminiApiKey: apiKey 
+      geminiApiKey: apiKey,
+      images: images || []
     });
 
     res.status(200).json({ aiResponse });

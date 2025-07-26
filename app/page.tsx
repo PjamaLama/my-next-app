@@ -59,6 +59,14 @@ interface MinimalSpeechRecognitionEvent {
   results: SpeechRecognitionResultList;
 }
 
+// Add interface for uploaded images
+interface UploadedImage {
+  id: string;
+  file: File;
+  preview: string;
+  geminiFileUri?: string;
+}
+
 // TypeScript: Add SpeechRecognition types if missing (for browser compatibility)
 declare global {
   interface Window {
@@ -160,6 +168,11 @@ export default function Home() {
   const [selectedAiApi] = useState<string>("gemini"); // Re-added selectedAiApi
   // Add state for available spreadsheet options
   const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
+
+  // Add state for image upload functionality
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Default Gemini API (non-removable)
   const GEMINI_API = {
@@ -579,11 +592,45 @@ export default function Home() {
       setSending(false);
       return;
     }
+
+    // Prepare images for the API call
+    let imageData: Array<{ data: string; mimeType: string; }> = [];
+    
+    if (uploadedImages.length > 0) {
+      try {
+        for (const img of uploadedImages) {
+          // Convert file to base64
+          const reader = new FileReader();
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+              const base64 = result.split(',')[1];
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(img.file);
+          });
+          
+          imageData.push({
+            data: base64Data,
+            mimeType: img.file.type
+          });
+        }
+      } catch (error) {
+        console.error('Error processing images:', error);
+        setSendResult("Error processing images. Please try again.");
+        setSending(false);
+        return;
+      }
+    }
+
     try {
       console.log("Sending to AI API:", JSON.stringify({
         transcript,
         spreadsheetId: defaultSpreadsheetId,
         selectedSheetName: sheetNameToUse || undefined,
+        hasImages: imageData.length > 0
       }, null, 2));
       const res = await fetch(api.url, {
         method: "POST",
@@ -593,6 +640,7 @@ export default function Home() {
           spreadsheetId: defaultSpreadsheetId,
           selectedSheetName: sheetNameToUse || undefined, // Optional - let AI decide if not set
           geminiApiKey: geminiApiKey, // Pass the user's Gemini API key from the provider
+          images: imageData
         }),
       });
       const text = await res.text();
@@ -631,9 +679,17 @@ export default function Home() {
           if (rowsCount > 0) {
             feedbackMsg += ` (${rowsCount} row${rowsCount !== 1 ? 's' : ''})`;
           }
+          if (imageData.length > 0) {
+            feedbackMsg += ` with ${imageData.length} image${imageData.length !== 1 ? 's' : ''}`;
+          }
           feedbackMsg += '. Confirm and edit as needed.';
           
           setSendResult(feedbackMsg);
+          
+          // Clear images after successful processing
+          if (imageData.length > 0) {
+            clearAllImages();
+          }
         } else {
           setSendResult(data.error || "Failed to get AI response.");
         }
@@ -650,6 +706,81 @@ export default function Home() {
   //   if (selectedAiApi === id) setSelectedAiApi("gemini");
   // };
 
+  // Image upload handlers
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingImages(true);
+    const newImages: UploadedImage[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          alert(`${file.name} is not an image file.`);
+          continue;
+        }
+
+        // Validate file size (max 20MB for inline, we'll use 10MB as a safe limit)
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`${file.name} is too large. Please use images under 10MB.`);
+          continue;
+        }
+
+        // Create preview URL
+        const preview = URL.createObjectURL(file);
+        
+        const imageData: UploadedImage = {
+          id: `img_${Date.now()}_${i}`,
+          file,
+          preview,
+        };
+
+        newImages.push(imageData);
+      }
+
+      setUploadedImages(prev => [...prev, ...newImages]);
+    } catch (error) {
+      console.error('Error processing images:', error);
+      alert('Error processing images. Please try again.');
+    } finally {
+      setUploadingImages(false);
+      // Clear the input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removeImage = (imageId: string) => {
+    setUploadedImages(prev => {
+      const imageToRemove = prev.find(img => img.id === imageId);
+      if (imageToRemove) {
+        // Clean up preview URL
+        URL.revokeObjectURL(imageToRemove.preview);
+      }
+      return prev.filter(img => img.id !== imageId);
+    });
+  };
+
+  const clearAllImages = () => {
+    uploadedImages.forEach(img => {
+      URL.revokeObjectURL(img.preview);
+    });
+    setUploadedImages([]);
+  };
+
+  // Clean up preview URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      uploadedImages.forEach(img => {
+        URL.revokeObjectURL(img.preview);
+      });
+    };
+  }, [uploadedImages]);
 
 
   if (loading) {
@@ -912,6 +1043,85 @@ export default function Home() {
                         {sendResult}
                       </div>
                     )}
+
+                    {/* Image Upload Section - Mobile optimized */}
+                    <div className="w-full max-w-md mx-auto space-y-4">
+                      {/* Image Upload Button */}
+                      <div className="flex items-center justify-center">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                          id="image-upload"
+                        />
+                        <label
+                          htmlFor="image-upload"
+                          className={`flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed 
+                                   ${uploadingImages 
+                                     ? 'border-blue-300 bg-blue-50 dark:bg-blue-950/30' 
+                                     : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'}
+                                   cursor-pointer transition-all duration-200 bg-white/50 dark:bg-gray-800/50
+                                   hover:bg-blue-50 dark:hover:bg-gray-700/50 min-h-[50px]`}
+                        >
+                          {uploadingImages ? (
+                            <>
+                              <svg className="animate-spin h-5 w-5 text-blue-500" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              <span className="text-blue-600 dark:text-blue-400 text-sm">Processing images...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              <span className="text-gray-600 dark:text-gray-300 text-sm">Add images (optional)</span>
+                            </>
+                          )}
+                        </label>
+                      </div>
+
+                      {/* Uploaded Images Display */}
+                      {uploadedImages.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              {uploadedImages.length} image{uploadedImages.length !== 1 ? 's' : ''} uploaded
+                            </span>
+                            <button
+                              onClick={clearAllImages}
+                              className="text-xs px-3 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors min-h-[32px]"
+                            >
+                              Clear all
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {uploadedImages.map((image) => (
+                              <div key={image.id} className="relative group">
+                                <img
+                                  src={image.preview}
+                                  alt="Uploaded"
+                                  className="w-full h-20 sm:h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+                                />
+                                <button
+                                  onClick={() => removeImage(image.id)}
+                                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-colors opacity-80 group-hover:opacity-100"
+                                >
+                                  ×
+                                </button>
+                                <div className="absolute bottom-1 left-1 right-1 bg-black/50 text-white text-xs p-1 rounded truncate">
+                                  {image.file.name}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ) : (

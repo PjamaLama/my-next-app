@@ -352,7 +352,7 @@ function validateAndFixVehicleLogEntries(updates: SheetUpdate[], sheetAnalysis: 
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { transcript, spreadsheetId, selectedSheetName, geminiApiKey } = req.body;
+  const { transcript, spreadsheetId, selectedSheetName, geminiApiKey, images } = req.body;
 
   // Check if we have a Gemini API key from the user or fallback to environment variable
   const apiKey = geminiApiKey || process.env.GEMINI_API_KEY;
@@ -491,12 +491,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Send to enhanced Gemini function that can reason about multiple sheets and rows
-    const aiResponse = await sendToGeminiMulti({ 
-      transcript, 
-      sheetsData, 
+    const aiResponse = await sendToGeminiMulti({
+      transcript,
+      sheetsData,
       allSheetNames: sheetNames,
       selectedSheetName,
-      geminiApiKey: apiKey 
+      geminiApiKey: apiKey,
+      images: images || []
     });
 
     // Enhanced response logging
