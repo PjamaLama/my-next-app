@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useFirebase } from './FirebaseProvider';
 import { db } from './FirebaseProvider';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -26,34 +26,58 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const { user } = useFirebase();
   const [defaultSpreadsheetId, setDefaultSpreadsheetIdState] = useState<string>("");
   const [selectedSheetName, setSelectedSheetNameState] = useState<string>("");
+  const isInitialLoad = useRef(true);
 
-  // Load user's default selections from Firebase
+  const validateAndCorrectSelection = async (spreadsheetId: string, sheetName: string) => {
+    console.log(`🚀 Validating selection: ${spreadsheetId} -> ${sheetName}`);
+    try {
+      const res = await fetch('/api/get-sheet-names', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetId }),
+      });
+      if (res.ok) {
+        const { sheetNames } = await res.json();
+        if (!sheetNames.includes(sheetName)) {
+          console.warn(`⚠️ Stale sheet detected. "${sheetName}" not found. Correcting.`);
+          const newSheet = sheetNames[0] || "";
+          setSelectedSheetName(newSheet);
+        } else {
+          console.log(`✅ Selection validated successfully.`);
+        }
+      }
+    } catch (error) {
+      console.error("Error validating sheet selection:", error);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
     const userDocRef = doc(db, "users", user.uid);
-
     const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.defaultSpreadsheetId) {
-          setDefaultSpreadsheetIdState(data.defaultSpreadsheetId);
-        }
-        if (data.defaultSheetName) {
-          setSelectedSheetNameState(data.defaultSheetName);
+        const newSpreadsheetId = data.defaultSpreadsheetId || "";
+        const newSheetName = data.defaultSheetName || "";
+
+        setDefaultSpreadsheetIdState(newSpreadsheetId);
+        setSelectedSheetNameState(newSheetName);
+
+        if (isInitialLoad.current && newSpreadsheetId && newSheetName) {
+          isInitialLoad.current = false;
+          validateAndCorrectSelection(newSpreadsheetId, newSheetName);
         }
       }
     });
-
     return () => unsubUserDoc();
   }, [user]);
 
-  // Save selections to Firebase
   const saveDefaultSelections = async (spreadsheetId: string, sheetName: string) => {
     if (!user) return;
     try {
-      await setDoc(doc(db, "users", user.uid), { 
+      await setDoc(doc(db, "users", user.uid), {
         defaultSpreadsheetId: spreadsheetId,
-        defaultSheetName: sheetName 
+        defaultSheetName: sheetName
       }, { merge: true });
     } catch (e) {
       console.error("Error saving default selections:", e);
@@ -66,16 +90,16 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       saveDefaultSelections(id, selectedSheetName);
     }
   };
-
+  
   const setSelectedSheetName = (name: string) => {
     setSelectedSheetNameState(name);
     if (defaultSpreadsheetId && name) {
       saveDefaultSelections(defaultSpreadsheetId, name);
     }
   };
-
+  
   return (
-    <SheetContext.Provider 
+    <SheetContext.Provider
       value={{
         defaultSpreadsheetId,
         selectedSheetName,

@@ -2,6 +2,16 @@ import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { sendToGemini } from '@/lib/gemini';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+// Helper function to escape sheet names for Google Sheets API
+const escapeSheetName = (name: string) => {
+  // If the sheet name contains spaces, special characters, or starts with a digit,
+  // wrap it in single quotes and escape any existing single quotes
+  if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+    return `'${name.replace(/'/g, "''")}'`;
+  }
+  return name;
+};
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { transcript, spreadsheetId, sheetName, geminiApiKey, images } = req.body;
 
@@ -16,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sheets = await getGoogleSheetsClient();
     const sheetDataRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${sheetName}!A:Z`,
+      range: `${escapeSheetName(sheetName)}!A:Z`,
       valueRenderOption: 'FORMATTED_VALUE',
     });
 

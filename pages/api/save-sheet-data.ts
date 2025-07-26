@@ -6,6 +6,16 @@ type Data = {
   error?: string;
 };
 
+// Helper function to escape sheet names for Google Sheets API
+const escapeSheetName = (name: string) => {
+  // If the sheet name contains spaces, special characters, or starts with a digit,
+  // wrap it in single quotes and escape any existing single quotes
+  if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+    return `'${name.replace(/'/g, "''")}'`;
+  }
+  return name;
+};
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
@@ -29,7 +39,7 @@ export default async function handler(
         if (!update.cell) continue;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `${sheetName}!${update.cell}`,
+          range: `${escapeSheetName(sheetName)}!${update.cell}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: { values: [[update.value ?? '']] },
         });
@@ -41,7 +51,7 @@ export default async function handler(
     // Get existing sheet data to find the next empty row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${sheetName}!A:Z`, // Fetch a wide range to get all headers and existing data
+      range: `${escapeSheetName(sheetName)}!A:Z`, // Fetch a wide range to get all headers and existing data
     });
 
     const rows = response.data.values || [];
@@ -57,7 +67,7 @@ export default async function handler(
     // Append the new row
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${sheetName}!A${nextRow}`, // Start from the next empty row
+      range: `${escapeSheetName(sheetName)}!A${nextRow}`, // Start from the next empty row
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [valuesToAppend],

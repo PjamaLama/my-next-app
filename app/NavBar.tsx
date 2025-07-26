@@ -13,6 +13,8 @@ import {
   onSnapshot,
   addDoc,
   deleteDoc,
+  updateDoc,
+  setDoc,
 } from "firebase/firestore";
 import Link from 'next/link';
 import { useSettings } from './providers/SettingsProvider'; // Import useSettings from the new provider
@@ -29,7 +31,7 @@ interface Option {
 
 const NavBar: React.FC = () => {
   const { user, signOutUser, geminiApiKey, saveGeminiApiKey } = useFirebase();
-  const { defaultSpreadsheetId, setDefaultSpreadsheetId, setSelectedSheetName } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetName, setDefaultSpreadsheetId, setSelectedSheetName } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   const { settingsOpen, setSettingsOpen } = useSettings(); // Use settingsOpen and setSettingsOpen from the new provider
   const [sheetDropdownOpen, setSheetDropdownOpen] = useState(false);
@@ -129,15 +131,141 @@ const NavBar: React.FC = () => {
     await deleteDoc(doc(db, "users", user.uid, "options", id));
   };
 
-  const handleSpreadsheetSelect = (spreadsheetId: string) => {
-    setDefaultSpreadsheetId(spreadsheetId);
-    // Auto-select first sheet if available
-    const option = options.find(o => o.spreadsheetId === spreadsheetId);
-    if (option && option.sheetNames.length > 0) {
-      const firstSheet = option.sheetNames[0];
-      setSelectedSheetName(firstSheet);
+  // Debug function to log all spreadsheet options
+  const debugSpreadsheetOptions = () => {
+    console.log('🔍 Current spreadsheet options:');
+    options.forEach((option, index) => {
+      console.log(`  ${index + 1}. "${option.label}" (ID: ${option.spreadsheetId})`);
+      console.log(`     Sheets: [${option.sheetNames.join(', ')}]`);
+      console.log(`     Firebase Doc ID: ${option.id}`);
+    });
+    console.log(`Current selection: spreadsheet="${defaultSpreadsheetId}", sheet="${selectedSheetName}"`);
+  };
+
+  // Function to clear invalid selections and refresh
+  const clearInvalidSelections = async () => {
+    console.log('🧹 Clearing potentially invalid selections...');
+    
+    // Clear current selections
+    setSelectedSheetName('');
+    setDefaultSpreadsheetId('');
+    
+    // Clear localStorage cache
+    localStorage.removeItem('currentSpreadsheetId');
+    
+    // Clear Firebase stored selections
+    if (user) {
+      try {
+        await setDoc(doc(db, "users", user.uid), { 
+          defaultSpreadsheetId: '',
+          defaultSheetName: '' 
+        }, { merge: true });
+        console.log('✅ Cleared Firebase selections');
+      } catch (e) {
+        console.error("Error clearing Firebase selections:", e);
+      }
     }
+    
+    console.log('✅ Cleared all selections. Please select spreadsheet again.');
+  };
+
+  // Call debug on options change
+  useEffect(() => {
+    if (options.length > 0) {
+      debugSpreadsheetOptions();
+      
+      // Check for potential mismatches
+      if (defaultSpreadsheetId && selectedSheetName) {
+        const currentOption = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
+        if (currentOption && !currentOption.sheetNames.includes(selectedSheetName)) {
+          console.warn(`⚠️ MISMATCH DETECTED: Sheet "${selectedSheetName}" not found in current spreadsheet's stored sheets: [${currentOption.sheetNames.join(', ')}]`);
+          console.warn('🔧 Consider clearing selections to fix this issue');
+        }
+      }
+    }
+  }, [options, defaultSpreadsheetId, selectedSheetName]);
+
+  const handleSpreadsheetSelect = async (spreadsheetId: string) => {
+    setDefaultSpreadsheetId(spreadsheetId);
     setSheetDropdownOpen(false);
+    
+    // Clear any previous sheet selection first to avoid stale data issues
+    setSelectedSheetName('');
+    
+    console.log(`🎯 Selected spreadsheet: ${spreadsheetId}`);
+    
+    try {
+      console.log(`🔄 Refreshing sheet names for spreadsheet: ${spreadsheetId}`);
+      
+      // Refresh sheet names from the actual spreadsheet to ensure they're current
+      const res = await fetch('/api/get-sheet-names', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetId }),
+      });
+      
+      if (res.ok) {
+        const { sheetNames, spreadsheetTitle } = await res.json();
+        console.log(`📋 Found ${sheetNames.length} sheets in "${spreadsheetTitle}":`, sheetNames);
+        
+        // Validate that we have actual sheet names
+        if (!Array.isArray(sheetNames) || sheetNames.length === 0) {
+          console.error('❌ No valid sheet names returned');
+          return;
+        }
+        
+        // Update the stored sheet names in Firebase
+        const option = options.find(o => o.spreadsheetId === spreadsheetId);
+        if (option && user) {
+          try {
+            await updateDoc(doc(db, 'users', user.uid, 'options', option.id), {
+              sheetNames,
+              label: spreadsheetTitle || option.label,
+              lastUpdated: new Date().toISOString()
+            });
+            console.log(`💾 Updated Firebase with new sheet names for "${spreadsheetTitle}"`);
+          } catch (updateError) {
+            console.warn('Failed to update Firebase, but continuing:', updateError);
+          }
+        }
+        
+        // Auto-select the first available sheet from the ACTUAL spreadsheet
+        // Don't rely on stored sheet names which might be from a different spreadsheet
+        const firstActualSheet = sheetNames[0];
+        if (firstActualSheet && typeof firstActualSheet === 'string') {
+          // Use setTimeout to ensure the spreadsheet ID is set before the sheet name
+          setTimeout(() => {
+            // Double-check that we're still on the same spreadsheet
+            const currentSpreadsheetId = localStorage.getItem('currentSpreadsheetId') || defaultSpreadsheetId;
+            if (currentSpreadsheetId === spreadsheetId) {
+              setSelectedSheetName(firstActualSheet);
+              console.log(`✅ Auto-selected ACTUAL sheet: "${firstActualSheet}" from spreadsheet: ${spreadsheetId}`);
+              console.log(`📊 Available sheets in this spreadsheet: [${sheetNames.join(', ')}]`);
+            } else {
+              console.log(`⚠️ Spreadsheet changed during refresh, skipping selection`);
+            }
+          }, 200);
+          
+          // Store the current spreadsheet ID to prevent race conditions
+          localStorage.setItem('currentSpreadsheetId', spreadsheetId);
+        } else {
+          console.warn('❌ No valid first sheet found');
+        }
+      } else {
+        console.error('Failed to refresh sheet names, API error:', res.status);
+        const errorText = await res.text();
+        console.error('API Error details:', errorText);
+        
+        // Don't fallback to stored sheet names as they might be from wrong spreadsheet
+        // Instead, show error and let user manually refresh
+        console.error('❌ Cannot fallback to stored sheet names - they may be from wrong spreadsheet');
+      }
+    } catch (error) {
+      console.error('Error refreshing sheet names:', error);
+      
+      // Don't fallback to stored sheet names as they might be from wrong spreadsheet
+      console.error('❌ Cannot fallback to stored sheet names - they may be from wrong spreadsheet');
+    }
   };
 
   const currentSpreadsheet = options.find(o => o.spreadsheetId === defaultSpreadsheetId);

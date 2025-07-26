@@ -17,6 +17,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const response = await sheets.spreadsheets.get({ spreadsheetId });
     const sheetNames = response.data.sheets?.map(sheet => sheet.properties?.title).filter(Boolean) || [];
     const spreadsheetTitle = response.data.properties?.title || spreadsheetId;
+    
+    // Debug sheet names
+    console.log('🔍 Debug - Raw sheet names found:');
+    sheetNames.forEach((name, index) => {
+      console.log(`  ${index + 1}: "${name}" (length: ${name?.length}, JSON: ${JSON.stringify(name)})`);
+    });
+    
     res.status(200).json({ sheetNames, spreadsheetTitle });
   } catch (err) {
     console.error('Error fetching sheet names:', err);

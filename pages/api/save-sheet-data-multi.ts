@@ -1,6 +1,16 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+// Helper function to escape sheet names for Google Sheets API
+const escapeSheetName = (name: string) => {
+  // If the sheet name contains spaces, special characters, or starts with a digit,
+  // wrap it in single quotes and escape any existing single quotes
+  if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+    return `'${name.replace(/'/g, "''")}'`;
+  }
+  return name;
+};
+
 interface UpdateItem {
   sheetName: string;
   cell: string;
@@ -54,7 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // Create batch update data for this sheet
         const batchData = sortedUpdates.map(update => ({
-          range: `${sheetName}!${update.cell}`,
+          range: `${escapeSheetName(sheetName)}!${update.cell}`,
           values: [[update.value]]
         }));
 

@@ -229,23 +229,39 @@ export default function Home() {
   // Fetch sheet data when spreadsheet and sheet are selected
   useEffect(() => {
     if (!defaultSpreadsheetId || !selectedSheetName) return;
-    (async () => {
+    
+    console.log(`🔍 Validating sheet data fetch: spreadsheet="${defaultSpreadsheetId}", sheet="${selectedSheetName}"`);
+    
+    // Add a small delay to prevent race conditions during rapid selection changes
+    const timeoutId = setTimeout(async () => {
       try {
+        // Double-check that the selection is still valid
+        if (!defaultSpreadsheetId || !selectedSheetName) {
+          console.log('⚠️ Selection cleared during timeout, skipping fetch');
+          return;
+        }
+        
+        console.log(`📡 Fetching data for sheet "${selectedSheetName}" in spreadsheet ${defaultSpreadsheetId}`);
+        
         const res = await fetch('/api/get-sheet-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: selectedSheetName }),
         });
+        
         if (res.ok) {
-          // const { data } = await res.json();
-          // setSheetData(data || []); // This state is removed
+          const { data } = await res.json();
+          console.log(`✅ Successfully fetched ${data?.length || 0} rows from "${selectedSheetName}"`);
         } else {
-          // setSheetData([]); // This state is removed
+          const errorText = await res.text();
+          console.error(`❌ Failed to fetch sheet data: ${res.status} - ${errorText}`);
         }
-      } catch {
-        // setSheetData([]); // This state is removed
+      } catch (error) {
+        console.error('❌ Error fetching sheet data:', error);
       }
-    })();
+    }, 300); // 300ms delay to allow selection to stabilize
+    
+    return () => clearTimeout(timeoutId);
   }, [defaultSpreadsheetId, selectedSheetName]);
 
   const startListening = (clearTranscript = true) => {
