@@ -178,7 +178,7 @@ export default function Home() {
   // Default Gemini API (non-removable)
   const GEMINI_API = {
     id: "gemini",
-    url: "/api/parse-and-fill-multi",
+    url: "/api/parse-and-fill-multi/",
     name: "Google Gemini (default)"
   };
 
@@ -243,7 +243,7 @@ export default function Home() {
         
         console.log(`📡 Fetching data for sheet "${selectedSheetName}" in spreadsheet ${defaultSpreadsheetId}`);
         
-        const res = await fetch('/api/get-sheet-data', {
+        const res = await fetch('/api/get-sheet-data/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: selectedSheetName }),
@@ -253,8 +253,61 @@ export default function Home() {
           const { data } = await res.json();
           console.log(`✅ Successfully fetched ${data?.length || 0} rows from "${selectedSheetName}"`);
         } else {
-          const errorText = await res.text();
-          console.error(`❌ Failed to fetch sheet data: ${res.status} - ${errorText}`);
+          // Parse the enhanced error response
+          console.log(`📍 Response status: ${res.status}, Content-Type: ${res.headers.get('content-type')}`);
+          console.log(`📍 Response headers:`, Object.fromEntries(res.headers.entries()));
+          
+          try {
+            // Clone the response to avoid "body already read" error
+            const responseClone = res.clone();
+            const responseText = await responseClone.text();
+            console.log(`📄 Raw response body: "${responseText}"`);
+            console.log(`📄 Response body length: ${responseText.length}`);
+            console.log(`📄 Response body type: ${typeof responseText}`);
+            
+            if (!responseText.trim()) {
+              console.error(`❌ Empty response body for ${res.status} error`);
+              console.error(`❌ This suggests the API returned an empty response`);
+              return;
+            }
+            
+            let errorData;
+            try {
+              errorData = JSON.parse(responseText);
+              console.log(`📋 Parsed error data:`, errorData);
+              console.log(`📋 Error data type: ${typeof errorData}`);
+              console.log(`📋 Error data keys:`, Object.keys(errorData || {}));
+            } catch (jsonError) {
+              console.error(`❌ JSON parse failed:`, jsonError);
+              console.error(`❌ Attempting to parse: "${responseText}"`);
+              return;
+            }
+            
+            console.error(`❌ Failed to fetch sheet data: ${res.status} -`, errorData);
+            
+            // Handle specific sheet not found errors with helpful feedback
+            if (res.status === 404 && errorData && errorData.availableSheets) {
+              console.warn(`🔧 Sheet "${errorData.requestedSheet}" not found.`);
+              console.warn(`📋 Available sheets: [${errorData.availableSheets.join(', ')}]`);
+              
+              if (errorData.availableSheets.length > 0) {
+                console.log(`💡 Auto-correcting to first available sheet: "${errorData.availableSheets[0]}"`);
+                // Auto-correct to the first available sheet
+                setSelectedSheetName(errorData.availableSheets[0]);
+              } else {
+                console.error(`❌ No sheets available in this spreadsheet`);
+              }
+            } else if (res.status === 404) {
+              // Handle 404 errors without available sheets (might be old format)
+              console.warn(`🔧 404 error without enhanced response structure`);
+              console.warn(`🔄 This might be from cached/stale data. The system should auto-correct soon.`);
+              console.warn(`🔄 Error data received:`, errorData);
+            }
+          } catch (parseError) {
+            console.error(`❌ Failed to parse error response: ${parseError}`);
+            console.error(`❌ Parse error details:`, parseError);
+            console.error(`❌ Original error: ${res.status} - Unable to parse response`);
+          }
         }
       } catch (error) {
         console.error('❌ Error fetching sheet data:', error);
@@ -503,7 +556,7 @@ export default function Home() {
         value: stepperValues[field.cell] ?? '',
       }));
 
-      const res = await fetch('/api/save-sheet-data-multi', {
+              const res = await fetch('/api/save-sheet-data-multi/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

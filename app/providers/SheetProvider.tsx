@@ -30,8 +30,15 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const validateAndCorrectSelection = async (spreadsheetId: string, sheetName: string) => {
     console.log(`🚀 Validating selection: ${spreadsheetId} -> ${sheetName}`);
+    
+    // Don't validate if either is empty
+    if (!spreadsheetId || !sheetName) {
+      console.log(`⚠️ Skipping validation - missing spreadsheetId or sheetName`);
+      return;
+    }
+    
     try {
-      const res = await fetch('/api/get-sheet-names', {
+      const res = await fetch('/api/get-sheet-names/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spreadsheetId }),
@@ -39,17 +46,43 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (res.ok) {
         const { sheetNames } = await res.json();
         if (!sheetNames.includes(sheetName)) {
-          console.warn(`⚠️ Stale sheet detected. "${sheetName}" not found. Correcting.`);
+          console.warn(`⚠️ Stale sheet detected. "${sheetName}" not found in spreadsheet ${spreadsheetId}.`);
+          console.warn(`⚠️ Available sheets: [${sheetNames.join(', ')}]`);
           const newSheet = sheetNames[0] || "";
-          setSelectedSheetName(newSheet);
+          if (newSheet) {
+            console.log(`🔧 Auto-correcting to first available sheet: "${newSheet}"`);
+            setSelectedSheetNameState(newSheet);
+            // Save the corrected selection
+            if (user) {
+              try {
+                await setDoc(doc(db, "users", user.uid), {
+                  defaultSpreadsheetId: spreadsheetId,
+                  defaultSheetName: newSheet
+                }, { merge: true });
+                console.log(`💾 Saved corrected sheet selection to Firebase`);
+              } catch (e) {
+                console.error("Error saving corrected selection:", e);
+              }
+            }
+          }
         } else {
-          console.log(`✅ Selection validated successfully.`);
+          console.log(`✅ Selection validated successfully: "${sheetName}" exists in spreadsheet.`);
         }
+      } else {
+        console.error(`❌ Failed to validate sheet names: ${res.status}`);
       }
     } catch (error) {
       console.error("Error validating sheet selection:", error);
     }
   };
+
+  // Validate whenever spreadsheet ID changes (not just on initial load)
+  useEffect(() => {
+    if (defaultSpreadsheetId && selectedSheetName) {
+      console.log(`🔍 Spreadsheet changed to ${defaultSpreadsheetId}, validating sheet "${selectedSheetName}"`);
+      validateAndCorrectSelection(defaultSpreadsheetId, selectedSheetName);
+    }
+  }, [defaultSpreadsheetId]); // Trigger validation when spreadsheet changes
 
   useEffect(() => {
     if (!user) return;
@@ -63,6 +96,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setDefaultSpreadsheetIdState(newSpreadsheetId);
         setSelectedSheetNameState(newSheetName);
 
+        // Only validate on initial load to avoid infinite loops
         if (isInitialLoad.current && newSpreadsheetId && newSheetName) {
           isInitialLoad.current = false;
           validateAndCorrectSelection(newSpreadsheetId, newSheetName);

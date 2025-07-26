@@ -102,7 +102,7 @@ const NavBar: React.FC = () => {
         return;
       }
 
-      const res = await fetch('/api/get-sheet-names', {
+      const res = await fetch('/api/get-sheet-names/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spreadsheetId }),
@@ -186,19 +186,20 @@ const NavBar: React.FC = () => {
   }, [options, defaultSpreadsheetId, selectedSheetName]);
 
   const handleSpreadsheetSelect = async (spreadsheetId: string) => {
-    setDefaultSpreadsheetId(spreadsheetId);
-    setSheetDropdownOpen(false);
+    console.log(`🎯 Selected spreadsheet: ${spreadsheetId}`);
     
-    // Clear any previous sheet selection first to avoid stale data issues
+    // Clear any previous sheet selection FIRST to avoid stale data issues
     setSelectedSheetName('');
     
-    console.log(`🎯 Selected spreadsheet: ${spreadsheetId}`);
+    // Set the new spreadsheet ID
+    setDefaultSpreadsheetId(spreadsheetId);
+    setSheetDropdownOpen(false);
     
     try {
       console.log(`🔄 Refreshing sheet names for spreadsheet: ${spreadsheetId}`);
       
       // Refresh sheet names from the actual spreadsheet to ensure they're current
-      const res = await fetch('/api/get-sheet-names', {
+      const res = await fetch('/api/get-sheet-names/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spreadsheetId }),
@@ -230,24 +231,19 @@ const NavBar: React.FC = () => {
         }
         
         // Auto-select the first available sheet from the ACTUAL spreadsheet
-        // Don't rely on stored sheet names which might be from a different spreadsheet
         const firstActualSheet = sheetNames[0];
         if (firstActualSheet && typeof firstActualSheet === 'string') {
-          // Use setTimeout to ensure the spreadsheet ID is set before the sheet name
+          // Use a small delay to ensure spreadsheet ID is properly set first
           setTimeout(() => {
-            // Double-check that we're still on the same spreadsheet
-            const currentSpreadsheetId = localStorage.getItem('currentSpreadsheetId') || defaultSpreadsheetId;
-            if (currentSpreadsheetId === spreadsheetId) {
+            // Double-check that we're still on the same spreadsheet to prevent race conditions
+            if (defaultSpreadsheetId === spreadsheetId) {
+              console.log(`✅ Auto-selecting sheet: "${firstActualSheet}" for spreadsheet: ${spreadsheetId}`);
+              console.log(`📊 Available sheets: [${sheetNames.join(', ')}]`);
               setSelectedSheetName(firstActualSheet);
-              console.log(`✅ Auto-selected ACTUAL sheet: "${firstActualSheet}" from spreadsheet: ${spreadsheetId}`);
-              console.log(`📊 Available sheets in this spreadsheet: [${sheetNames.join(', ')}]`);
             } else {
-              console.log(`⚠️ Spreadsheet changed during refresh, skipping selection`);
+              console.log(`⚠️ Spreadsheet changed during sheet refresh, skipping selection (expected: ${spreadsheetId}, current: ${defaultSpreadsheetId})`);
             }
-          }, 200);
-          
-          // Store the current spreadsheet ID to prevent race conditions
-          localStorage.setItem('currentSpreadsheetId', spreadsheetId);
+          }, 150); // Reduced delay since we cleared the sheet name first
         } else {
           console.warn('❌ No valid first sheet found');
         }
@@ -255,16 +251,9 @@ const NavBar: React.FC = () => {
         console.error('Failed to refresh sheet names, API error:', res.status);
         const errorText = await res.text();
         console.error('API Error details:', errorText);
-        
-        // Don't fallback to stored sheet names as they might be from wrong spreadsheet
-        // Instead, show error and let user manually refresh
-        console.error('❌ Cannot fallback to stored sheet names - they may be from wrong spreadsheet');
       }
     } catch (error) {
       console.error('Error refreshing sheet names:', error);
-      
-      // Don't fallback to stored sheet names as they might be from wrong spreadsheet
-      console.error('❌ Cannot fallback to stored sheet names - they may be from wrong spreadsheet');
     }
   };
 

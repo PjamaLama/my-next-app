@@ -21,7 +21,7 @@ export const ServiceAccountProvider: React.FC<{ children: React.ReactNode }> = (
   useEffect(() => {
     const fetchServiceAccountEmail = async () => {
       try {
-        const response = await fetch('/api/get-service-account');
+        const response = await fetch('/api/get-service-account/');
         if (response.ok) {
           const data = await response.json();
           setServiceAccountEmail(data.email || '');
