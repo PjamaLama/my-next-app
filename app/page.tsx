@@ -65,6 +65,7 @@ interface UploadedImage {
   file: File;
   preview: string;
   geminiFileUri?: string;
+  fileType: 'image' | 'pdf'; // Added to distinguish between images and PDFs
 }
 
 // TypeScript: Add SpeechRecognition types if missing (for browser compatibility)
@@ -679,9 +680,19 @@ export default function Home() {
           if (rowsCount > 0) {
             feedbackMsg += ` (${rowsCount} row${rowsCount !== 1 ? 's' : ''})`;
           }
-          if (imageData.length > 0) {
-            feedbackMsg += ` with ${imageData.length} image${imageData.length !== 1 ? 's' : ''}`;
+          
+          // Count images and PDFs for feedback message
+          const uploadedImageCount = imageData.filter(img => img.mimeType.startsWith('image/')).length;
+          const uploadedPdfCount = imageData.filter(img => img.mimeType === 'application/pdf').length;
+          
+          if (uploadedImageCount > 0 || uploadedPdfCount > 0) {
+            const imagePart = uploadedImageCount > 0 ? `${uploadedImageCount} image${uploadedImageCount !== 1 ? 's' : ''}` : '';
+            const pdfPart = uploadedPdfCount > 0 ? `${uploadedPdfCount} PDF${uploadedPdfCount !== 1 ? 's' : ''}` : '';
+            const separator = uploadedImageCount > 0 && uploadedPdfCount > 0 ? ' and ' : '';
+            
+            feedbackMsg += ` with ${imagePart}${separator}${pdfPart}`;
           }
+          
           feedbackMsg += '. Confirm and edit as needed.';
           
           setSendResult(feedbackMsg);
@@ -719,15 +730,28 @@ export default function Home() {
         const file = files[i];
         
         // Validate file type
-        if (!file.type.startsWith('image/')) {
-          alert(`${file.name} is not an image file.`);
+        const isPdf = file.type === 'application/pdf';
+        const isImage = file.type.startsWith('image/');
+        
+        if (!isImage && !isPdf) {
+          alert(`${file.name} is not a supported file type. Please use images or PDFs.`);
           continue;
         }
 
-        // Validate file size (max 20MB for inline, we'll use 10MB as a safe limit)
-        if (file.size > 10 * 1024 * 1024) {
-          alert(`${file.name} is too large. Please use images under 10MB.`);
+        // Validate file size (different limits for images and PDFs)
+        const maxSizeInMB = isPdf ? 20 : 10; // 20MB for PDFs, 10MB for images
+        const maxSizeInBytes = maxSizeInMB * 1024 * 1024;
+        
+        if (file.size > maxSizeInBytes) {
+          alert(`${file.name} is too large. Please use ${isPdf ? 'PDFs' : 'images'} under ${maxSizeInMB}MB.`);
           continue;
+        }
+        
+        // For PDFs, validate page count limitation warning
+        if (isPdf) {
+          // We can't actually count PDF pages client-side easily,
+          // so we'll just show a warning about the 20-page limitation
+          alert(`Note: Gemini API will only process the first 20 pages of ${file.name}.`);
         }
 
         // Create preview URL
@@ -737,6 +761,7 @@ export default function Home() {
           id: `img_${Date.now()}_${i}`,
           file,
           preview,
+          fileType: isPdf ? 'pdf' : 'image'
         };
 
         newImages.push(imageData);
@@ -745,7 +770,7 @@ export default function Home() {
       setUploadedImages(prev => [...prev, ...newImages]);
     } catch (error) {
       console.error('Error processing images:', error);
-      alert('Error processing images. Please try again.');
+      alert('Error processing files. Please try again.');
     } finally {
       setUploadingImages(false);
       // Clear the input
@@ -772,6 +797,14 @@ export default function Home() {
     });
     setUploadedImages([]);
   };
+
+  // Compute file counts for display
+  const imageCount = uploadedImages.filter(img => img.fileType === 'image').length;
+  const pdfCount = uploadedImages.filter(img => img.fileType === 'pdf').length;
+  const uploadedFilesText = [
+    imageCount > 0 ? `${imageCount} image${imageCount !== 1 ? 's' : ''}` : '',
+    pdfCount > 0 ? `${pdfCount} PDF${pdfCount !== 1 ? 's' : ''}` : ''
+  ].filter(Boolean).join(', ');
 
   // Clean up preview URLs when component unmounts
   useEffect(() => {
@@ -1052,7 +1085,7 @@ export default function Home() {
                           ref={fileInputRef}
                           type="file"
                           multiple
-                          accept="image/*"
+                          accept="image/*,application/pdf"
                           onChange={handleImageUpload}
                           className="hidden"
                           id="image-upload"
@@ -1079,7 +1112,7 @@ export default function Home() {
                               <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
-                              <span className="text-gray-600 dark:text-gray-300 text-sm">Add images (optional)</span>
+                              <span className="text-gray-600 dark:text-gray-300 text-sm">Add images or PDFs (optional)</span>
                             </>
                           )}
                         </label>
@@ -1090,7 +1123,7 @@ export default function Home() {
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <span className="text-sm text-gray-600 dark:text-gray-300">
-                              {uploadedImages.length} image{uploadedImages.length !== 1 ? 's' : ''} uploaded
+                              {uploadedFilesText}
                             </span>
                             <button
                               onClick={clearAllImages}
@@ -1102,13 +1135,22 @@ export default function Home() {
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             {uploadedImages.map((image) => (
                               <div key={image.id} className="relative group">
-                                <Image
-                                  src={image.preview}
-                                  alt="Uploaded"
-                                  width={96}
-                                  height={96}
-                                  className="w-full h-20 sm:h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
-                                />
+                                {image.fileType === 'image' ? (
+                                  <Image
+                                    src={image.preview}
+                                    alt="Uploaded"
+                                    width={96}
+                                    height={96}
+                                    className="w-full h-20 sm:h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+                                  />
+                                ) : (
+                                  <div className="w-full h-20 sm:h-24 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9h4m-2-2v6" />
+                                    </svg>
+                                  </div>
+                                )}
                                 <button
                                   onClick={() => removeImage(image.id)}
                                   className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-colors opacity-80 group-hover:opacity-100"
@@ -1123,6 +1165,15 @@ export default function Home() {
                           </div>
                         </div>
                       )}
+                      
+                      {/* File Type Limitations Info */}
+                      <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="font-medium mb-1">File Upload Limitations:</div>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li><span className="font-medium">Images:</span> JPEG, PNG, WebP, HEIC, HEIF (max 10MB)</li>
+                          <li><span className="font-medium">PDFs:</span> Max 20MB, only first 20 pages processed</li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 </div>
