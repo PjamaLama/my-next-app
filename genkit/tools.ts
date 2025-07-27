@@ -1,46 +1,74 @@
 import { getGoogleSheetsClient } from '../lib/googleSheets';
-import { db } from '../app/providers/FirebaseProvider';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 // Input type for insertRow tool
 interface InsertRowInput {
-  sheet: string;
+  sheetId: string;
+  sheetName: string;
   row: number;
 }
 
 // Input type for updateCell tool
 interface UpdateCellInput {
-  sheet: string;
+  sheetId: string;
+  sheetName: string;
   row: number;
   column: string;
   value: string | number;
 }
 
-// Helper function to find the first summary row index
-const findFirstSummaryRowIndex = async (sheetId: string, sheetName?: string): Promise<number> => {
+// Helper function to find the first summary row index from real Google Sheets data
+const findFirstSummaryRowIndex = async (sheetId: string, sheetName: string): Promise<number> => {
   try {
-    // Determine the collection path
-    let firestoreCollectionPath: string;
-    if (sheetName) {
-      firestoreCollectionPath = `sheets/${sheetId}/tabs/${sheetName}/rows`;
-    } else {
-      firestoreCollectionPath = `sheets/${sheetId}/rows`;
-    }
+    console.log(`Finding summary row for sheet: ${sheetId}, ${sheetName}`);
     
-    const rowsCollectionRef = collection(db, firestoreCollectionPath);
-    const rowsQuery = query(rowsCollectionRef, orderBy('rowIndex'));
-    const rowsSnapshot = await getDocs(rowsQuery);
+    const sheets = await getGoogleSheetsClient();
     
-    const firestoreRows = rowsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Array<{ id: string; rowIndex: number; isSummary?: boolean; [key: string]: any }>;
+    // Helper function to escape sheet names for Google Sheets API
+    const escapeSheetName = (name: string) => {
+      if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+        return `'${name.replace(/'/g, "''")}'`;
+      }
+      return name;
+    };
     
-    // Find the first row with isSummary flag
-    const firstSummaryRow = firestoreRows.find(row => row.isSummary === true);
+    const escapedSheetName = escapeSheetName(sheetName);
     
-    if (firstSummaryRow) {
-      return firstSummaryRow.rowIndex;
+    // Try to get sheet data
+    const strategies = [
+      `${escapedSheetName}!A1:Z1000`,
+      `${escapedSheetName}!A:Z`,
+      `${escapedSheetName}!A1:T100`,
+      `${sheetName}!A1:T100`
+    ];
+    
+    for (const range of strategies) {
+      try {
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId: sheetId,
+          range: range,
+          valueRenderOption: 'FORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING',
+        });
+        
+        if (response.data.values && response.data.values.length > 0) {
+          const rows = response.data.values;
+          
+          // Look for patterns that indicate summary rows
+          for (let i = 0; i < rows.length; i++) {
+            const rowString = rows[i].join(',').toLowerCase();
+            if (rowString.includes('total') || rowString.includes('sum') || rowString.includes('subtotal') || 
+                rowString.includes('summary') || rowString.includes('balance')) {
+              console.log(`Found potential summary row at index ${i + 1}: ${rows[i].join(',')}`);
+              return i + 1; // Convert to 1-based index
+            }
+          }
+          
+          break; // Successfully got data, stop trying strategies
+        }
+      } catch (rangeError) {
+        console.log(`Range strategy failed: ${range}, trying next...`);
+        continue;
+      }
     }
     
     // If no summary row found, return a high number to allow insertion anywhere
@@ -55,25 +83,9 @@ const findFirstSummaryRowIndex = async (sheetId: string, sheetName?: string): Pr
 // Export the insertRow function
 export const insertRow = async (input: InsertRowInput): Promise<string> => {
   try {
-    const { sheet, row } = input;
+    const { sheetId, sheetName, row } = input;
     
-    console.log(`Inserting row at position ${row} in sheet: ${sheet}`);
-    
-    // Extract sheet ID from sheet name (assuming format: "Sheet1" or full sheet ID)
-    let sheetId: string;
-    let sheetName: string;
-    
-    if (sheet.includes('/')) {
-      // Full sheet ID provided
-      const parts = sheet.split('/');
-      sheetId = parts[0];
-      sheetName = parts[1] || 'Sheet1';
-    } else {
-      // Just sheet name provided, need to get sheet ID from environment or context
-      // For now, we'll assume it's a sheet name and use a default sheet ID
-      // In a real implementation, you'd need to pass the sheet ID as well
-      throw new Error('Sheet ID is required. Please provide full sheet reference (sheetId/sheetName)');
-    }
+    console.log(`Inserting row at position ${row} in sheet: ${sheetId}/${sheetName}`);
     
     // Find the first summary row to validate insertion position
     const firstSummaryRowIndex = await findFirstSummaryRowIndex(sheetId, sheetName);
@@ -88,13 +100,26 @@ export const insertRow = async (input: InsertRowInput): Promise<string> => {
     // Get Google Sheets client
     const sheets = await getGoogleSheetsClient();
     
+    // First, get sheet metadata to find the correct sheet ID
+    const sheetMetadata = await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+      includeGridData: false
+    });
+    
+    const targetSheet = sheetMetadata.data.sheets?.find(s => s.properties?.title === sheetName);
+    if (!targetSheet?.properties?.sheetId) {
+      throw new Error(`Sheet "${sheetName}" not found in spreadsheet`);
+    }
+    
+    const internalSheetId = targetSheet.properties.sheetId;
+    
     // Prepare the batch update request
     const request = {
       insertRange: {
         range: {
-          sheetId: 0, // Default sheet ID (first sheet)
+          sheetId: internalSheetId,
           startRowIndex: row - 1, // Convert to 0-based index
-          endRowIndex: row - 1, // Insert 1 row
+          endRowIndex: row, // Insert 1 row
           startColumnIndex: 0,
           endColumnIndex: 0
         },
@@ -123,31 +148,25 @@ export const insertRow = async (input: InsertRowInput): Promise<string> => {
 // Export the updateCell function
 export const updateCell = async (input: UpdateCellInput): Promise<string> => {
   try {
-    const { sheet, row, column, value } = input;
+    const { sheetId, sheetName, row, column, value } = input;
     
-    console.log(`Updating cell ${column}${row} with value "${value}" in sheet: ${sheet}`);
+    console.log(`Updating cell ${column}${row} with value "${value}" in sheet: ${sheetId}/${sheetName}`);
     
     // Get Google Sheets client
     const sheets = await getGoogleSheetsClient();
     
-    // Extract sheet ID from sheet name (assuming format: "Sheet1" or full sheet ID)
-    let sheetId: string;
-    let sheetName: string;
+    // Helper function to escape sheet names for Google Sheets API
+    const escapeSheetName = (name: string) => {
+      if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+        return `'${name.replace(/'/g, "''")}'`;
+      }
+      return name;
+    };
     
-    if (sheet.includes('/')) {
-      // Full sheet ID provided
-      const parts = sheet.split('/');
-      sheetId = parts[0];
-      sheetName = parts[1] || 'Sheet1';
-    } else {
-      // Just sheet name provided, need to get sheet ID from environment or context
-      // For now, we'll assume it's a sheet name and use a default sheet ID
-      // In a real implementation, you'd need to pass the sheet ID as well
-      throw new Error('Sheet ID is required. Please provide full sheet reference (sheetId/sheetName)');
-    }
+    const escapedSheetName = escapeSheetName(sheetName);
     
-    // Build the range string (e.g., "Sheet1!A5")
-    const range = `${sheetName}!${column}${row}`;
+    // Build the range string (e.g., "Sheet1!A5" or "'Sheet 1'!A5")
+    const range = `${escapedSheetName}!${column}${row}`;
     
     // Execute the values update
     const response = await sheets.spreadsheets.values.update({

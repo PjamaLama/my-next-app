@@ -1,7 +1,6 @@
 import { genkit } from 'genkit';
 import { gemini15Flash, googleAI } from '@genkit-ai/googleai';
-import { db } from '../app/providers/FirebaseProvider';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { getGoogleSheetsClient } from '../lib/googleSheets';
 import { insertRow, updateCell } from './tools';
 
 // Configure Genkit instance with Google AI plugin
@@ -35,55 +34,97 @@ interface UpdateSheetOutput {
   executedActions?: number; // Number of actions that were executed
 }
 
-// Helper function to convert Firestore data to CSV format
-const buildSheetDataCSV = (firestoreRows: any[]): string => {
-  if (firestoreRows.length === 0) {
-    return '';
+// Helper function to fetch real Google Sheets data and convert to CSV format
+const fetchRealSheetDataAsCSV = async (sheetId: string, sheetName: string = 'Sheet1'): Promise<string> => {
+  try {
+    console.log(`Fetching real sheet data for: ${sheetId}, sheet: ${sheetName}`);
+    
+    const sheets = await getGoogleSheetsClient();
+    
+    // Helper function to escape sheet names for Google Sheets API
+    const escapeSheetName = (name: string) => {
+      if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+        return `'${name.replace(/'/g, "''")}'`;
+      }
+      return name;
+    };
+    
+    const escapedSheetName = escapeSheetName(sheetName);
+    
+    // Try to get sheet data with multiple range strategies
+    const strategies = [
+      `${escapedSheetName}!A1:Z1000`,
+      `${escapedSheetName}!A:Z`,
+      `${escapedSheetName}!A1:T100`,
+      `${sheetName}!A1:T100` // Fallback without escaping
+    ];
+    
+    let sheetData: string[][] | null = null;
+    
+    for (const range of strategies) {
+      try {
+        console.log(`Trying range strategy: ${range}`);
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId: sheetId,
+          range: range,
+          valueRenderOption: 'FORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING',
+        });
+        
+        if (response.data.values && response.data.values.length > 0) {
+          sheetData = response.data.values;
+          console.log(`Successfully fetched ${sheetData.length} rows using range: ${range}`);
+          break;
+        }
+      } catch (rangeError) {
+        console.log(`Range strategy failed: ${range}, trying next...`);
+        continue;
+      }
+    }
+    
+    if (!sheetData || sheetData.length === 0) {
+      console.warn('No data found in sheet, returning empty CSV');
+      return '';
+    }
+    
+    // Convert to CSV format
+    const csvRows = sheetData.map(row => {
+      return row.map(cell => {
+        const value = cell || '';
+        // Escape commas and quotes in CSV
+        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      }).join(',');
+    });
+    
+    const csvData = csvRows.join('\n');
+    console.log(`Generated CSV data with ${csvRows.length} rows`);
+    return csvData;
+    
+  } catch (error) {
+    console.error('Error fetching real sheet data:', error);
+    throw new Error(`Failed to fetch sheet data: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  // Sort by row index to maintain order
-  const sortedRows = firestoreRows.sort((a, b) => a.rowIndex - b.rowIndex);
-  
-  // Extract all unique column names (excluding metadata fields)
-  const metadataFields = ['rowIndex', 'isSummary', 'sheetName'];
-  const allColumns = new Set<string>();
-  
-  sortedRows.forEach(row => {
-    Object.keys(row).forEach(key => {
-      if (!metadataFields.includes(key)) {
-        allColumns.add(key);
-      }
-    });
-  });
-  
-  const columnNames = Array.from(allColumns).sort();
-  
-  // Build CSV header
-  const csvRows = [columnNames.join(',')];
-  
-  // Build CSV data rows
-  sortedRows.forEach(row => {
-    const csvRow = columnNames.map(col => {
-      const value = row[col] || '';
-      // Escape commas and quotes in CSV
-      if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-        return `"${value.replace(/"/g, '""')}"`;
-      }
-      return value;
-    });
-    csvRows.push(csvRow.join(','));
-  });
-  
-  return csvRows.join('\n');
 };
 
-// Helper function to find the first summary row index
-const findFirstSummaryRowIndex = (firestoreRows: any[]): number => {
-  // Find the first row with isSummary flag
-  const firstSummaryRow = firestoreRows.find(row => row.isSummary === true);
+// Helper function to find the first summary row index from CSV data
+const findFirstSummaryRowIndexFromCSV = (csvData: string): number => {
+  if (!csvData.trim()) {
+    return 999999;
+  }
   
-  if (firstSummaryRow) {
-    return firstSummaryRow.rowIndex;
+  const rows = csvData.split('\n');
+  
+  // Look for patterns that indicate summary rows
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i].toLowerCase();
+    if (row.includes('total') || row.includes('sum') || row.includes('subtotal') || 
+        row.includes('summary') || row.includes('balance')) {
+      console.log(`Found potential summary row at index ${i + 1}: ${rows[i]}`);
+      return i + 1; // Convert to 1-based index
+    }
   }
   
   // If no summary row found, return a high number to allow insertion anywhere
@@ -220,34 +261,13 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
     console.log('Original transcript:', transcript);
     console.log('Cleaned transcript:', cleanedTranscript);
     
-    // Read from Firestore mirror
-    let firestoreCollectionPath: string;
-    if (sheetName) {
-      // Use tab-specific collection if sheet name is provided
-      firestoreCollectionPath = `sheets/${sheetId}/tabs/${sheetName}/rows`;
-    } else {
-      // Use main rows collection
-      firestoreCollectionPath = `sheets/${sheetId}/rows`;
-    }
-    
-    const rowsCollectionRef = collection(db, firestoreCollectionPath);
-    const rowsQuery = query(rowsCollectionRef, orderBy('rowIndex'));
-    const rowsSnapshot = await getDocs(rowsQuery);
-    
-    const firestoreRows = rowsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    console.log(`Found ${firestoreRows.length} rows in Firestore for sheet ${sheetId}`);
-    
-    // Build CSV data from Firestore
-    const sheetData = buildSheetDataCSV(firestoreRows);
+    // Fetch real Google Sheets data
+    const sheetData = await fetchRealSheetDataAsCSV(sheetId, sheetName);
     
     // Find the first summary row index for AI guidance
-    const firstSummaryRowIndex = findFirstSummaryRowIndex(firestoreRows);
+    const firstSummaryRowIndex = findFirstSummaryRowIndexFromCSV(sheetData);
     
-    console.log('Generated CSV data:', sheetData);
+    console.log('Generated CSV data from real Google Sheets:', sheetData.substring(0, 200) + '...');
     console.log(`First summary row index: ${firstSummaryRowIndex}`);
     
     // Call the AI prompt with cleaned transcript and sheet data
@@ -272,8 +292,6 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
           console.log('Commit flag is true, executing actions...');
           let executedCount = 0;
           
-          // Find the first summary row index for validation
-          const firstSummaryRowIndex = findFirstSummaryRowIndex(firestoreRows);
           console.log(`First summary row index: ${firstSummaryRowIndex}`);
           
           for (const action of parsed.actions) {
@@ -287,14 +305,16 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
                 
                 console.log(`Executing insertRow: ${action.sheet}, row ${action.row}`);
                 await insertRow({
-                  sheet: action.sheet,
+                  sheetId: sheetId,
+                  sheetName: sheetName,
                   row: action.row
                 });
                 executedCount++;
               } else if (action.type === 'updateCell') {
                 console.log(`Executing updateCell: ${action.sheet}, ${action.column}${action.row} = "${action.value}"`);
                 await updateCell({
-                  sheet: action.sheet,
+                  sheetId: sheetId,
+                  sheetName: sheetName,
                   row: action.row,
                   column: action.column,
                   value: action.value || ''

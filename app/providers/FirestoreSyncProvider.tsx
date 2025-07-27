@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { syncSheetToFirestore } from '../../libs/firestoreSync';
 
 interface FirestoreSyncProviderProps {
   children: React.ReactNode;
@@ -9,6 +8,7 @@ interface FirestoreSyncProviderProps {
 
 export const FirestoreSyncProvider: React.FC<FirestoreSyncProviderProps> = ({ children }) => {
   const [hasSynced, setHasSynced] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     const performSync = async () => {
@@ -33,16 +33,39 @@ export const FirestoreSyncProvider: React.FC<FirestoreSyncProviderProps> = ({ ch
       }
 
       try {
-        console.log('Starting Firestore sync...');
+        console.log('Starting Firestore sync via API...');
         console.log(`Environment: ${process.env.NODE_ENV}`);
         console.log(`Feature flag: ${featureFlagEnabled}`);
         console.log(`Sheet ID: ${sheetId}`);
         
-        await syncSheetToFirestore(sheetId);
+        setSyncStatus('syncing');
+
+        // Call the API endpoint instead of direct function import
+        const response = await fetch('/api/sync-firestore', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sheetId: sheetId,
+            // Optional: include sheetName if you want to sync a specific tab
+            // sheetName: 'Sheet1'
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`API Error: ${errorData.error} - ${errorData.details || ''}`);
+        }
+
+        const result = await response.json();
+        console.log('Firestore sync completed successfully:', result.message);
+        
         setHasSynced(true);
-        console.log('Firestore sync completed successfully');
+        setSyncStatus('success');
       } catch (error) {
         console.error('Firestore sync failed:', error);
+        setSyncStatus('error');
         // Don't throw error to prevent app from crashing
       }
     };
@@ -52,6 +75,13 @@ export const FirestoreSyncProvider: React.FC<FirestoreSyncProviderProps> = ({ ch
 
     return () => clearTimeout(timer);
   }, [hasSynced]);
+
+  // Optional: You can expose sync status for debugging or UI feedback
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Firestore sync status:', syncStatus);
+    }
+  }, [syncStatus]);
 
   return <>{children}</>;
 }; 

@@ -27,6 +27,53 @@ const nextConfig: NextConfig = {
     NEXT_TELEMETRY_DISABLED: '1',
     NEXT_TRACE_PROFILING_DISABLED: '1',
   },
+  // Webpack configuration to handle Node.js polyfills
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Disable Node.js polyfills for client-side bundle
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: false,
+        stream: false,
+        url: false,
+        zlib: false,
+        http: false,
+        https: false,
+        assert: false,
+        os: false,
+        path: false,
+        querystring: false,
+        util: false,
+        buffer: false,
+        child_process: false,
+        cluster: false,
+        console: false,
+        constants: false,
+        dgram: false,
+        dns: false,
+        domain: false,
+        events: false,
+        http2: false,
+        module: false,
+        perf_hooks: false,
+        process: false,
+        punycode: false,
+        readline: false,
+        repl: false,
+        string_decoder: false,
+        sys: false,
+        timers: false,
+        tty: false,
+        v8: false,
+        vm: false,
+        worker_threads: false,
+      };
+    }
+    return config;
+  },
   // Enable service worker support
   async headers() {
     return [

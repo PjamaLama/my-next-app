@@ -1,13 +1,34 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  helloFlow, 
-  testGenkitIntegration, 
-  updateSingleSheetFlow, 
-  convertToGenkitFormat,
-  type SheetData 
-} from '../../lib/genkit-template';
+
+// Remove the direct imports - they'll be handled by API endpoints
+// import { 
+//   helloFlow, 
+//   testGenkitIntegration, 
+//   updateSingleSheetFlow, 
+//   convertToGenkitFormat,
+//   type SheetData 
+// } from '../../lib/genkit-template';
+
+// Type definitions for client use
+type SheetData = {
+  headers: string[];
+  rows: (string | number)[][];
+  sheetName: string;
+};
+
+// Helper function to convert sheet data to Genkit format (client-side version)
+const convertToGenkitFormat = (sheetData: (string | number)[][], sheetName: string): SheetData => {
+  if (sheetData.length === 0) {
+    return { headers: [], rows: [], sheetName };
+  }
+  
+  const headers = sheetData[0].map(h => String(h));
+  const rows = sheetData.slice(1);
+  
+  return { headers, rows, sheetName };
+};
 
 export default function GenkitTest() {
   const [isLoading, setIsLoading] = useState(false);
@@ -28,8 +49,20 @@ export default function GenkitTest() {
     setError(null);
     try {
       addResult('Testing hello flow...');
-      const result = await helloFlow('Test User');
-      addResult(`Hello flow result: ${result}`);
+      
+      const response = await fetch('/api/genkit-hello', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Test User' })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`API Error: ${errorData.error} - ${errorData.details || ''}`);
+      }
+      
+      const data = await response.json();
+      addResult(`Hello flow result: ${data.result}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
@@ -44,8 +77,20 @@ export default function GenkitTest() {
     setError(null);
     try {
       addResult('Running full Genkit integration test...');
-      await testGenkitIntegration();
-      addResult('Full integration test completed successfully!');
+      
+      const response = await fetch('/api/genkit-integration-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`API Error: ${errorData.error} - ${errorData.details || ''}`);
+      }
+      
+      const data = await response.json();
+      addResult(`Full integration test: ${data.message}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
@@ -71,12 +116,22 @@ export default function GenkitTest() {
       
       const genkitSheetData = convertToGenkitFormat(sampleSheetData, 'Test Expenses');
       
-      const result = await updateSingleSheetFlow({
-        transcript: 'Add a coffee expense of $5.50 for today',
-        sheetData: genkitSheetData
+      const response = await fetch('/api/genkit-sheet-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: 'Add a coffee expense of $5.50 for today',
+          sheetData: genkitSheetData
+        })
       });
       
-      addResult(`Sheet update result: ${JSON.stringify(result, null, 2)}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`API Error: ${errorData.error} - ${errorData.details || ''}`);
+      }
+      
+      const data = await response.json();
+      addResult(`Sheet update result: ${JSON.stringify(data.result, null, 2)}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
@@ -93,10 +148,18 @@ export default function GenkitTest() {
       addResult('Testing multiple flows to generate telemetry data...');
       
       // Test 1: Hello flow
-      const helloResult = await helloFlow('Telemetry Test');
-      addResult(`Hello flow: ${helloResult}`);
+      const helloResponse = await fetch('/api/genkit-hello', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Telemetry Test' })
+      });
       
-      // Test 2: Sheet analysis
+      if (helloResponse.ok) {
+        const helloData = await helloResponse.json();
+        addResult(`Hello flow: ${helloData.result}`);
+      }
+      
+      // Test 2: Sheet update
       const sampleData: SheetData = {
         headers: ['Date', 'Category', 'Amount'],
         rows: [
@@ -107,13 +170,19 @@ export default function GenkitTest() {
         sheetName: 'Telemetry Test Sheet'
       };
       
-      // Test 3: Sheet update
-      const updateResult = await updateSingleSheetFlow({
-        transcript: 'Add a test expense of $10.00 for coffee',
-        sheetData: sampleData
+      const updateResponse = await fetch('/api/genkit-sheet-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: 'Add a test expense of $10.00 for coffee',
+          sheetData: sampleData
+        })
       });
       
-      addResult(`Update flow: ${JSON.stringify(updateResult, null, 2)}`);
+      if (updateResponse.ok) {
+        const updateData = await updateResponse.json();
+        addResult(`Update flow: ${JSON.stringify(updateData.result, null, 2)}`);
+      }
       
       addResult('Multiple flows test completed! Check Firebase console for telemetry data.');
     } catch (err) {

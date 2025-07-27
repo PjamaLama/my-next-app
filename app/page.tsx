@@ -881,72 +881,7 @@ export default function Home() {
     setUploadedImages([]);
   };
 
-  // Helper function to build CSV data from Firestore
-  const buildSheetDataCSV = async (sheetId: string, sheetName?: string): Promise<string> => {
-    try {
-      // Import Firestore functions dynamically to avoid SSR issues
-      const { collection, getDocs, query, orderBy } = await import('firebase/firestore');
-      
-      // Determine the collection path
-      let firestoreCollectionPath: string;
-      if (sheetName) {
-        firestoreCollectionPath = `sheets/${sheetId}/tabs/${sheetName}/rows`;
-      } else {
-        firestoreCollectionPath = `sheets/${sheetId}/rows`;
-      }
-      
-      const rowsCollectionRef = collection(db, firestoreCollectionPath);
-      const rowsQuery = query(rowsCollectionRef, orderBy('rowIndex'));
-      const rowsSnapshot = await getDocs(rowsQuery);
-      
-      const firestoreRows = rowsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      if (firestoreRows.length === 0) {
-        return '';
-      }
 
-      // Sort by row index to maintain order
-      const sortedRows = firestoreRows.sort((a: any, b: any) => a.rowIndex - b.rowIndex);
-      
-      // Extract all unique column names (excluding metadata fields)
-      const metadataFields = ['rowIndex', 'isSummary', 'sheetName'];
-      const allColumns = new Set<string>();
-      
-      sortedRows.forEach((row: any) => {
-        Object.keys(row).forEach(key => {
-          if (!metadataFields.includes(key)) {
-            allColumns.add(key);
-          }
-        });
-      });
-      
-      const columnNames = Array.from(allColumns).sort();
-      
-      // Build CSV header
-      const csvRows = [columnNames.join(',')];
-      
-      // Build CSV data rows
-      sortedRows.forEach((row: any) => {
-        const csvRow = columnNames.map(col => {
-          const value = row[col] || '';
-          // Escape commas and quotes in CSV
-          if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-            return `"${value.replace(/"/g, '""')}"`;
-          }
-          return value;
-        });
-        csvRows.push(csvRow.join(','));
-      });
-      
-      return csvRows.join('\n');
-    } catch (error) {
-      console.error('Error building CSV from Firestore:', error);
-      return '';
-    }
-  };
 
   // New function to send transcript to Genkit API
   const sendToGenkitApi = async () => {
@@ -975,13 +910,10 @@ export default function Home() {
     setSendResult(null);
     
     try {
-      console.log("Building CSV data from Firestore...");
-      const sheetDataCSV = await buildSheetDataCSV(defaultSpreadsheetId, sheetNameToUse);
-      
       console.log("Sending to Genkit API:", {
-        originalTranscript: transcript,
-        cleanedTranscript: transcript.trim(), // Basic cleanup for logging
-        sheetData: sheetDataCSV.substring(0, 200) + '...' // Log first 200 chars
+        transcript: transcript,
+        sheetId: defaultSpreadsheetId,
+        sheetName: sheetNameToUse
       });
       
       const res = await fetch('/api/updateSheet', {
@@ -989,7 +921,8 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transcript,
-          sheetData: sheetDataCSV
+          sheetId: defaultSpreadsheetId,
+          sheetName: sheetNameToUse
         }),
       });
       
@@ -1017,9 +950,6 @@ export default function Home() {
     try {
       setGenkitLoading(true);
       
-      // Build CSV data again for the commit request
-      const sheetDataCSV = await buildSheetDataCSV(defaultSpreadsheetId, selectedSheetName);
-      
       console.log("Committing actions to Genkit API...");
       
       const res = await fetch('/api/updateSheet', {
@@ -1027,7 +957,8 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transcript,
-          sheetData: sheetDataCSV,
+          sheetId: defaultSpreadsheetId,
+          sheetName: selectedSheetName,
           commit: true
         }),
       });
