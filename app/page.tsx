@@ -200,6 +200,13 @@ export default function Home() {
     isVoice?: boolean;
     hasImages?: boolean;
     imageCount?: number;
+    attachments?: Array<{
+      id: string;
+      name: string;
+      type: string;
+      fileType: 'image' | 'pdf';
+      preview?: string;
+    }>;
     isProcessing?: boolean;
     toolCalls?: Array<{
       id: string;
@@ -950,7 +957,14 @@ export default function Home() {
         timestamp: new Date(),
         isVoice: isVoiceInput,
         hasImages: uploadedImages.length > 0,
-        imageCount: uploadedImages.length
+        imageCount: uploadedImages.length,
+        attachments: uploadedImages.map(img => ({
+          id: img.id,
+          name: img.file.name,
+          type: img.file.type,
+          fileType: img.fileType,
+          preview: img.preview
+        }))
       };
       setChatMessages(prev => [...prev, userMessage]);
       
@@ -1487,6 +1501,43 @@ export default function Home() {
                         </div>
                         <p className="whitespace-pre-wrap">{message.content}</p>
                         
+                        {/* Attachments display */}
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="mt-2 space-y-2">
+                            {message.attachments.map((attachment) => (
+                              <div key={attachment.id} className="flex items-center gap-2 p-2 bg-black/10 dark:bg-white/10 rounded-lg">
+                                {attachment.fileType === 'image' ? (
+                                  <>
+                                    <div className="flex-shrink-0">
+                                      <img 
+                                        src={attachment.preview} 
+                                        alt={attachment.name}
+                                        className="w-8 h-8 object-cover rounded border"
+                                      />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium truncate">{attachment.name}</p>
+                                      <p className="text-xs opacity-75">Image</p>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="flex-shrink-0">
+                                      <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium truncate">{attachment.name}</p>
+                                      <p className="text-xs opacity-75">PDF Document</p>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
                         {/* Tool results display */}
                         {message.toolResults && message.toolResults.length > 0 && (
                           <div className="mt-2 space-y-1">
@@ -1552,52 +1603,82 @@ export default function Home() {
             {/* AI Chat Input Section - Mobile optimized */}
             <div className="relative w-full overflow-visible px-4">
               <div className="relative w-full">
-                {/* Text Input Field */}
+                {/* Text Input Field with File Attachments */}
                 <div className="w-full mb-4">
-                  <div className="relative">
-                    <textarea
-                      value={editingText}
-                      onChange={(e) => setEditingText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
+                  <div className="relative border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all duration-200">
+                    {/* File Attachments Display */}
+                    {uploadedImages.length > 0 && (
+                      <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-wrap gap-2">
+                          {uploadedImages.map((image) => (
+                            <div key={image.id} className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 px-3 py-2 rounded-lg text-sm">
+                              {image.fileType === 'image' ? (
+                                <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-4 h-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              )}
+                              <span className="text-blue-700 dark:text-blue-300 font-medium truncate max-w-[120px]">
+                                {image.file.name}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  URL.revokeObjectURL(image.preview);
+                                  setUploadedImages(prev => prev.filter(img => img.id !== image.id));
+                                }}
+                                className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Text Input */}
+                    <div className="relative">
+                      <textarea
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (editingText.trim() || uploadedImages.length > 0) {
+                              processWithAIChat(editingText.trim() || 'Analyze these files', false);
+                              setEditingText('');
+                            }
+                          }
+                        }}
+                        placeholder={uploadedImages.length > 0 
+                          ? `Add context about your ${uploadedImages.length} attached file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
+                          : "Type your message or use voice input below..."
+                        }
+                        rows={3}
+                        className="w-full p-4 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-gray-500 dark:placeholder-gray-400"
+                      />
+                      {/* Send button */}
+                      <button
+                        onClick={() => {
                           if (editingText.trim() || uploadedImages.length > 0) {
                             processWithAIChat(editingText.trim() || 'Analyze these files', false);
                             setEditingText('');
                           }
-                        }
-                      }}
-                      placeholder={uploadedImages.length > 0 
-                        ? `Add context about your ${uploadedImages.length} uploaded file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
-                        : "Type your message or use voice input below..."
-                      }
-                      rows={3}
-                      className="w-full p-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm placeholder-gray-500 dark:placeholder-gray-400"
-                    />
-                    {/* Send button */}
-                    <button
-                      onClick={() => {
-                        if (editingText.trim() || uploadedImages.length > 0) {
-                          processWithAIChat(editingText.trim() || 'Analyze these files', false);
-                          setEditingText('');
-                        }
-                      }}
-                      disabled={!editingText.trim() && uploadedImages.length === 0}
-                      className="absolute right-2 bottom-2 p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white rounded-lg transition-all duration-200"
-                    >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                      </svg>
-                    </button>
-                  </div>
-                  {uploadedImages.length > 0 && (
-                    <div className="text-xs text-blue-600 dark:text-blue-400 mt-2 flex items-center gap-1">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      {uploadedImages.length} file{uploadedImages.length !== 1 ? 's' : ''} ready to analyze
+                        }}
+                        disabled={!editingText.trim() && uploadedImages.length === 0}
+                        className="absolute right-2 bottom-2 p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white rounded-lg transition-all duration-200"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 {/* Voice transcript display (read-only) */}
