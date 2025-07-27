@@ -197,6 +197,9 @@ export default function Home() {
     content: string;
     timestamp: Date;
     isVoice?: boolean;
+    hasImages?: boolean;
+    imageCount?: number;
+    isProcessing?: boolean;
     toolCalls?: Array<{
       id: string;
       type: 'function';
@@ -206,6 +209,7 @@ export default function Home() {
       id: string;
       result: string;
       success: boolean;
+      details?: any;
     }>;
   }>>([]);
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{
@@ -938,13 +942,47 @@ export default function Home() {
         role: 'user' as const,
         content: textToProcess,
         timestamp: new Date(),
-        isVoice: isVoiceInput
+        isVoice: isVoiceInput,
+        hasImages: uploadedImages.length > 0,
+        imageCount: uploadedImages.length
       };
       setChatMessages(prev => [...prev, userMessage]);
       
       // Clear transcript if it was voice input
       if (isVoiceInput) {
         setTranscript("");
+      }
+
+      // Prepare images for the API call
+      const imageData: Array<{ data: string; mimeType: string; }> = [];
+      
+      if (uploadedImages.length > 0) {
+        try {
+          for (const img of uploadedImages) {
+            // Convert file to base64
+            const reader = new FileReader();
+            const base64Data = await new Promise<string>((resolve, reject) => {
+              reader.onload = () => {
+                const result = reader.result as string;
+                // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+                const base64 = result.split(',')[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(img.file);
+            });
+            
+            imageData.push({
+              data: base64Data,
+              mimeType: img.file.type
+            });
+          }
+        } catch (error) {
+          console.error('Error processing images:', error);
+          setSendResult("Error processing images. Please try again.");
+          setChatProcessing(false);
+          return;
+        }
       }
       
       // Call the chat API
@@ -958,7 +996,8 @@ export default function Home() {
             spreadsheetId: defaultSpreadsheetId,
             sheetName: selectedSheetName,
           },
-          conversationHistory: chatMessages.slice(-5)
+          conversationHistory: chatMessages.slice(-5),
+          images: imageData // Include processed images
         }),
       });
 
@@ -983,6 +1022,14 @@ export default function Home() {
       if (data.pendingToolCalls && data.pendingToolCalls.length > 0) {
         setPendingToolCalls(data.pendingToolCalls);
       }
+
+      // Clear uploaded images after successful processing
+      if (uploadedImages.length > 0) {
+        uploadedImages.forEach(img => {
+          URL.revokeObjectURL(img.preview);
+        });
+        setUploadedImages([]);
+      }
       
       setSendResult("AI response added to chat above.");
       
@@ -1006,8 +1053,49 @@ export default function Home() {
   // Function to approve a tool call
   const approveTool = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } }) => {
     setChatProcessing(true);
+    setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
+    
+    // Add processing message
+    const processingMessage = {
+      id: `msg_${Date.now()}_processing`,
+      role: 'system' as const,
+      content: `🔄 Executing ${toolCall.function.name}...`,
+      timestamp: new Date(),
+      isProcessing: true
+    };
+    setChatMessages(prev => [...prev, processingMessage]);
     
     try {
+      // Prepare images for tool execution if available
+      const imageData: Array<{ data: string; mimeType: string; }> = [];
+      
+      // Check if we have uploaded images that should be passed to the tool
+      if (uploadedImages.length > 0 && 
+          (toolCall.function.name === 'analyze_images' || toolCall.function.name === 'extract_data_from_images')) {
+        try {
+          for (const img of uploadedImages) {
+            const reader = new FileReader();
+            const base64Data = await new Promise<string>((resolve, reject) => {
+              reader.onload = () => {
+                const result = reader.result as string;
+                const base64 = result.split(',')[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(img.file);
+            });
+            
+            imageData.push({
+              data: base64Data,
+              mimeType: img.file.type
+            });
+          }
+        } catch (error) {
+          console.error('Error processing images for tool execution:', error);
+          // Continue without images if processing fails
+        }
+      }
+
       const response = await fetch('/api/genkit-tool-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1016,30 +1104,54 @@ export default function Home() {
           context: {
             spreadsheetId: defaultSpreadsheetId,
             sheetName: selectedSheetName
-          }
+          },
+          images: imageData // Include images for supported tools
         }),
       });
 
       const data = await response.json();
       
+      // Remove processing message
+      setChatMessages(prev => prev.filter(msg => !msg.isProcessing));
+      
       // Add tool result to chat
       const resultMessage = {
         id: `msg_${Date.now()}_tool`,
         role: 'system' as const,
-        content: `Tool executed: ${toolCall.function.name}`,
+        content: data.success ? `✅ ${data.result}` : `❌ Error: ${data.error}`,
         timestamp: new Date(),
         toolResults: [{
           id: toolCall.id,
-          result: data.result || 'Tool executed successfully',
-          success: data.success || false
+          result: data.result || 'Tool executed',
+          success: data.success || false,
+          details: data.details || null
         }]
       };
       setChatMessages(prev => [...prev, resultMessage]);
-      setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
+
+      // If this was an image analysis or extraction, clear the uploaded images
+      if (imageData.length > 0 && data.success) {
+        uploadedImages.forEach(img => {
+          URL.revokeObjectURL(img.preview);
+        });
+        setUploadedImages([]);
+      }
+
+             // Note: Consider adding sheet data refresh here if needed
 
     } catch (error) {
       console.error('Tool execution error:', error);
-      setSendResult(`Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Remove processing message
+      setChatMessages(prev => prev.filter(msg => !msg.isProcessing));
+      
+      const errorMessage = {
+        id: `msg_${Date.now()}_error`,
+        role: 'system' as const,
+        content: `❌ Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date()
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
     } finally {
       setChatProcessing(false);
     }
