@@ -22,7 +22,7 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
 import GenkitTest from './components/GenkitTest';
-import ChatInterface from './components/ChatInterface';
+
 // import { useSettings } from './providers/SettingsProvider'; // Corrected import path
 
 // Types
@@ -189,6 +189,31 @@ export default function Home() {
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Chat functionality state
+  const [chatMessages, setChatMessages] = useState<Array<{
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp: Date;
+    isVoice?: boolean;
+    toolCalls?: Array<{
+      id: string;
+      type: 'function';
+      function: { name: string; arguments: string };
+    }>;
+    toolResults?: Array<{
+      id: string;
+      result: string;
+      success: boolean;
+    }>;
+  }>>([]);
+  const [pendingToolCalls, setPendingToolCalls] = useState<Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>>([]);
+  const [chatProcessing, setChatProcessing] = useState(false);
 
   // Default Gemini API (non-removable)
   const GEMINI_API = {
@@ -436,10 +461,17 @@ export default function Home() {
     startListening(false); // Do not clear transcript
   };
 
-  // Mic button handler (single button for all states)
+  // Enhanced mic button handler with auto-processing
   const handleMicButton = () => {
     if (listening && !paused) {
+      // Stop listening and auto-process with AI chat if we have content
       pauseListening();
+      // Small delay to ensure transcript is captured
+      setTimeout(() => {
+        if (transcript.trim()) {
+          processWithAIChat(transcript, true);
+        }
+      }, 500);
     } else if (paused) {
       resumeListening();
     } else {
@@ -884,6 +916,155 @@ export default function Home() {
 
 
 
+  // Enhanced function to process with AI Chat (combining old functionality with new chat)
+  const processWithAIChat = async (inputText?: string, isVoiceInput: boolean = false) => {
+    const textToProcess = inputText || transcript;
+    if (!textToProcess.trim() || !defaultSpreadsheetId) {
+      setSendResult("Please provide input and select a spreadsheet in the navigation.");
+      return;
+    }
+    
+    // Stop listening if currently active
+    if (listening) {
+      stopListening();
+    }
+    
+    setChatProcessing(true);
+    
+    try {
+      // Add user message to chat
+      const userMessage = {
+        id: `msg_${Date.now()}`,
+        role: 'user' as const,
+        content: textToProcess,
+        timestamp: new Date(),
+        isVoice: isVoiceInput
+      };
+      setChatMessages(prev => [...prev, userMessage]);
+      
+      // Clear transcript if it was voice input
+      if (isVoiceInput) {
+        setTranscript("");
+      }
+      
+      // Call the chat API
+      const response = await fetch('/api/genkit-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: textToProcess,
+          isVoice: isVoiceInput,
+          context: {
+            spreadsheetId: defaultSpreadsheetId,
+            sheetName: selectedSheetName,
+          },
+          conversationHistory: chatMessages.slice(-5)
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Add AI response to chat
+      const aiMessage = {
+        id: `msg_${Date.now()}_ai`,
+        role: 'assistant' as const,
+        content: data.response || 'I processed your request.',
+        timestamp: new Date(),
+        toolCalls: data.toolCalls || [],
+        toolResults: data.toolResults || []
+      };
+      setChatMessages(prev => [...prev, aiMessage]);
+
+      // Handle pending tool calls
+      if (data.pendingToolCalls && data.pendingToolCalls.length > 0) {
+        setPendingToolCalls(data.pendingToolCalls);
+      }
+      
+      setSendResult("AI response added to chat above.");
+      
+    } catch (error) {
+      console.error('Chat processing error:', error);
+      setSendResult(`Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+      
+      // Add error message to chat
+      const errorMessage = {
+        id: `msg_${Date.now()}_error`,
+        role: 'system' as const,
+        content: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
+        timestamp: new Date()
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setChatProcessing(false);
+    }
+  };
+
+  // Function to approve a tool call
+  const approveTool = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } }) => {
+    setChatProcessing(true);
+    
+    try {
+      const response = await fetch('/api/genkit-tool-execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toolCall,
+          context: {
+            spreadsheetId: defaultSpreadsheetId,
+            sheetName: selectedSheetName
+          }
+        }),
+      });
+
+      const data = await response.json();
+      
+      // Add tool result to chat
+      const resultMessage = {
+        id: `msg_${Date.now()}_tool`,
+        role: 'system' as const,
+        content: `Tool executed: ${toolCall.function.name}`,
+        timestamp: new Date(),
+        toolResults: [{
+          id: toolCall.id,
+          result: data.result || 'Tool executed successfully',
+          success: data.success || false
+        }]
+      };
+      setChatMessages(prev => [...prev, resultMessage]);
+      setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
+
+    } catch (error) {
+      console.error('Tool execution error:', error);
+      setSendResult(`Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setChatProcessing(false);
+    }
+  };
+
+  // Function to reject a tool call
+  const rejectTool = (toolCall: { id: string; function: { name: string } }) => {
+    setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
+    
+    const rejectionMessage = {
+      id: `msg_${Date.now()}_reject`,
+      role: 'system' as const,
+      content: `Tool call rejected: ${toolCall.function.name}`,
+      timestamp: new Date()
+    };
+    setChatMessages(prev => [...prev, rejectionMessage]);
+  };
+
+  // Function to clear chat
+  const clearChat = () => {
+    setChatMessages([]);
+    setPendingToolCalls([]);
+    setSendResult("");
+  };
+
   // New function to send transcript to Genkit API
   const sendToGenkitApi = async () => {
     if (!transcript || !defaultSpreadsheetId) {
@@ -1151,6 +1332,105 @@ export default function Home() {
                   )}
                 </div>
             
+            {/* Chat Messages Display */}
+            {chatMessages.length > 0 && (
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">AI Conversation</h3>
+                  <button
+                    onClick={clearChat}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-2 py-1 rounded"
+                  >
+                    Clear Chat
+                  </button>
+                </div>
+                <div className="space-y-3 max-h-80 overflow-y-auto bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                  {chatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[80%] p-3 rounded-lg text-sm ${
+                          message.role === 'user'
+                            ? 'bg-blue-500 text-white'
+                            : message.role === 'system'
+                            ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                            : 'bg-white dark:bg-gray-600 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-500'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          {message.role === 'user' && message.isVoice && (
+                            <span className="text-xs">🎤</span>
+                          )}
+                          <span className="text-xs opacity-75">
+                            {message.timestamp.toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        
+                        {/* Tool results display */}
+                        {message.toolResults && message.toolResults.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {message.toolResults.map((result) => (
+                              <div key={result.id} className={`text-xs p-2 rounded ${
+                                result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                <p>{result.result}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Processing indicator */}
+                  {chatProcessing && (
+                    <div className="flex justify-start">
+                      <div className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 p-3 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                          <span className="text-sm">AI is thinking...</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Pending tool approvals */}
+            {pendingToolCalls.length > 0 && (
+              <div className="mb-6 p-4 border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-3 text-sm">Tool Approval Required</h3>
+                {pendingToolCalls.map((toolCall) => (
+                  <div key={toolCall.id} className="bg-white dark:bg-gray-700 p-3 rounded border mb-2 last:mb-0">
+                    <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{toolCall.function.name}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-mono">
+                      {JSON.stringify(JSON.parse(toolCall.function.arguments), null, 2)}
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => approveTool(toolCall)}
+                        className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600 disabled:opacity-50"
+                        disabled={chatProcessing}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => rejectTool(toolCall)}
+                        className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 disabled:opacity-50"
+                        disabled={chatProcessing}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Transcript/voice chat UI - Mobile optimized */}
             <div className="relative w-full overflow-visible px-4">
               {!editingTranscript ? (
@@ -1162,7 +1442,7 @@ export default function Home() {
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
                       onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
                         if (e.key === 'Enter' && e.ctrlKey) {
-                          sendToAiApi();
+                          processWithAIChat(transcript, false);
                         }
                       }}
                       placeholder="Type or speak your message..."
@@ -1243,17 +1523,17 @@ export default function Home() {
                     </div>
 
                     <div className="w-full max-w-sm flex items-center gap-2 justify-center">
-                      {/* Process with AI Button - Mobile optimized */}
+                      {/* Process with AI Chat Button - Mobile optimized */}
                       {transcript.trim() && (
                         <button
-                          onClick={sendToAiApi}
-                          disabled={sending || !defaultSpreadsheetId}
+                          onClick={() => processWithAIChat(transcript, false)}
+                          disabled={chatProcessing || !defaultSpreadsheetId}
                           className={`h-12 sm:h-12 px-4 sm:px-6 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm sm:text-base font-medium flex-1 justify-center min-h-[50px]
-                                    ${sending 
+                                    ${chatProcessing 
                                       ? 'bg-purple-600 text-white cursor-not-allowed opacity-70'
                                       : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl'}`}
                         >
-                          {sending ? (
+                          {chatProcessing ? (
                             <>
                               <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -1264,9 +1544,9 @@ export default function Home() {
                             </>
                           ) : (
                             <>
-                              <span>{listening ? "Stop & Process with AI" : "Process with AI"}</span>
+                              <span>{listening ? "Stop & Process with AI Chat" : "Process with AI Chat"}</span>
                               <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                               </svg>
                             </>
                           )}
@@ -1673,18 +1953,7 @@ export default function Home() {
           </div>
         )}
 
-          {/* AI Chat Interface Section */}
-          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 border border-gray-200 dark:border-gray-800 mt-8 sm:mt-12">
-            <div className="h-[600px]">
-              <ChatInterface
-                transcript={transcript}
-                isListening={listening}
-                onStartListening={() => startListening()}
-                onStopListening={stopListening}
-                onClearTranscript={() => setTranscript("")}
-              />
-            </div>
-          </section>
+
 
           {/* Genkit Test Section */}
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 border border-gray-200 dark:border-gray-800 mt-8 sm:mt-12">
