@@ -1660,23 +1660,58 @@ export default function Home() {
                           : "Type your message or use voice input below..."
                         }
                         rows={3}
-                        className="w-full p-4 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-gray-500 dark:placeholder-gray-400"
+                        className="w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-gray-500 dark:placeholder-gray-400"
                       />
-                      {/* Send button */}
-                      <button
-                        onClick={() => {
-                          if (editingText.trim() || uploadedImages.length > 0) {
-                            processWithAIChat(editingText.trim() || 'Analyze these files', false);
-                            setEditingText('');
-                          }
-                        }}
-                        disabled={!editingText.trim() && uploadedImages.length === 0}
-                        className="absolute right-2 bottom-2 p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white rounded-lg transition-all duration-200"
-                      >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                      </button>
+                      
+                      {/* Input controls */}
+                      <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                        {/* File upload button */}
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          accept="image/*,application/pdf"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                          id="text-area-upload"
+                        />
+                        <label
+                          htmlFor="text-area-upload"
+                          className={`p-2 rounded-lg transition-all duration-200 cursor-pointer ${
+                            uploadingImages 
+                              ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300'
+                          }`}
+                          title="Add images or PDFs"
+                        >
+                          {uploadingImages ? (
+                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                            </svg>
+                          )}
+                        </label>
+                        
+                        {/* Send button */}
+                        <button
+                          onClick={() => {
+                            if (editingText.trim() || uploadedImages.length > 0) {
+                              processWithAIChat(editingText.trim() || 'Analyze these files', false);
+                              setEditingText('');
+                            }
+                          }}
+                          disabled={!editingText.trim() && uploadedImages.length === 0}
+                          className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white rounded-lg transition-all duration-200"
+                        >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1865,104 +1900,7 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Image Upload Section - Mobile optimized */}
-                    <div className="w-full max-w-md mx-auto space-y-4">
-                      {/* Image Upload Button */}
-                      <div className="flex items-center justify-center">
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          accept="image/*,application/pdf"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                          id="image-upload"
-                        />
-                        <label
-                          htmlFor="image-upload"
-                          className={`flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed 
-                                   ${uploadingImages 
-                                     ? 'border-blue-300 bg-blue-50 dark:bg-blue-950/30' 
-                                     : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'}
-                                   cursor-pointer transition-all duration-200 bg-white/50 dark:bg-gray-800/50
-                                   hover:bg-blue-50 dark:hover:bg-gray-700/50 min-h-[50px]`}
-                        >
-                          {uploadingImages ? (
-                            <>
-                              <svg className="animate-spin h-5 w-5 text-blue-500" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              <span className="text-blue-600 dark:text-blue-400 text-sm">Processing images...</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              <span className="text-gray-600 dark:text-gray-300 text-sm">Add images or PDFs (optional)</span>
-                            </>
-                          )}
-                        </label>
-                      </div>
 
-                      {/* Uploaded Images Display */}
-                      {uploadedImages.length > 0 && (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600 dark:text-gray-300">
-                              {uploadedFilesText}
-                            </span>
-                            <button
-                              onClick={clearAllImages}
-                              className="text-xs px-3 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors min-h-[32px]"
-                            >
-                              Clear all
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {uploadedImages.map((image) => (
-                              <div key={image.id} className="relative group">
-                                {image.fileType === 'image' ? (
-                                  <Image
-                                    src={image.preview}
-                                    alt="Uploaded"
-                                    width={96}
-                                    height={96}
-                                    className="w-full h-20 sm:h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
-                                  />
-                                ) : (
-                                  <div className="w-full h-20 sm:h-24 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
-                                    <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9h4m-2-2v6" />
-                                    </svg>
-                                  </div>
-                                )}
-                                <button
-                                  onClick={() => removeImage(image.id)}
-                                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-colors opacity-80 group-hover:opacity-100"
-                                >
-                                  ×
-                                </button>
-                                <div className="absolute bottom-1 left-1 right-1 bg-black/50 text-white text-xs p-1 rounded truncate">
-                                  {image.file.name}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* File Type Limitations Info */}
-                      <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <div className="font-medium mb-1">File Upload Limitations:</div>
-                        <ul className="list-disc pl-4 space-y-1">
-                          <li><span className="font-medium">Images:</span> JPEG, PNG, WebP, HEIC, HEIF (max 10MB)</li>
-                          <li><span className="font-medium">PDFs:</span> Max 20MB, only first 20 pages processed</li>
-                        </ul>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </>
