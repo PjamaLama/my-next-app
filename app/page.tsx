@@ -22,6 +22,7 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
 import GenkitTest from './components/GenkitTest';
+import ChatInterface from './components/ChatInterface';
 // import { useSettings } from './providers/SettingsProvider'; // Corrected import path
 
 // Types
@@ -1671,6 +1672,19 @@ export default function Home() {
             </section>
           </div>
         )}
+
+          {/* AI Chat Interface Section */}
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 border border-gray-200 dark:border-gray-800 mt-8 sm:mt-12">
+            <div className="h-[600px]">
+              <ChatInterface
+                transcript={transcript}
+                isListening={listening}
+                onStartListening={() => startListening()}
+                onStopListening={stopListening}
+                onClearTranscript={() => setTranscript("")}
+              />
+            </div>
+          </section>
 
           {/* Genkit Test Section */}
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 border border-gray-200 dark:border-gray-800 mt-8 sm:mt-12">
