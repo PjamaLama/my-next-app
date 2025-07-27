@@ -164,6 +164,19 @@ export default function Home() {
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
   
+  // New state for Genkit-based actions
+  const [genkitActions, setGenkitActions] = useState<Array<{
+    type: 'insertRow' | 'updateCell';
+    sheet: string;
+    row: number;
+    column: string;
+    value?: string | number;
+    confidence: 'high' | 'medium' | 'low';
+  }>>([]);
+  const [showGenkitPreview, setShowGenkitPreview] = useState(false);
+  const [genkitLoading, setGenkitLoading] = useState(false);
+  const [genkitCleaning, setGenkitCleaning] = useState(false);
+  
   const [editingTranscript, setEditingTranscript] = useState(false);
   // Add state for AI APIs (replaces webhooks)
   const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
@@ -868,6 +881,195 @@ export default function Home() {
     setUploadedImages([]);
   };
 
+  // Helper function to build CSV data from Firestore
+  const buildSheetDataCSV = async (sheetId: string, sheetName?: string): Promise<string> => {
+    try {
+      // Import Firestore functions dynamically to avoid SSR issues
+      const { collection, getDocs, query, orderBy } = await import('firebase/firestore');
+      
+      // Determine the collection path
+      let firestoreCollectionPath: string;
+      if (sheetName) {
+        firestoreCollectionPath = `sheets/${sheetId}/tabs/${sheetName}/rows`;
+      } else {
+        firestoreCollectionPath = `sheets/${sheetId}/rows`;
+      }
+      
+      const rowsCollectionRef = collection(db, firestoreCollectionPath);
+      const rowsQuery = query(rowsCollectionRef, orderBy('rowIndex'));
+      const rowsSnapshot = await getDocs(rowsQuery);
+      
+      const firestoreRows = rowsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      if (firestoreRows.length === 0) {
+        return '';
+      }
+
+      // Sort by row index to maintain order
+      const sortedRows = firestoreRows.sort((a: any, b: any) => a.rowIndex - b.rowIndex);
+      
+      // Extract all unique column names (excluding metadata fields)
+      const metadataFields = ['rowIndex', 'isSummary', 'sheetName'];
+      const allColumns = new Set<string>();
+      
+      sortedRows.forEach((row: any) => {
+        Object.keys(row).forEach(key => {
+          if (!metadataFields.includes(key)) {
+            allColumns.add(key);
+          }
+        });
+      });
+      
+      const columnNames = Array.from(allColumns).sort();
+      
+      // Build CSV header
+      const csvRows = [columnNames.join(',')];
+      
+      // Build CSV data rows
+      sortedRows.forEach((row: any) => {
+        const csvRow = columnNames.map(col => {
+          const value = row[col] || '';
+          // Escape commas and quotes in CSV
+          if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        });
+        csvRows.push(csvRow.join(','));
+      });
+      
+      return csvRows.join('\n');
+    } catch (error) {
+      console.error('Error building CSV from Firestore:', error);
+      return '';
+    }
+  };
+
+  // New function to send transcript to Genkit API
+  const sendToGenkitApi = async () => {
+    if (!transcript || !defaultSpreadsheetId) {
+      setSendResult("Please provide transcript and select a spreadsheet in the navigation.");
+      return;
+    }
+    
+    // Stop listening if currently active
+    if (listening) {
+      stopListening();
+    }
+    
+    // Find an available sheet if none is selected
+    let sheetNameToUse = selectedSheetName;
+    if (!sheetNameToUse) {
+      const currentSpreadsheet = spreadsheetOptions.find(o => o.spreadsheetId === defaultSpreadsheetId);
+      if (currentSpreadsheet && currentSpreadsheet.sheetNames.length > 0) {
+        sheetNameToUse = currentSpreadsheet.sheetNames[0];
+        setSelectedSheetName(sheetNameToUse);
+      }
+    }
+    
+    setGenkitLoading(true);
+    setGenkitCleaning(true);
+    setSendResult(null);
+    
+    try {
+      console.log("Building CSV data from Firestore...");
+      const sheetDataCSV = await buildSheetDataCSV(defaultSpreadsheetId, sheetNameToUse);
+      
+      console.log("Sending to Genkit API:", {
+        originalTranscript: transcript,
+        cleanedTranscript: transcript.trim(), // Basic cleanup for logging
+        sheetData: sheetDataCSV.substring(0, 200) + '...' // Log first 200 chars
+      });
+      
+      const res = await fetch('/api/updateSheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript,
+          sheetData: sheetDataCSV
+        }),
+      });
+      
+      const data = await res.json();
+      console.log("Genkit API response:", data);
+      
+      if (res.ok && data.success && data.actions) {
+        setGenkitActions(data.actions);
+        setShowGenkitPreview(true);
+        setSendResult(`AI generated ${data.actions.length} action${data.actions.length !== 1 ? 's' : ''}. Review and approve below.`);
+      } else {
+        setSendResult(data.error || "Failed to get AI response.");
+      }
+    } catch (error) {
+      console.error('Error calling Genkit API:', error);
+      setSendResult("Error: " + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setGenkitLoading(false);
+      setGenkitCleaning(false);
+    }
+  };
+
+  // Function to approve Genkit actions
+  const approveGenkitActions = async () => {
+    try {
+      setGenkitLoading(true);
+      
+      // Build CSV data again for the commit request
+      const sheetDataCSV = await buildSheetDataCSV(defaultSpreadsheetId, selectedSheetName);
+      
+      console.log("Committing actions to Genkit API...");
+      
+      const res = await fetch('/api/updateSheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript,
+          sheetData: sheetDataCSV,
+          commit: true
+        }),
+      });
+      
+      const data = await res.json();
+      console.log("Genkit commit response:", data);
+      
+      if (res.ok && data.success) {
+        setShowGenkitPreview(false);
+        setGenkitActions([]);
+        
+        // Show success message with execution details
+        const executedCount = data.executedActions || genkitActions.length;
+        setSendResult(`Successfully executed ${executedCount} action${executedCount !== 1 ? 's' : ''}!`);
+        
+        // Add activity
+        await addActivity({
+          type: 'add',
+          entity: 'sheet',
+          label: `Executed ${executedCount} AI-generated action${executedCount !== 1 ? 's' : ''}`,
+          timestamp: Date.now(),
+          sheetsAffected: [...new Set(genkitActions.map(action => action.sheet))],
+          rowsAffected: [...new Set(genkitActions.map(action => action.row))].length
+        });
+      } else {
+        setSendResult(data.error || "Failed to execute actions.");
+      }
+    } catch (error) {
+      console.error('Error approving actions:', error);
+      setSendResult("Error executing actions: " + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setGenkitLoading(false);
+    }
+  };
+
+  // Function to reject Genkit actions
+  const rejectGenkitActions = () => {
+    setShowGenkitPreview(false);
+    setGenkitActions([]);
+    setSendResult("Actions rejected. Try again with a different transcript.");
+  };
+
   // Compute file counts for display
   const imageCount = uploadedImages.filter(img => img.fileType === 'image').length;
   const pdfCount = uploadedImages.filter(img => img.fileType === 'pdf').length;
@@ -1138,12 +1340,99 @@ export default function Home() {
                           )}
                         </button>
                       )}
+                      
+                      {/* Process with Genkit Button - Mobile optimized */}
+                      {transcript.trim() && (
+                        <button
+                          onClick={sendToGenkitApi}
+                          disabled={genkitLoading || !defaultSpreadsheetId}
+                          className={`h-12 sm:h-12 px-4 sm:px-6 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm sm:text-base font-medium flex-1 justify-center min-h-[50px]
+                                    ${genkitLoading 
+                                      ? 'bg-green-600 text-white cursor-not-allowed opacity-70'
+                                      : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl'}`}
+                        >
+                          {genkitLoading ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              <span className="hidden sm:inline">
+                                {genkitCleaning ? 'Cleaning transcript...' : 'Processing...'}
+                              </span>
+                              <span className="sm:hidden">
+                                {genkitCleaning ? 'Cleaning...' : '...'}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Process with Genkit</span>
+                              <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                              </svg>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     {/* Processing Result Message */}
                     {sendResult && (
                       <div className="text-xs sm:text-sm text-center text-gray-600 dark:text-gray-300 px-4">
                         {sendResult}
+                      </div>
+                    )}
+
+                    {/* Genkit Actions Preview */}
+                    {showGenkitPreview && genkitActions.length > 0 && (
+                      <div className="w-full max-w-md mx-auto bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            AI Actions Preview
+                          </h3>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {genkitActions.length} action{genkitActions.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                          {genkitActions.map((action, index) => (
+                            <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                              <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                                action.confidence === 'high' ? 'bg-green-500' :
+                                action.confidence === 'medium' ? 'bg-yellow-500' : 'bg-red-500'
+                              }`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {action.type === 'insertRow' ? `Insert row ${action.row}` : `Update cell ${action.column}${action.row}`}
+                                </div>
+                                {action.value && (
+                                  <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                                    Value: "{action.value}"
+                                  </div>
+                                )}
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                  Sheet: {action.sheet} • Confidence: {action.confidence}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div className="flex gap-3 pt-2">
+                          <button
+                            onClick={approveGenkitActions}
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                          >
+                            Approve All
+                          </button>
+                          <button
+                            onClick={rejectGenkitActions}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </div>
                     )}
 
