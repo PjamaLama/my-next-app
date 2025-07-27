@@ -37,8 +37,27 @@ interface MultiSheetUpdate {
   updates: ProcessedUpdate[];
 }
 
-// Enable Firebase telemetry for monitoring and analytics
-enableFirebaseTelemetry();
+// Conditionally enable Firebase telemetry only if credentials are available
+try {
+  // Only enable telemetry in production or when explicitly enabled
+  const enableTelemetry = process.env.NODE_ENV === 'production' || 
+                         process.env.ENABLE_FIREBASE_TELEMETRY === 'true';
+  
+  // Check if we have the necessary credentials
+  const hasCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS || 
+                        process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
+                        process.env.NODE_ENV === 'production';
+  
+  if (enableTelemetry && hasCredentials) {
+    console.log('Enabling Firebase telemetry...');
+    enableFirebaseTelemetry();
+  } else {
+    console.log('Firebase telemetry disabled - no credentials or development mode');
+  }
+} catch (error) {
+  console.warn('Failed to enable Firebase telemetry:', error);
+  // Continue without telemetry - this won't crash the app
+}
 
 // Configure Genkit instance with Google AI plugin
 const ai = genkit({
