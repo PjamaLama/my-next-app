@@ -104,7 +104,7 @@ export const updateSingleSheetFlow = ai.defineFlow('updateSingleSheetFlow', asyn
   images?: Array<{ data: string; mimeType: string; }>;
 }) => {
   try {
-    const { transcript, sheetData, images } = params;
+    const { transcript, sheetData } = params;
     const nextRow = sheetData.rows.length + 1;
     
     // Build pattern analysis similar to your existing logic
@@ -113,7 +113,7 @@ export const updateSingleSheetFlow = ai.defineFlow('updateSingleSheetFlow', asyn
       patternAnalysis = `\n\nDATA PATTERN ANALYSIS:`;
       
       sheetData.headers.forEach((header: string, colIndex: number) => {
-        const columnValues = sheetData.rows.map((row: (string | number)[]) => row[colIndex]).filter((val: any) => val !== "" && val !== null && val !== undefined);
+        const columnValues = sheetData.rows.map((row: (string | number)[]) => row[colIndex]).filter((val: string | number) => val !== "" && val !== null && val !== undefined);
         
         if (columnValues.length > 0) {
           const recentValues = columnValues.slice(-3);
@@ -178,7 +178,7 @@ export const updateMultiSheetFlow = ai.defineFlow('updateMultiSheetFlow', async 
   images?: Array<{ data: string; mimeType: string; }>;
 }) => {
   try {
-    const { transcript, sheetsData, allSheetNames, selectedSheetName, images } = params;
+    const { transcript, sheetsData, allSheetNames, selectedSheetName } = params;
     
     // Build comprehensive sheets info
     const sheetsInfo = Object.entries(sheetsData).map(([sheetName, data]) => {
@@ -375,8 +375,8 @@ Format the response as a professional summary report.`;
  * Provides robust error handling for AI flows
  */
 export const executeWithRetry = async <T>(
-  flow: (...args: any[]) => Promise<T>,
-  args: any[],
+  flow: (...args: unknown[]) => Promise<T>,
+  args: unknown[],
   maxRetries: number = 3,
   delayMs: number = 1000
 ): Promise<T> => {

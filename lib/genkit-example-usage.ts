@@ -15,9 +15,7 @@ import {
   generateSummaryFlow,
   executeWithRetry,
   convertToGenkitFormat,
-  testGenkitIntegration,
-  type SheetData,
-  type MultiSheetUpdate
+  testGenkitIntegration
 } from './genkit-template';
 
 /**
@@ -183,7 +181,10 @@ export const robustDataProcessing = async (
     
     // Use retry utility for robust processing
     const result = await executeWithRetry(
-      updateSingleSheetFlow,
+      (...args: unknown[]) => {
+        const [transcript, sheetData] = args;
+        return updateSingleSheetFlow({ transcript: transcript as string, sheetData });
+      },
       [transcript, genkitSheetData],
       3, // max retries
       2000 // delay between retries
@@ -202,8 +203,8 @@ export const robustDataProcessing = async (
  * Shows how to integrate Genkit with your Next.js API routes
  */
 export const createGenkitAPIHandler = async (
-  req: { body: any },
-  res: { json: (data: any) => void; status: (code: number) => { json: (data: any) => void } }
+  req: { body: { transcript: string; sheetData: unknown; sheetName: string; images?: unknown } },
+  res: { json: (data: unknown) => void; status: (code: number) => { json: (data: unknown) => void } }
 ) => {
   try {
     const { transcript, sheetData, sheetName, images } = req.body;
@@ -214,7 +215,7 @@ export const createGenkitAPIHandler = async (
     }
     
     // Process with Genkit
-    const result = await replaceGeminiFunction(transcript, sheetData, sheetName, '', images);
+    const result = await replaceGeminiFunction(transcript, sheetData as (string | number)[][], sheetName, '', images as Array<{ data: string; mimeType: string; }>);
     
     res.json({ success: true, data: result });
   } catch (error) {
@@ -242,7 +243,7 @@ export const batchProcessRequests = async (
         try {
           const result = await replaceGeminiFunction(
             request.transcript,
-            request.sheetData,
+            request.sheetData as (string | number)[][],
             request.sheetName,
             ''
           );
