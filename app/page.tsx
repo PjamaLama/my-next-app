@@ -21,6 +21,7 @@ import VerticalTicker from './VerticalTicker';
 import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
+import GenkitTest from './components/GenkitTest';
 // import { useSettings } from './providers/SettingsProvider'; // Corrected import path
 
 // Types
@@ -1450,6 +1451,11 @@ export default function Home() {
             </section>
           </div>
         )}
+
+          {/* Genkit Test Section */}
+          <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 border border-gray-200 dark:border-gray-800 mt-8 sm:mt-12">
+            <GenkitTest />
+          </section>
 
           {/* Recent Activity section - Mobile optimized */}
           <section className="bg-white/80 dark:bg-[#18181b] rounded-xl shadow-md p-4 sm:p-6 border border-gray-200 dark:border-gray-800 mt-8 sm:mt-12">

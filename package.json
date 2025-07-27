@@ -10,10 +10,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@genkit-ai/firebase": "^1.15.5",
+    "@genkit-ai/googleai": "^1.15.5",
     "dayjs": "^1.11.13",
     "firebase": "^12.0.0",
     "formidable": "^3.5.2",
     "framer-motion": "^12.23.6",
+    "genkit": "^1.15.5",
     "googleapis": "^153.0.0",
     "next": "15.4.2",
     "prop-types": "^15.8.1",
