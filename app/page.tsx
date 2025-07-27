@@ -17,7 +17,7 @@ import {
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
-import VerticalTicker from './VerticalTicker';
+
 import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
@@ -1431,43 +1431,37 @@ export default function Home() {
               </div>
             )}
 
-            {/* Transcript/voice chat UI - Mobile optimized */}
+            {/* Voice input section - Mobile optimized */}
             <div className="relative w-full overflow-visible px-4">
-              {!editingTranscript ? (
-                <div className="relative w-full">
-                  {/* Editable VerticalTicker that combines input and display */}
-                  <div className="w-full min-h-[120px] sm:min-h-[128px] flex items-center justify-center relative overflow-visible transition-all duration-500 my-2 mx-1">
-                    <VerticalTicker 
-                      transcript={transcript + (interimText ? ` ${interimText}` : '')} 
-                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
-                      onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-                        if (e.key === 'Enter' && e.ctrlKey) {
-                          processWithAIChat(transcript, false);
-                        }
-                      }}
-                      placeholder="Type or speak your message..."
-                      disabled={listening}
-                      isRecording={listening}
-                    />
-                    {/* Clear button overlay - Mobile optimized */}
-                    {transcript && (
-                      <button
-                        type="button"
-                        onClick={() => { setTranscript(""); stopListening(); setEditingTranscript(false); }}
-                        className="absolute top-2 right-2 p-2 rounded-full z-30
-                                 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
-                                 hover:bg-gray-100 dark:hover:bg-gray-700
-                                 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm
-                                 transition-all duration-200 border border-gray-200 dark:border-gray-600
-                                 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="4" y1="4" x2="16" y2="16" />
-                          <line x1="16" y1="4" x2="4" y2="16" />
-                        </svg>
-                      </button>
-                    )}
+              <div className="relative w-full">
+                {/* Voice transcript display (read-only) */}
+                {(transcript || interimText) && (
+                  <div className="w-full min-h-[80px] mb-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                        {listening ? "🎤 Listening..." : "Voice Input"}
+                      </span>
+                      {transcript && (
+                        <button
+                          type="button"
+                          onClick={() => { setTranscript(""); stopListening(); }}
+                          className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="4" y1="4" x2="16" y2="16" />
+                            <line x1="16" y1="4" x2="4" y2="16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                      {transcript}
+                      {interimText && (
+                        <span className="text-gray-400 dark:text-gray-500 italic"> {interimText}</span>
+                      )}
+                    </p>
                   </div>
+                )}
                   
                   {/* Input Controls - Mobile optimized */}
                   <div className="w-full flex flex-col items-center gap-4 mt-4">
@@ -1522,36 +1516,12 @@ export default function Home() {
                       </button>
                     </div>
 
-                    <div className="w-full max-w-sm flex items-center gap-2 justify-center">
-                      {/* Process with AI Chat Button - Mobile optimized */}
-                      {transcript.trim() && (
-                        <button
-                          onClick={() => processWithAIChat(transcript, false)}
-                          disabled={chatProcessing || !defaultSpreadsheetId}
-                          className={`h-12 sm:h-12 px-4 sm:px-6 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm sm:text-base font-medium flex-1 justify-center min-h-[50px]
-                                    ${chatProcessing 
-                                      ? 'bg-purple-600 text-white cursor-not-allowed opacity-70'
-                                      : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl'}`}
-                        >
-                          {chatProcessing ? (
-                            <>
-                              <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              <span className="hidden sm:inline">Processing...</span>
-                              <span className="sm:hidden">...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>{listening ? "Stop & Process with AI Chat" : "Process with AI Chat"}</span>
-                              <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                              </svg>
-                            </>
-                          )}
-                        </button>
-                      )}
+                    {/* Voice instruction text */}
+                    <div className="text-center mb-2">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {listening ? "🎤 Speak your message..." : "Press the button to start voice input"}
+                      </p>
+                    </div>
                       
                       {/* Process with Genkit Button - Mobile optimized */}
                       {transcript.trim() && (
@@ -1748,145 +1718,117 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="relative w-full">
-                  <textarea
-                    id="manual-transcript"
-                    className="w-full rounded-xl border border-gray-300 dark:border-gray-600 
-                             bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm
-                             px-4 py-3 pr-12 text-sm sm:text-base text-gray-900 dark:text-gray-100 
-                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
-                             transition-all duration-200 resize-none min-h-[50px]"
-                    style={{ minHeight: 120, fontSize: '1.08rem', lineHeight: 1.5 }}
-                    value={transcript}
-                    onChange={e => setTranscript(e.target.value)}
-                    placeholder="Type or speak your message..."
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setEditingTranscript(false)}
-                    className="absolute top-3 right-3 p-2 rounded-full
-                             bg-blue-500 text-white hover:bg-blue-600
-                             transition-all duration-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="5 10 9 14 15 7" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-            </div>
-            </>
+              </>
             )}
           </section>
 
           {/* Enhanced Stepper UI for multi-sheet, multi-row editing - Mobile optimized */}
-        {stepperModalOpen && stepperFields.length > 0 && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4">
-            <section className="w-full max-w-4xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-3 sm:p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[95vh] overflow-hidden">
-              <button
-                onClick={() => {
-                  setStepperFields([]);
-                  setStepperComplete(false);
-                  setStepperIndex(0);
-                  setStepperValues({});
-                  setStepperModalOpen(false);
-                }}
-                className="absolute top-3 right-3 sm:top-4 sm:right-4 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent min-h-[44px] min-w-[44px] flex items-center justify-center"
-                aria-label="Close"
-              >&times;</button>
-              <div className="w-full overflow-y-auto scrollbar-none" style={{ maxHeight: '70vh', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {/* Add custom CSS for Webkit browsers to hide scrollbar */}
-                <style>{`
-                  .scrollbar-none::-webkit-scrollbar { display: none; }
-                `}</style>
-              {!stepperComplete ? (
-                <>
-                  <h2 className="text-lg sm:text-xl font-bold mb-4 text-center pr-8">Review & Edit Multi-Sheet Updates</h2>
-                  <div className="w-full flex flex-col items-center">
-                    <div className="mb-6 w-full">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs sm:text-sm text-gray-500">Field {stepperIndex + 1} of {stepperFields.length}</span>
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                          {stepperFields[stepperIndex].sheetName && (
-                            <span className="bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded text-xs">
-                              Sheet: {stepperFields[stepperIndex].sheetName}
+          {stepperModalOpen && stepperFields.length > 0 && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4">
+              <section className="w-full max-w-4xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-3 sm:p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[95vh] overflow-hidden">
+                <button
+                  onClick={() => {
+                    setStepperFields([]);
+                    setStepperComplete(false);
+                    setStepperIndex(0);
+                    setStepperValues({});
+                    setStepperModalOpen(false);
+                  }}
+                  className="absolute top-3 right-3 sm:top-4 sm:right-4 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Close"
+                >&times;</button>
+                <div className="w-full overflow-y-auto scrollbar-none" style={{ maxHeight: '70vh', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  {/* Add custom CSS for Webkit browsers to hide scrollbar */}
+                  <style>{`
+                    .scrollbar-none::-webkit-scrollbar { display: none; }
+                  `}</style>
+                {!stepperComplete ? (
+                  <>
+                    <h2 className="text-lg sm:text-xl font-bold mb-4 text-center pr-8">Review & Edit Multi-Sheet Updates</h2>
+                    <div className="w-full flex flex-col items-center">
+                      <div className="mb-6 w-full">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs sm:text-sm text-gray-500">Field {stepperIndex + 1} of {stepperFields.length}</span>
+                          <div className="flex items-center gap-2 text-xs text-gray-400">
+                            {stepperFields[stepperIndex].sheetName && (
+                              <span className="bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded text-xs">
+                                Sheet: {stepperFields[stepperIndex].sheetName}
+                              </span>
+                            )}
+                            <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded font-mono text-xs">
+                              {stepperFields[stepperIndex].cell}
+                            </span>
+                          </div>
+                        </div>
+                        <label className="block text-base sm:text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200">
+                          {stepperFields[stepperIndex].column}
+                          {stepperFields[stepperIndex].row && (
+                            <span className="text-sm text-gray-500 ml-2 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                              Row {stepperFields[stepperIndex].row}
                             </span>
                           )}
-                          <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded font-mono text-xs">
-                            {stepperFields[stepperIndex].cell}
-                          </span>
-                        </div>
-                      </div>
-                      <label className="block text-base sm:text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200">
-                        {stepperFields[stepperIndex].column}
-                        {stepperFields[stepperIndex].row && (
-                          <span className="text-sm text-gray-500 ml-2 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                            Row {stepperFields[stepperIndex].row}
-                          </span>
+                        </label>
+                        <input
+                          className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-sm sm:text-base mb-2 min-h-[50px]"
+                          value={stepperValues[stepperFields[stepperIndex].cell] ?? stepperFields[stepperIndex].value ?? ''}
+                          onChange={e => handleStepperChange(stepperFields[stepperIndex].cell, e.target.value)}
+                          placeholder={`Enter value for ${stepperFields[stepperIndex].column}...`}
+                        />
+                        {stepperFields[stepperIndex].value && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            AI suggested: <span className="italic">&quot;{stepperFields[stepperIndex].value}&quot;</span>
+                          </div>
                         )}
-                      </label>
-                      <input
-                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-sm sm:text-base mb-2 min-h-[50px]"
-                        value={stepperValues[stepperFields[stepperIndex].cell] ?? stepperFields[stepperIndex].value ?? ''}
-                        onChange={e => handleStepperChange(stepperFields[stepperIndex].cell, e.target.value)}
-                        placeholder={`Enter value for ${stepperFields[stepperIndex].column}...`}
-                      />
-                      {stepperFields[stepperIndex].value && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          AI suggested: <span className="italic">&quot;{stepperFields[stepperIndex].value}&quot;</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-3 w-full">
-                      <button
-                        onClick={handleStepperBack}
-                        disabled={stepperIndex === 0}
-                        className="px-4 py-3 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:text-gray-600 transition text-sm font-medium disabled:opacity-50 min-h-[50px]"
-                      >Back</button>
-                      <button
-                          onClick={handleStepperAcceptAll}
-                        className="px-4 py-3 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium transition text-sm min-h-[50px] flex-1"
-                        >Accept All AI Suggestions</button>
-                      {stepperIndex < stepperFields.length - 1 ? (
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3 w-full">
                         <button
-                          onClick={handleStepperNext}
-                          className="px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm min-h-[50px]"
-                        >Next</button>
-                      ) : (
+                          onClick={handleStepperBack}
+                          disabled={stepperIndex === 0}
+                          className="px-4 py-3 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:text-gray-600 transition text-sm font-medium disabled:opacity-50 min-h-[50px]"
+                        >Back</button>
                         <button
-                          onClick={handleStepperFinish}
-                          className="px-4 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm min-h-[50px]"
-                        >Finish</button>
-                      )}
+                            onClick={handleStepperAcceptAll}
+                          className="px-4 py-3 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium transition text-sm min-h-[50px] flex-1"
+                          >Accept All AI Suggestions</button>
+                        {stepperIndex < stepperFields.length - 1 ? (
+                          <button
+                            onClick={handleStepperNext}
+                            className="px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm min-h-[50px]"
+                          >Next</button>
+                        ) : (
+                          <button
+                            onClick={handleStepperFinish}
+                            className="px-4 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm min-h-[50px]"
+                          >Finish</button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-lg sm:text-xl font-bold mb-4 text-center pr-8">Review Multi-Sheet Updates</h2>
-                  
-                  {/* Group fields by sheet for better organization - Mobile optimized */}
-                  <div className="w-full max-h-64 sm:max-h-80 overflow-y-auto">
-                    {Object.entries(
-                      stepperFields.reduce((groups, field) => {
-                        const sheetName = field.sheetName || 'Unknown Sheet';
-                        if (!groups[sheetName]) groups[sheetName] = [];
-                        groups[sheetName].push(field);
-                        return groups;
-                      }, {} as { [sheetName: string]: StepperField[] })
-                    ).map(([sheetName, fields]) => (
-                      <div key={sheetName} className="mb-4 sm:mb-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                        <div className="bg-blue-50 dark:bg-blue-900/20 px-3 sm:px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                          <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm sm:text-base">
-                            {sheetName} ({fields.length} update{fields.length !== 1 ? 's' : ''})
-                          </h3>
-                        </div>
-                        <div className="p-3 sm:p-4">
-                          <div className="space-y-3">
-                            {fields.map(field => (
-                              <div key={field.cell} className="flex justify-between items-start py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
-                                <div className="flex-1 pr-2">
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg sm:text-xl font-bold mb-4 text-center pr-8">Review Multi-Sheet Updates</h2>
+                    
+                    {/* Group fields by sheet for better organization - Mobile optimized */}
+                    <div className="w-full max-h-64 sm:max-h-80 overflow-y-auto">
+                      {Object.entries(
+                        stepperFields.reduce((groups, field) => {
+                          const sheetName = field.sheetName || 'Unknown Sheet';
+                          if (!groups[sheetName]) groups[sheetName] = [];
+                          groups[sheetName].push(field);
+                          return groups;
+                        }, {} as { [sheetName: string]: StepperField[] })
+                      ).map(([sheetName, fields]) => (
+                        <div key={sheetName} className="mb-4 sm:mb-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                          <div className="bg-blue-50 dark:bg-blue-900/20 px-3 sm:px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                            <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm sm:text-base">
+                              {sheetName} ({fields.length} update{fields.length !== 1 ? 's' : ''})
+                            </h3>
+                          </div>
+                          <div className="p-3 sm:p-4">
+                            <div className="space-y-3">
+                              {fields.map(field => (
+                                <div key={field.cell} className="flex justify-between items-start py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+                                  <div className="flex-1 pr-2">
                                                         <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
                         {field.column}
                         {field.row && (
@@ -1903,55 +1845,55 @@ export default function Home() {
                                   {field.cell}
                                 </div>
                               </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full">
-                    <button
-                      onClick={() => { setStepperComplete(false); setStepperIndex(0); setFinalSubmitStatus(null); }}
-                      className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm sm:text-base min-h-[50px]"
-                    >Edit Again</button>
-                    <button
-                      onClick={saveToSheet}
-                      disabled={finalSubmitStatus === 'sending'}
-                      className="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm sm:text-base disabled:opacity-50 flex-1 min-h-[50px]"
-                    >
-                      {finalSubmitStatus === 'sending' ? (
-                        <div className="flex items-center gap-2 justify-center">
-                          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          <span>Saving...</span>
-                        </div>
-                      ) : (
-                        `Save to ${Object.keys(stepperFields.reduce((groups, field) => {
-                          const sheetName = field.sheetName || 'Unknown Sheet';
-                          groups[sheetName] = true;
-                          return groups;
-                        }, {} as { [sheetName: string]: boolean })).length} Sheet${Object.keys(stepperFields.reduce((groups, field) => {
-                          const sheetName = field.sheetName || 'Unknown Sheet';
-                          groups[sheetName] = true;
-                          return groups;
-                        }, {} as { [sheetName: string]: boolean })).length !== 1 ? 's' : ''}`
-                      )}
-                    </button>
-                  </div>
-                  {finalSubmitStatus && finalSubmitStatus !== 'sending' && (
-                    <p className={`mt-2 text-sm ${finalSubmitStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
-                      {finalSubmitStatus === 'success' ? 'Data saved successfully!' : 'Failed to save data.'}
-                    </p>
-                  )}
-                </>
-              )}
-              </div>
-            </section>
-          </div>
-        )}
+                      ))}
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full">
+                      <button
+                        onClick={() => { setStepperComplete(false); setStepperIndex(0); setFinalSubmitStatus(null); }}
+                        className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition text-sm sm:text-base min-h-[50px]"
+                      >Edit Again</button>
+                      <button
+                        onClick={saveToSheet}
+                        disabled={finalSubmitStatus === 'sending'}
+                        className="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm sm:text-base disabled:opacity-50 flex-1 min-h-[50px]"
+                      >
+                        {finalSubmitStatus === 'sending' ? (
+                          <div className="flex items-center gap-2 justify-center">
+                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Saving...</span>
+                          </div>
+                        ) : (
+                          `Save to ${Object.keys(stepperFields.reduce((groups, field) => {
+                            const sheetName = field.sheetName || 'Unknown Sheet';
+                            groups[sheetName] = true;
+                            return groups;
+                          }, {} as { [sheetName: string]: boolean })).length} Sheet${Object.keys(stepperFields.reduce((groups, field) => {
+                            const sheetName = field.sheetName || 'Unknown Sheet';
+                            groups[sheetName] = true;
+                            return groups;
+                          }, {} as { [sheetName: string]: boolean })).length !== 1 ? 's' : ''}`
+                        )}
+                      </button>
+                    </div>
+                    {finalSubmitStatus && finalSubmitStatus !== 'sending' && (
+                      <p className={`mt-2 text-sm ${finalSubmitStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                        {finalSubmitStatus === 'success' ? 'Data saved successfully!' : 'Failed to save data.'}
+                      </p>
+                    )}
+                  </>
+                )}
+                </div>
+              </section>
+            </div>
+          )}
 
 
 
