@@ -191,6 +191,17 @@ export default function Home() {
     previewData: null,
     editedValues: {}
   });
+
+  // Background operation state
+  const [backgroundOperation, setBackgroundOperation] = useState<{
+    isRunning: boolean;
+    operation: string;
+    progress?: string;
+  }>({
+    isRunning: false,
+    operation: '',
+    progress: undefined
+  });
   
   // Voice recognition ref
   const recognitionRef = useRef<any>(null);
@@ -893,6 +904,23 @@ export default function Home() {
 
   // Function to execute tool after confirmation
   const executeTool = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } }) => {
+    // Close confirmation modal immediately
+    setToolConfirmationModal({
+      isOpen: false,
+      toolCall: null,
+      previewData: null,
+      editedValues: {}
+    });
+
+    // Set background operation state for sheet updates
+    if (toolCall.function.name === 'update_sheet') {
+      setBackgroundOperation({
+        isRunning: true,
+        operation: 'Updating sheets',
+        progress: 'Preparing updates...'
+      });
+    }
+
     setChatProcessing(true);
     setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
     
@@ -1001,14 +1029,6 @@ export default function Home() {
         setUploadedImages([]);
       }
 
-      // Close confirmation modal
-      setToolConfirmationModal({
-        isOpen: false,
-        toolCall: null,
-        previewData: null,
-        editedValues: {}
-      });
-
     } catch (error) {
       console.error('Tool execution error:', error);
       
@@ -1024,6 +1044,12 @@ export default function Home() {
       setChatMessages(prev => [...prev, errorMessage]);
     } finally {
       setChatProcessing(false);
+      // Clear background operation state
+      setBackgroundOperation({
+        isRunning: false,
+        operation: '',
+        progress: undefined
+      });
     }
   };
 
@@ -1976,20 +2002,9 @@ export default function Home() {
                     </button>
                     <button
                       onClick={handleToolConfirmation}
-                      disabled={chatProcessing}
-                      className="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm disabled:opacity-50 flex-1 min-h-[50px]"
+                      className="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm flex-1 min-h-[50px]"
                     >
-                      {chatProcessing ? (
-                        <div className="flex items-center gap-2 justify-center">
-                          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          <span>Applying...</span>
-                        </div>
-                      ) : (
-                        `Apply ${toolConfirmationModal.previewData.length} Update${toolConfirmationModal.previewData.length !== 1 ? 's' : ''}`
-                      )}
+                      Apply {toolConfirmationModal.previewData.length} Update{toolConfirmationModal.previewData.length !== 1 ? 's' : ''}
                     </button>
                   </div>
                 </div>
@@ -2000,6 +2015,30 @@ export default function Home() {
           <RecentActivity activity={activity} activityError={activityError} />
       </div>
     </div>
+
+    {/* Background Operation Loading Indicator */}
+    {backgroundOperation.isRunning && (
+      <div className="fixed bottom-4 right-4 z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-4 max-w-sm">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                {backgroundOperation.operation}
+              </p>
+              {backgroundOperation.progress && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {backgroundOperation.progress}
+                </p>
+              )}
+            </div>
+            <div className="flex-shrink-0">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
