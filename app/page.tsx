@@ -164,26 +164,58 @@ export default function Home() {
     if (typeof window === 'undefined') return;
     
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) return;
+    if (!SpeechRecognitionClass) {
+      console.error('Speech recognition not supported in this browser');
+      return;
+    }
     
-    if (listening && !recognitionRef.current) {
+    // Cleanup function to properly stop recognition
+    const cleanupRecognition = () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.log('Error stopping recognition during cleanup:', e);
+        }
+        recognitionRef.current = null;
+      }
+    };
+    
+    if (listening) {
+      console.log('Starting speech recognition...');
+      
+      // Clean up any existing recognition first
+      cleanupRecognition();
+      
       const recognition = new SpeechRecognitionClass();
-      recognition.continuous = true;
+      recognition.continuous = false; // Changed to false to prevent infinite loops
       recognition.interimResults = true;
       recognition.lang = "en-US";
       
+      recognition.onstart = () => {
+        console.log('Speech recognition started successfully!');
+      };
+      
       recognition.onresult = (event: any) => {
+        console.log('Speech recognition result received:', event);
+        
         let interimTranscript = '';
         let finalTranscript = '';
-        
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+
+        // Process all results from the beginning
+        for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
+          console.log(`Result ${i}:`, result[0].transcript, 'isFinal:', result.isFinal);
+          
           if (result.isFinal) {
             finalTranscript += result[0].transcript;
           } else {
             interimTranscript += result[0].transcript;
           }
         }
+        
+        console.log('Final transcript:', finalTranscript);
+        console.log('Interim transcript:', interimTranscript);
         
         if (finalTranscript) {
           setTranscript(prev => prev + finalTranscript + ' ');
@@ -194,6 +226,8 @@ export default function Home() {
       };
       
       recognition.onerror = (event: any) => {
+        console.log('Speech recognition error event:', event);
+        
         // Handle different error types appropriately
         switch (event.error) {
           case 'aborted':
@@ -228,32 +262,46 @@ export default function Home() {
       };
       
       recognition.onend = () => {
-        if (listening) {
-          // Restart if still supposed to be listening
-          try {
-            recognition.start();
-          } catch (e) {
-            setListening(false);
-          }
-        } else {
-          recognitionRef.current = null;
+        console.log('Speech recognition ended');
+        // Don't auto-restart - let the user control it
+        recognitionRef.current = null;
+        // Only stop listening if we're not supposed to be listening
+        if (!listening) {
+          console.log('Recognition ended and listening is false - cleanup complete');
         }
       };
       
       recognitionRef.current = recognition;
-      recognition.start();
-    } else if (!listening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-    
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      
+      try {
+        recognition.start();
+        console.log('Speech recognition start() called');
+      } catch (e) {
+        console.error('Failed to start speech recognition:', e);
+        setListening(false);
         recognitionRef.current = null;
       }
+    } else {
+      // Not listening - clean up any existing recognition
+      console.log('Stopping speech recognition...');
+      cleanupRecognition();
+    }
+    
+    // Cleanup on unmount or when listening changes
+    return () => {
+      console.log('Speech recognition effect cleanup');
+      cleanupRecognition();
     };
   }, [listening]);
+
+  // Debug transcript changes - add these right after the speech recognition useEffect
+  useEffect(() => {
+    console.log('Transcript changed:', transcript);
+  }, [transcript]);
+
+  useEffect(() => {
+    console.log('Interim text changed:', interimText);
+  }, [interimText]);
 
   // Check if user has any spreadsheets configured
   useEffect(() => {
@@ -1389,16 +1437,24 @@ export default function Home() {
                         {/* Voice button - WhatsApp style */}
                         <button
                           onClick={() => {
+                            console.log('Voice button clicked, current listening state:', listening);
+                            
                             if (listening) {
+                              console.log('Stopping voice recording...');
                               setListening(false);
-                              // Add current transcript to text input
-                              if (transcript.trim()) {
-                                setEditingText(prev => prev.trim() ? `${prev} ${transcript}` : transcript);
-                                setTranscript("");
-                                setInterimText("");
-                              }
+                              
+                              // Small delay to ensure transcript is captured
+                              setTimeout(() => {
+                                if (transcript.trim()) {
+                                  console.log('Adding transcript to text input:', transcript);
+                                  setEditingText(prev => prev.trim() ? `${prev} ${transcript}` : transcript);
+                                  setTranscript("");
+                                  setInterimText("");
+                                }
+                              }, 100);
                             } else {
-                              // Start recording
+                              console.log('Starting voice recording...');
+                              // Clear any previous transcript and start fresh
                               setTranscript("");
                               setInterimText("");
                               setListening(true);
