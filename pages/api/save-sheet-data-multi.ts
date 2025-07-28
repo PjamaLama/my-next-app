@@ -59,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get spreadsheet metadata for all sheets (row counts, sheetIds, etc.)
     const spreadsheetMeta = await sheets.spreadsheets.get({
       spreadsheetId,
-      fields: 'sheets(properties/sheetId,title,gridProperties)'
+      fields: 'sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))'
     });
 
     // Process each sheet's updates
