@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useSheet } from '../providers/SheetProvider';
 
 const SheetSelector: React.FC = () => {
-  const { defaultSpreadsheetId, selectedSheetName, setSelectedSheetName } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames } = useSheet();
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,8 +21,8 @@ const SheetSelector: React.FC = () => {
         })
         .then(data => {
           setSheetNames(data.sheetNames);
-          if (data.sheetNames.length > 0 && !selectedSheetName) {
-            setSelectedSheetName(data.sheetNames[0]);
+          if (data.sheetNames.length > 0 && selectedSheetNames.length === 0) {
+            setSelectedSheetNames([data.sheetNames[0]]);
           }
         })
         .catch(err => {
@@ -33,10 +33,10 @@ const SheetSelector: React.FC = () => {
           setIsLoading(false);
         });
     }
-  }, [defaultSpreadsheetId, selectedSheetName, setSelectedSheetName]);
+  }, [defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames]);
 
   const handleSheetChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedSheetName(event.target.value);
+    setSelectedSheetNames([event.target.value]);
   };
 
   if (!defaultSpreadsheetId) {
@@ -58,7 +58,7 @@ const SheetSelector: React.FC = () => {
       </label>
       <select
         id="sheet-selector"
-        value={selectedSheetName || ''}
+        value={selectedSheetNames[0] || ''}
         onChange={handleSheetChange}
         className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
       >

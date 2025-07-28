@@ -89,7 +89,6 @@ export default function VoiceRecorder({
   onTranscriptComplete,
   listening,
   transcript,
-  interimText,
   voiceTransitioning = false
 }: VoiceRecorderProps) {
   const [paused, setPaused] = useState(false);

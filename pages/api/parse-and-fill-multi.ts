@@ -29,7 +29,7 @@ interface SheetAnalysis {
 }
 
 // Helper function to analyze sheet content and detect common patterns
-async function analyzeSheetContent(sheetName: string, data: (string | number)[][], spreadsheetId: string, sheets: any) {
+async function analyzeSheetContent(sheetName: string, data: (string | number)[][], spreadsheetId: string, sheets: unknown) {
   if (!data || data.length <= 1) return {};
   
   const headers = data[0];
@@ -176,7 +176,7 @@ async function analyzeSheetContent(sheetName: string, data: (string | number)[][
     const lastRowRange = `${escapeSheetName(sheetName)}!A${summaryRow}:${String.fromCharCode(64 + headers.length)}${summaryRow}`;
     
     // Fetch formatted values to check for "Total" or "Sum"
-    const formattedRes = await sheets.spreadsheets.values.get({
+    const formattedRes = await (sheets as { spreadsheets: { values: { get: (params: { spreadsheetId: string; range: string; valueRenderOption?: string }) => Promise<{ data: { values?: (string | number)[][] } }> } } }).spreadsheets.values.get({
       spreadsheetId,
       range: lastRowRange,
       valueRenderOption: 'FORMATTED_VALUE',
@@ -184,7 +184,7 @@ async function analyzeSheetContent(sheetName: string, data: (string | number)[][
     const formattedValues = formattedRes.data.values?.[0] || [];
 
     // Fetch formulas to check for =SUM etc.
-    const formulaRes = await sheets.spreadsheets.values.get({
+    const formulaRes = await (sheets as { spreadsheets: { values: { get: (params: { spreadsheetId: string; range: string; valueRenderOption?: string }) => Promise<{ data: { values?: (string | number)[][] } }> } } }).spreadsheets.values.get({
       spreadsheetId,
       range: lastRowRange,
       valueRenderOption: 'FORMULA',

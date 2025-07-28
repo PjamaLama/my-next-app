@@ -223,7 +223,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           setTimeout(() => reject(new Error(`Batch update timeout after 15 seconds for sheet: ${sheetName}`)), 15000)
         );
         
-        const batchUpdateResult = await Promise.race([updatePromise, timeoutPromise]) as any;
+        const batchUpdateResult = await Promise.race([updatePromise, timeoutPromise]) as { data: { totalUpdatedCells: number } };
 
         const updatedCells = batchUpdateResult.data?.totalUpdatedCells || 0;
         results.push({

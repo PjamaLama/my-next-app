@@ -24,6 +24,14 @@ interface ImageData {
   mimeType: string;
 }
 
+// Define interface SheetAction
+interface SheetAction {
+  sheet?: string;
+  column: string;
+  row: number;
+  value: string;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -94,7 +102,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       });
     }
 
-    const allUpdates: any[] = [];
+    const allUpdates: SheetAction[] = [];
     for (const sheetName of sheetNames) {
       console.log(`Processing updates for sheet: ${sheetName}`);
       const result = await updateSheetFlow({
@@ -105,7 +113,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       });
 
       if (result && result.actions && result.actions.length > 0) {
-        const updatesForSheet = result.actions.map((action: any) => ({
+        const updatesForSheet = result.actions.map((action: SheetAction) => ({
           sheetName: action.sheet || sheetName,
           cell: `${action.column}${action.row}`,
           value: action.value,

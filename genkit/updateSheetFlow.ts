@@ -254,7 +254,8 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
   try {
     console.log('UpdateSheetFlow called with:', input);
     
-    const { transcript, sheetId, sheetName, commit = false } = input;
+    // Fix the sheetName undefined issue by providing a default value
+    const { transcript, sheetId, sheetName = 'Sheet1', commit = false } = input;
     
     // Clean and improve the transcript
     const cleanedTranscript = await cleanTranscript(transcript);

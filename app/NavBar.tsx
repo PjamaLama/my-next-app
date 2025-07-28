@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useFirebase } from './providers/FirebaseProvider';
 import { useSheet } from './providers/SheetProvider';
@@ -30,7 +30,7 @@ interface Option {
 
 const NavBar: React.FC = () => {
   const { user, signOutUser, geminiApiKey, saveGeminiApiKey } = useFirebase();
-  const { defaultSpreadsheetId, selectedSheetName, setDefaultSpreadsheetId, setSelectedSheetName } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setDefaultSpreadsheetId, setSelectedSheetNames } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   const { settingsOpen, setSettingsOpen } = useSettings(); // Use settingsOpen and setSettingsOpen from the new provider
   const [sheetDropdownOpen, setSheetDropdownOpen] = useState(false);
@@ -127,43 +127,25 @@ const NavBar: React.FC = () => {
 
   const deleteOption = async (id: string) => {
     if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "options", id));
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'options', id));
+    } catch (e) {
+      console.error('Error deleting option:', e);
+    }
   };
 
-  // Debug function to log all spreadsheet options
-  const debugSpreadsheetOptions = useCallback(() => {
-    console.log('🔍 Current spreadsheet options:');
-    options.forEach((option, index) => {
-      console.log(`  ${index + 1}. "${option.label}" (ID: ${option.spreadsheetId})`);
-      console.log(`     Sheets: [${option.sheetNames.join(', ')}]`);
-      console.log(`     Firebase Doc ID: ${option.id}`);
-    });
-    console.log(`Current selection: spreadsheet="${defaultSpreadsheetId}", sheet="${selectedSheetName}"`);
-  }, [options, defaultSpreadsheetId, selectedSheetName]);
-
-
-
-  // Call debug on options change
+  // Debug logging for spreadsheet options
+  const debugSpreadsheetOptions = options.map(o => ({ id: o.id, label: o.label, spreadsheetId: o.spreadsheetId, sheetCount: o.sheetNames?.length || 0 }));
   useEffect(() => {
-    if (options.length > 0) {
-      debugSpreadsheetOptions();
-      
-      // Check for potential mismatches
-      if (defaultSpreadsheetId && selectedSheetName) {
-        const currentOption = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
-        if (currentOption && !currentOption.sheetNames.includes(selectedSheetName)) {
-          console.warn(`⚠️ MISMATCH DETECTED: Sheet "${selectedSheetName}" not found in current spreadsheet's stored sheets: [${currentOption.sheetNames.join(', ')}]`);
-          console.warn('🔧 Consider clearing selections to fix this issue');
-        }
-      }
-    }
-  }, [options, defaultSpreadsheetId, selectedSheetName, debugSpreadsheetOptions]);
+    console.log('📊 Available spreadsheet options:', debugSpreadsheetOptions);
+    console.log('🎯 Current selection:', { defaultSpreadsheetId, selectedSheetNames });
+  }, [options, defaultSpreadsheetId, selectedSheetNames, debugSpreadsheetOptions]);
 
   const handleSpreadsheetSelect = async (spreadsheetId: string) => {
     console.log(`🎯 Selected spreadsheet: ${spreadsheetId}`);
     
     // Clear any previous sheet selection FIRST to avoid stale data issues
-    setSelectedSheetName('');
+    setSelectedSheetNames([]);
     
     // Set the new spreadsheet ID
     setDefaultSpreadsheetId(spreadsheetId);
@@ -213,7 +195,7 @@ const NavBar: React.FC = () => {
             if (defaultSpreadsheetId === spreadsheetId) {
               console.log(`✅ Auto-selecting sheet: "${firstActualSheet}" for spreadsheet: ${spreadsheetId}`);
               console.log(`📊 Available sheets: [${sheetNames.join(', ')}]`);
-              setSelectedSheetName(firstActualSheet);
+              setSelectedSheetNames([firstActualSheet]);
             } else {
               console.log(`⚠️ Spreadsheet changed during sheet refresh, skipping selection (expected: ${spreadsheetId}, current: ${defaultSpreadsheetId})`);
             }

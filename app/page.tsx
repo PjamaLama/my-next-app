@@ -63,21 +63,36 @@ interface ActivityItem {
   rowsAffected?: number; // For multi-row operations
 }
 
-// Tool confirmation modal interface
-interface ToolConfirmationModal {
-  isOpen: boolean;
-  toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } } | null;
-  previewData: Array<{
-    sheetName: string;
-    cell: string;
-    column: string;
-    row: number;
-    value: string;
-  }> | null;
-  onConfirm: () => void;
-  onCancel: () => void;
-  onEditValue: (index: number, newValue: string) => void;
-}
+// Define ChatMessage type for use throughout the file
+type ChatMessage = {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp: Date;
+    isVoice?: boolean;
+    hasImages?: boolean;
+    imageCount?: number;
+    attachments?: Array<{
+      id: string;
+      name: string;
+      type: string;
+      fileType: 'image' | 'pdf';
+      preview?: string;
+    }>;
+    isProcessing?: boolean;
+    toolCalls?: Array<{
+      id: string;
+      type: 'function';
+      function: { name: string; arguments: string };
+    }>;
+    toolResults?: Array<{
+      id: string;
+      result: string;
+      success: boolean;
+      details?: unknown;
+    }>;
+    messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
+  };
 
 
 
@@ -109,7 +124,7 @@ export default function Home() {
 
   
   // Add state for available spreadsheet options
-  const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
+  // const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
 
   // Add state for image upload functionality
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
@@ -117,35 +132,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Chat functionality state
-  const [chatMessages, setChatMessages] = useState<Array<{
-    id: string;
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-    timestamp: Date;
-    isVoice?: boolean;
-    hasImages?: boolean;
-    imageCount?: number;
-    attachments?: Array<{
-      id: string;
-      name: string;
-      type: string;
-      fileType: 'image' | 'pdf';
-      preview?: string;
-    }>;
-    isProcessing?: boolean;
-    toolCalls?: Array<{
-      id: string;
-      type: 'function';
-      function: { name: string; arguments: string };
-    }>;
-    toolResults?: Array<{
-      id: string;
-      result: string;
-      success: boolean;
-      details?: unknown;
-    }>;
-    messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
-  }>>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{
     id: string;
     type: 'function';
@@ -154,7 +141,7 @@ export default function Home() {
   const [chatProcessing, setChatProcessing] = useState(false);
   
   // Visual feedback state for voice-to-chat transitions
-  const [voiceTransitioning, setVoiceTransitioning] = useState(false);
+  // const [voiceTransitioning, setVoiceTransitioning] = useState(false);
   
   // State for missed intent detection and fallback UI
   const [missedIntentSuggestion, setMissedIntentSuggestion] = useState<string | null>(null);
@@ -163,15 +150,15 @@ export default function Home() {
   const [messageFilter, setMessageFilter] = useState<'all' | 'conversation' | 'sheet_updates'>('all');
   
   // User context and preferences system
-  const [userContext, setUserContext] = useState<{
-    businessType: string;
-    workflowDescription: string;
-    sheetPurpose: string;
-    preferredBehavior: string;
-    formulaRows: number[];
-    insertionPreference: 'above_formulas' | 'append' | 'custom';
-  } | null>(null);
-  const [showContextSetup, setShowContextSetup] = useState(false);
+  // const [userContext, setUserContext] = useState<{
+  //   businessType: string;
+  //   workflowDescription: string;
+  //   sheetPurpose: string;
+  //   preferredBehavior: string;
+  //   formulaRows: number[];
+  //   insertionPreference: 'above_formulas' | 'append' | 'custom';
+  // } | null>(null);
+  // const [showContextSetup, setShowContextSetup] = useState(false);
   
   // Tool confirmation modal state
   const [toolConfirmationModal, setToolConfirmationModal] = useState<{
@@ -203,14 +190,15 @@ export default function Home() {
     progress: undefined
   });
   
+  // Fix recognitionRef type - use 'any' since SpeechRecognition type is not available
   // Voice recognition ref
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
 
   // Speech recognition effect
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionClass = (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition; SpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition || (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition; SpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
     if (!SpeechRecognitionClass) {
       console.error('Speech recognition not supported in this browser');
       return;
@@ -243,7 +231,7 @@ export default function Home() {
         console.log('Speech recognition started successfully!');
       };
       
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
         console.log('Speech recognition result received:', event);
         
         let interimTranscript = '';
@@ -272,7 +260,7 @@ export default function Home() {
         }
       };
       
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
         console.log('Speech recognition error event:', event);
         
         // Handle different error types appropriately
@@ -366,17 +354,17 @@ export default function Home() {
 
 
   // Subscribe to user's spreadsheet options
-  useEffect(() => {
-    if (!user) return;
-    const optionsRef = collection(db, "users", user.uid, "options");
-    const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
-      setSpreadsheetOptions(snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data() 
-      } as {id: string; spreadsheetId: string; sheetNames: string[]})));
-    });
-    return () => unsubOptions();
-  }, [user]);
+  // useEffect(() => {
+  //   if (!user) return;
+  //   const optionsRef = collection(db, "users", user.uid, "options");
+  //   const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
+  //     setSpreadsheetOptions(snapshot.docs.map(doc => ({ 
+  //       id: doc.id, 
+  //       ...doc.data() 
+  //     } as {id: string; spreadsheetId: string; sheetNames: string[]})));
+  //   });
+  //   return () => unsubOptions();
+  // }, [user]);
 
 
 
@@ -882,7 +870,7 @@ export default function Home() {
           setToolConfirmationModal({
             isOpen: true,
             toolCall,
-            previewData: data.actions.map((action: any) => ({
+            previewData: data.actions.map((action: { sheetName?: string; cell: string; column: string; row: number; value: string }) => ({
               sheetName: action.sheetName || selectedSheetNames[0],
               cell: action.cell,
               column: action.column,
@@ -970,15 +958,13 @@ export default function Home() {
       if (toolConfirmationModal.editedValues && Object.keys(toolConfirmationModal.editedValues).length > 0) {
         const args = JSON.parse(toolCall.function.arguments);
         // Update the actions with edited values
-        if (args.actions) {
-          args.actions = args.actions.map((action: any, index: number) => {
-            const key = `${action.sheetName || selectedSheetNames[0]}_${action.cell}`;
-            if (toolConfirmationModal.editedValues[key]) {
-              return { ...action, value: toolConfirmationModal.editedValues[key] };
-            }
-            return action;
-          });
-        }
+        args.actions = args.actions.map((action: { sheetName?: string; cell: string; column: string; row: number; value: string }) => {
+          const key = `${action.sheetName || selectedSheetNames[0]}_${action.cell}`;
+          if (toolConfirmationModal.editedValues[key]) {
+            return { ...action, value: toolConfirmationModal.editedValues[key] };
+          }
+          return action;
+        });
         finalToolCall = {
           ...toolCall,
           function: {
@@ -1706,11 +1692,11 @@ export default function Home() {
                   
                   {/* Status Messages */}
                   <div className="w-full text-center">
-                    {voiceTransitioning && (
+                    {/* {voiceTransitioning && (
                       <p className="text-sm text-blue-600 dark:text-blue-400">
                         ✨ Processing voice → chat...
                       </p>
-                    )}
+                    )} */}
                   </div>
 
                     {/* Processing Result Message */}
@@ -2117,7 +2103,7 @@ const detectMissedSheetIntent = (userMessage: string, aiResponse: string): boole
   return hasDataPattern && aiDidntMentionSheet;
 };
 
-const filterMessages = (messages: any[], filter: 'all' | 'conversation' | 'sheet_updates') => {
+const filterMessages = (messages: ChatMessage[], filter: 'all' | 'conversation' | 'sheet_updates') => {
   switch (filter) {
     case 'conversation':
       return messages.filter(msg => 
