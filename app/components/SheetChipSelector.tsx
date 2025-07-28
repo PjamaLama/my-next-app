@@ -66,14 +66,26 @@ const SheetChipSelector: React.FC = () => {
   }
 
   if (isLoading) {
-    return <div>Loading sheets...</div>;
+    return (
+      <div className="flex items-center justify-center py-4">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading sheets...</span>
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="text-red-500">Error: {error}</div>;
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+        <div className="flex items-center gap-2">
+          <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-sm text-red-600 dark:text-red-400">Error: {error}</span>
+        </div>
+      </div>
+    );
   }
-
-
 
   console.log('=== Render Debug ===');
   console.log('sheetNames:', sheetNames);
@@ -82,20 +94,80 @@ const SheetChipSelector: React.FC = () => {
   console.log('error:', error);
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {sheetNames.map(name => (
-        <button
-          key={name}
-          onClick={() => toggleSheetSelection(name)}
-          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-            selectedSheetNames.includes(name)
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-          }`}
-        >
-          {name}
-        </button>
-      ))}
+    <div className="space-y-3">
+      {/* Header with selection count */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Select Sheets to Edit
+        </h3>
+        {selectedSheetNames.length > 0 && (
+          <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full">
+            {selectedSheetNames.length} selected
+          </span>
+        )}
+      </div>
+      
+      {/* Sheet chips */}
+      <div className="flex flex-wrap gap-2">
+        {sheetNames.map(name => {
+          const isSelected = selectedSheetNames.includes(name);
+          return (
+            <button
+              key={name}
+              onClick={() => toggleSheetSelection(name)}
+              className={`
+                relative px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 
+                transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                ${isSelected 
+                  ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25 hover:bg-blue-600 hover:shadow-blue-500/40' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 hover:shadow-md'
+                }
+              `}
+            >
+              {/* Selection indicator */}
+              {isSelected && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
+              
+              {/* Sheet icon */}
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>{name}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      
+      {/* Help text */}
+      {selectedSheetNames.length === 0 && sheetNames.length > 0 && (
+        <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+          Click on sheets above to select which ones to edit
+        </div>
+      )}
+      
+      {/* Selected sheets summary */}
+      {selectedSheetNames.length > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              Ready to edit {selectedSheetNames.length} sheet{selectedSheetNames.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="text-xs text-blue-700 dark:text-blue-300">
+            Selected: {selectedSheetNames.join(', ')}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
