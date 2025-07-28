@@ -1,6 +1,28 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSingleSheetFlow } from '../../lib/genkit-template';
 
+// Define proper types for the function parameters
+interface Context {
+  spreadsheetId?: string;
+  sheetName?: string;
+  [key: string]: unknown;
+}
+
+interface ToolArgs {
+  transcript?: string;
+  sheetData?: unknown;
+  spreadsheetId?: string;
+  sheetName?: string;
+  imageCount?: number;
+  imageTypes?: string[];
+  [key: string]: unknown;
+}
+
+interface ImageData {
+  data: string;
+  mimeType: string;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -52,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-async function handleUpdateSheet(args: any, context: any, res: NextApiResponse) {
+async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { transcript, sheetData } = args;
     const { spreadsheetId, sheetName } = context;
@@ -137,7 +159,7 @@ async function handleUpdateSheet(args: any, context: any, res: NextApiResponse) 
   }
 }
 
-async function handleGetSheetData(args: any, res: NextApiResponse) {
+async function handleGetSheetData(args: ToolArgs, res: NextApiResponse) {
   try {
     const { spreadsheetId, sheetName } = args;
 
@@ -178,7 +200,7 @@ async function handleGetSheetData(args: any, res: NextApiResponse) {
   }
 }
 
-async function handleAnalyzeVoiceInput(args: any, res: NextApiResponse) {
+async function handleAnalyzeVoiceInput(args: ToolArgs, res: NextApiResponse) {
   try {
     const { transcript } = args;
 
@@ -232,9 +254,9 @@ async function handleAnalyzeVoiceInput(args: any, res: NextApiResponse) {
   }
 }
 
-async function handleAnalyzeImages(args: any, images: any[], res: NextApiResponse) {
+async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: NextApiResponse) {
   try {
-    const { transcript, imageCount, imageTypes } = args;
+    const { transcript } = args;
 
     if (!images || images.length === 0) {
       return res.status(400).json({
@@ -323,7 +345,7 @@ async function handleAnalyzeImages(args: any, images: any[], res: NextApiRespons
   }
 }
 
-async function handleExtractDataFromImages(args: any, context: any, images: any[], res: NextApiResponse) {
+async function handleExtractDataFromImages(args: ToolArgs, context: Context, images: ImageData[], res: NextApiResponse) {
   try {
     const { transcript } = args;
     const { spreadsheetId, sheetName } = context;

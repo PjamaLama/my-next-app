@@ -180,7 +180,6 @@ export default function Home() {
   const [genkitLoading, setGenkitLoading] = useState(false);
   const [genkitCleaning, setGenkitCleaning] = useState(false);
   
-  const [editingTranscript, setEditingTranscript] = useState(false);
   // Add state for AI APIs (replaces webhooks)
   const [aiApis, setAiApis] = useState<{ id: string; url: string; name: string }[]>([]);
   const [selectedAiApi] = useState<string>("gemini"); // Re-added selectedAiApi
@@ -218,7 +217,7 @@ export default function Home() {
       id: string;
       result: string;
       success: boolean;
-      details?: any;
+      details?: unknown;
     }>;
   }>>([]);
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{
@@ -608,75 +607,60 @@ export default function Home() {
 
   // Enhanced save function for multi-sheet support
   const saveToSheet = async () => {
-    if (!user || !defaultSpreadsheetId || Object.keys(stepperValues).length === 0) {
-      setFinalSubmitStatus('error');
+    if (!defaultSpreadsheetId || !selectedSheetName) {
+      setSendResult("Please select a spreadsheet and sheet first.");
       return;
     }
-    setFinalSubmitStatus('sending');
-    try {
-      // Prepare updates array for multi-sheet API: [{ sheetName, cell, value }]
-      const updates = stepperFields.map(field => ({
-        sheetName: field.sheetName || selectedSheetName || 'Sheet1',
-        cell: field.cell,
-        value: stepperValues[field.cell] ?? '',
-      }));
 
-              const res = await fetch('/api/save-sheet-data-multi/', {
+    if (stepperFields.length === 0) {
+      setSendResult("No fields to save.");
+      return;
+    }
+
+    setFinalSubmitStatus('loading');
+    try {
+      const result = await fetch('/api/save-sheet-data-multi/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           spreadsheetId: defaultSpreadsheetId,
-          updates,
+          sheetName: selectedSheetName,
+          actions: stepperFields.map(field => ({
+            type: 'updateCell',
+            sheet: field.sheetName || selectedSheetName,
+            row: field.row || 1,
+            column: field.column,
+            cell: field.cell,
+            value: stepperValues[field.cell] || field.value || ''
+          }))
         }),
       });
 
-      const result = await res.json();
-      
-      if (res.ok && result.success) {
+      if (result.ok) {
+        const data = await result.json();
+        console.log('Save result:', data);
         setFinalSubmitStatus('success');
+        setStepperModalOpen(false);
+        setStepperFields([]);
+        setStepperValues({});
+        setStepperComplete(false);
         
-        // Group updates by sheet for activity tracking
-        const sheetGroups = updates.reduce((groups, update) => {
-          if (!groups[update.sheetName]) groups[update.sheetName] = [];
-          groups[update.sheetName].push(update);
-          return groups;
-        }, {} as { [sheetName: string]: typeof updates });
+        // Add activity record
+        await addActivity({
+          type: 'add',
+          entity: 'sheet',
+          label: `Updated ${stepperFields.length} cells in ${selectedSheetName}`,
+          timestamp: Date.now(),
+          sheetsAffected: [selectedSheetName],
+          rowsAffected: stepperFields.length
+        });
 
-        // Enhanced activity tracking for multi-sheet/multi-row operations
-        for (const [sheetName, sheetUpdates] of Object.entries(sheetGroups)) {
-          // Count unique rows affected in this sheet
-          const uniqueRowsInSheet = [...new Set(sheetUpdates.map(update => {
-            const field = stepperFields.find(f => f.cell === update.cell);
-            return field?.row;
-          }).filter(Boolean))].length;
-          
-          const updateLabel = `${sheetUpdates.length} update${sheetUpdates.length !== 1 ? 's' : ''} to ${sheetName}`;
-          const rowLabel = uniqueRowsInSheet > 0 ? ` (${uniqueRowsInSheet} row${uniqueRowsInSheet !== 1 ? 's' : ''})` : '';
-          
-          await addActivity({
-            type: 'add',
-            entity: 'webhook', // Re-using webhook entity for compatibility
-            label: updateLabel + rowLabel,
-            timestamp: Date.now(),
-            sheetName,
-            rowData: sheetUpdates.map(({ cell, value }) => ({
-              column: stepperFields.find(f => f.cell === cell)?.column || '',
-              cell,
-              value,
-            })),
-            sheetsAffected: Object.keys(sheetGroups),
-            rowsAffected: result.totalRowsAffected || result.totalUpdated || 0,
-          });
-        }
-
-        // Close modal, reset stepper state
+        // Show success message
+        setSendResult(`Successfully saved ${stepperFields.length} update${stepperFields.length !== 1 ? 's' : ''} to ${selectedSheetName}.`);
+        
+        // Clear after a delay
         setTimeout(() => {
-          setStepperModalOpen(false);
-          setStepperFields([]);
-          setStepperComplete(false);
-          setStepperIndex(0);
-          setStepperValues({});
-          setFinalSubmitStatus(null);
+          setSendResult(null);
         }, 1000);
       } else {
         setFinalSubmitStatus('error');
@@ -688,168 +672,7 @@ export default function Home() {
     }
   };
 
-  const sendToAiApi = async () => {
-    if (!transcript || !defaultSpreadsheetId) {
-      setSendResult("Please provide transcript and select a spreadsheet in the navigation.");
-      return;
-    }
-    
-    if (!geminiApiKey && selectedAiApi === "gemini") {
-      setSendResult("Please add your Gemini API key in settings first.");
-      return;
-    }
-    
-    // Stop listening if currently active
-    if (listening) {
-      stopListening();
-    }
-    
-    // Find an available sheet if none is selected
-    let sheetNameToUse = selectedSheetName;
-    if (!sheetNameToUse) {
-      // Find the current spreadsheet option to get available sheets
-      const currentSpreadsheet = spreadsheetOptions.find(o => o.spreadsheetId === defaultSpreadsheetId);
-      if (currentSpreadsheet && currentSpreadsheet.sheetNames.length > 0) {
-        // Use the first available sheet
-        sheetNameToUse = currentSpreadsheet.sheetNames[0];
-        // Update the selected sheet name in the context
-        setSelectedSheetName(sheetNameToUse);
-      }
-    }
-    
-    setSending(true);
-    setSendResult(null);
-    const api = selectedAiApi === "gemini"
-      ? GEMINI_API
-      : aiApis.find(a => a.id === selectedAiApi);
-    if (!api) {
-      setSendResult("Invalid AI API selected.");
-      setSending(false);
-      return;
-    }
 
-    // Prepare images for the API call
-    const imageData: Array<{ data: string; mimeType: string; }> = [];
-    
-    if (uploadedImages.length > 0) {
-      try {
-        for (const img of uploadedImages) {
-          // Convert file to base64
-          const reader = new FileReader();
-          const base64Data = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => {
-              const result = reader.result as string;
-              // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
-              const base64 = result.split(',')[1];
-              resolve(base64);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(img.file);
-          });
-          
-          imageData.push({
-            data: base64Data,
-            mimeType: img.file.type
-          });
-        }
-      } catch (error) {
-        console.error('Error processing images:', error);
-        setSendResult("Error processing images. Please try again.");
-        setSending(false);
-        return;
-      }
-    }
-
-    try {
-      console.log("Sending to AI API:", JSON.stringify({
-        transcript,
-        spreadsheetId: defaultSpreadsheetId,
-        selectedSheetName: sheetNameToUse || undefined,
-        hasImages: imageData.length > 0
-      }, null, 2));
-      const res = await fetch(api.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript,
-          spreadsheetId: defaultSpreadsheetId,
-          selectedSheetName: sheetNameToUse || undefined, // Optional - let AI decide if not set
-          geminiApiKey: geminiApiKey, // Pass the user's Gemini API key from the provider
-          images: imageData
-        }),
-      });
-      const text = await res.text();
-      console.log("AI API raw response text:", text);
-      console.log("AI API HTTP status:", res.status, res.statusText);
-      let data: AiApiResponse;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("Failed to parse AI API response as JSON:", e);
-        data = { error: "Failed to parse response.", aiResponse: {} };
-      }
-      console.log("AI API parsed response:", data);
-      if (res.ok && data.aiResponse) {
-          // Handle enhanced multi-sheet response
-          const aiFields = Array.isArray(data.aiResponse)
-            ? data.aiResponse
-            : data.aiResponse.updates || [];
-          
-          setStepperFields(aiFields);
-          // Initialize stepperValues with value for each field
-          const initialStepperValues: { [cell: string]: string } = {};
-          aiFields.forEach((field: StepperField) => {
-            if (field.cell) {
-              initialStepperValues[field.cell] = field.value ?? '';
-            }
-          });
-          setStepperValues(initialStepperValues);
-          setStepperModalOpen(true);
-          // Enhanced feedback for multi-sheet/multi-row operations
-          const sheetsCount = data.aiResponse.sheetsToUpdate?.length || 1;
-          const updatesCount = aiFields.length;
-          const rowsCount = [...new Set(aiFields.map((f: StepperField) => f.row).filter(Boolean))].length;
-          
-          let feedbackMsg = `AI suggestions ready: ${updatesCount} update${updatesCount !== 1 ? 's' : ''} across ${sheetsCount} sheet${sheetsCount !== 1 ? 's' : ''}`;
-          if (rowsCount > 0) {
-            feedbackMsg += ` (${rowsCount} row${rowsCount !== 1 ? 's' : ''})`;
-          }
-          
-          // Count images and PDFs for feedback message
-          const uploadedImageCount = imageData.filter(img => img.mimeType.startsWith('image/')).length;
-          const uploadedPdfCount = imageData.filter(img => img.mimeType === 'application/pdf').length;
-          
-          if (uploadedImageCount > 0 || uploadedPdfCount > 0) {
-            const imagePart = uploadedImageCount > 0 ? `${uploadedImageCount} image${uploadedImageCount !== 1 ? 's' : ''}` : '';
-            const pdfPart = uploadedPdfCount > 0 ? `${uploadedPdfCount} PDF${uploadedPdfCount !== 1 ? 's' : ''}` : '';
-            const separator = uploadedImageCount > 0 && uploadedPdfCount > 0 ? ' and ' : '';
-            
-            feedbackMsg += ` with ${imagePart}${separator}${pdfPart}`;
-          }
-          
-          feedbackMsg += '. Confirm and edit as needed.';
-          
-          setSendResult(feedbackMsg);
-          
-          // Clear images after successful processing
-          if (imageData.length > 0) {
-            clearAllImages();
-          }
-        } else {
-          setSendResult(data.error || "Failed to get AI response.");
-        }
-    } catch (e) {
-      setSendResult("Error: " + (e instanceof Error ? e.message : String(e)));
-    }
-    setSending(false);
-  };
-
-  // Delete custom AI API
-  // const deleteAiApi = async (id: string) => {
-  //   if (!user) return;
-  //   await deleteDoc(doc(db, "users", user.uid, "aiApis", id));
-  //   if (selectedAiApi === id) setSelectedAiApi("gemini");
-  // };
 
   // Image upload handlers
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -864,28 +687,12 @@ export default function Home() {
         const file = files[i];
         
         // Validate file type
-        const isPdf = file.type === 'application/pdf';
         const isImage = file.type.startsWith('image/');
+        const isPdf = file.type === 'application/pdf';
         
         if (!isImage && !isPdf) {
-          alert(`${file.name} is not a supported file type. Please use images or PDFs.`);
+          console.warn(`Skipping unsupported file type: ${file.type}`);
           continue;
-        }
-
-        // Validate file size (different limits for images and PDFs)
-        const maxSizeInMB = isPdf ? 20 : 10; // 20MB for PDFs, 10MB for images
-        const maxSizeInBytes = maxSizeInMB * 1024 * 1024;
-        
-        if (file.size > maxSizeInBytes) {
-          alert(`${file.name} is too large. Please use ${isPdf ? 'PDFs' : 'images'} under ${maxSizeInMB}MB.`);
-          continue;
-        }
-        
-        // For PDFs, validate page count limitation warning
-        if (isPdf) {
-          // We can't actually count PDF pages client-side easily,
-          // so we'll just show a warning about the 20-page limitation
-          alert(`Note: Gemini API will only process the first 20 pages of ${file.name}.`);
         }
 
         // Create preview URL
@@ -895,34 +702,23 @@ export default function Home() {
           id: `img_${Date.now()}_${i}`,
           file,
           preview,
-          fileType: isPdf ? 'pdf' : 'image'
+          fileType: isImage ? 'image' : 'pdf'
         };
-
+        
         newImages.push(imageData);
       }
 
       setUploadedImages(prev => [...prev, ...newImages]);
-    } catch (error) {
-      console.error('Error processing images:', error);
-      alert('Error processing files. Please try again.');
-    } finally {
-      setUploadingImages(false);
+      
       // Clear the input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    } catch (error) {
+      console.error('Error processing uploaded files:', error);
+    } finally {
+      setUploadingImages(false);
     }
-  };
-
-  const removeImage = (imageId: string) => {
-    setUploadedImages(prev => {
-      const imageToRemove = prev.find(img => img.id === imageId);
-      if (imageToRemove) {
-        // Clean up preview URL
-        URL.revokeObjectURL(imageToRemove.preview);
-      }
-      return prev.filter(img => img.id !== imageId);
-    });
   };
 
   const clearAllImages = () => {
@@ -1311,18 +1107,14 @@ export default function Home() {
 
   // Function to reject Genkit actions
   const rejectGenkitActions = () => {
-    setShowGenkitPreview(false);
     setGenkitActions([]);
+    setShowGenkitPreview(false);
     setSendResult("Actions rejected. Try again with a different transcript.");
   };
 
   // Compute file counts for display
   const imageCount = uploadedImages.filter(img => img.fileType === 'image').length;
   const pdfCount = uploadedImages.filter(img => img.fileType === 'pdf').length;
-  const uploadedFilesText = [
-    imageCount > 0 ? `${imageCount} image${imageCount !== 1 ? 's' : ''}` : '',
-    pdfCount > 0 ? `${pdfCount} PDF${pdfCount !== 1 ? 's' : ''}` : ''
-  ].filter(Boolean).join(', ');
 
   // Clean up preview URLs when component unmounts
   useEffect(() => {
@@ -1510,9 +1302,11 @@ export default function Home() {
                                 {attachment.fileType === 'image' ? (
                                   <>
                                     <div className="flex-shrink-0">
-                                      <img 
-                                        src={attachment.preview} 
+                                      <Image 
+                                        src={attachment.preview || ''} 
                                         alt={attachment.name}
+                                        width={32}
+                                        height={32}
                                         className="w-8 h-8 object-cover rounded border"
                                       />
                                     </div>

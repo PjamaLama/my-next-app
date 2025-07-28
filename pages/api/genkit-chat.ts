@@ -1,19 +1,43 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { updateSingleSheetFlow } from '../../lib/genkit-template';
+
+// Define proper types for the function parameters
+interface Context {
+  spreadsheetId?: string;
+  sheetName?: string;
+  [key: string]: unknown;
+}
+
+interface ConversationHistoryItem {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: number;
+}
+
+interface ImageData {
+  data: string;
+  mimeType: string;
+}
 
 // Simple chat processing with image support
 async function processMessage(
   message: string, 
   isVoice: boolean, 
-  context: any, 
-  conversationHistory: any[], 
-  images: Array<{ data: string; mimeType: string; }> = []
+  context: Context, 
+  conversationHistory: ConversationHistoryItem[], 
+  images: ImageData[] = []
 ) {
   try {
     // Analyze the message for intent
     const lowerMessage = message.toLowerCase();
     let intent = 'chat';
-    let suggestedTools: any[] = [];
+    const suggestedTools: Array<{
+      id: string;
+      type: string;
+      function: {
+        name: string;
+        arguments: string;
+      };
+    }> = [];
 
     // Enhanced intent detection with image consideration
     const hasImages = images && images.length > 0;
