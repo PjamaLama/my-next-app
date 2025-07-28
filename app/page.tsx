@@ -194,8 +194,37 @@ export default function Home() {
       };
       
       recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setListening(false);
+        // Handle different error types appropriately
+        switch (event.error) {
+          case 'aborted':
+            // This is expected when stopping recognition - not an error
+            console.log('Speech recognition stopped (aborted)');
+            break;
+          case 'no-speech':
+            // No speech detected - this is normal, continue listening
+            console.log('No speech detected - continuing to listen');
+            break;
+          case 'audio-capture':
+            console.error('Audio capture error - microphone may not be available');
+            setListening(false);
+            break;
+          case 'not-allowed':
+            console.error('Microphone permission denied');
+            setListening(false);
+            break;
+          case 'network':
+            console.error('Network error occurred');
+            setListening(false);
+            break;
+          case 'service-not-allowed':
+            console.error('Speech recognition service not allowed');
+            setListening(false);
+            break;
+          default:
+            console.error('Speech recognition error:', event.error);
+            setListening(false);
+            break;
+        }
       };
       
       recognition.onend = () => {
