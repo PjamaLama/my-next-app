@@ -77,7 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
-    const { transcript } = args;
+    const { transcript, preview } = args;
     const { spreadsheetId, sheetNames } = context;
 
     if (!transcript) {
@@ -101,7 +101,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         transcript,
         sheetId: spreadsheetId,
         sheetName: sheetName,
-        commit: true
+        commit: !preview // Only commit if not in preview mode
       });
 
       if (result && result.actions && result.actions.length > 0) {
@@ -117,33 +117,44 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
     }
 
     if (allUpdates.length > 0) {
-      console.log(`Formatted ${allUpdates.length} total updates for save-sheet-data-multi API:`, allUpdates);
-
-      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spreadsheetId,
-          updates: allUpdates
-        })
-      });
-
-      if (updateResponse.ok) {
-        const updateResult = await updateResponse.json();
+      if (preview) {
+        // Return preview data without actually updating
         return res.status(200).json({
           success: true,
-          result: `Successfully updated ${allUpdates.length} cells across ${sheetNames.length} sheet(s).`,
-          details: updateResult,
-          actions: allUpdates
+          result: `Preview: ${allUpdates.length} cells would be updated across ${sheetNames.length} sheet(s).`,
+          actions: allUpdates,
+          preview: true
         });
       } else {
-        const errorText = await updateResponse.text();
-        console.error('Update API error:', errorText);
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to execute sheet updates',
-          details: errorText
+        // Actually update the sheets
+        console.log(`Formatted ${allUpdates.length} total updates for save-sheet-data-multi API:`, allUpdates);
+
+        const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            spreadsheetId,
+            updates: allUpdates
+          })
         });
+
+        if (updateResponse.ok) {
+          const updateResult = await updateResponse.json();
+          return res.status(200).json({
+            success: true,
+            result: `Successfully updated ${allUpdates.length} cells across ${sheetNames.length} sheet(s).`,
+            details: updateResult,
+            actions: allUpdates
+          });
+        } else {
+          const errorText = await updateResponse.text();
+          console.error('Update API error:', errorText);
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to execute sheet updates',
+            details: errorText
+          });
+        }
       }
     } else {
       return res.status(200).json({

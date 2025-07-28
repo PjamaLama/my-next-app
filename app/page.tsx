@@ -63,6 +63,22 @@ interface ActivityItem {
   rowsAffected?: number; // For multi-row operations
 }
 
+// Tool confirmation modal interface
+interface ToolConfirmationModal {
+  isOpen: boolean;
+  toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } } | null;
+  previewData: Array<{
+    sheetName: string;
+    cell: string;
+    column: string;
+    row: number;
+    value: string;
+  }> | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+  onEditValue: (index: number, newValue: string) => void;
+}
+
 
 
 
@@ -156,6 +172,25 @@ export default function Home() {
     insertionPreference: 'above_formulas' | 'append' | 'custom';
   } | null>(null);
   const [showContextSetup, setShowContextSetup] = useState(false);
+  
+  // Tool confirmation modal state
+  const [toolConfirmationModal, setToolConfirmationModal] = useState<{
+    isOpen: boolean;
+    toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } } | null;
+    previewData: Array<{
+      sheetName: string;
+      cell: string;
+      column: string;
+      row: number;
+      value: string;
+    }> | null;
+    editedValues: { [key: string]: string };
+  }>({
+    isOpen: false,
+    toolCall: null,
+    previewData: null,
+    editedValues: {}
+  });
   
   // Voice recognition ref
   const recognitionRef = useRef<any>(null);
@@ -803,6 +838,61 @@ export default function Home() {
 
   // Function to approve a tool call
   const approveTool = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } }) => {
+    // For sheet update operations, show confirmation modal first
+    if (toolCall.function.name === 'update_sheet') {
+      try {
+        // Get preview of what will be updated
+        const response = await fetch('/api/genkit-tool-execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toolCall: {
+              ...toolCall,
+              function: {
+                ...toolCall.function,
+                arguments: JSON.stringify({
+                  ...JSON.parse(toolCall.function.arguments),
+                  preview: true // Add preview flag
+                })
+              }
+            },
+            context: {
+              spreadsheetId: defaultSpreadsheetId,
+              sheetNames: selectedSheetNames
+            },
+            images: []
+          }),
+        });
+
+        const data = await response.json();
+        
+        if (data.success && data.actions && data.actions.length > 0) {
+          // Show confirmation modal with preview data
+          setToolConfirmationModal({
+            isOpen: true,
+            toolCall,
+            previewData: data.actions.map((action: any) => ({
+              sheetName: action.sheetName || selectedSheetNames[0],
+              cell: action.cell,
+              column: action.column,
+              row: action.row,
+              value: action.value
+            })),
+            editedValues: {}
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Error getting preview:', error);
+      }
+    }
+
+    // For non-sheet operations or if preview failed, execute directly
+    await executeTool(toolCall);
+  };
+
+  // Function to execute tool after confirmation
+  const executeTool = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } }) => {
     setChatProcessing(true);
     setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
     
@@ -847,11 +937,34 @@ export default function Home() {
         }
       }
 
+      // If we have edited values from the confirmation modal, update the tool call
+      let finalToolCall = toolCall;
+      if (toolConfirmationModal.editedValues && Object.keys(toolConfirmationModal.editedValues).length > 0) {
+        const args = JSON.parse(toolCall.function.arguments);
+        // Update the actions with edited values
+        if (args.actions) {
+          args.actions = args.actions.map((action: any, index: number) => {
+            const key = `${action.sheetName || selectedSheetNames[0]}_${action.cell}`;
+            if (toolConfirmationModal.editedValues[key]) {
+              return { ...action, value: toolConfirmationModal.editedValues[key] };
+            }
+            return action;
+          });
+        }
+        finalToolCall = {
+          ...toolCall,
+          function: {
+            ...toolCall.function,
+            arguments: JSON.stringify(args)
+          }
+        };
+      }
+
       const response = await fetch('/api/genkit-tool-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toolCall,
+          toolCall: finalToolCall,
           context: {
             spreadsheetId: defaultSpreadsheetId,
             sheetNames: selectedSheetNames
@@ -888,7 +1001,13 @@ export default function Home() {
         setUploadedImages([]);
       }
 
-             // Note: Consider adding sheet data refresh here if needed
+      // Close confirmation modal
+      setToolConfirmationModal({
+        isOpen: false,
+        toolCall: null,
+        previewData: null,
+        editedValues: {}
+      });
 
     } catch (error) {
       console.error('Tool execution error:', error);
@@ -905,6 +1024,36 @@ export default function Home() {
       setChatMessages(prev => [...prev, errorMessage]);
     } finally {
       setChatProcessing(false);
+    }
+  };
+
+  // Function to handle confirmation modal actions
+  const handleToolConfirmation = () => {
+    if (toolConfirmationModal.toolCall) {
+      executeTool(toolConfirmationModal.toolCall);
+    }
+  };
+
+  const handleToolCancellation = () => {
+    setToolConfirmationModal({
+      isOpen: false,
+      toolCall: null,
+      previewData: null,
+      editedValues: {}
+    });
+  };
+
+  const handleValueEdit = (index: number, newValue: string) => {
+    if (toolConfirmationModal.previewData) {
+      const item = toolConfirmationModal.previewData[index];
+      const key = `${item.sheetName}_${item.cell}`;
+      setToolConfirmationModal(prev => ({
+        ...prev,
+        editedValues: {
+          ...prev.editedValues,
+          [key]: newValue
+        }
+      }));
     }
   };
 
@@ -1727,9 +1876,126 @@ export default function Home() {
             </div>
           )}
 
+          {/* Tool Confirmation Modal */}
+          {toolConfirmationModal.isOpen && toolConfirmationModal.previewData && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4">
+              <section className="w-full max-w-4xl mx-auto bg-white/95 dark:bg-[#23232a] rounded-xl shadow-2xl p-3 sm:p-8 border border-gray-200 dark:border-gray-800 flex flex-col items-center relative max-h-[95vh] overflow-hidden">
+                <button
+                  onClick={handleToolCancellation}
+                  className="absolute top-3 right-3 sm:top-4 sm:right-4 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl font-bold focus:outline-none z-10 bg-transparent min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Close"
+                >&times;</button>
+                
+                <div className="w-full overflow-y-auto scrollbar-none" style={{ maxHeight: '70vh', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <style>{`
+                    .scrollbar-none::-webkit-scrollbar { display: none; }
+                  `}</style>
+                  
+                  <h2 className="text-lg sm:text-xl font-bold mb-4 text-center pr-8">Confirm Sheet Updates</h2>
+                  
+                  <div className="mb-6">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                          Review and edit values before applying
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        The AI will update {toolConfirmationModal.previewData.length} cell{toolConfirmationModal.previewData.length !== 1 ? 's' : ''} across your selected sheets. 
+                        You can edit any values below before confirming.
+                      </p>
+                    </div>
+                  </div>
 
+                  {/* Group updates by sheet */}
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {Object.entries(
+                      toolConfirmationModal.previewData.reduce((groups, item) => {
+                        if (!groups[item.sheetName]) groups[item.sheetName] = [];
+                        groups[item.sheetName].push(item);
+                        return groups;
+                      }, {} as { [sheetName: string]: typeof toolConfirmationModal.previewData })
+                    ).map(([sheetName, items]) => (
+                      <div key={sheetName} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                          <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">
+                            {sheetName} ({items.length} update{items.length !== 1 ? 's' : ''})
+                          </h3>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          {items.map((item, index) => {
+                            const key = `${item.sheetName}_${item.cell}`;
+                            const editedValue = toolConfirmationModal.editedValues[key];
+                            const displayValue = editedValue !== undefined ? editedValue : (item.value || '');
+                            
+                            return (
+                              <div key={index} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                                      {item.column}
+                                    </span>
+                                    <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded font-mono">
+                                      {item.cell}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      Row {item.row}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={displayValue}
+                                    onChange={(e) => handleValueEdit(index, e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="Enter value..."
+                                  />
+                                  {editedValue !== undefined && editedValue !== (item.value || '') && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      Original: <span className="italic">{item.value || '(empty)'}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
-
+                  {/* Action buttons */}
+                  <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full">
+                    <button
+                      onClick={handleToolCancellation}
+                      className="px-6 py-3 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm font-medium min-h-[50px]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleToolConfirmation}
+                      disabled={chatProcessing}
+                      className="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition text-sm disabled:opacity-50 flex-1 min-h-[50px]"
+                    >
+                      {chatProcessing ? (
+                        <div className="flex items-center gap-2 justify-center">
+                          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Applying...</span>
+                        </div>
+                      ) : (
+                        `Apply ${toolConfirmationModal.previewData.length} Update${toolConfirmationModal.previewData.length !== 1 ? 's' : ''}`
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
 
           <RecentActivity activity={activity} activityError={activityError} />
       </div>
