@@ -22,6 +22,7 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
 import RecentActivity from './components/RecentActivity';
+import SheetChipSelector from './components/SheetChipSelector';
 
 
 
@@ -71,7 +72,7 @@ export default function Home() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, geminiApiKey, authError } = useFirebase();
-  const { defaultSpreadsheetId, selectedSheetName, setSelectedSheetName } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
@@ -335,30 +336,30 @@ export default function Home() {
 
   // Fetch sheet data when spreadsheet and sheet are selected
   useEffect(() => {
-    if (!defaultSpreadsheetId || !selectedSheetName) return;
+    if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) return;
     
-    console.log(`🔍 Validating sheet data fetch: spreadsheet="${defaultSpreadsheetId}", sheet="${selectedSheetName}"`);
+    console.log(`🔍 Validating sheet data fetch: spreadsheet="${defaultSpreadsheetId}", sheets="${selectedSheetNames.join(', ')}"`);
     
     // Add a small delay to prevent race conditions during rapid selection changes
     const timeoutId = setTimeout(async () => {
       try {
         // Double-check that the selection is still valid
-        if (!defaultSpreadsheetId || !selectedSheetName) {
+        if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
           console.log('⚠️ Selection cleared during timeout, skipping fetch');
           return;
         }
         
-        console.log(`📡 Fetching data for sheet "${selectedSheetName}" in spreadsheet ${defaultSpreadsheetId}`);
+        console.log(`📡 Fetching data for sheet "${selectedSheetNames[0]}" in spreadsheet ${defaultSpreadsheetId}`);
         
         const res = await fetch('/api/get-sheet-data/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: selectedSheetName }),
+          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: selectedSheetNames[0] }),
         });
         
         if (res.ok) {
           const { data } = await res.json();
-          console.log(`✅ Successfully fetched ${data?.length || 0} rows from "${selectedSheetName}"`);
+          console.log(`✅ Successfully fetched ${data?.length || 0} rows from "${selectedSheetNames[0]}"`);
         } else {
           // Parse the enhanced error response
           console.log(`📍 Response status: ${res.status}, Content-Type: ${res.headers.get('content-type')}`);
@@ -400,7 +401,7 @@ export default function Home() {
               if (errorData.availableSheets.length > 0) {
                 console.log(`💡 Auto-correcting to first available sheet: "${errorData.availableSheets[0]}"`);
                 // Auto-correct to the first available sheet
-                setSelectedSheetName(errorData.availableSheets[0]);
+                setSelectedSheetNames([errorData.availableSheets[0]]);
               } else {
                 console.error(`❌ No sheets available in this spreadsheet`);
               }
@@ -422,7 +423,7 @@ export default function Home() {
     }, 300); // 300ms delay to allow selection to stabilize
     
     return () => clearTimeout(timeoutId);
-  }, [defaultSpreadsheetId, selectedSheetName, setSelectedSheetName]);
+  }, [defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames]);
 
 
 
@@ -537,7 +538,7 @@ export default function Home() {
 
   // Enhanced save function for multi-sheet support
   const saveToSheet = async () => {
-    if (!defaultSpreadsheetId || !selectedSheetName) {
+    if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
       setSendResult("Please select a spreadsheet and sheet first.");
       return;
     }
@@ -554,10 +555,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           spreadsheetId: defaultSpreadsheetId,
-          sheetName: selectedSheetName,
+          sheetName: selectedSheetNames[0],
           actions: stepperFields.map(field => ({
             type: 'updateCell',
-            sheet: field.sheetName || selectedSheetName,
+            sheet: field.sheetName || selectedSheetNames[0],
             row: field.row || 1,
             column: field.column,
             cell: field.cell,
@@ -579,14 +580,14 @@ export default function Home() {
         await addActivity({
           type: 'add',
           entity: 'sheet',
-          label: `Updated ${stepperFields.length} cells in ${selectedSheetName}`,
+          label: `Updated ${stepperFields.length} cells in ${selectedSheetNames[0]}`,
           timestamp: Date.now(),
-          sheetsAffected: [selectedSheetName],
+          sheetsAffected: selectedSheetNames,
           rowsAffected: stepperFields.length
         });
 
         // Show success message
-        setSendResult(`Successfully saved ${stepperFields.length} update${stepperFields.length !== 1 ? 's' : ''} to ${selectedSheetName}.`);
+        setSendResult(`Successfully saved ${stepperFields.length} update${stepperFields.length !== 1 ? 's' : ''} to ${selectedSheetNames[0]}.`);
         
         // Clear after a delay
         setTimeout(() => {
@@ -735,7 +736,7 @@ export default function Home() {
           userIntent: userIntent,
           context: {
             spreadsheetId: defaultSpreadsheetId,
-            sheetName: selectedSheetName,
+            sheetNames: selectedSheetNames,
             availableTools: ['update_sheet_cells', 'insert_sheet_row', 'analyze_sheet_data', 'bulk_update_cells'],
           },
           conversationHistory: chatMessages.slice(-5),
@@ -853,7 +854,7 @@ export default function Home() {
           toolCall,
           context: {
             spreadsheetId: defaultSpreadsheetId,
-            sheetName: selectedSheetName
+            sheetNames: selectedSheetNames
           },
           images: imageData // Include images for supported tools
         }),
@@ -1055,11 +1056,12 @@ export default function Home() {
             ) : (
               /* Has spreadsheets - Show main UI */
               <>
+                <SheetChipSelector />
                 {!geminiApiKey && (
                   <GeminiKeyPrompt />
                 )}
                 <div className="flex items-center justify-between">
-                  {defaultSpreadsheetId && selectedSheetName ? (
+                  {defaultSpreadsheetId && selectedSheetNames && selectedSheetNames.length > 0 ? (
                     // Removed "Ready" status as per user request
                     <></>
                   ) : (
@@ -1356,7 +1358,7 @@ export default function Home() {
                         }}
                         placeholder={uploadedImages.length > 0 
                           ? `Add context about your ${uploadedImages.length} attached file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
-                          : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetName)
+                          : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : null)
                         }
                         rows={3}
                         className="w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-gray-500 dark:placeholder-gray-400"
@@ -1368,7 +1370,7 @@ export default function Home() {
                           <div className="p-2">
                             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Suggested actions:</div>
                             <div className="flex flex-wrap gap-2">
-                              {suggestRelevantActions(editingText, uploadedImages, !!(defaultSpreadsheetId && selectedSheetName)).map((suggestion, index) => (
+                              {suggestRelevantActions(editingText, uploadedImages, !!(defaultSpreadsheetId && selectedSheetNames && selectedSheetNames.length > 0)).map((suggestion, index) => (
                                 <button
                                   key={index}
                                   onClick={() => {

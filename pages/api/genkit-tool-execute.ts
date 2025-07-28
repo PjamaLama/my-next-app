@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { updateSingleSheetFlow } from '../../lib/genkit-template';
+import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 
 // Define proper types for the function parameters
 interface Context {
@@ -12,7 +12,8 @@ interface ToolArgs {
   transcript?: string;
   sheetData?: unknown;
   spreadsheetId?: string;
-  sheetName?: string;
+  sheetName?: string; // Keep for backward compatibility if needed, but prefer sheetNames
+  sheetNames?: string[]; // New field for multiple sheet selection
   imageCount?: number;
   imageTypes?: string[];
   [key: string]: unknown;
@@ -76,8 +77,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
-    const { transcript, sheetData } = args;
-    const { spreadsheetId, sheetName } = context;
+    const { transcript } = args;
+    const { spreadsheetId, sheetNames } = context;
 
     if (!transcript) {
       return res.status(400).json({
@@ -86,55 +87,44 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       });
     }
 
-    let processSheetData = sheetData;
-    if (!processSheetData && spreadsheetId && sheetName) {
-      console.log('Fetching current sheet data...');
+    if (!spreadsheetId || !sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Spreadsheet ID and at least one sheet name are required'
+      });
+    }
 
-      const sheetResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/get-sheet-data`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetId, sheetName })
+    const allUpdates: any[] = [];
+    for (const sheetName of sheetNames) {
+      console.log(`Processing updates for sheet: ${sheetName}`);
+      const result = await updateSheetFlow({
+        transcript,
+        sheetId: spreadsheetId,
+        sheetName: sheetName,
+        commit: true
       });
 
-      if (sheetResponse.ok) {
-        const sheetResult = await sheetResponse.json();
-        processSheetData = {
-          headers: sheetResult.data[0] || [],
-          rows: sheetResult.data.slice(1) || [],
-          sheetName: sheetName
-        };
-      } else {
-        return res.status(400).json({
-          success: false,
-          error: 'Could not fetch current sheet data'
-        });
+      if (result && result.actions && result.actions.length > 0) {
+        const updatesForSheet = result.actions.map((action: any) => ({
+          sheetName: action.sheet || sheetName,
+          cell: `${action.column}${action.row}`,
+          value: action.value,
+          row: action.row,
+          column: action.column
+        }));
+        allUpdates.push(...updatesForSheet);
       }
     }
 
-    const result = await updateSingleSheetFlow({
-      transcript,
-      sheetData: processSheetData
-    });
-
-    if (result && result.length > 0) {
-      // Convert the result format to match save-sheet-data-multi API
-      // result is already the cells_to_update array from updateSingleSheetFlow
-      const updates = result.map((cell: any) => ({
-        sheetName: sheetName,
-        cell: cell.cell,
-        value: cell.value,
-        row: parseInt(cell.cell.replace(/[A-Z]/g, '')) || null, // Extract row number from cell reference like "A26"
-        column: cell.column || null
-      }));
-
-      console.log(`Formatted ${updates.length} updates for save-sheet-data-multi API:`, updates);
+    if (allUpdates.length > 0) {
+      console.log(`Formatted ${allUpdates.length} total updates for save-sheet-data-multi API:`, allUpdates);
 
       const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           spreadsheetId,
-          updates: updates
+          updates: allUpdates
         })
       });
 
@@ -142,9 +132,9 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         const updateResult = await updateResponse.json();
         return res.status(200).json({
           success: true,
-          result: `Successfully updated ${updates.length} cells in ${sheetName}`,
+          result: `Successfully updated ${allUpdates.length} cells across ${sheetNames.length} sheet(s).`,
           details: updateResult,
-          actions: result
+          actions: allUpdates
         });
       } else {
         const errorText = await updateResponse.text();
@@ -162,7 +152,6 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         actions: []
       });
     }
-
   } catch (error) {
     console.error('Sheet update error:', error);
     return res.status(500).json({
