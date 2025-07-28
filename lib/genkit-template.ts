@@ -117,6 +117,47 @@ Respond in a structured format.`;
  * Single Sheet Update Flow
  * Processes user transcript and updates a single sheet
  */
+// Helper function to analyze sheet structure and detect formula rows
+const analyzeSheetStructure = (sheetData: SheetData) => {
+  const formulaRows: number[] = [];
+  const dataRows: number[] = [];
+  
+  sheetData.rows.forEach((row, index) => {
+    const rowNumber = index + 2; // +2 because index 0 = row 2 (after headers)
+    const hasFormulas = row.some(cell => {
+      const cellStr = String(cell);
+      return cellStr.startsWith('=') || 
+             cellStr.includes('=SUM') || 
+             cellStr.includes('=TOTAL') ||
+             cellStr.includes('=COUNT') ||
+             cellStr.includes('=AVERAGE') ||
+             cellStr.includes('=IF(') ||
+             cellStr.toUpperCase().includes('FUNCTION');
+    });
+    
+    if (hasFormulas) {
+      formulaRows.push(rowNumber);
+    } else if (row.some(cell => cell !== "" && cell !== null && cell !== undefined)) {
+      dataRows.push(rowNumber);
+    }
+  });
+  
+  // Determine smart insertion point
+  const maxDataRow = Math.max(...dataRows, 1); // At least row 1 (header)
+  const minFormulaRow = Math.min(...formulaRows, Number.MAX_SAFE_INTEGER);
+  
+  let smartInsertionRow: number;
+  if (formulaRows.length > 0 && minFormulaRow > maxDataRow) {
+    // Insert before the first formula row
+    smartInsertionRow = minFormulaRow;
+  } else {
+    // No formulas or formulas are mixed with data, append at end
+    smartInsertionRow = sheetData.rows.length + 2; // +2 for header row
+  }
+  
+  return { formulaRows, dataRows, smartInsertionRow };
+};
+
 export const updateSingleSheetFlow = ai.defineFlow('updateSingleSheetFlow', async (params: {
   transcript: string;
   sheetData: SheetData;
@@ -124,7 +165,9 @@ export const updateSingleSheetFlow = ai.defineFlow('updateSingleSheetFlow', asyn
 }) => {
   try {
     const { transcript, sheetData } = params;
-    const nextRow = sheetData.rows.length + 1;
+    
+    // Analyze sheet structure for smart insertion
+    const { formulaRows, dataRows, smartInsertionRow } = analyzeSheetStructure(sheetData);
     
     // Build pattern analysis similar to your existing logic
     let patternAnalysis = "";
@@ -143,28 +186,36 @@ export const updateSingleSheetFlow = ai.defineFlow('updateSingleSheetFlow', asyn
 
     const prompt = `You are helping update a Google Sheet named "${sheetData.sheetName}".
 
+IMPORTANT SHEET STRUCTURE ANALYSIS:
+- Formula rows (DO NOT OVERWRITE): ${formulaRows.join(', ') || 'None detected'}
+- Data rows: ${dataRows.join(', ') || 'None detected'}
+- Smart insertion row: ${smartInsertionRow} (calculated to avoid formula conflicts)
+
 User's request: ${transcript}
 
 Current sheet data:
 Headers: ${sheetData.headers.join(', ')}
 ${sheetData.rows.map((row) => row.join(',')).join('\n')}${patternAnalysis}
 
-Your task:
-1. Determine the next available row (${nextRow})
-2. Based on the user's request and existing data patterns, suggest values for each column
-3. Output your response in this EXACT JSON format:
+CRITICAL RULES:
+1. NEVER overwrite formula rows: ${formulaRows.join(', ') || 'None'}
+2. Use the smart insertion row: ${smartInsertionRow}
+3. This preserves important calculations and totals
+4. Based on the user's request and existing data patterns, suggest values for each column
+5. Output your response in this EXACT JSON format:
 
 {
-  "row_to_update": ${nextRow},
+  "row_to_update": ${smartInsertionRow},
   "cells_to_update": [
-    { "column": "ColumnName1", "cell": "A${nextRow}", "value": "suggested value", "confidence": "high|medium|low" }
+    { "column": "ColumnName1", "cell": "A${smartInsertionRow}", "value": "suggested value", "confidence": "high|medium|low" }
   ]
 }
 
 Rules:
 - Use "high" confidence for user-provided data
-- Use "medium" confidence for strong pattern matches
+- Use "medium" confidence for strong pattern matches  
 - Use "low" confidence for best guesses from historical patterns
+- ALWAYS use row ${smartInsertionRow} to avoid overwriting formulas
 - Return ONLY the JSON object, no explanations or markdown`;
 
     const { text } = await ai.generate(prompt);

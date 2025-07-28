@@ -21,7 +21,6 @@ interface ImageData {
 // Simple chat processing with image support
 async function processMessage(
   message: string, 
-  isVoice: boolean, 
   context: Context, 
   conversationHistory: ConversationHistoryItem[], 
   images: ImageData[] = []
@@ -114,7 +113,6 @@ async function processMessage(
 
     // Generate conversational response with image awareness
     let response = '';
-    const inputType = isVoice ? 'voice' : 'text';
     const imageInfo = hasImages ? ` along with ${images.length} ${images.length === 1 ? 'image/file' : 'images/files'}` : '';
 
     switch (intent) {
@@ -122,10 +120,10 @@ async function processMessage(
         response = `I can see you've provided ${images.length} ${images.length === 1 ? 'image/file' : 'images/files'} and want to extract data from ${images.length === 1 ? 'it' : 'them'}. I can analyze the content and help you add the information to your spreadsheet "${context?.sheetName || 'current sheet'}". Would you like me to proceed with analyzing the ${images.length === 1 ? 'image' : 'images'} and extracting data?`;
         break;
       case 'add_data':
-        response = `I understand you want to add new data via ${inputType}${imageInfo}. I can help you update your spreadsheet "${context?.sheetName || 'current sheet'}" with the information you provided. Would you like me to process this update?`;
+        response = `I understand you want to add new data${imageInfo}. I can help you update your spreadsheet "${context?.sheetName || 'current sheet'}" with the information you provided. Would you like me to process this update?`;
         break;
       case 'update_data':
-        response = `I can help you update the data in your spreadsheet "${context?.sheetName || 'current sheet'}" based on your ${inputType} input${imageInfo}. Should I proceed with analyzing and applying these changes?`;
+        response = `I can help you update the data in your spreadsheet "${context?.sheetName || 'current sheet'}" based on your input${imageInfo}. Should I proceed with analyzing and applying these changes?`;
         break;
       case 'get_data':
         if (context?.sheetName) {
@@ -138,7 +136,7 @@ async function processMessage(
         if (hasImages) {
           response = `I can see you've shared ${images.length} ${images.length === 1 ? 'image/file' : 'images/files'} with me. I can analyze ${images.length === 1 ? 'it' : 'them'} and help you with various tasks like extracting data, describing content, or adding information to your spreadsheets. What would you like me to do with ${images.length === 1 ? 'this image' : 'these images'}?`;
         } else {
-          response = `I'm here to help you manage your Google Sheets through ${inputType} commands. You can ask me to add, update, or retrieve data from your spreadsheets. What would you like to do?`;
+          response = `I'm here to help you manage your Google Sheets. You can ask me to add, update, or retrieve data from your spreadsheets. What would you like to do?`;
         }
     }
 
@@ -173,20 +171,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { message, isVoice, context, conversationHistory, images } = req.body;
+    const { message, context, conversationHistory, images } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    console.log(`API: Processing chat message (${isVoice ? 'voice' : 'text'}): ${message}`);
+    console.log(`API: Processing chat message: ${message}`);
     if (images && images.length > 0) {
       console.log(`API: ${images.length} images/files included`);
     }
 
     const result = await processMessage(
       message,
-      isVoice || false,
       context || {},
       conversationHistory || [],
       images || []

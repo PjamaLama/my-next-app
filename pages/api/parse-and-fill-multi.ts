@@ -29,7 +29,7 @@ interface SheetAnalysis {
 }
 
 // Helper function to analyze sheet content and detect common patterns
-function analyzeSheetContent(sheetName: string, data: (string | number)[][]) {
+async function analyzeSheetContent(sheetName: string, data: (string | number)[][], spreadsheetId: string, sheets: any) {
   if (!data || data.length <= 1) return {};
   
   const headers = data[0];
@@ -168,13 +168,44 @@ function analyzeSheetContent(sheetName: string, data: (string | number)[][]) {
     }
   }
   
+  // Add detection for summary/totals row
+  let isSummaryRow = false;
+  let summaryRow = 0;
+  if (data.length > 1) {
+    summaryRow = data.length; // 1-based
+    const lastRowRange = `${escapeSheetName(sheetName)}!A${summaryRow}:${String.fromCharCode(64 + headers.length)}${summaryRow}`;
+    
+    // Fetch formatted values to check for "Total" or "Sum"
+    const formattedRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: lastRowRange,
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    const formattedValues = formattedRes.data.values?.[0] || [];
+
+    // Fetch formulas to check for =SUM etc.
+    const formulaRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: lastRowRange,
+      valueRenderOption: 'FORMULA',
+    });
+    const formulaValues = formulaRes.data.values?.[0] || [];
+
+    isSummaryRow = formattedValues.some((cell: string | number) => {
+      const str = String(cell).toLowerCase();
+      return str.includes('total') || str.includes('sum');
+    }) || formulaValues.some((cell: string | number) => String(cell).startsWith('='));
+  }
+  
   return {
     sheetPurpose,
     columnTypes,
     categoryValues,
     rowCount: dataRows.length,
-    nextRow: data.length + 1,
-    lastKmEnd
+    nextRow: isSummaryRow ? summaryRow : data.length + 1, // If summary, next is summaryRow (for insertion above)
+    lastKmEnd,
+    isSummaryRow,
+    summaryRow
   };
 }
 
@@ -399,8 +430,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const rawData = sheetDataRes.data.values ?? [];
         sheetsData[sheetName] = rawData;
         
-        // Perform enhanced sheet content analysis
-        const analysis = analyzeSheetContent(sheetName, rawData);
+        // Perform enhanced sheet content analysis (pass sheets and spreadsheetId for additional fetches)
+        const analysis = await analyzeSheetContent(sheetName, rawData, spreadsheetId, sheets);
         sheetAnalysis[sheetName] = analysis;
         
         // Log sheet analysis for debugging

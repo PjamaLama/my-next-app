@@ -117,13 +117,24 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
     });
 
     if (result && result.length > 0) {
-      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/updateSheet`, {
+      // Convert the result format to match save-sheet-data-multi API
+      // result is already the cells_to_update array from updateSingleSheetFlow
+      const updates = result.map((cell: any) => ({
+        sheetName: sheetName,
+        cell: cell.cell,
+        value: cell.value,
+        row: parseInt(cell.cell.replace(/[A-Z]/g, '')) || null, // Extract row number from cell reference like "A26"
+        column: cell.column || null
+      }));
+
+      console.log(`Formatted ${updates.length} updates for save-sheet-data-multi API:`, updates);
+
+      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           spreadsheetId,
-          sheetName,
-          actions: result
+          updates: updates
         })
       });
 
@@ -131,14 +142,17 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         const updateResult = await updateResponse.json();
         return res.status(200).json({
           success: true,
-          result: `Successfully updated sheet with ${result.length} changes`,
+          result: `Successfully updated ${updates.length} cells in ${sheetName}`,
           details: updateResult,
           actions: result
         });
       } else {
+        const errorText = await updateResponse.text();
+        console.error('Update API error:', errorText);
         return res.status(500).json({
           success: false,
-          error: 'Failed to execute sheet updates'
+          error: 'Failed to execute sheet updates',
+          details: errorText
         });
       }
     } else {

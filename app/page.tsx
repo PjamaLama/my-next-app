@@ -22,7 +22,7 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import GeminiKeyPrompt from './components/GeminiKeyPrompt';
 import RecentActivity from './components/RecentActivity';
-import VoiceRecorder from './components/VoiceRecorder';
+
 
 
 // import { useSettings } from './providers/SettingsProvider'; // Corrected import path
@@ -89,18 +89,7 @@ export default function Home() {
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
 
   
-  // New state for Genkit-based actions
-  const [genkitActions, setGenkitActions] = useState<Array<{
-    type: 'insertRow' | 'updateCell';
-    sheet: string;
-    row: number;
-    column: string;
-    value?: string | number;
-    confidence: 'high' | 'medium' | 'low';
-  }>>([]);
-  const [showGenkitPreview, setShowGenkitPreview] = useState(false);
-  const [genkitLoading, setGenkitLoading] = useState(false);
-  const [genkitCleaning, setGenkitCleaning] = useState(false);
+
   
   // Add state for available spreadsheet options
   const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
@@ -155,6 +144,87 @@ export default function Home() {
   
   // State for message filtering and grouping
   const [messageFilter, setMessageFilter] = useState<'all' | 'conversation' | 'sheet_updates'>('all');
+  
+  // User context and preferences system
+  const [userContext, setUserContext] = useState<{
+    businessType: string;
+    workflowDescription: string;
+    sheetPurpose: string;
+    preferredBehavior: string;
+    formulaRows: number[];
+    insertionPreference: 'above_formulas' | 'append' | 'custom';
+  } | null>(null);
+  const [showContextSetup, setShowContextSetup] = useState(false);
+  
+  // Voice recognition ref
+  const recognitionRef = useRef<any>(null);
+
+  // Speech recognition effect
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) return;
+    
+    if (listening && !recognitionRef.current) {
+      const recognition = new SpeechRecognitionClass();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+      
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript;
+          } else {
+            interimTranscript += result[0].transcript;
+          }
+        }
+        
+        if (finalTranscript) {
+          setTranscript(prev => prev + finalTranscript + ' ');
+          setInterimText('');
+        } else {
+          setInterimText(interimTranscript);
+        }
+      };
+      
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setListening(false);
+      };
+      
+      recognition.onend = () => {
+        if (listening) {
+          // Restart if still supposed to be listening
+          try {
+            recognition.start();
+          } catch (e) {
+            setListening(false);
+          }
+        } else {
+          recognitionRef.current = null;
+        }
+      };
+      
+      recognitionRef.current = recognition;
+      recognition.start();
+    } else if (!listening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+    };
+  }, [listening]);
 
   // Check if user has any spreadsheets configured
   useEffect(() => {
@@ -509,7 +579,7 @@ export default function Home() {
 
 
   // Enhanced function to process with AI Chat (combining old functionality with new chat)
-  const processWithAIChat = async (inputText?: string, isVoiceInput: boolean = false) => {
+  const processWithAIChat = async (inputText?: string) => {
     const textToProcess = inputText || transcript;
     if (!textToProcess.trim() || !defaultSpreadsheetId) {
       setSendResult("Please provide input and select a spreadsheet in the navigation.");
@@ -531,10 +601,9 @@ export default function Home() {
         role: 'user' as const,
         content: textToProcess,
         timestamp: new Date(),
-        isVoice: isVoiceInput,
         hasImages: uploadedImages.length > 0,
         imageCount: uploadedImages.length,
-        messageType: isVoiceInput ? 'voice' as const : 'text' as const,
+        messageType: 'text' as const, // Always text since voice converts to text
         attachments: uploadedImages.map(img => ({
           id: img.id,
           name: img.file.name,
@@ -545,10 +614,8 @@ export default function Home() {
       };
       setChatMessages(prev => [...prev, userMessage]);
       
-      // Clear transcript if it was voice input
-      if (isVoiceInput) {
-        setTranscript("");
-      }
+      // Clear transcript
+      setTranscript("");
 
       // Prepare images for the API call
       const imageData: Array<{ data: string; mimeType: string; }> = [];
@@ -588,7 +655,6 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: textToProcess,
-          isVoice: isVoiceInput,
           userIntent: userIntent,
           context: {
             spreadsheetId: defaultSpreadsheetId,
@@ -784,123 +850,7 @@ export default function Home() {
     setSendResult("");
   };
 
-  // New function to send transcript to Genkit API
-  const sendToGenkitApi = async () => {
-    if (!transcript || !defaultSpreadsheetId) {
-      setSendResult("Please provide transcript and select a spreadsheet in the navigation.");
-      return;
-    }
-    
-    // Stop listening if currently active
-    if (listening) {
-      setListening(false);
-    }
-    
-    // Find an available sheet if none is selected
-    let sheetNameToUse = selectedSheetName;
-    if (!sheetNameToUse) {
-      const currentSpreadsheet = spreadsheetOptions.find(o => o.spreadsheetId === defaultSpreadsheetId);
-      if (currentSpreadsheet && currentSpreadsheet.sheetNames.length > 0) {
-        sheetNameToUse = currentSpreadsheet.sheetNames[0];
-        setSelectedSheetName(sheetNameToUse);
-      }
-    }
-    
-    setGenkitLoading(true);
-    setGenkitCleaning(true);
-    setSendResult(null);
-    
-    try {
-      console.log("Sending to Genkit API:", {
-        transcript: transcript,
-        sheetId: defaultSpreadsheetId,
-        sheetName: sheetNameToUse
-      });
-      
-      const res = await fetch('/api/updateSheet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transcript,
-          sheetId: defaultSpreadsheetId,
-          sheetName: sheetNameToUse
-        }),
-      });
-      
-      const data = await res.json();
-      console.log("Genkit API response:", data);
-      
-      if (res.ok && data.success && data.actions) {
-        setGenkitActions(data.actions);
-        setShowGenkitPreview(true);
-        setSendResult(`AI generated ${data.actions.length} action${data.actions.length !== 1 ? 's' : ''}. Review and approve below.`);
-      } else {
-        setSendResult(data.error || "Failed to get AI response.");
-      }
-    } catch (error) {
-      console.error('Error calling Genkit API:', error);
-      setSendResult("Error: " + (error instanceof Error ? error.message : String(error)));
-    } finally {
-      setGenkitLoading(false);
-      setGenkitCleaning(false);
-    }
-  };
 
-  // Function to approve Genkit actions
-  const approveGenkitActions = async () => {
-    try {
-      setGenkitLoading(true);
-      
-      console.log("Committing actions to Genkit API...");
-      
-      const res = await fetch('/api/updateSheet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transcript,
-          sheetId: defaultSpreadsheetId,
-          sheetName: selectedSheetName,
-          commit: true
-        }),
-      });
-      
-      const data = await res.json();
-      console.log("Genkit commit response:", data);
-      
-      if (res.ok && data.success) {
-        setShowGenkitPreview(false);
-        setGenkitActions([]);
-        
-        // Show success message with execution details
-        const executedCount = data.executedActions || genkitActions.length;
-        setSendResult(`Successfully executed ${executedCount} action${executedCount !== 1 ? 's' : ''}!`);
-        
-        // Add activity
-        await addActivity({
-          type: 'add',
-          entity: 'sheet',
-          label: `Executed ${executedCount} AI-generated action${executedCount !== 1 ? 's' : ''}`,
-          timestamp: Date.now(),
-          sheetsAffected: [...new Set(genkitActions.map(action => action.sheet))],
-          rowsAffected: [...new Set(genkitActions.map(action => action.row))].length
-        });
-      } else {
-        setSendResult(data.error || "Failed to execute actions.");
-      }
-    } catch (error) {
-      console.error('Error approving actions:', error);
-      setSendResult("Error executing actions: " + (error instanceof Error ? error.message : String(error)));
-    } finally {
-      setGenkitLoading(false);
-    }
-  };
-
-  // Function to reject Genkit actions
-  const rejectGenkitActions = () => {
-    setGenkitActions([]);
-    setShowGenkitPreview(false);
-    setSendResult("Actions rejected. Try again with a different transcript.");
-  };
 
 
 
@@ -1221,7 +1171,7 @@ export default function Home() {
                           // Re-process with explicit sheet update intent
                           const lastUserMessage = chatMessages.filter(m => m.role === 'user').slice(-1)[0];
                           if (lastUserMessage) {
-                            processWithAIChat(`Please update my spreadsheet with this data: ${lastUserMessage.content}`, false);
+                            processWithAIChat(`Please update my spreadsheet with this data: ${lastUserMessage.content}`);
                           }
                           setMissedIntentSuggestion(null);
                         }}
@@ -1322,7 +1272,7 @@ export default function Home() {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             if (editingText.trim() || uploadedImages.length > 0) {
-                              processWithAIChat(editingText.trim() || 'Analyze these files', false);
+                              processWithAIChat(editingText.trim() || 'Analyze these files');
                               setEditingText('');
                             }
                           }
@@ -1360,7 +1310,7 @@ export default function Home() {
                                         enhancedMessage = `Please help me with this question: ${editingText}`;
                                         break;
                                     }
-                                    processWithAIChat(enhancedMessage, false);
+                                    processWithAIChat(enhancedMessage);
                                     setEditingText('');
                                   }}
                                   className="flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded text-xs transition-colors"
@@ -1374,7 +1324,7 @@ export default function Home() {
                         </div>
                       )}
                       
-                      {/* Input controls */}
+                      {/* Input controls - WhatsApp style */}
                       <div className="absolute right-2 bottom-2 flex items-center gap-1">
                         {/* File upload button */}
                         <input
@@ -1407,21 +1357,57 @@ export default function Home() {
                           )}
                         </label>
                         
-                        {/* Send button */}
+                        {/* Voice button - WhatsApp style */}
                         <button
                           onClick={() => {
-                            if (editingText.trim() || uploadedImages.length > 0) {
-                              processWithAIChat(editingText.trim() || 'Analyze these files', false);
-                              setEditingText('');
+                            if (listening) {
+                              setListening(false);
+                              // Add current transcript to text input
+                              if (transcript.trim()) {
+                                setEditingText(prev => prev.trim() ? `${prev} ${transcript}` : transcript);
+                                setTranscript("");
+                                setInterimText("");
+                              }
+                            } else {
+                              // Start recording
+                              setTranscript("");
+                              setInterimText("");
+                              setListening(true);
                             }
                           }}
-                          disabled={!editingText.trim() && uploadedImages.length === 0}
-                          className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white rounded-lg transition-all duration-200"
+                          className={`p-2 rounded-lg transition-all duration-200 ${
+                            listening 
+                              ? 'bg-red-500 text-white animate-pulse' 
+                              : (editingText.trim() ? 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700 text-white')
+                          }`}
+                          title={listening ? "Stop recording" : "Voice input"}
                         >
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                          </svg>
+                          {listening ? (
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            </svg>
+                          )}
                         </button>
+                        
+                        {/* Send button - only show if there's text or voice */}
+                        {(editingText.trim() || uploadedImages.length > 0) && (
+                          <button
+                            onClick={() => {
+                              processWithAIChat(editingText.trim() || 'Analyze these files');
+                              setEditingText('');
+                            }}
+                            className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all duration-200"
+                          >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1456,45 +1442,14 @@ export default function Home() {
                   </div>
                 )}
                   
-                  {/* Input Controls - Mobile optimized */}
-                  <div className="w-full flex flex-col items-center gap-4 mt-4">
-                    {/* Voice Recorder Component */}
-                    <VoiceRecorder
-                      onTranscriptChange={setTranscript}
-                      onInterimTextChange={setInterimText}
-                      onListeningChange={setListening}
-                      onTranscriptComplete={(completedTranscript) => {
-                        const isDataEntry = detectDataEntry(completedTranscript);
-                        const hasSpreadsheet = defaultSpreadsheetId && selectedSheetName;
-                        
-                        // Show visual transition feedback
-                        setVoiceTransitioning(true);
-                        
-                        setTimeout(() => {
-                          if (isDataEntry && hasSpreadsheet) {
-                            // Auto-send data entry requests
-                            processWithAIChat(completedTranscript, true);
-                            setEditingText("");
-                            setTranscript("");
-                            setInterimText("");
-                          } else {
-                            // Let user edit other types of input
-                            setEditingText(prev => {
-                              const newText = prev.trim() ? `${prev} ${completedTranscript}` : completedTranscript;
-                              return newText;
-                            });
-                            setTranscript("");
-                            setInterimText("");
-                          }
-                          setVoiceTransitioning(false);
-                        }, 800); // Short delay to show the transition
-                      }}
-                      listening={listening}
-                      transcript={transcript}
-                      interimText={interimText}
-                      voiceTransitioning={voiceTransitioning}
-                    />
-                    </div>
+                  {/* Status Messages */}
+                  <div className="w-full text-center">
+                    {voiceTransitioning && (
+                      <p className="text-sm text-blue-600 dark:text-blue-400">
+                        ✨ Processing voice → chat...
+                      </p>
+                    )}
+                  </div>
 
                     {/* Processing Result Message */}
                     {sendResult && (
@@ -1503,58 +1458,7 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Genkit Actions Preview */}
-                    {showGenkitPreview && genkitActions.length > 0 && (
-                      <div className="w-full max-w-md mx-auto bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                            AI Actions Preview
-                          </h3>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            {genkitActions.length} action{genkitActions.length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        
-                        <div className="space-y-2 max-h-60 overflow-y-auto">
-                          {genkitActions.map((action, index) => (
-                            <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                              <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                                action.confidence === 'high' ? 'bg-green-500' :
-                                action.confidence === 'medium' ? 'bg-yellow-500' : 'bg-red-500'
-                              }`} />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                  {action.type === 'insertRow' ? `Insert row ${action.row}` : `Update cell ${action.column}${action.row}`}
-                                </div>
-                                {action.value && (
-                                  <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                                    Value: &quot;{action.value}&quot;
-                                  </div>
-                                )}
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                  Sheet: {action.sheet} • Confidence: {action.confidence}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        
-                        <div className="flex gap-3 pt-2">
-                          <button
-                            onClick={approveGenkitActions}
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                          >
-                            Approve All
-                          </button>
-                          <button
-                            onClick={rejectGenkitActions}
-                            className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
-                    )}
+
 
 
                   </div>

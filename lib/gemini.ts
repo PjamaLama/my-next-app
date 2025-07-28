@@ -437,7 +437,7 @@ export const sendToGeminiMulti = async ({
     return `Sheet: "${sheetName}"
 Headers: ${headers}
 Current data rows: ${rowCount} (plus 1 header row = ${data.length} total rows)
-Next available row for new data: ${nextRow}
+Next available row for new data: ${nextRow} ${data.length > 0 && data[data.length - 1].some(val => val === 'Summary') ? '(insert above summary row at ' + (data.length - 1) + ')' : '(append at end)'}
 Sheet purpose: ${sheetPurpose || "GENERAL"}
 ${commonCategories ? `Common categories: ${commonCategories}` : ''}${sheetPatternAnalysis}
 Sample data rows:
