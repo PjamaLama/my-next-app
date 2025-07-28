@@ -59,6 +59,7 @@ interface VoiceRecorderProps {
   listening: boolean;
   transcript: string;
   interimText: string;
+  voiceTransitioning?: boolean;
 }
 
 function playBeep() {
@@ -88,7 +89,8 @@ export default function VoiceRecorder({
   onTranscriptComplete,
   listening,
   transcript,
-  interimText
+  interimText,
+  voiceTransitioning = false
 }: VoiceRecorderProps) {
   const [paused, setPaused] = useState(false);
   const listeningRef = useRef(listening);
@@ -279,7 +281,7 @@ export default function VoiceRecorder({
       {/* Voice instruction text */}
       <div className="text-center mb-2">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          {listening ? "🎤 Speak your message..." : ""}
+          {voiceTransitioning ? "✨ Processing voice → chat..." : listening ? "🎤 Speak your message..." : ""}
         </p>
       </div>
     </div>

@@ -138,6 +138,7 @@ export default function Home() {
       success: boolean;
       details?: unknown;
     }>;
+    messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
   }>>([]);
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{
     id: string;
@@ -145,6 +146,15 @@ export default function Home() {
     function: { name: string; arguments: string };
   }>>([]);
   const [chatProcessing, setChatProcessing] = useState(false);
+  
+  // Visual feedback state for voice-to-chat transitions
+  const [voiceTransitioning, setVoiceTransitioning] = useState(false);
+  
+  // State for missed intent detection and fallback UI
+  const [missedIntentSuggestion, setMissedIntentSuggestion] = useState<string | null>(null);
+  
+  // State for message filtering and grouping
+  const [messageFilter, setMessageFilter] = useState<'all' | 'conversation' | 'sheet_updates'>('all');
 
   // Check if user has any spreadsheets configured
   useEffect(() => {
@@ -515,6 +525,7 @@ export default function Home() {
     
     try {
       // Add user message to chat
+      const userIntent = detectIntent(textToProcess);
       const userMessage = {
         id: `msg_${Date.now()}`,
         role: 'user' as const,
@@ -523,6 +534,7 @@ export default function Home() {
         isVoice: isVoiceInput,
         hasImages: uploadedImages.length > 0,
         imageCount: uploadedImages.length,
+        messageType: isVoiceInput ? 'voice' as const : 'text' as const,
         attachments: uploadedImages.map(img => ({
           id: img.id,
           name: img.file.name,
@@ -570,16 +582,18 @@ export default function Home() {
         }
       }
       
-      // Call the chat API
+      // Call the chat API with enhanced context
       const response = await fetch('/api/genkit-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: textToProcess,
           isVoice: isVoiceInput,
+          userIntent: userIntent,
           context: {
             spreadsheetId: defaultSpreadsheetId,
             sheetName: selectedSheetName,
+            availableTools: ['update_sheet_cells', 'insert_sheet_row', 'analyze_sheet_data', 'bulk_update_cells'],
           },
           conversationHistory: chatMessages.slice(-5),
           images: imageData // Include processed images
@@ -592,16 +606,24 @@ export default function Home() {
 
       const data = await response.json();
       
-      // Add AI response to chat
+      // Add AI response to chat with appropriate message type
       const aiMessage = {
         id: `msg_${Date.now()}_ai`,
         role: 'assistant' as const,
         content: data.response || 'I processed your request.',
         timestamp: new Date(),
+        messageType: 'ai_response' as const,
         toolCalls: data.toolCalls || [],
         toolResults: data.toolResults || []
       };
       setChatMessages(prev => [...prev, aiMessage]);
+
+      // Check for missed sheet update intent
+      if (detectMissedSheetIntent(textToProcess, data.response || '')) {
+        setMissedIntentSuggestion(`Did you want me to update your spreadsheet with this data? You said: "${textToProcess.slice(0, 50)}..."`);
+        // Auto-clear the suggestion after 10 seconds
+        setTimeout(() => setMissedIntentSuggestion(null), 10000);
+      }
 
       // Handle pending tool calls
       if (data.pendingToolCalls && data.pendingToolCalls.length > 0) {
@@ -1027,7 +1049,41 @@ export default function Home() {
             {chatMessages.length > 0 && (
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">AI Conversation</h3>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">AI Conversation</h3>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setMessageFilter('all')}
+                        className={`px-2 py-1 text-xs rounded ${
+                          messageFilter === 'all' 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        All
+                      </button>
+                      <button
+                        onClick={() => setMessageFilter('conversation')}
+                        className={`px-2 py-1 text-xs rounded ${
+                          messageFilter === 'conversation' 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        Chat
+                      </button>
+                      <button
+                        onClick={() => setMessageFilter('sheet_updates')}
+                        className={`px-2 py-1 text-xs rounded ${
+                          messageFilter === 'sheet_updates' 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        Updates
+                      </button>
+                    </div>
+                  </div>
                   <button
                     onClick={clearChat}
                     className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-2 py-1 rounded"
@@ -1036,7 +1092,7 @@ export default function Home() {
                   </button>
                 </div>
                 <div className="space-y-3 max-h-80 overflow-y-auto bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                  {chatMessages.map((message) => (
+                  {filterMessages(chatMessages, messageFilter).map((message) => (
                     <div
                       key={message.id}
                       className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -1051,19 +1107,30 @@ export default function Home() {
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          {message.role === 'user' && message.isVoice && (
-                            <span className="text-xs">🎤</span>
-                          )}
+                          <span className={`text-xs ${getMessageTypeColor(message.messageType)}`}>
+                            {getMessageTypeIcon(message.messageType)}
+                          </span>
                           <span className="text-xs opacity-75">
                             {message.timestamp.toLocaleTimeString()}
                           </span>
+                          {message.messageType === 'voice' && (
+                            <span className="text-xs bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-blue-700 dark:text-blue-300">
+                              Voice
+                            </span>
+                          )}
                         </div>
                         <p className="whitespace-pre-wrap">{message.content}</p>
                         
                         {/* Attachments display */}
                         {message.attachments && message.attachments.length > 0 && (
                           <div className="mt-2 space-y-2">
-                            {message.attachments.map((attachment) => (
+                            {message.attachments.map((attachment: {
+                              id: string;
+                              name: string;
+                              type: string;
+                              fileType: 'image' | 'pdf';
+                              preview?: string;
+                            }) => (
                               <div key={attachment.id} className="flex items-center gap-2 p-2 bg-black/10 dark:bg-white/10 rounded-lg">
                                 {attachment.fileType === 'image' ? (
                                   <>
@@ -1102,7 +1169,12 @@ export default function Home() {
                         {/* Tool results display */}
                         {message.toolResults && message.toolResults.length > 0 && (
                           <div className="mt-2 space-y-1">
-                            {message.toolResults.map((result) => (
+                            {message.toolResults.map((result: {
+                              id: string;
+                              result: string;
+                              success: boolean;
+                              details?: unknown;
+                            }) => (
                               <div key={result.id} className={`text-xs p-2 rounded ${
                                 result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                               }`}>
@@ -1126,6 +1198,45 @@ export default function Home() {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Missed Intent Suggestion */}
+            {missedIntentSuggestion && (
+              <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <div className="bg-yellow-500 rounded-full p-1 flex-shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">
+                      {missedIntentSuggestion}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          // Re-process with explicit sheet update intent
+                          const lastUserMessage = chatMessages.filter(m => m.role === 'user').slice(-1)[0];
+                          if (lastUserMessage) {
+                            processWithAIChat(`Please update my spreadsheet with this data: ${lastUserMessage.content}`, false);
+                          }
+                          setMissedIntentSuggestion(null);
+                        }}
+                        className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 transition-colors"
+                      >
+                        Yes, update spreadsheet
+                      </button>
+                      <button
+                        onClick={() => setMissedIntentSuggestion(null)}
+                        className="px-3 py-1 bg-gray-300 text-gray-700 rounded text-sm hover:bg-gray-400 transition-colors"
+                      >
+                        No, thanks
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1218,11 +1329,50 @@ export default function Home() {
                         }}
                         placeholder={uploadedImages.length > 0 
                           ? `Add context about your ${uploadedImages.length} attached file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
-                          : "Type your message or use voice input below..."
+                          : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetName)
                         }
                         rows={3}
                         className="w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-gray-500 dark:placeholder-gray-400"
                       />
+                      
+                      {/* Smart Action Suggestions */}
+                      {editingText.trim() && editingText.length > 3 && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
+                          <div className="p-2">
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Suggested actions:</div>
+                            <div className="flex flex-wrap gap-2">
+                              {suggestRelevantActions(editingText, uploadedImages, !!(defaultSpreadsheetId && selectedSheetName)).map((suggestion, index) => (
+                                <button
+                                  key={index}
+                                  onClick={() => {
+                                    let enhancedMessage = editingText;
+                                    switch (suggestion.action) {
+                                      case 'data_entry':
+                                        enhancedMessage = `Please add this data to my spreadsheet: ${editingText}`;
+                                        break;
+                                      case 'analyze':
+                                        enhancedMessage = `Please analyze this data: ${editingText}`;
+                                        break;
+                                      case 'extract_data':
+                                        enhancedMessage = `Please extract data from these files and add to spreadsheet: ${editingText}`;
+                                        break;
+                                      case 'question':
+                                        enhancedMessage = `Please help me with this question: ${editingText}`;
+                                        break;
+                                    }
+                                    processWithAIChat(enhancedMessage, false);
+                                    setEditingText('');
+                                  }}
+                                  className="flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded text-xs transition-colors"
+                                >
+                                  <span>{suggestion.icon}</span>
+                                  <span>{suggestion.text}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       
                       {/* Input controls */}
                       <div className="absolute right-2 bottom-2 flex items-center gap-1">
@@ -1314,49 +1464,36 @@ export default function Home() {
                       onInterimTextChange={setInterimText}
                       onListeningChange={setListening}
                       onTranscriptComplete={(completedTranscript) => {
-                        setEditingText(prev => {
-                          const newText = prev.trim() ? `${prev} ${completedTranscript}` : completedTranscript;
-                          return newText;
-                        });
+                        const isDataEntry = detectDataEntry(completedTranscript);
+                        const hasSpreadsheet = defaultSpreadsheetId && selectedSheetName;
+                        
+                        // Show visual transition feedback
+                        setVoiceTransitioning(true);
+                        
+                        setTimeout(() => {
+                          if (isDataEntry && hasSpreadsheet) {
+                            // Auto-send data entry requests
+                            processWithAIChat(completedTranscript, true);
+                            setEditingText("");
+                            setTranscript("");
+                            setInterimText("");
+                          } else {
+                            // Let user edit other types of input
+                            setEditingText(prev => {
+                              const newText = prev.trim() ? `${prev} ${completedTranscript}` : completedTranscript;
+                              return newText;
+                            });
+                            setTranscript("");
+                            setInterimText("");
+                          }
+                          setVoiceTransitioning(false);
+                        }, 800); // Short delay to show the transition
                       }}
                       listening={listening}
                       transcript={transcript}
                       interimText={interimText}
+                      voiceTransitioning={voiceTransitioning}
                     />
-                      
-                      {/* Process with Genkit Button - Mobile optimized */}
-                      {transcript.trim() && (
-                        <button
-                          onClick={sendToGenkitApi}
-                          disabled={genkitLoading || !defaultSpreadsheetId}
-                          className={`h-12 sm:h-12 px-4 sm:px-6 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm sm:text-base font-medium flex-1 justify-center min-h-[50px]
-                                    ${genkitLoading 
-                                      ? 'bg-green-600 text-white cursor-not-allowed opacity-70'
-                                      : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl'}`}
-                        >
-                          {genkitLoading ? (
-                            <>
-                              <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              <span className="hidden sm:inline">
-                                {genkitCleaning ? 'Cleaning transcript...' : 'Processing...'}
-                              </span>
-                              <span className="sm:hidden">
-                                {genkitCleaning ? 'Cleaning...' : '...'}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Process with Genkit</span>
-                              <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                              </svg>
-                            </>
-                          )}
-                        </button>
-                      )}
                     </div>
 
                     {/* Processing Result Message */}
@@ -1609,5 +1746,137 @@ export default function Home() {
     </>
   );
 }
+
+// Helper functions for Phase 2 - Smart Intent Detection
+const detectDataEntry = (text: string): boolean => {
+  const dataEntryKeywords = [
+    'add', 'update', 'insert', 'create', 'save', 'record', 'log', 'enter',
+    'total', 'amount', 'quantity', 'date', 'name', 'email', 'phone', 'address',
+    'expense', 'income', 'payment', 'sale', 'order', 'customer', 'item'
+  ];
+  
+  const hasNumbers = /\d/.test(text);
+  const hasDataKeywords = dataEntryKeywords.some(keyword => 
+    text.toLowerCase().includes(keyword)
+  );
+  
+  // Consider it data entry if it has numbers AND data keywords, or specific patterns
+  const hasDataPattern = /(\$\d+|\d+\.\d+|\d+\/\d+\/\d+|\w+@\w+\.\w+)/.test(text);
+  
+  return (hasNumbers && hasDataKeywords) || hasDataPattern;
+};
+
+const detectIntent = (text: string): 'data_entry' | 'question' | 'instruction' | 'general' => {
+  const questionWords = ['what', 'how', 'when', 'where', 'why', 'who', 'which', 'can you', 'do you'];
+  const instructionWords = ['please', 'can you', 'help me', 'i need', 'show me'];
+  
+  if (questionWords.some(word => text.toLowerCase().startsWith(word))) {
+    return 'question';
+  }
+  if (detectDataEntry(text)) {
+    return 'data_entry';
+  }
+  if (instructionWords.some(word => text.toLowerCase().includes(word))) {
+    return 'instruction';
+  }
+  return 'general';
+};
+
+const getSmartPlaceholder = (uploadedImages: UploadedImage[], defaultSpreadsheetId: string | null, selectedSheetName: string | null): string => {
+  if (!defaultSpreadsheetId) return "First, select a spreadsheet above...";
+  if (uploadedImages.length > 0) return `Describe what to do with these ${uploadedImages.length} file${uploadedImages.length !== 1 ? 's' : ''}...`;
+  if (!selectedSheetName) return "Ask me about your spreadsheet or add data...";
+  return "Add data, ask questions, or give instructions...";
+};
+
+const getMessageTypeIcon = (messageType?: string): string => {
+  switch (messageType) {
+    case 'voice': return '🎤';
+    case 'text': return '💬';
+    case 'sheet_update': return '📊';
+    case 'tool_execution': return '⚙️';
+    case 'ai_response': return '🤖';
+    default: return '💬';
+  }
+};
+
+const getMessageTypeColor = (messageType?: string): string => {
+  switch (messageType) {
+    case 'voice': return 'text-blue-600';
+    case 'text': return 'text-blue-600';
+    case 'sheet_update': return 'text-green-600';
+    case 'tool_execution': return 'text-orange-600';
+    case 'ai_response': return 'text-gray-600';
+    default: return 'text-blue-600';
+  }
+};
+
+const detectMissedSheetIntent = (userMessage: string, aiResponse: string): boolean => {
+  const hasDataPattern = detectDataEntry(userMessage);
+  const aiDidntMentionSheet = !aiResponse.toLowerCase().includes('sheet') && 
+                              !aiResponse.toLowerCase().includes('spreadsheet') &&
+                              !aiResponse.toLowerCase().includes('update') &&
+                              !aiResponse.toLowerCase().includes('add');
+  
+  return hasDataPattern && aiDidntMentionSheet;
+};
+
+const filterMessages = (messages: any[], filter: 'all' | 'conversation' | 'sheet_updates') => {
+  switch (filter) {
+    case 'conversation':
+      return messages.filter(msg => 
+        msg.messageType === 'voice' || 
+        msg.messageType === 'text' || 
+        msg.messageType === 'ai_response'
+      );
+    case 'sheet_updates':
+      return messages.filter(msg => 
+        msg.messageType === 'sheet_update' || 
+        msg.messageType === 'tool_execution' ||
+        (msg.toolCalls && msg.toolCalls.length > 0) ||
+        (msg.toolResults && msg.toolResults.length > 0)
+      );
+    default:
+      return messages;
+  }
+};
+
+const suggestRelevantActions = (message: string, uploadedImages: UploadedImage[], hasSpreadsheet: boolean) => {
+  const suggestions = [];
+  
+  if (detectDataEntry(message) && hasSpreadsheet) {
+    suggestions.push({
+      icon: "📊",
+      text: "Add to spreadsheet",
+      action: "data_entry"
+    });
+  }
+  
+  if (message.toLowerCase().includes('analyze') || message.toLowerCase().includes('report')) {
+    suggestions.push({
+      icon: "📈",
+      text: "Analyze data",
+      action: "analyze"
+    });
+  }
+  
+  if (uploadedImages.length > 0) {
+    suggestions.push({
+      icon: "👁️",
+      text: "Extract data from files",
+      action: "extract_data"
+    });
+  }
+  
+  if (message.toLowerCase().includes('question') || message.includes('?')) {
+    suggestions.push({
+      icon: "❓",
+      text: "Answer question",
+      action: "question"
+    });
+  }
+  
+  return suggestions;
+};
 
 
