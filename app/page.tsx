@@ -1547,7 +1547,7 @@ export default function Home() {
                       {/* Debug info - only show in development */}
                       {process.env.NODE_ENV === 'development' && listening && (
                         <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 rounded text-xs text-yellow-700 dark:text-yellow-300">
-                          T: "{transcript}" | I: "{interimText}"
+                          T: &quot;{transcript}&quot; | I: &quot;{interimText}&quot;
                         </div>
                       )}
                       <textarea
