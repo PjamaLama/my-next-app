@@ -111,7 +111,9 @@ export default function Home() {
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
   const [listening, setListening] = useState(false);
+  const listeningRef = useRef(listening);
   const [editingText, setEditingText] = useState("");
+  const [displayText, setDisplayText] = useState("");
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [stepperModalOpen, setStepperModalOpen] = useState(false);
@@ -201,8 +203,11 @@ export default function Home() {
     const SpeechRecognitionClass = (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition; SpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition || (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition; SpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
     if (!SpeechRecognitionClass) {
       console.error('Speech recognition not supported in this browser');
+      alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
       return;
     }
+    
+    console.log('SpeechRecognition class found:', SpeechRecognitionClass);
     
     // Cleanup function to properly stop recognition
     const cleanupRecognition = () => {
@@ -223,12 +228,13 @@ export default function Home() {
       cleanupRecognition();
       
       const recognition = new SpeechRecognitionClass();
-      recognition.continuous = false; // Changed to false to prevent infinite loops
+      recognition.continuous = true; // Set to true to keep listening until manually stopped
       recognition.interimResults = true;
       recognition.lang = "en-US";
       
       recognition.onstart = () => {
         console.log('Speech recognition started successfully!');
+        console.log('Recognition object:', recognition);
       };
       
       recognition.onresult = (event: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -237,16 +243,16 @@ export default function Home() {
         let interimTranscript = '';
         let finalTranscript = '';
 
-        // Process all results from the beginning
-        for (let i = 0; i < event.results.length; i++) {
-          const result = event.results[i];
-          console.log(`Result ${i}:`, result[0].transcript, 'isFinal:', result.isFinal);
-          
-          if (result.isFinal) {
-            finalTranscript += result[0].transcript;
-          } else {
-            interimTranscript += result[0].transcript;
-          }
+        // Process only the latest result to avoid duplication
+        const latestResultIndex = event.results.length - 1;
+        const latestResult = event.results[latestResultIndex];
+        
+        if (latestResult.isFinal) {
+          finalTranscript = latestResult[0].transcript;
+          console.log('Final result:', finalTranscript);
+        } else {
+          interimTranscript = latestResult[0].transcript;
+          console.log('Interim result:', interimTranscript);
         }
         
         console.log('Final transcript:', finalTranscript);
@@ -298,10 +304,18 @@ export default function Home() {
       
       recognition.onend = () => {
         console.log('Speech recognition ended');
-        // Don't auto-restart - let the user control it
-        recognitionRef.current = null;
-        // Only stop listening if we're not supposed to be listening
-        if (!listening) {
+        // Auto-restart if we're still supposed to be listening
+        if (listeningRef.current) {
+          console.log('Auto-restarting speech recognition...');
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error('Failed to auto-restart speech recognition:', e);
+            setListening(false);
+            recognitionRef.current = null;
+          }
+        } else {
+          recognitionRef.current = null;
           console.log('Recognition ended and listening is false - cleanup complete');
         }
       };
@@ -329,6 +343,11 @@ export default function Home() {
     };
   }, [listening]);
 
+  // Update listeningRef when listening state changes
+  useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
+
   // Debug transcript changes - add these right after the speech recognition useEffect
   useEffect(() => {
     console.log('Transcript changed:', transcript);
@@ -337,6 +356,18 @@ export default function Home() {
   useEffect(() => {
     console.log('Interim text changed:', interimText);
   }, [interimText]);
+
+  // Update display text when voice recording or editing text changes
+  useEffect(() => {
+    const newDisplayText = editingText + (listening ? (transcript + interimText) : '');
+    setDisplayText(newDisplayText);
+    console.log('Display text updated:', newDisplayText);
+  }, [editingText, listening, transcript, interimText]);
+
+  // Debug editingText changes
+  useEffect(() => {
+    console.log('editingText changed:', editingText);
+  }, [editingText]);
 
   // Check if user has any spreadsheets configured
   useEffect(() => {
@@ -1505,8 +1536,22 @@ export default function Home() {
                     
                     {/* Text Input */}
                     <div className="relative">
+                      {/* Voice recording indicator */}
+                      {listening && (
+                        <div className="absolute top-2 left-2 z-10 flex items-center gap-2 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-full text-xs text-blue-700 dark:text-blue-300">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                          <span>Recording...</span>
+                        </div>
+                      )}
+                      
+                      {/* Debug info - only show in development */}
+                      {process.env.NODE_ENV === 'development' && listening && (
+                        <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 rounded text-xs text-yellow-700 dark:text-yellow-300">
+                          T: "{transcript}" | I: "{interimText}"
+                        </div>
+                      )}
                       <textarea
-                        value={editingText}
+                        value={displayText}
                         onChange={(e) => setEditingText(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
@@ -1522,7 +1567,13 @@ export default function Home() {
                           : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : null)
                         }
                         rows={3}
-                        className="w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-gray-500 dark:placeholder-gray-400"
+                        className={`w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-gray-500 dark:placeholder-gray-400 ${
+                          listening ? 'border-l-4 border-l-blue-500' : ''
+                        }`}
+                        style={{
+                          color: listening && (transcript || interimText) ? '#1f2937' : 'inherit',
+                          backgroundColor: listening ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
+                        }}
                       />
                       
                       {/* Smart Action Suggestions */}
@@ -1566,6 +1617,38 @@ export default function Home() {
                       
                       {/* Input controls - WhatsApp style */}
                       <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                        {/* Clear transcript button - only show when recording */}
+                        {listening && (transcript || interimText) && (
+                          <button
+                            onClick={() => {
+                              setTranscript("");
+                              setInterimText("");
+                            }}
+                            className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+                            title="Clear voice input"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="4" y1="4" x2="16" y2="16" />
+                              <line x1="16" y1="4" x2="4" y2="16" />
+                            </svg>
+                          </button>
+                        )}
+                        
+                        {/* Test button to manually set transcript */}
+                        {listening && (
+                          <button
+                            onClick={() => {
+                              setTranscript("Test transcript ");
+                              setInterimText("interim test");
+                            }}
+                            className="p-1 rounded text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-700 transition-all"
+                            title="Test transcript"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M10 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L10 17.77l-8.18 3.25L3 14.14 8 9.27l8.91-1.01L10 2z" />
+                            </svg>
+                          </button>
+                        )}
                         {/* File upload button */}
                         <input
                           ref={fileInputRef}
@@ -1604,17 +1687,30 @@ export default function Home() {
                             
                             if (listening) {
                               console.log('Stopping voice recording...');
+                              
+                              // Capture the current transcript before stopping
+                              const currentTranscript = transcript.trim();
+                              const currentInterimText = interimText.trim();
+                              const finalTranscript = currentTranscript + (currentInterimText ? ` ${currentInterimText}` : '');
+                              
+                              console.log('Final transcript to add:', finalTranscript);
+                              console.log('Current editingText:', editingText);
+                              
+                              // Stop listening first
                               setListening(false);
                               
-                              // Small delay to ensure transcript is captured
+                              // Add the transcript to the editing text immediately
+                              if (finalTranscript) {
+                                const newEditingText = editingText.trim() ? `${editingText} ${finalTranscript}` : finalTranscript;
+                                console.log('Setting new editingText:', newEditingText);
+                                setEditingText(newEditingText);
+                              }
+                              
+                              // Clear the transcript state after a small delay
                               setTimeout(() => {
-                                if (transcript.trim()) {
-                                  console.log('Adding transcript to text input:', transcript);
-                                  setEditingText(prev => prev.trim() ? `${prev} ${transcript}` : transcript);
-                                  setTranscript("");
-                                  setInterimText("");
-                                }
-                              }, 100);
+                                setTranscript("");
+                                setInterimText("");
+                              }, 50);
                             } else {
                               console.log('Starting voice recording...');
                               // Clear any previous transcript and start fresh
@@ -1661,34 +1757,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Voice transcript display (read-only) */}
-                {(transcript || interimText) && (
-                  <div className="w-full min-h-[80px] mb-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                        {listening ? "🎤 Listening..." : "Voice Input"}
-                      </span>
-                      {transcript && (
-                        <button
-                          type="button"
-                          onClick={() => { setTranscript(""); setListening(false); }}
-                          className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
-                        >
-                          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="4" y1="4" x2="16" y2="16" />
-                            <line x1="16" y1="4" x2="4" y2="16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
-                      {transcript}
-                      {interimText && (
-                        <span className="text-gray-400 dark:text-gray-500 italic"> {interimText}</span>
-                      )}
-                    </p>
-                  </div>
-                )}
+
                   
                   {/* Status Messages */}
                   <div className="w-full text-center">
