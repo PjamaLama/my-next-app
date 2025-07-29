@@ -670,6 +670,67 @@ export default function Home() {
 
 
 
+  // Helper function to calculate file size progress
+  const getFileSizeProgress = () => {
+    const maxFileSize = 8 * 1024 * 1024; // 8MB limit
+    const totalSizeLimit = 20 * 1024 * 1024; // 20MB total limit
+    
+    let totalSize = 0;
+    const fileSizes = uploadedImages.map(img => {
+      const size = img.file.size;
+      totalSize += size;
+      return {
+        name: img.file.name,
+        size: size,
+        sizeMB: (size / 1024 / 1024).toFixed(1),
+        percentage: (size / maxFileSize) * 100
+      };
+    });
+    
+    const totalSizeMB = (totalSize / 1024 / 1024).toFixed(1);
+    const totalPercentage = (totalSize / totalSizeLimit) * 100;
+    
+    return {
+      fileSizes,
+      totalSize,
+      totalSizeMB,
+      totalPercentage,
+      maxFileSize,
+      totalSizeLimit
+    };
+  };
+
+  // Helper function to check file sizes and show warnings
+  const checkFileSizes = (files: FileList): { warnings: string[]; errors: string[] } => {
+    const warnings: string[] = [];
+    const errors: string[] = [];
+    const maxFileSize = 8 * 1024 * 1024; // 8MB limit
+    const totalSizeLimit = 20 * 1024 * 1024; // 20MB total limit
+    let totalSize = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      // Check individual file size
+      if (file.size > maxFileSize) {
+        errors.push(`"${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum file size is 8MB.`);
+      } else if (file.size > maxFileSize * 0.8) { // Warning at 80% of limit
+        warnings.push(`"${file.name}" is large (${(file.size / 1024 / 1024).toFixed(1)}MB). Consider compressing it.`);
+      }
+      
+      totalSize += file.size;
+    }
+
+    // Check total size
+    if (totalSize > totalSizeLimit) {
+      errors.push(`Total file size (${(totalSize / 1024 / 1024).toFixed(1)}MB) exceeds the 20MB limit. Please upload fewer files.`);
+    } else if (totalSize > totalSizeLimit * 0.8) { // Warning at 80% of limit
+      warnings.push(`Total upload size (${(totalSize / 1024 / 1024).toFixed(1)}MB) is approaching the 20MB limit.`);
+    }
+
+    return { warnings, errors };
+  };
+
   // Image upload handlers
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -679,6 +740,10 @@ export default function Home() {
     const newImages: UploadedImage[] = [];
 
     try {
+      // Check file sizes and get warnings/errors
+      const { warnings, errors } = checkFileSizes(files);
+
+      // Process files
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
@@ -687,10 +752,15 @@ export default function Home() {
         const isPdf = file.type === 'application/pdf';
         
         if (!isImage && !isPdf) {
-          console.warn(`Skipping unsupported file type: ${file.type}`);
+          errors.push(`"${file.name}" is not a supported file type. Only images and PDFs are allowed.`);
           continue;
         }
 
+        // Skip files that are too large (already caught by checkFileSizes)
+        if (file.size > 8 * 1024 * 1024) {
+          continue;
+        }
+        
         // Create preview URL
         const preview = URL.createObjectURL(file);
         
@@ -704,6 +774,22 @@ export default function Home() {
         newImages.push(imageData);
       }
 
+      // Show errors if any
+      if (errors.length > 0) {
+        setSendResult(`❌ Upload errors:\n${errors.join('\n')}`);
+        // Clear the input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        setUploadingImages(false);
+        return;
+      }
+
+      // Show warnings if any
+      if (warnings.length > 0) {
+        setSendResult(`⚠️ Upload warnings:\n${warnings.join('\n')}\n\nFiles were uploaded successfully, but consider optimizing them for better performance.`);
+      }
+
       setUploadedImages(prev => [...prev, ...newImages]);
       
       // Clear the input
@@ -712,6 +798,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error processing uploaded files:', error);
+      setSendResult('Error processing uploaded files. Please try again.');
     } finally {
       setUploadingImages(false);
     }
@@ -810,7 +897,50 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
+        let errorMessage = 'Chat processing failed';
+        let errorDetails = '';
+        
+        try {
+          const errorData = await response.json();
+          
+          if (response.status === 413) {
+            // File size limit exceeded
+            errorMessage = '📁 File Size Limit Exceeded';
+            errorDetails = errorData.details || errorData.error || 'Your files are too large for processing.';
+            
+            // Add specific guidance based on the error
+            if (errorData.fileSize) {
+              errorDetails += `\n\n📊 File Size: ${errorData.fileSize}`;
+            }
+            if (errorData.maxSize) {
+              errorDetails += `\n📏 Maximum Size: ${errorData.maxSize}`;
+            }
+            if (errorData.totalSize) {
+              errorDetails += `\n📦 Total Size: ${errorData.totalSize}`;
+            }
+            if (errorData.maxTotalSize) {
+              errorDetails += `\n📦 Maximum Total: ${errorData.maxTotalSize}`;
+            }
+            
+            errorDetails += '\n\n💡 Tips:';
+            errorDetails += '\n• Compress your files before uploading';
+            errorDetails += '\n• Split large PDFs into smaller sections';
+            errorDetails += '\n• Use lower resolution images';
+            errorDetails += '\n• Upload fewer files at once';
+            
+            setSendResult(`${errorMessage}\n\n${errorDetails}`);
+            setChatProcessing(false);
+            return;
+          } else {
+            errorMessage = errorData.error || 'Chat processing failed';
+            errorDetails = errorData.details || errorData.message || '';
+          }
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          errorMessage = `HTTP ${response.status}: Chat processing failed`;
+        }
+        
+        throw new Error(`${errorMessage}\n\n${errorDetails}`);
       }
 
       const data = await response.json();
@@ -834,13 +964,31 @@ export default function Home() {
         setTimeout(() => setMissedIntentSuggestion(null), 10000);
       }
 
-      // Handle pending tool calls
-      if (data.pendingToolCalls && data.pendingToolCalls.length > 0) {
-        setPendingToolCalls(data.pendingToolCalls);
+            // Handle tool results from automatic execution
+      if (data.toolResults && data.toolResults.length > 0) {
+        console.log(`🔍 [CHAT] Received ${data.toolResults.length} tool results from automatic execution`);
+        
+        // Add tool results to chat
+        const toolResultMessage = {
+          id: `msg_${Date.now()}_tool_results`,
+          role: 'system' as const,
+          content: `Tool execution completed`,
+          timestamp: new Date(),
+          toolResults: data.toolResults.map((result: any) => ({
+            id: result.toolId,
+            result: result.result,
+            success: result.success,
+            details: result.details
+          }))
+        };
+        setChatMessages(prev => [...prev, toolResultMessage]);
       }
 
+      console.log(`🔍 [CHAT] Final state - uploadedImages: ${uploadedImages.length}, pendingToolCalls: ${pendingToolCalls.length}`);
+      
       // Clear uploaded images after successful processing
       if (uploadedImages.length > 0) {
+        console.log(`🧹 [CHAT] Clearing ${uploadedImages.length} uploaded images after automatic tool execution`);
         uploadedImages.forEach(img => {
           URL.revokeObjectURL(img.preview);
         });
@@ -866,9 +1014,9 @@ export default function Home() {
     }
   };
 
-  // Function to approve a tool call
+  // Function to approve a tool call (only for sheet operations now)
   const approveTool = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } }) => {
-    // For sheet update operations, show confirmation modal first
+    // Only handle sheet update operations - file analysis tools are auto-executed
     if (toolCall.function.name === 'update_sheet') {
       try {
         // Get preview of what will be updated
@@ -890,7 +1038,7 @@ export default function Home() {
               spreadsheetId: defaultSpreadsheetId,
               sheetNames: selectedSheetNames
             },
-            images: []
+            images: [] // No images needed for sheet preview
           }),
         });
 
@@ -917,7 +1065,7 @@ export default function Home() {
       }
     }
 
-    // For non-sheet operations or if preview failed, execute directly
+    // For any other tools, execute directly
     await executeTool(toolCall);
   };
 
@@ -941,7 +1089,8 @@ export default function Home() {
     }
 
     setChatProcessing(true);
-    setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
+    // Don't remove from pendingToolCalls yet - we need the images to be preserved
+    console.log(`🔍 [EXECUTE_TOOL] Keeping tool call ${toolCall.id} in pendingToolCalls for image processing`);
     
     // Add processing message
     const processingMessage = {
@@ -957,9 +1106,18 @@ export default function Home() {
       // Prepare images for tool execution if available
       const imageData: Array<{ data: string; mimeType: string; }> = [];
       
+      console.log(`🔍 [EXECUTE_TOOL] Tool name: ${toolCall.function.name}`);
+      console.log(`🔍 [EXECUTE_TOOL] Uploaded images count: ${uploadedImages.length}`);
+      console.log(`🔍 [EXECUTE_TOOL] Uploaded images:`, uploadedImages.map(img => ({ name: img.file.name, type: img.file.type })));
+      
       // Check if we have uploaded images that should be passed to the tool
-      if (uploadedImages.length > 0 && 
-          (toolCall.function.name === 'analyze_images' || toolCall.function.name === 'extract_data_from_images')) {
+      const shouldProcessImages = uploadedImages.length > 0 && 
+          (toolCall.function.name === 'analyze_images' || toolCall.function.name === 'analyze_files' || 
+           toolCall.function.name === 'extract_data_from_images' || toolCall.function.name === 'extract_data_from_files');
+      
+      console.log(`🔍 [EXECUTE_TOOL] Should process images: ${shouldProcessImages}`);
+      
+      if (shouldProcessImages) {
         try {
           for (const img of uploadedImages) {
             const reader = new FileReader();
@@ -982,6 +1140,8 @@ export default function Home() {
           console.error('Error processing images for tool execution:', error);
           // Continue without images if processing fails
         }
+      } else {
+        console.log(`🔍 [EXECUTE_TOOL] No images to process or tool doesn't require images`);
       }
 
       // If we have edited values from the confirmation modal, update the tool call
@@ -1005,6 +1165,9 @@ export default function Home() {
         };
       }
 
+      console.log(`🔍 [EXECUTE_TOOL] Sending ${imageData.length} images for tool: ${finalToolCall.function.name}`);
+      console.log(`🔍 [EXECUTE_TOOL] Image types:`, imageData.map(img => img.mimeType));
+      
       const response = await fetch('/api/genkit-tool-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1014,14 +1177,63 @@ export default function Home() {
             spreadsheetId: defaultSpreadsheetId,
             sheetNames: selectedSheetNames
           },
-          images: imageData // Include images for supported tools
+          images: imageData, // Include images for supported tools
+          geminiApiKey: geminiApiKey // Include Gemini API key for image processing
         }),
       });
+
+      // Handle specific error responses
+      if (!response.ok) {
+        let errorMessage = 'Tool execution failed';
+        let errorDetails = '';
+        
+        try {
+          const errorData = await response.json();
+          
+          if (response.status === 413) {
+            // File size limit exceeded
+            errorMessage = '📁 File Size Limit Exceeded';
+            errorDetails = errorData.details || errorData.error || 'Your files are too large for processing.';
+            
+            // Add specific guidance based on the error
+            if (errorData.fileSize) {
+              errorDetails += `\n\n📊 File Size: ${errorData.fileSize}`;
+            }
+            if (errorData.maxSize) {
+              errorDetails += `\n📏 Maximum Size: ${errorData.maxSize}`;
+            }
+            if (errorData.totalSize) {
+              errorDetails += `\n📦 Total Size: ${errorData.totalSize}`;
+            }
+            if (errorData.maxTotalSize) {
+              errorDetails += `\n📦 Maximum Total: ${errorData.maxTotalSize}`;
+            }
+            
+            errorDetails += '\n\n💡 Tips:';
+            errorDetails += '\n• Compress your files before uploading';
+            errorDetails += '\n• Split large PDFs into smaller sections';
+            errorDetails += '\n• Use lower resolution images';
+            errorDetails += '\n• Upload fewer files at once';
+          } else {
+            errorMessage = errorData.error || 'Tool execution failed';
+            errorDetails = errorData.details || errorData.message || '';
+          }
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          errorMessage = `HTTP ${response.status}: Tool execution failed`;
+        }
+        
+        throw new Error(`${errorMessage}\n\n${errorDetails}`);
+      }
 
       const data = await response.json();
       
       // Remove processing message
       setChatMessages(prev => prev.filter(msg => !msg.isProcessing));
+      
+      // Now remove the tool call from pendingToolCalls after execution
+      console.log(`🔍 [EXECUTE_TOOL] Removing tool call ${toolCall.id} from pendingToolCalls after execution`);
+      setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
       
       // Add tool result to chat
       const resultMessage = {
@@ -1040,6 +1252,7 @@ export default function Home() {
 
       // If this was an image analysis or extraction, clear the uploaded images
       if (imageData.length > 0 && data.success) {
+        console.log(`🧹 [TOOL] Clearing ${uploadedImages.length} uploaded images after successful tool execution`);
         uploadedImages.forEach(img => {
           URL.revokeObjectURL(img.preview);
         });
@@ -1051,6 +1264,10 @@ export default function Home() {
       
       // Remove processing message
       setChatMessages(prev => prev.filter(msg => !msg.isProcessing));
+      
+      // Remove the tool call from pendingToolCalls even on error
+      console.log(`🔍 [EXECUTE_TOOL] Removing tool call ${toolCall.id} from pendingToolCalls after error`);
+      setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
       
       const errorMessage = {
         id: `msg_${Date.now()}_error`,
@@ -1102,6 +1319,7 @@ export default function Home() {
 
   // Function to reject a tool call
   const rejectTool = (toolCall: { id: string; function: { name: string } }) => {
+    console.log(`🔍 [REJECT_TOOL] Removing tool call ${toolCall.id} from pendingToolCalls`);
     setPendingToolCalls(prev => prev.filter(t => t.id !== toolCall.id));
     
     const rejectionMessage = {
@@ -1462,11 +1680,15 @@ export default function Home() {
               </div>
             )}
 
-            {/* Pending tool approvals */}
-            {pendingToolCalls.length > 0 && (
+            {/* Pending tool approvals - only for non-file-analysis tools */}
+            {pendingToolCalls.filter(toolCall => 
+              !['analyze_files', 'analyze_images', 'extract_data_from_files', 'extract_data_from_images'].includes(toolCall.function.name)
+            ).length > 0 && (
               <div className="mb-6 p-4 border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
                 <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-3 text-sm">Tool Approval Required</h3>
-                {pendingToolCalls.map((toolCall) => (
+                {pendingToolCalls.filter(toolCall => 
+                  !['analyze_files', 'analyze_images', 'extract_data_from_files', 'extract_data_from_images'].includes(toolCall.function.name)
+                ).map((toolCall) => (
                   <div key={toolCall.id} className="bg-white dark:bg-gray-700 p-3 rounded border mb-2 last:mb-0">
                     <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{toolCall.function.name}</p>
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-mono">
@@ -1503,34 +1725,81 @@ export default function Home() {
                     {uploadedImages.length > 0 && (
                       <div className="p-3 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex flex-wrap gap-2">
-                          {uploadedImages.map((image) => (
-                            <div key={image.id} className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 px-3 py-2 rounded-lg text-sm">
-                              {image.fileType === 'image' ? (
-                                <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                              ) : (
-                                <svg className="w-4 h-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                              )}
-                              <span className="text-blue-700 dark:text-blue-300 font-medium truncate max-w-[120px]">
-                                {image.file.name}
-                              </span>
-                              <button
-                                onClick={() => {
-                                  URL.revokeObjectURL(image.preview);
-                                  setUploadedImages(prev => prev.filter(img => img.id !== image.id));
-                                }}
-                                className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                              >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </div>
-                          ))}
+                          {(() => {
+                            const progress = getFileSizeProgress();
+                            return uploadedImages.map((image, index) => {
+                              const fileInfo = progress.fileSizes[index];
+                              const isLarge = fileInfo.percentage > 80;
+                              const isOverLimit = fileInfo.percentage > 100;
+                              
+                              return (
+                                <div key={image.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                                  isOverLimit ? 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800' :
+                                  isLarge ? 'bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800' :
+                                  'bg-blue-50 dark:bg-blue-900/30'
+                                }`}>
+                                  {image.fileType === 'image' ? (
+                                    <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-4 h-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                  )}
+                                  <div className="flex flex-col min-w-0">
+                                    <span className={`font-medium truncate max-w-[120px] ${
+                                      isOverLimit ? 'text-red-700 dark:text-red-300' :
+                                      isLarge ? 'text-yellow-700 dark:text-yellow-300' :
+                                      'text-blue-700 dark:text-blue-300'
+                                    }`}>
+                                      {image.file.name}
+                                    </span>
+                                    <span className={`text-xs ${
+                                      isOverLimit ? 'text-red-600 dark:text-red-400' :
+                                      isLarge ? 'text-yellow-600 dark:text-yellow-400' :
+                                      'text-blue-600 dark:text-blue-400'
+                                    }`}>
+                                      {fileInfo.sizeMB}MB ({fileInfo.percentage.toFixed(0)}% of limit)
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      URL.revokeObjectURL(image.preview);
+                                      setUploadedImages(prev => prev.filter(img => img.id !== image.id));
+                                    }}
+                                    className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              );
+                            });
+                          })()}
                         </div>
+                        
+                        {/* Total files size indicator */}
+                        {(() => {
+                          const progress = getFileSizeProgress();
+                          const maxFileSizeMB = (progress.maxFileSize / 1024 / 1024).toFixed(0);
+                          const totalSizeMB = progress.totalSizeMB;
+                          const fileCount = uploadedImages.length;
+                          
+                          return (
+                            <div className="mt-2 px-3 py-2 rounded-lg text-xs bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800">
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-700 dark:text-gray-300 font-medium">
+                                  📦 Total: {totalSizeMB}MB ({fileCount} file{fileCount !== 1 ? 's' : ''})
+                                </span>
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  Max: {maxFileSizeMB}MB each
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                     
@@ -1659,6 +1928,7 @@ export default function Home() {
                           className="hidden"
                           id="text-area-upload"
                         />
+
                         <label
                           htmlFor="text-area-upload"
                           className={`p-2 rounded-lg transition-all duration-200 cursor-pointer ${

@@ -1,10 +1,20 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 
+// Configure API to handle larger file uploads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb', // Allow up to 10MB for file uploads
+    },
+  },
+};
+
 // Define proper types for the function parameters
 interface Context {
   spreadsheetId?: string;
   sheetName?: string;
+  sheetNames?: string[];
   [key: string]: unknown;
 }
 
@@ -38,7 +48,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { toolCall, context, images } = req.body;
+    const { toolCall, context, images, geminiApiKey } = req.body;
+
+    // Validate file sizes before processing
+    if (images && images.length > 0) {
+      console.log(`API: ${images.length} images/files included`);
+      
+      const maxFileSize = 8 * 1024 * 1024; // 8MB limit for individual files
+      const totalSizeLimit = 20 * 1024 * 1024; // 20MB total limit
+      let totalSize = 0;
+      
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i];
+        const fileSize = Math.ceil((image.data.length * 3) / 4); // Approximate base64 size
+        
+        if (fileSize > maxFileSize) {
+          return res.status(413).json({
+            error: 'File too large',
+            details: `File ${i + 1} exceeds the 8MB limit. Please compress or resize your file.`,
+            fileIndex: i,
+            fileSize: `${(fileSize / 1024 / 1024).toFixed(1)}MB`,
+            maxSize: '8MB'
+          });
+        }
+        
+        totalSize += fileSize;
+      }
+      
+      if (totalSize > totalSizeLimit) {
+        return res.status(413).json({
+          error: 'Total file size too large',
+          details: `Combined file size (${(totalSize / 1024 / 1024).toFixed(1)}MB) exceeds the 20MB limit. Please reduce the number or size of files.`,
+          totalSize: `${(totalSize / 1024 / 1024).toFixed(1)}MB`,
+          maxTotalSize: '20MB'
+        });
+      }
+    }
 
     if (!toolCall || !toolCall.function) {
       return res.status(400).json({ error: 'Valid tool call is required' });
@@ -49,6 +94,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log(`API: Executing approved tool: ${name}`);
     console.log(`API: Tool arguments:`, args);
+    console.log(`API: Received ${images?.length || 0} images`);
+    console.log(`API: Images types:`, images?.map((img: ImageData) => img.mimeType) || []);
+    console.log(`API: Gemini API key provided:`, !!geminiApiKey);
 
     switch (name) {
       case 'update_sheet':
@@ -61,10 +109,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return await handleAnalyzeVoiceInput(args, res);
 
       case 'analyze_images':
-        return await handleAnalyzeImages(args, images, res);
+      case 'analyze_files':
+        return await handleAnalyzeImages(args, images, res, geminiApiKey);
 
       case 'extract_data_from_images':
-        return await handleExtractDataFromImages(args, context, images, res);
+      case 'extract_data_from_files':
+        return await handleExtractDataFromImages(args, context, images, res, geminiApiKey);
 
       default:
         return res.status(400).json({
@@ -75,6 +125,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error) {
     console.error('API: Tool execution failed:', error);
+    
+    // Handle specific error types
+    if (error instanceof Error) {
+      if (error.message.includes('body too large') || error.message.includes('413')) {
+        return res.status(413).json({
+          error: 'Request too large',
+          details: 'The uploaded files exceed the size limit. Please reduce file sizes or upload fewer files.',
+          limits: {
+            individualFile: '8MB',
+            totalFiles: '20MB'
+          }
+        });
+      }
+    }
+    
     return res.status(500).json({
       success: false,
       error: 'Failed to execute tool',
@@ -276,14 +341,18 @@ async function handleAnalyzeVoiceInput(args: ToolArgs, res: NextApiResponse) {
   }
 }
 
-async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: NextApiResponse) {
+async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: NextApiResponse, geminiApiKey?: string) {
   try {
     const { transcript } = args;
 
+    console.log(`🔍 [ANALYZE_IMAGES] Received ${images?.length || 0} images`);
+    console.log(`🔍 [ANALYZE_IMAGES] Args:`, args);
+
     if (!images || images.length === 0) {
+      console.log(`❌ [ANALYZE_IMAGES] No files provided`);
       return res.status(400).json({
         success: false,
-        error: 'Images are required for analysis'
+        error: 'Files are required for analysis'
       });
     }
 
@@ -311,7 +380,8 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: Nex
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             transcript: analysisPrompt,
-            images: [image] // Send one image at a time for detailed analysis
+            images: [image], // Send one image at a time for detailed analysis
+            geminiApiKey: geminiApiKey // Pass the Gemini API key
           })
         });
 
@@ -367,32 +437,46 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: Nex
   }
 }
 
-async function handleExtractDataFromImages(args: ToolArgs, context: Context, images: ImageData[], res: NextApiResponse) {
+async function handleExtractDataFromImages(args: ToolArgs, context: Context, images: ImageData[], res: NextApiResponse, geminiApiKey?: string) {
   try {
     const { transcript } = args;
-    const { spreadsheetId, sheetName } = context;
+    const { spreadsheetId, sheetName, sheetNames } = context;
 
     if (!images || images.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'Images are required for data extraction'
+        error: 'Files are required for data extraction'
       });
     }
 
-    if (!spreadsheetId || !sheetName) {
+    // Handle both sheetName (singular) and sheetNames (plural) for backward compatibility
+    const targetSheetName = sheetName || (Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames[0] : null);
+
+    if (!spreadsheetId || !targetSheetName) {
+      console.error('Missing context:', { spreadsheetId, sheetName, sheetNames, targetSheetName });
       return res.status(400).json({
         success: false,
-        error: 'Spreadsheet ID and sheet name are required for data extraction'
+        error: 'Spreadsheet ID and sheet name are required for data extraction',
+        details: {
+          provided: {
+            spreadsheetId: !!spreadsheetId,
+            sheetName: !!sheetName,
+            sheetNames: Array.isArray(sheetNames) ? sheetNames.length : 0
+          },
+          resolved: {
+            targetSheetName: !!targetSheetName
+          }
+        }
       });
     }
 
-    console.log(`Extracting data from ${images.length} images/files for ${sheetName}`);
+    console.log(`Extracting data from ${images.length} images/files for ${targetSheetName}`);
 
     // Get current sheet structure to understand what data to extract
     const sheetResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/get-sheet-data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spreadsheetId, sheetName })
+      body: JSON.stringify({ spreadsheetId, sheetName: targetSheetName })
     });
 
     let sheetStructure = null;
@@ -430,8 +514,9 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
           body: JSON.stringify({
             transcript: extractionPrompt,
             spreadsheetId,
-            sheetName,
-            images: [image]
+            sheetName: targetSheetName,
+            images: [image],
+            geminiApiKey: geminiApiKey
           })
         });
 
@@ -466,7 +551,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
     const successfulExtractions = extractionResults.filter(result => !result.error).length;
     const totalUpdates = extractionResults.reduce((sum, result) => sum + (result.data?.length || 0), 0);
     
-    const summary = `Successfully extracted data from ${successfulExtractions} out of ${images.length} ${images.length === 1 ? 'file' : 'files'}. Applied ${totalUpdates} updates to ${sheetName}.`;
+    const summary = `Successfully extracted data from ${successfulExtractions} out of ${images.length} ${images.length === 1 ? 'file' : 'files'}. Applied ${totalUpdates} updates to ${targetSheetName}.`;
 
     return res.status(200).json({
       success: true,
@@ -477,7 +562,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         successful: successfulExtractions,
         failed: images.length - successfulExtractions,
         totalUpdates,
-        sheetName
+        sheetName: targetSheetName
       }
     });
 
