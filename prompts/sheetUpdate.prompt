@@ -21,14 +21,22 @@ CRITICAL RULES:
 2. Use the smart insertion row: {{smartInsertionRow}}
 3. This preserves important calculations and totals
 4. Based on the user's request and existing data patterns, suggest values for each column
-5. Output your response in this EXACT JSON format:
+5. If the extracted data contains multiple entries (like multiple fuel invoices), create a separate row for EACH entry
+6. For multiple entries, increment the row number starting from {{smartInsertionRow}}
+7. IMPORTANT: First insert all rows, then update all cells
+8. Output your response in this EXACT JSON format:
 
 {
   "actions": [
     {
-      "type": "insertRow" | "updateCell",
+      "type": "insertRow",
       "sheet": "{{sheetName}}",
-      "row": {{smartInsertionRow}},
+      "row": {{smartInsertionRow}} + (entry_index - 1)
+    },
+    {
+      "type": "updateCell",
+      "sheet": "{{sheetName}}",
+      "row": {{smartInsertionRow}} + (entry_index - 1),
       "column": "ColumnLetter",
       "value": "suggested value",
       "confidence": "high|medium|low"
@@ -40,5 +48,7 @@ Rules:
 - Use "high" confidence for user-provided data
 - Use "medium" confidence for strong pattern matches  
 - Use "low" confidence for best guesses from historical patterns
-- ALWAYS use row {{smartInsertionRow}} to avoid overwriting formulas
+- ALWAYS use row {{smartInsertionRow}} or higher to avoid overwriting formulas
+- For multiple data entries, create multiple rows starting from {{smartInsertionRow}}
+- ALWAYS generate insertRow actions FIRST, then updateCell actions
 - Return ONLY the JSON object, no explanations or markdown 

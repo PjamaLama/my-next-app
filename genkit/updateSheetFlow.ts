@@ -309,35 +309,49 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
           console.log('Commit flag is true, executing actions...');
           let executedCount = 0;
           
-          for (const action of parsed.actions) {
+          // Separate insertRow and updateCell actions
+          const insertRowActions = parsed.actions.filter((action: any) => action.type === 'insertRow');
+          const updateCellActions = parsed.actions.filter((action: any) => action.type === 'updateCell');
+          
+          console.log(`Found ${insertRowActions.length} insertRow actions and ${updateCellActions.length} updateCell actions`);
+          
+          // First, execute all insertRow actions
+          for (const action of insertRowActions) {
             try {
-              if (action.type === 'insertRow') {
-                // Validate insert row position using smart insertion logic
-                if (action.row >= smartInsertionRow) {
-                  console.error(`Skipping insertRow at row ${action.row}: must be before smart insertion row ${smartInsertionRow}`);
-                  continue;
-                }
-                
-                console.log(`Executing insertRow: ${action.sheet}, row ${action.row}`);
-                await insertRow({
-                  sheetId: sheetId,
-                  sheetName: sheetName,
-                  row: action.row
-                });
-                executedCount++;
-              } else if (action.type === 'updateCell') {
-                console.log(`Executing updateCell: ${action.sheet}, ${action.column}${action.row} = "${action.value}"`);
-                await updateCell({
-                  sheetId: sheetId,
-                  sheetName: sheetName,
-                  row: action.row,
-                  column: action.column,
-                  value: action.value || ''
-                });
-                executedCount++;
+              // Validate insert row position - allow insertions at or after smart insertion row
+              // but before formula rows to avoid conflicts
+              if (action.row < smartInsertionRow) {
+                console.error(`Skipping insertRow at row ${action.row}: must be at or after smart insertion row ${smartInsertionRow}`);
+                continue;
               }
+              
+              console.log(`Executing insertRow: ${action.sheet}, row ${action.row}`);
+              await insertRow({
+                sheetId: sheetId,
+                sheetName: sheetName,
+                row: action.row
+              });
+              executedCount++;
             } catch (actionError) {
-              console.error(`Error executing action ${action.type}:`, actionError);
+              console.error(`Error executing insertRow action:`, actionError);
+              // Continue with other actions even if one fails
+            }
+          }
+          
+          // Then, execute all updateCell actions
+          for (const action of updateCellActions) {
+            try {
+              console.log(`Executing updateCell: ${action.sheet}, ${action.column}${action.row} = "${action.value}"`);
+              await updateCell({
+                sheetId: sheetId,
+                sheetName: sheetName,
+                row: action.row,
+                column: action.column,
+                value: action.value || ''
+              });
+              executedCount++;
+            } catch (actionError) {
+              console.error(`Error executing updateCell action:`, actionError);
               // Continue with other actions even if one fails
             }
           }

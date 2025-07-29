@@ -568,7 +568,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         .join('\n\n');
       
       // Create an enhanced transcript that includes the extracted data
-      const enhancedTranscript = `${transcript || 'Add the following data to the spreadsheet'}\n\nExtracted data:\n${extractedData}`;
+      const enhancedTranscript = `${transcript || 'Add the following data to the spreadsheet'}\n\nIMPORTANT: The extracted data contains multiple entries. Please create a separate row for each entry in the data.\n\nExtracted data:\n${extractedData}`;
       
       // Call the updateSheetFlow with the enhanced transcript
       const updateResult = await updateSheetFlow({

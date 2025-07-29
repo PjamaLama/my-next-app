@@ -53,8 +53,8 @@ const findFirstSummaryRowIndex = async (sheetId: string, sheetName: string): Pro
         if (response.data.values && response.data.values.length > 0) {
           const rows = response.data.values;
           
-          // Look for patterns that indicate summary rows
-          for (let i = 0; i < rows.length; i++) {
+          // Skip the header row (row 1) and look for patterns that indicate summary rows
+          for (let i = 1; i < rows.length; i++) {
             const rowString = rows[i].join(',').toLowerCase();
             if (rowString.includes('total') || rowString.includes('sum') || rowString.includes('subtotal') || 
                 rowString.includes('summary') || rowString.includes('balance')) {
