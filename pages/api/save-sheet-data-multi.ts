@@ -1,24 +1,23 @@
-import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { getGoogleSheetsClient } from '../../lib/googleSheets';
 
 // Helper function to escape sheet names for Google Sheets API
 const escapeSheetName = (name: string) => {
-  // If the sheet name contains spaces, special characters, or starts with a digit,
-  // wrap it in single quotes and escape any existing single quotes
   if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
     return `'${name.replace(/'/g, "''")}'`;
   }
   return name;
 };
 
-// Helper to parse A1 cell notation to {col: 'A', row: 27}
 function parseCell(cell: string): {col: string, row: number} | null {
-  const match = cell.match(/([A-Z]+)(\d+)/);
+  const match = cell.match(/^([A-Z]+)(\d+)$/);
   if (!match) return null;
-  return { col: match[1], row: parseInt(match[2]) };
+  return {
+    col: match[1],
+    row: parseInt(match[2], 10)
+  };
 }
 
-// Helper to build new cell from col and row
 function buildCell(col: string, row: number): string {
   return `${col}${row}`;
 }
@@ -31,176 +30,237 @@ interface UpdateItem {
   column?: string; // Add column name for better logging
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { spreadsheetId, updates } = req.body;
+// Helper function to expand sheet dimensions if needed
+const ensureSheetCapacity = async (sheetId: string, sheetName: string, targetRow: number, targetColumn: string): Promise<void> => {
+  try {
+    const sheets = await getGoogleSheetsClient();
+    
+    // Get current sheet metadata
+    const sheetMetadata = await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+      includeGridData: false
+    });
+    
+    const targetSheet = sheetMetadata.data.sheets?.find(s => s.properties?.title === sheetName);
+    if (!targetSheet?.properties?.gridProperties) {
+      throw new Error(`Sheet "${sheetName}" not found in spreadsheet`);
+    }
+    
+    const currentRowCount = targetSheet.properties.gridProperties.rowCount || 1000;
+    const currentColumnCount = targetSheet.properties.gridProperties.columnCount || 26;
+    
+    console.log(`Current sheet dimensions: ${currentRowCount} rows × ${currentColumnCount} columns`);
+    console.log(`Target cell: ${targetColumn}${targetRow}`);
+    
+    // Convert column letter to index (A=0, B=1, etc.)
+    const columnToIndex = (col: string): number => {
+      let index = 0;
+      for (let i = 0; i < col.length; i++) {
+        index = index * 26 + (col.charCodeAt(i) - 64);
+      }
+      return index - 1;
+    };
+    
+    const targetColumnIndex = columnToIndex(targetColumn);
+    const targetRowIndex = targetRow - 1; // Convert to 0-based index
+    
+    // Check if we need to expand the sheet
+    let needsExpansion = false;
+    const expansionRequests = [];
+    
+    if (targetRowIndex >= currentRowCount) {
+      console.log(`Need to expand rows: current=${currentRowCount}, target=${targetRowIndex + 1}`);
+      needsExpansion = true;
+      expansionRequests.push({
+        updateSheetProperties: {
+          properties: {
+            sheetId: targetSheet.properties.sheetId,
+            gridProperties: {
+              rowCount: Math.max(currentRowCount, targetRowIndex + 10) // Add some buffer
+            }
+          },
+          fields: 'gridProperties.rowCount'
+        }
+      });
+    }
+    
+    if (targetColumnIndex >= currentColumnCount) {
+      console.log(`Need to expand columns: current=${currentColumnCount}, target=${targetColumnIndex + 1}`);
+      needsExpansion = true;
+      expansionRequests.push({
+        updateSheetProperties: {
+          properties: {
+            sheetId: targetSheet.properties.sheetId,
+            gridProperties: {
+              columnCount: Math.max(currentColumnCount, targetColumnIndex + 5) // Add some buffer
+            }
+          },
+          fields: 'gridProperties.columnCount'
+        }
+      });
+    }
+    
+    // Expand the sheet if needed
+    if (needsExpansion) {
+      console.log(`Expanding sheet with ${expansionRequests.length} requests`);
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: {
+          requests: expansionRequests
+        }
+      });
+      console.log(`Successfully expanded sheet dimensions`);
+    }
+    
+  } catch (expansionError) {
+    console.warn(`Failed to expand sheet dimensions:`, expansionError);
+    // Continue anyway - the API might handle it
+  }
+};
 
-  if (!spreadsheetId || !updates || !Array.isArray(updates)) {
-    return res.status(400).json({ error: 'Missing required fields or invalid updates format' });
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  console.log(`Processing ${updates.length} updates across multiple sheets`);
+  const { spreadsheetId, updates } = req.body;
+
+  if (!spreadsheetId || !Array.isArray(updates) || updates.length === 0) {
+    return res.status(400).json({ error: 'Missing spreadsheetId or updates array' });
+  }
+
+  console.log(`📝 Processing ${updates.length} updates for spreadsheet: ${spreadsheetId}`);
 
   try {
-    console.log(`🚀 Starting multi-sheet update process for ${updates.length} updates`);
     const sheets = await getGoogleSheetsClient();
+    const results = [];
 
-    // Group updates by sheet name for efficient batch processing
+    // Group updates by sheet name for batch processing
     const updatesBySheet: { [sheetName: string]: UpdateItem[] } = {};
-    updates.forEach((update: UpdateItem) => {
+    
+    for (const update of updates) {
+      if (!update.sheetName || !update.cell || update.value === undefined) {
+        console.warn(`⚠️ Skipping invalid update:`, update);
+        continue;
+      }
+      
+      // Parse cell to get row and column info
+      const cellInfo = parseCell(update.cell);
+      if (!cellInfo) {
+        console.warn(`⚠️ Invalid cell format: ${update.cell}`);
+        continue;
+      }
+      
+      // Add parsed info to update
+      const enrichedUpdate: UpdateItem = {
+        ...update,
+        row: cellInfo.row,
+        column: cellInfo.col
+      };
+      
       if (!updatesBySheet[update.sheetName]) {
         updatesBySheet[update.sheetName] = [];
       }
-      updatesBySheet[update.sheetName].push(update);
-    });
+      updatesBySheet[update.sheetName].push(enrichedUpdate);
+    }
 
-    console.log(`Updates grouped by sheet:`, Object.entries(updatesBySheet).map(([sheet, updates]) => 
-      `${sheet}: ${updates.length} updates`).join(', '));
+    console.log(`📊 Grouped updates into ${Object.keys(updatesBySheet).length} sheets`);
 
-    // Get spreadsheet metadata for all sheets (row counts, sheetIds, etc.)
-    const spreadsheetMeta = await sheets.spreadsheets.get({
-      spreadsheetId,
-      fields: 'sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))'
-    });
-
-    // Process each sheet's updates
-    const results = [];
+    // Process each sheet
     for (const [sheetName, sheetUpdates] of Object.entries(updatesBySheet)) {
       try {
-        console.log(`Processing ${sheetUpdates.length} updates for sheet "${sheetName}"`);
+        console.log(`📋 Processing sheet: "${sheetName}" with ${sheetUpdates.length} updates`);
         
-        // Find the sheet metadata
-        const sheetMeta = spreadsheetMeta.data.sheets?.find(s => s.properties?.title === sheetName);
-        if (!sheetMeta) {
-          throw new Error(`Sheet "${sheetName}" not found in spreadsheet`);
+        // Get sheet metadata to find sheet ID
+        const sheetMetadata = await sheets.spreadsheets.get({
+          spreadsheetId,
+          includeGridData: false
+        });
+        
+        const sheet = sheetMetadata.data.sheets?.find(s => s.properties?.title === sheetName);
+        if (!sheet?.properties?.sheetId) {
+          throw new Error(`Sheet "${sheetName}" not found`);
         }
-        const sheetId = sheetMeta.properties?.sheetId;
-        let rowCount = sheetMeta.properties?.gridProperties?.rowCount || 1;
-        const columnCount = sheetMeta.properties?.gridProperties?.columnCount || 26; // Default to A-Z
-
-        // Sort updates by row number if available (for better visual organization in logs)
-        const sortedUpdates = sheetUpdates.sort((a, b) => {
-          if (a.row && b.row) {
-            return a.row - b.row;
-          }
-          return 0;
-        });
-
-        // Log the updates being made for debugging
-        sortedUpdates.forEach((update, index) => {
-          console.log(`  Update ${index + 1}: ${update.column || 'Unknown'} (${update.cell}) = "${update.value}"`);
-        });
-
-        // Parse target rows from cells
-        const targetRowsSet = new Set<number>();
-        sortedUpdates.forEach(update => {
-          const parsed = parseCell(update.cell);
-          if (parsed) {
-            targetRowsSet.add(parsed.row);
-          }
-        });
-        const targetRows = Array.from(targetRowsSet).sort((a, b) => a - b);
-
-        if (targetRows.length === 0) {
-          throw new Error('No valid cell references found in updates');
-        }
-
-        const minRow = targetRows[0];
-        const maxRow = targetRows[targetRows.length - 1];
-        const numRowsNeeded = maxRow - minRow + 1;
-
-        // Check if rows are consecutive (no gaps)
-        let isConsecutive = true;
-        for (let i = 1; i < targetRows.length; i++) {
-          if (targetRows[i] !== targetRows[i-1] + 1) {
-            isConsecutive = false;
-            break;
+        
+        const sheetId = sheet.properties.sheetId;
+        console.log(`🔍 Found sheet ID: ${sheetId} for "${sheetName}"`);
+        
+        // Sort updates by row to optimize insertion strategy
+        const sortedUpdates = [...sheetUpdates].sort((a, b) => (a.row || 0) - (b.row || 0));
+        
+        // Check if we need to expand the sheet for any of the target cells
+        for (const update of sortedUpdates) {
+          if (update.row && update.column) {
+            await ensureSheetCapacity(spreadsheetId, sheetName, update.row, update.column);
           }
         }
-        if (!isConsecutive) {
-          console.warn(`Warning: Non-consecutive target rows detected for "${sheetName}". Gaps will be filled with empty rows.`);
-        }
-
-        // Check if last row is a summary/totals row
-        let isSummary = false;
-        if (rowCount > 1) {
-          const lastRowRange = `${escapeSheetName(sheetName)}!A${rowCount}:${String.fromCharCode(64 + columnCount)}${rowCount}`;
+        
+        // Group consecutive rows for batch insertion
+        let currentGroup: UpdateItem[] = [];
+        let lastRow = -1;
+        const groups: UpdateItem[][] = [];
+        
+        for (const update of sortedUpdates) {
+          if (!update.row) continue;
           
-          // Fetch formatted values to check for "Total" or "Sum"
-          const formattedRes = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: lastRowRange,
-            valueRenderOption: 'FORMATTED_VALUE',
-          });
-          const formattedValues = formattedRes.data.values?.[0] || [];
-
-          // Fetch formulas to check for =SUM etc.
-          const formulaRes = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: lastRowRange,
-            valueRenderOption: 'FORMULA',
-          });
-          const formulaValues = formulaRes.data.values?.[0] || [];
-
-          isSummary = formattedValues.some(cell => {
-            const str = String(cell).toLowerCase();
-            return str.includes('total') || str.includes('sum');
-          }) || formulaValues.some(cell => String(cell).startsWith('='));
+          if (lastRow === -1 || update.row === lastRow + 1) {
+            // Consecutive or first row
+            currentGroup.push(update);
+            lastRow = update.row;
+          } else {
+            // Gap found, start new group
+            if (currentGroup.length > 0) {
+              groups.push(currentGroup);
+            }
+            currentGroup = [update];
+            lastRow = update.row;
+          }
         }
-
-        console.log(`Sheet "${sheetName}" has ${rowCount} rows. Last row is ${isSummary ? '' : 'not '}summary. Target rows: ${targetRows.join(', ')}`);
-
-        // Handle insertion if needed
-        if (maxRow > rowCount || (isSummary && minRow === rowCount)) {
-          let insertStartIndex: number;
-          let insertEndIndex: number;
-          let delta = 0; // Adjustment for cell rows
-
-          if (isSummary && minRow === rowCount + 1) {
-            // Insert above summary row and adjust references
-            delta = -1; // e.g., shift 27 to 26
-            insertStartIndex = rowCount - 1;
-            insertEndIndex = insertStartIndex + numRowsNeeded;
-
-            // Adjust all updates' rows and cells
-            sortedUpdates.forEach(update => {
-              const parsed = parseCell(update.cell);
-              if (parsed) {
-                const newRow = parsed.row + delta;
-                update.cell = buildCell(parsed.col, newRow);
-                update.row = newRow;
+        
+        // Add the last group
+        if (currentGroup.length > 0) {
+          groups.push(currentGroup);
+        }
+        
+        console.log(`📦 Created ${groups.length} row groups for insertion optimization`);
+        
+        // Insert rows for each group if needed
+        let rowCount = 0; // Track current row count for insertion calculations
+        for (const group of groups) {
+          const groupStartRow = group[0].row!;
+          const groupEndRow = group[group.length - 1].row!;
+          
+          if (groupStartRow > rowCount + 1) {
+            // Need to insert rows
+            const insertStartIndex = rowCount;
+            const insertEndIndex = groupStartRow - 1;
+            
+            console.log(`➕ Inserting ${insertEndIndex - insertStartIndex} rows at position ${insertStartIndex}`);
+            
+            await sheets.spreadsheets.batchUpdate({
+              spreadsheetId,
+              requestBody: {
+                requests: [{
+                  insertDimension: {
+                    range: {
+                      sheetId,
+                      dimension: 'ROWS',
+                      startIndex: insertStartIndex,
+                      endIndex: insertEndIndex
+                    },
+                    inheritFromBefore: false // Or true if you want to inherit formatting
+                  }
+                }]
               }
             });
 
-            console.log(`Adjusting for insertion above summary: delta=${delta}, new targets: ${minRow + delta} to ${maxRow + delta}`);
-          } else {
-            // Normal append or extension
-            const rowsToInsert = maxRow - rowCount;
-            insertStartIndex = rowCount;
-            insertEndIndex = insertStartIndex + rowsToInsert;
-            console.log(`Appending ${rowsToInsert} rows at end`);
+            console.log(`Inserted ${insertEndIndex - insertStartIndex} rows at startIndex ${insertStartIndex}`);
+            // Update rowCount after insertion
+            rowCount += (insertEndIndex - insertStartIndex);
           }
-
-          // Perform the insertion
-          await sheets.spreadsheets.batchUpdate({
-            spreadsheetId,
-            requestBody: {
-              requests: [{
-                insertDimension: {
-                  range: {
-                    sheetId,
-                    dimension: 'ROWS',
-                    startIndex: insertStartIndex,
-                    endIndex: insertEndIndex
-                  },
-                  inheritFromBefore: false // Or true if you want to inherit formatting
-                }
-              }]
-            }
-          });
-
-          console.log(`Inserted ${insertEndIndex - insertStartIndex} rows at startIndex ${insertStartIndex}`);
-          // Update rowCount after insertion
-          rowCount += (insertEndIndex - insertStartIndex);
+          
+          // Update rowCount to reflect the group
+          rowCount = groupEndRow;
         }
 
         // Create batch update data for this sheet (using possibly adjusted cells)
