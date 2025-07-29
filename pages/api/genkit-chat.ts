@@ -13,6 +13,15 @@ export const config = {
 interface Context {
   spreadsheetId?: string;
   sheetName?: string;
+  fileAnalysis?: {
+    files: Array<{
+      mimeType: string;
+      analysis: any;
+      extractedData?: any;
+      timestamp: number;
+    }>;
+    lastUpdated: number;
+  };
   [key: string]: unknown;
 }
 
