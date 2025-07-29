@@ -117,6 +117,78 @@ async function executeToolCall(
   }
 }
 
+// Function to handle follow-up actions based on user responses
+function generateFollowUpActions(message: string, context: Context): Array<{
+  id: string;
+  type: string;
+  function: {
+    name: string;
+    arguments: string;
+  };
+}> {
+  const lowerMessage = message.toLowerCase();
+  const actions: Array<{
+    id: string;
+    type: string;
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }> = [];
+
+  // Check if user wants to add data to spreadsheet
+  if (lowerMessage.includes('add') || lowerMessage.includes('1') || lowerMessage.includes('spreadsheet')) {
+    if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
+      const latestAnalysis = context.fileAnalysis.files[context.fileAnalysis.files.length - 1];
+      if (latestAnalysis.extractedData && latestAnalysis.extractedData.length > 0) {
+        actions.push({
+          id: `tool_${Date.now()}_add_data`,
+          type: 'function',
+          function: {
+            name: 'extract_data_from_files',
+            arguments: JSON.stringify({
+              transcript: 'Add the extracted data to the spreadsheet',
+              files: context.fileAnalysis.files.length
+            })
+          }
+        });
+      }
+    }
+  }
+
+  // Check if user wants to extract more information
+  if (lowerMessage.includes('extract') || lowerMessage.includes('2') || lowerMessage.includes('more')) {
+    actions.push({
+      id: `tool_${Date.now()}_extract_more`,
+      type: 'function',
+      function: {
+        name: 'analyze_files',
+        arguments: JSON.stringify({
+          transcript: 'Extract additional information from the files',
+          fileCount: context.fileAnalysis?.files.length || 1
+        })
+      }
+    });
+  }
+
+  // Check if user wants to generate a report
+  if (lowerMessage.includes('report') || lowerMessage.includes('3') || lowerMessage.includes('summary')) {
+    actions.push({
+      id: `tool_${Date.now()}_generate_report`,
+      type: 'function',
+      function: {
+        name: 'analyze_files',
+        arguments: JSON.stringify({
+          transcript: 'Generate a comprehensive summary report of the file content',
+          fileCount: context.fileAnalysis?.files.length || 1
+        })
+      }
+    });
+  }
+
+  return actions;
+}
+
 // Simple chat processing with image support and automatic tool execution
 async function processMessage(
   message: string, 
@@ -141,6 +213,17 @@ async function processMessage(
     const hasFiles = images && images.length > 0;
     const hasPDFs = hasFiles && images.some(img => img.mimeType === 'application/pdf');
     const hasImages = hasFiles && images.some(img => img.mimeType.startsWith('image/'));
+    
+    // Check for follow-up actions if we have recent analysis
+    if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
+      const timeSinceAnalysis = Date.now() - (context.fileAnalysis.lastUpdated || 0);
+      if (timeSinceAnalysis < 5 * 60 * 1000) { // Within 5 minutes
+        const followUpActions = generateFollowUpActions(message, context);
+        if (followUpActions.length > 0) {
+          suggestedTools.push(...followUpActions);
+        }
+      }
+    }
     
     if (hasFiles) {
       // Determine the appropriate tool name based on file types
@@ -225,9 +308,45 @@ async function processMessage(
       const result = await executeToolCall(toolCall, context, images);
       toolResults.push(result);
       
-      // Enhance response based on tool execution results
+      // Store analysis results in context for future reference
       if (result.success) {
         if (toolCall.function.name === 'analyze_files' || toolCall.function.name === 'analyze_images') {
+          // Store file analysis results
+          if (!context.fileAnalysis) {
+            context.fileAnalysis = {
+              files: [],
+              lastUpdated: Date.now()
+            };
+          }
+          
+          // Parse the analysis result to extract structured data
+          let analysisData = null;
+          try {
+            if (typeof result.result === 'string') {
+              // Try to parse the result as JSON
+              analysisData = JSON.parse(result.result);
+            } else {
+              analysisData = result.result;
+            }
+          } catch (e) {
+            analysisData = { rawResult: result.result };
+          }
+          
+          // Store analysis for each file
+          if (context.fileAnalysis) {
+            images.forEach((image, index) => {
+              context.fileAnalysis!.files.push({
+                mimeType: image.mimeType,
+                analysis: analysisData,
+                extractedData: analysisData?.extracted_data || [],
+                timestamp: Date.now()
+              });
+            });
+            
+            context.fileAnalysis.lastUpdated = Date.now();
+            console.log(`🔍 [CONTEXT] Stored analysis for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
+          }
+          
           enhancedResponse += `\n\n📄 **File Analysis Complete:**\n${result.result}`;
         } else if (toolCall.function.name === 'extract_data_from_files' || toolCall.function.name === 'extract_data_from_images') {
           enhancedResponse += `\n\n📊 **Data Extraction Complete:**\n${result.result}`;
@@ -241,33 +360,104 @@ async function processMessage(
       }
     }
 
-    // Generate conversational response with file awareness
+    // Generate intelligent conversational response based on analysis results
     let response = '';
     const fileInfo = hasFiles ? ` along with ${images.length} ${images.length === 1 ? 'file' : 'files'}` : '';
 
-    switch (intent) {
-      case 'extract_from_files':
-        response = `I've analyzed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and extracted the relevant data.`;
-        break;
-      case 'add_data':
-        response = `I've processed your request to add new data${fileInfo} to your spreadsheet "${context?.sheetName || 'current sheet'}".`;
-        break;
-      case 'update_data':
-        response = `I've updated your spreadsheet "${context?.sheetName || 'current sheet'}" based on your input${fileInfo}.`;
-        break;
-      case 'get_data':
-        if (context?.sheetName) {
-          response = `I've retrieved the current data from your "${context.sheetName}" sheet.`;
+    // Check if we have recent analysis results to provide intelligent suggestions
+    if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
+      const latestAnalysis = context.fileAnalysis.files[context.fileAnalysis.files.length - 1];
+      const timeSinceAnalysis = Date.now() - (context.fileAnalysis.lastUpdated || 0);
+      
+      // If analysis was done recently (within last 5 minutes), provide intelligent response
+      if (timeSinceAnalysis < 5 * 60 * 1000) {
+        console.log(`🔍 [INTELLIGENT_RESPONSE] Generating intelligent response for recent analysis (${timeSinceAnalysis}ms ago)`);
+        const extractedData = latestAnalysis.extractedData || [];
+        
+        if (extractedData.length > 0) {
+          console.log(`🔍 [INTELLIGENT_RESPONSE] Found ${extractedData.length} data points to display`);
+          response = `I've analyzed your file and found ${extractedData.length} data points. Here's what I found:\n\n`;
+          
+          // Add a summary of extracted data
+          if (Array.isArray(extractedData)) {
+            extractedData.slice(0, 5).forEach((item, index) => {
+              if (item.field && item.value) {
+                response += `• **${item.field}**: ${item.value}\n`;
+              }
+            });
+            
+            if (extractedData.length > 5) {
+              response += `• ... and ${extractedData.length - 5} more items\n`;
+            }
+          }
+          
+          response += `\n**What would you like me to do next?**\n`;
+          response += `1. 📊 Add this data to your spreadsheet\n`;
+          response += `2. 🔍 Extract additional information\n`;
+          response += `3. 📋 Generate a summary report\n`;
+          response += `4. 💬 Ask me questions about the data`;
+          
         } else {
-          response = `I'd be happy to help you get data, but you'll need to select a spreadsheet and sheet first. Please choose your target sheet and try again.`;
+          response = `I've analyzed your file but didn't find structured data to extract. The file appears to be a ${latestAnalysis.mimeType}.\n\n`;
+          response += `**What would you like me to do next?**\n`;
+          response += `1. 🔍 Try a different analysis approach\n`;
+          response += `2. 📝 Extract text content instead\n`;
+          response += `3. 📋 Generate a document summary\n`;
+          response += `4. 💬 Ask me questions about the content`;
         }
-        break;
-      default:
-        if (hasFiles) {
-          response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
-        } else {
-          response = `I've processed your request and completed the necessary actions.`;
+      } else {
+        // Analysis is older, provide standard response
+        switch (intent) {
+          case 'extract_from_files':
+            response = `I've analyzed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and extracted the relevant data.`;
+            break;
+          case 'add_data':
+            response = `I've processed your request to add new data${fileInfo} to your spreadsheet "${context?.sheetName || 'current sheet'}".`;
+            break;
+          case 'update_data':
+            response = `I've updated your spreadsheet "${context?.sheetName || 'current sheet'}" based on your input${fileInfo}.`;
+            break;
+          case 'get_data':
+            if (context?.sheetName) {
+              response = `I've retrieved the current data from your "${context.sheetName}" sheet.`;
+            } else {
+              response = `I'd be happy to help you get data, but you'll need to select a spreadsheet and sheet first. Please choose your target sheet and try again.`;
+            }
+            break;
+          default:
+            if (hasFiles) {
+              response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
+            } else {
+              response = `I've processed your request and completed the necessary actions.`;
+            }
         }
+      }
+    } else {
+      // No analysis results, use standard response logic
+      switch (intent) {
+        case 'extract_from_files':
+          response = `I've analyzed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and extracted the relevant data.`;
+          break;
+        case 'add_data':
+          response = `I've processed your request to add new data${fileInfo} to your spreadsheet "${context?.sheetName || 'current sheet'}".`;
+          break;
+        case 'update_data':
+          response = `I've updated your spreadsheet "${context?.sheetName || 'current sheet'}" based on your input${fileInfo}.`;
+          break;
+        case 'get_data':
+          if (context?.sheetName) {
+            response = `I've retrieved the current data from your "${context.sheetName}" sheet.`;
+          } else {
+            response = `I'd be happy to help you get data, but you'll need to select a spreadsheet and sheet first. Please choose your target sheet and try again.`;
+          }
+          break;
+        default:
+          if (hasFiles) {
+            response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
+          } else {
+            response = `I've processed your request and completed the necessary actions.`;
+          }
+      }
     }
 
     // Add enhanced response with tool results
@@ -283,7 +473,8 @@ async function processMessage(
       response,
       toolCalls: [], // No manual tool calls needed
       pendingToolCalls: [], // No pending tools - all executed automatically
-      toolResults: toolResults // Include the results of auto-executed tools
+      toolResults: toolResults, // Include the results of auto-executed tools
+      context: context // Return updated context with analysis results
     };
 
   } catch (error) {
@@ -292,7 +483,8 @@ async function processMessage(
       response: `I encountered an error processing your message: ${error instanceof Error ? error.message : 'Unknown error'}`,
       toolCalls: [],
       pendingToolCalls: [],
-      toolResults: []
+      toolResults: [],
+      context: context // Return original context even on error
     };
   }
 }

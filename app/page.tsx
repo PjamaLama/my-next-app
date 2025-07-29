@@ -928,6 +928,14 @@ export default function Home() {
 
       const data = await response.json();
       
+      // Update context with any changes from the API
+      if (data.context) {
+        // Update sheet names if provided
+        if (data.context.sheetNames) {
+          setSelectedSheetNames(data.context.sheetNames);
+        }
+      }
+      
       // Add AI response to chat with appropriate message type
       const aiMessage = {
         id: `msg_${Date.now()}_ai`,
