@@ -35,9 +35,10 @@ interface UpdateSheetOutput {
 }
 
 // Template's analyzeSheetStructure function
-const analyzeSheetStructure = (sheetData: string[][]): { formulaRows: string, dataRows: string, smartInsertionRow: number } => {
+const analyzeSheetStructure = (sheetData: string[][]): { formulaRows: string, dataRows: string, smartInsertionRow: number, lastRowHasFunctions: boolean } => {
   const formulaRows: number[] = [];
   const dataRows: number[] = [];
+  let lastRowHasFunctions = false;
   
   // Skip header row (index 0)
   for (let i = 1; i < sheetData.length; i++) {
@@ -57,6 +58,10 @@ const analyzeSheetStructure = (sheetData: string[][]): { formulaRows: string, da
     
     if (hasFormulas) {
       formulaRows.push(rowNumber);
+      // Check if this is the last row with functions
+      if (i === sheetData.length - 1) {
+        lastRowHasFunctions = true;
+      }
     } else if (row.some(cell => cell !== "" && cell !== null && cell !== undefined)) {
       dataRows.push(rowNumber);
     }
@@ -67,7 +72,10 @@ const analyzeSheetStructure = (sheetData: string[][]): { formulaRows: string, da
   const minFormulaRow = Math.min(...formulaRows, Number.MAX_SAFE_INTEGER);
   
   let smartInsertionRow: number;
-  if (formulaRows.length > 0 && minFormulaRow > maxDataRow) {
+  if (lastRowHasFunctions) {
+    // If the last row has functions, insert above it
+    smartInsertionRow = sheetData.length; // Insert at the last row position
+  } else if (formulaRows.length > 0 && minFormulaRow > maxDataRow) {
     // Insert before the first formula row
     smartInsertionRow = minFormulaRow;
   } else {
@@ -78,7 +86,8 @@ const analyzeSheetStructure = (sheetData: string[][]): { formulaRows: string, da
   return { 
     formulaRows: formulaRows.join(', ') || 'None detected',
     dataRows: dataRows.join(', ') || 'None detected', 
-    smartInsertionRow 
+    smartInsertionRow,
+    lastRowHasFunctions
   };
 };
 
@@ -272,10 +281,10 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
     }
     
     // Analyze sheet structure using template logic
-    const { formulaRows, dataRows, smartInsertionRow } = analyzeSheetStructure(sheetData);
+    const { formulaRows, dataRows, smartInsertionRow, lastRowHasFunctions } = analyzeSheetStructure(sheetData);
     const patternAnalysis = buildPatternAnalysis(sheetData);
     
-    console.log('Sheet structure analysis:', { formulaRows, dataRows, smartInsertionRow });
+    console.log('Sheet structure analysis:', { formulaRows, dataRows, smartInsertionRow, lastRowHasFunctions });
     console.log('Pattern analysis:', patternAnalysis);
     
     // Convert to CSV for the prompt
@@ -291,7 +300,8 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
       dataRows,
       smartInsertionRow,
       headers,
-      patternAnalysis
+      patternAnalysis,
+      lastRowHasFunctions: lastRowHasFunctions ? 'true' : 'false'
     });
     
     console.log('AI response:', text);
@@ -318,9 +328,11 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
           // First, execute all insertRow actions
           for (const action of insertRowActions) {
             try {
-              // Validate insert row position - allow insertions at or after smart insertion row
-              // but before formula rows to avoid conflicts
-              if (action.row < smartInsertionRow) {
+              // Enhanced validation for insert row position
+              if (lastRowHasFunctions && action.row >= sheetData.length) {
+                // If last row has functions, allow insertion at the last row position
+                console.log(`Executing insertRow at row ${action.row} (above function row)`);
+              } else if (action.row < smartInsertionRow) {
                 console.error(`Skipping insertRow at row ${action.row}: must be at or after smart insertion row ${smartInsertionRow}`);
                 continue;
               }

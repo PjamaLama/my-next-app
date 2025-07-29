@@ -6,6 +6,7 @@ IMPORTANT SHEET STRUCTURE ANALYSIS:
 - Formula rows (DO NOT OVERWRITE): {{formulaRows}}
 - Data rows: {{dataRows}}
 - Smart insertion row: {{smartInsertionRow}} (calculated to avoid formula conflicts)
+- Last row has functions: {{lastRowHasFunctions}}
 
 User's request: {{transcript}}
 
@@ -19,12 +20,13 @@ DATA PATTERN ANALYSIS:
 CRITICAL RULES:
 1. NEVER overwrite formula rows: {{formulaRows}}
 2. Use the smart insertion row: {{smartInsertionRow}}
-3. This preserves important calculations and totals
-4. Based on the user's request and existing data patterns, suggest values for each column
-5. If the extracted data contains multiple entries (like multiple fuel invoices), create a separate row for EACH entry
-6. For multiple entries, increment the row number starting from {{smartInsertionRow}}
-7. IMPORTANT: First insert all rows, then update all cells
-8. Output your response in this EXACT JSON format:
+3. If last row has functions ({{lastRowHasFunctions}}), insert rows ABOVE the last row to preserve calculations
+4. This preserves important calculations and totals
+5. Based on the user's request and existing data patterns, suggest values for each column
+6. If the extracted data contains multiple entries (like multiple fuel invoices), create a separate row for EACH entry
+7. For multiple entries, increment the row number starting from {{smartInsertionRow}}
+8. IMPORTANT: First insert all rows, then update all cells
+9. Output your response in this EXACT JSON format:
 
 {
   "actions": [
@@ -49,6 +51,7 @@ Rules:
 - Use "medium" confidence for strong pattern matches  
 - Use "low" confidence for best guesses from historical patterns
 - ALWAYS use row {{smartInsertionRow}} or higher to avoid overwriting formulas
+- If last row has functions, insert at row {{smartInsertionRow}} (which will be the last row position)
 - For multiple data entries, create multiple rows starting from {{smartInsertionRow}}
 - ALWAYS generate insertRow actions FIRST, then updateCell actions
 - Return ONLY the JSON object, no explanations or markdown 

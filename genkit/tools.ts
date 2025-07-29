@@ -175,18 +175,53 @@ export const insertRow = async (input: InsertRowInput): Promise<string> => {
     
     console.log(`Inserting row at position ${row} in sheet: ${sheetId}/${sheetName}`);
     
-    // Find the first summary row to validate insertion position
-    const firstSummaryRowIndex = await findFirstSummaryRowIndex(sheetId, sheetName);
-    
-    // Validate that the insertion row is before the first summary row
-    if (row >= firstSummaryRowIndex) {
-      throw new Error(`Cannot insert row at position ${row}. Insertion must be before the first summary row (row ${firstSummaryRowIndex}).`);
-    }
-    
-    console.log(`Validated insertion: row ${row} is before first summary row ${firstSummaryRowIndex}`);
-    
     // Get Google Sheets client
     const sheets = await getGoogleSheetsClient();
+    
+    // Helper function to escape sheet names for Google Sheets API
+    const escapeSheetName = (name: string) => {
+      if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+        return `'${name.replace(/'/g, "''")}'`;
+      }
+      return name;
+    };
+    
+    const escapedSheetName = escapeSheetName(sheetName);
+    
+    // Get current sheet data to check if we're inserting above a function row
+    const currentData = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `${escapedSheetName}!A1:Z1000`,
+      valueRenderOption: 'FORMATTED_VALUE',
+      dateTimeRenderOption: 'FORMATTED_STRING',
+    });
+    
+    const sheetData = currentData.data.values || [];
+    const isInsertingAboveFunctionRow = row === sheetData.length && 
+      sheetData[sheetData.length - 1]?.some(cell => {
+        const cellStr = String(cell);
+        return cellStr.startsWith('=') || 
+               cellStr.includes('=SUM') || 
+               cellStr.includes('=TOTAL') ||
+               cellStr.includes('=COUNT') ||
+               cellStr.includes('=AVERAGE') ||
+               cellStr.includes('=IF(') ||
+               cellStr.toUpperCase().includes('FUNCTION');
+      });
+    
+    if (isInsertingAboveFunctionRow) {
+      console.log(`Inserting row above function row at position ${row}`);
+    } else {
+      // Find the first summary row to validate insertion position (existing logic)
+      const firstSummaryRowIndex = await findFirstSummaryRowIndex(sheetId, sheetName);
+      
+      // Validate that the insertion row is before the first summary row
+      if (row >= firstSummaryRowIndex) {
+        throw new Error(`Cannot insert row at position ${row}. Insertion must be before the first summary row (row ${firstSummaryRowIndex}).`);
+      }
+      
+      console.log(`Validated insertion: row ${row} is before first summary row ${firstSummaryRowIndex}`);
+    }
     
     // First, get sheet metadata to find the correct sheet ID
     const sheetMetadata = await sheets.spreadsheets.get({
@@ -223,9 +258,13 @@ export const insertRow = async (input: InsertRowInput): Promise<string> => {
       }
     });
     
-    console.log(`Successfully inserted row at position ${row}`);
+    const message = isInsertingAboveFunctionRow 
+      ? `Successfully inserted row above function row at position ${row}`
+      : `Successfully inserted row at position ${row}`;
     
-    return `Successfully inserted row at position ${row} in sheet "${sheetName}". Rows below have been shifted down.`;
+    console.log(message);
+    
+    return `${message} in sheet "${sheetName}". Rows below have been shifted down.`;
     
   } catch (error) {
     console.error('Error inserting row:', error);
