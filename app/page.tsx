@@ -1477,8 +1477,8 @@ export default function Home() {
                               result: string;
                               success: boolean;
                               details?: unknown;
-                            }) => (
-                              <div key={result.id} className={`text-xs p-2 rounded ${
+                            }, index) => (
+                              <div key={`${result.id}-${index}`} className={`text-xs p-2 rounded ${
                                 result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                               }`}>
                                 <p>{result.result}</p>

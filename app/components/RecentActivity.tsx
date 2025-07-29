@@ -59,7 +59,7 @@ export default function RecentActivity({ activity, activityError }: RecentActivi
                 {activity.slice(0, 5).map((item, i) => {
                   const expanded = expandedActivity === i;
                   return (
-                    <li key={i} className="flex flex-col gap-1 text-xs w-full p-2 sm:p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                    <li key={`activity-item-${item.timestamp}-${i}`} className="flex flex-col gap-1 text-xs w-full p-2 sm:p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
                       <div className="flex items-start gap-2 sm:gap-3 cursor-pointer" onClick={() => setExpandedActivity(expanded ? null : i)}>
                   <span className="inline-flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gray-100 dark:bg-gray-800 mt-0.5 flex-shrink-0">
                     {item.type === 'add' && <svg width="12" height="12" className="sm:w-4 sm:h-4" fill="none" stroke="#22c55e" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>}
@@ -122,7 +122,7 @@ export default function RecentActivity({ activity, activityError }: RecentActivi
                               </thead>
                               <tbody>
                                 {item.rowData.map((cell, idx) => (
-                                  <tr key={idx}>
+                                  <tr key={`cell-${idx}-${cell.column}-${cell.cell}`}>
                                     <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.column}</td>
                                     <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.cell}</td>
                                     <td className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">{cell.value}</td>
