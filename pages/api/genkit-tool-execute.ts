@@ -509,123 +509,100 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
 
     console.log(`Extracting data from ${images.length} images/files for ${targetSheetName}`);
 
-    // Get current sheet structure to understand what data to extract
-    const sheetResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/get-sheet-data`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spreadsheetId, sheetName: targetSheetName })
-    });
-
-    let sheetStructure = null;
-    if (sheetResponse.ok) {
-      try {
-        const sheetResult = await sheetResponse.json();
-        sheetStructure = {
-          headers: sheetResult.data[0] || [],
-          rows: sheetResult.data.slice(1) || []
-        };
-      } catch (parseError) {
-        console.error('Failed to parse sheet response as JSON:', parseError);
-        // Continue without sheet structure
-      }
-    }
-
-    const extractionResults = [];
-
+    // First, analyze the files to extract data
+    const analysisResults: Array<{
+      index: number;
+      type: string;
+      analysis: any;
+      success: boolean;
+      error?: string;
+    }> = [];
+    
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
       
       try {
-        // Create a detailed extraction prompt
-        let extractionPrompt = `Extract structured data from this ${image.mimeType.includes('pdf') ? 'PDF document' : 'image'} that would be suitable for adding to a spreadsheet.`;
+        console.log(`Analyzing file ${i + 1}: ${image.mimeType}`);
         
-        if (sheetStructure && sheetStructure.headers.length > 0) {
-          extractionPrompt += ` The target spreadsheet has these columns: ${sheetStructure.headers.join(', ')}. Extract data that matches these columns when possible.`;
-        }
-        
-        if (transcript) {
-          extractionPrompt += ` User request: "${transcript}"`;
-        }
-        
-        extractionPrompt += ` Return the data in a structured format that can be easily added to the spreadsheet.`;
-
-        // Use the existing Gemini API for extraction
-        const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/parse-and-fill`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transcript: extractionPrompt,
-            spreadsheetId,
-            sheetName: targetSheetName,
-            images: [image],
-            geminiApiKey: apiKey,
-          })
+        // Use the analyzeFileFlow to extract data from the file
+        const flow = analyzeFileFlow(apiKey);
+        const result = await flow.run({ 
+          prompt: transcript || 'Extract all relevant data from this file that could be added to a spreadsheet',
+          files: [image]
         });
-
-        if (response.ok) {
-          try {
-            const extractionData = await response.json();
-            extractionResults.push({
-              index: i + 1,
-              type: image.mimeType,
-              extraction: 'Data extracted successfully',
-              data: extractionData.updates || [],
-              applied: extractionData.success || false
-            });
-          } catch (parseError) {
-            console.error(`Failed to parse extraction response as JSON for image ${i + 1}:`, parseError);
-            extractionResults.push({
-              index: i + 1,
-              type: image.mimeType,
-              extraction: 'Failed to parse extraction response',
-              error: 'Invalid JSON response'
-            });
-          }
-        } else {
-          const errorText = await response.text();
-          console.error(`Extraction API error for image ${i + 1}:`, errorText);
-          let errorDetail = errorText;
-          if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
-            errorDetail = 'Received HTML error page from internal API. Check server logs for details.';
-          }
-          extractionResults.push({
-            index: i + 1,
-            type: image.mimeType,
-            extraction: 'Failed to extract data',
-            error: errorDetail
-          });
-        }
-      } catch (error) {
-        console.error(`Error extracting data from image ${i + 1}:`, error);
-        extractionResults.push({
+        
+        analysisResults.push({
           index: i + 1,
           type: image.mimeType,
-          extraction: 'Data extraction failed',
-          error: error instanceof Error ? error.message : String(error)
+          analysis: result,
+          success: true
+        });
+        
+      } catch (analysisError) {
+        console.error(`Error analyzing file ${i + 1}:`, analysisError);
+        analysisResults.push({
+          index: i + 1,
+          type: image.mimeType,
+          analysis: null,
+          success: false,
+          error: analysisError instanceof Error ? analysisError.message : 'Unknown error'
         });
       }
     }
 
-    const successfulExtractions = extractionResults.filter(result => !result.error).length;
-    const totalUpdates = extractionResults.reduce((sum, result) => sum + (result.data?.length || 0), 0);
-    
-    const summary = `Successfully extracted data from ${successfulExtractions} out of ${images.length} ${images.length === 1 ? 'file' : 'files'}. Applied ${totalUpdates} updates to ${targetSheetName}.`;
-
-    return res.status(200).json({
-      success: true,
-      result: summary,
-      extractions: extractionResults,
-      summary: {
-        total: images.length,
-        successful: successfulExtractions,
-        failed: images.length - successfulExtractions,
-        totalUpdates,
-        sheetName: targetSheetName
-      }
-    });
+    // Now use the updateSheetFlow to process the extracted data and update the sheet
+    try {
+      console.log('Processing extracted data with updateSheetFlow...');
+      
+      // Combine all extracted data into a single transcript
+      const extractedData = analysisResults
+        .filter(result => result.success && result.analysis)
+        .map(result => {
+          if (typeof result.analysis === 'string') {
+            return result.analysis;
+          } else if (result.analysis && typeof result.analysis === 'object') {
+            return JSON.stringify(result.analysis);
+          }
+          return '';
+        })
+        .join('\n\n');
+      
+      // Create an enhanced transcript that includes the extracted data
+      const enhancedTranscript = `${transcript || 'Add the following data to the spreadsheet'}\n\nExtracted data:\n${extractedData}`;
+      
+      // Call the updateSheetFlow with the enhanced transcript
+      const updateResult = await updateSheetFlow({
+        transcript: enhancedTranscript,
+        sheetId: spreadsheetId,
+        sheetName: targetSheetName,
+        commit: true // Actually commit the changes
+      });
+      
+      console.log('UpdateSheetFlow result:', updateResult);
+      
+      return res.status(200).json({
+        success: true,
+        result: `Successfully extracted data from ${images.length} files and updated ${targetSheetName}`,
+        details: {
+          filesProcessed: images.length,
+          analysisResults,
+          updateResult,
+          executedActions: updateResult.executedActions || 0
+        }
+      });
+      
+    } catch (updateError) {
+      console.error('Error updating sheet with extracted data:', updateError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update sheet with extracted data',
+        details: updateError instanceof Error ? updateError.message : String(updateError),
+        analysisResults // Still return the analysis results even if update failed
+      });
+    }
 
   } catch (error) {
-    console.error('Data extraction error:', error);
+    console.error('Error in handleExtractDataFromImages:', error);
     return res.status(500).json({
       success: false,
       error: 'Failed to extract data from images',

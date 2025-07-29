@@ -34,6 +34,74 @@ interface UpdateSheetOutput {
   executedActions?: number; // Number of actions that were executed
 }
 
+// Template's analyzeSheetStructure function
+const analyzeSheetStructure = (sheetData: string[][]): { formulaRows: string, dataRows: string, smartInsertionRow: number } => {
+  const formulaRows: number[] = [];
+  const dataRows: number[] = [];
+  
+  // Skip header row (index 0)
+  for (let i = 1; i < sheetData.length; i++) {
+    const row = sheetData[i];
+    const rowNumber = i + 1; // Convert to 1-based row number
+    
+    const hasFormulas = row.some(cell => {
+      const cellStr = String(cell);
+      return cellStr.startsWith('=') || 
+             cellStr.includes('=SUM') || 
+             cellStr.includes('=TOTAL') ||
+             cellStr.includes('=COUNT') ||
+             cellStr.includes('=AVERAGE') ||
+             cellStr.includes('=IF(') ||
+             cellStr.toUpperCase().includes('FUNCTION');
+    });
+    
+    if (hasFormulas) {
+      formulaRows.push(rowNumber);
+    } else if (row.some(cell => cell !== "" && cell !== null && cell !== undefined)) {
+      dataRows.push(rowNumber);
+    }
+  }
+  
+  // Determine smart insertion point
+  const maxDataRow = Math.max(...dataRows, 1); // At least row 1 (header)
+  const minFormulaRow = Math.min(...formulaRows, Number.MAX_SAFE_INTEGER);
+  
+  let smartInsertionRow: number;
+  if (formulaRows.length > 0 && minFormulaRow > maxDataRow) {
+    // Insert before the first formula row
+    smartInsertionRow = minFormulaRow;
+  } else {
+    // No formulas or formulas are mixed with data, append at end
+    smartInsertionRow = sheetData.length + 1; // +1 for 1-based indexing
+  }
+  
+  return { 
+    formulaRows: formulaRows.join(', ') || 'None detected',
+    dataRows: dataRows.join(', ') || 'None detected', 
+    smartInsertionRow 
+  };
+};
+
+// Template's pattern analysis function
+const buildPatternAnalysis = (sheetData: string[][]): string => {
+  if (sheetData.length <= 1) return "";
+  
+  const headers = sheetData[0];
+  const rows = sheetData.slice(1);
+  let patternAnalysis = "\n\nDATA PATTERN ANALYSIS:";
+  
+  headers.forEach((header: string, colIndex: number) => {
+    const columnValues = rows.map((row: string[]) => row[colIndex]).filter((val: string) => val !== "" && val !== null && val !== undefined);
+    
+    if (columnValues.length > 0) {
+      const recentValues = columnValues.slice(-3);
+      patternAnalysis += `\n- "${header}": Recent values: [${recentValues.join(', ')}]`;
+    }
+  });
+  
+  return patternAnalysis;
+};
+
 // Helper function to fetch real Google Sheets data and convert to CSV format
 const fetchRealSheetDataAsCSV = async (sheetId: string, sheetName: string): Promise<string> => {
   try {
@@ -98,31 +166,26 @@ const fetchRealSheetDataAsCSV = async (sheetId: string, sheetName: string): Prom
         return value;
       }).join(',');
     });
-    
-    const csvData = csvRows.join('\n');
-    console.log(`Generated CSV data with ${csvRows.length} rows`);
-    return csvData;
-    
+
+    return csvRows.join('\n');
   } catch (error) {
-    console.error('Error fetching real sheet data:', error);
-    throw new Error(`Failed to fetch sheet data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('Error fetching sheet data:', error);
+    throw error;
   }
 };
 
 // Helper function to find the first summary row index from CSV data
 const findFirstSummaryRowIndexFromCSV = (csvData: string): number => {
-  if (!csvData.trim()) {
-    return 999999;
-  }
+  if (!csvData) return 999999;
   
-  const rows = csvData.split('\n');
+  const lines = csvData.split('\n');
   
   // Look for patterns that indicate summary rows
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i].toLowerCase();
-    if (row.includes('total') || row.includes('sum') || row.includes('subtotal') || 
-        row.includes('summary') || row.includes('balance')) {
-      console.log(`Found potential summary row at index ${i + 1}: ${rows[i]}`);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].toLowerCase();
+    if (line.includes('total') || line.includes('sum') || line.includes('subtotal') || 
+        line.includes('summary') || line.includes('balance')) {
+      console.log(`Found potential summary row at index ${i + 1}: ${lines[i]}`);
       return i + 1; // Convert to 1-based index
     }
   }
@@ -131,120 +194,34 @@ const findFirstSummaryRowIndexFromCSV = (csvData: string): number => {
   return 999999;
 };
 
-// Helper function to clean and improve transcript text
+// Helper function to clean and improve the transcript
 const cleanTranscript = async (transcript: string): Promise<string> => {
-  let cleaned = transcript.trim();
-  
-  // Remove common filler words and phrases
-  const fillerWords = [
-    /\b(um|uh|er|ah|like|you know|i mean|basically|actually|literally|sort of|kind of)\b/gi,
-    /\b(so|well|right|okay|ok|yeah|yep|nope|no|yes)\b/gi,
-    /\b(i think|i guess|i suppose|maybe|probably|possibly)\b/gi,
-    /\b(just|really|very|quite|pretty|fairly)\b/gi,
-    /\b(thing|stuff|something|anything|everything)\b/gi
-  ];
-  
-  fillerWords.forEach(pattern => {
-    cleaned = cleaned.replace(pattern, '');
-  });
-  
-  // Remove extra whitespace and normalize
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  
-  // Remove trailing punctuation that might interfere with parsing
-  cleaned = cleaned.replace(/[.,;:!?]+$/, '');
+  if (!transcript) return '';
   
   // Apply basic grammar fixes
-  cleaned = applyGrammarFixes(cleaned);
+  let cleaned = applyGrammarFixes(transcript);
   
-  // If transcript is too short after cleaning, return original
-  if (cleaned.length < 3) {
-    console.log('Transcript too short after cleaning, using original');
-    return transcript.trim();
+  // Add context if it's a fuel-related request
+  if (cleaned.toLowerCase().includes('fuel') || cleaned.toLowerCase().includes('gas')) {
+    cleaned += ' (fuel expense entry)';
   }
   
-  console.log('Transcript cleaned:', { original: transcript.length, cleaned: cleaned.length });
+  // Add context if it's a weekly report
+  if (cleaned.toLowerCase().includes('weekly') || cleaned.toLowerCase().includes('report')) {
+    cleaned += ' (weekly report update)';
+  }
+  
   return cleaned;
 };
 
-// Helper function to apply basic grammar fixes
+// Helper function to apply grammar fixes
 const applyGrammarFixes = (text: string): string => {
-  let fixed = text;
-  
-  // Fix common speech-to-text issues
-  const grammarFixes = [
-    // Fix "i" to "I" at start of sentences
-    { pattern: /\bi\b/g, replacement: 'I' },
-    // Fix "im" to "I'm"
-    { pattern: /\bim\b/gi, replacement: "I'm" },
-    // Fix "ive" to "I've"
-    { pattern: /\bive\b/gi, replacement: "I've" },
-    // Fix "id" to "I'd"
-    { pattern: /\bid\b/gi, replacement: "I'd" },
-    // Fix "ill" to "I'll" (when it's a contraction)
-    { pattern: /\bill\b/gi, replacement: "I'll" },
-    // Fix "cant" to "can't"
-    { pattern: /\bcant\b/gi, replacement: "can't" },
-    // Fix "dont" to "don't"
-    { pattern: /\bdont\b/gi, replacement: "don't" },
-    // Fix "wont" to "won't"
-    { pattern: /\bwont\b/gi, replacement: "won't" },
-    // Fix "isnt" to "isn't"
-    { pattern: /\bisnt\b/gi, replacement: "isn't" },
-    // Fix "arent" to "aren't"
-    { pattern: /\barent\b/gi, replacement: "aren't" },
-    // Fix "havent" to "haven't"
-    { pattern: /\bhavent\b/gi, replacement: "haven't" },
-    // Fix "hasnt" to "hasn't"
-    { pattern: /\bhasnt\b/gi, replacement: "hasn't" },
-    // Fix "didnt" to "didn't"
-    { pattern: /\bdidnt\b/gi, replacement: "didn't" },
-    // Fix "doesnt" to "doesn't"
-    { pattern: /\bdoesnt\b/gi, replacement: "doesn't" },
-    // Fix "wouldnt" to "wouldn't"
-    { pattern: /\bwouldnt\b/gi, replacement: "wouldn't" },
-    // Fix "couldnt" to "couldn't"
-    { pattern: /\bcouldnt\b/gi, replacement: "couldn't" },
-    // Fix "shouldnt" to "shouldn't"
-    { pattern: /\bshouldnt\b/gi, replacement: "shouldn't" },
-    // Fix "lets" to "let's"
-    { pattern: /\blets\b/gi, replacement: "let's" },
-    // Fix "thats" to "that's"
-    { pattern: /\bthats\b/gi, replacement: "that's" },
-    // Fix "its" to "it's" (when it's a contraction, not possessive)
-    { pattern: /\bits\b/gi, replacement: "it's" },
-    // Fix "youre" to "you're"
-    { pattern: /\byoure\b/gi, replacement: "you're" },
-    // Fix "youve" to "you've"
-    { pattern: /\byouve\b/gi, replacement: "you've" },
-    // Fix "youll" to "you'll"
-    { pattern: /\byoull\b/gi, replacement: "you'll" },
-    // Fix "youd" to "you'd"
-    { pattern: /\byoud\b/gi, replacement: "you'd" },
-    // Fix "theyre" to "they're"
-    { pattern: /\btheyre\b/gi, replacement: "they're" },
-    // Fix "theyve" to "they've"
-    { pattern: /\btheyve\b/gi, replacement: "they've" },
-    // Fix "theyll" to "they'll"
-    { pattern: /\btheyll\b/gi, replacement: "they'll" },
-    // Fix "theyd" to "they'd"
-    { pattern: /\btheyd\b/gi, replacement: "they'd" },
-    // Fix "were" to "we're"
-    { pattern: /\bwere\b/gi, replacement: "we're" },
-    // Fix "weve" to "we've"
-    { pattern: /\bweve\b/gi, replacement: "we've" },
-    // Fix "well" to "we'll"
-    { pattern: /\bwell\b/gi, replacement: "we'll" },
-    // Fix "wed" to "we'd"
-    { pattern: /\bwed\b/gi, replacement: "we'd" },
-  ];
-  
-  grammarFixes.forEach(({ pattern, replacement }) => {
-    fixed = fixed.replace(pattern, replacement);
-  });
-  
-  // Capitalize first letter of sentences
-  fixed = fixed.replace(/(^|\.\s+)([a-z])/g, (match, p1, p2) => p1 + p2.toUpperCase());
+  // Basic grammar improvements
+  let fixed = text
+    .replace(/\b(add|update|insert)\s+my\b/gi, 'add to my')
+    .replace(/\b(fuel|gas)\s+slips?\b/gi, 'fuel receipts')
+    .replace(/\bweekly\s+repo\b/gi, 'weekly report')
+    .replace(/\bdata\s+from\b/gi, 'information from');
   
   return fixed;
 };
@@ -266,21 +243,55 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
     console.log('Original transcript:', transcript);
     console.log('Cleaned transcript:', cleanedTranscript);
     
-    // Fetch real Google Sheets data
-    const sheetData = await fetchRealSheetDataAsCSV(sheetId, sheetName);
+    // Fetch real Google Sheets data as structured data
+    const sheets = await getGoogleSheetsClient();
     
-    // Find the first summary row index for AI guidance
-    const firstSummaryRowIndex = findFirstSummaryRowIndexFromCSV(sheetData);
+    // Helper function to properly escape sheet names for Google Sheets API
+    const escapeSheetName = (name: string) => {
+      // If the sheet name contains spaces, special characters, or starts with a digit,
+      // wrap it in single quotes and escape any existing single quotes
+      if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
+        return `'${name.replace(/'/g, "''")}'`;
+      }
+      return name;
+    };
     
-    console.log('Generated CSV data from real Google Sheets:', sheetData.substring(0, 200) + '...');
-    console.log(`First summary row index: ${firstSummaryRowIndex}`);
+    const escapedSheetName = escapeSheetName(sheetName);
     
-    // Call the AI prompt with cleaned transcript and sheet data
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `${escapedSheetName}!A1:Z1000`,
+      valueRenderOption: 'FORMATTED_VALUE',
+      dateTimeRenderOption: 'FORMATTED_STRING',
+    });
+    
+    const sheetData = response.data.values || [];
+    
+    if (sheetData.length === 0) {
+      throw new Error('No data found in sheet');
+    }
+    
+    // Analyze sheet structure using template logic
+    const { formulaRows, dataRows, smartInsertionRow } = analyzeSheetStructure(sheetData);
+    const patternAnalysis = buildPatternAnalysis(sheetData);
+    
+    console.log('Sheet structure analysis:', { formulaRows, dataRows, smartInsertionRow });
+    console.log('Pattern analysis:', patternAnalysis);
+    
+    // Convert to CSV for the prompt
+    const csvData = sheetData.map(row => row.join(',')).join('\n');
+    const headers = sheetData[0].join(', ');
+    
+    // Call the AI prompt with template-style data
     const { text } = await sheetUpdatePrompt({
       transcript: cleanedTranscript,
-      sheetData,
-      firstSummaryRowIndex,
-      sheetName
+      sheetData: csvData,
+      sheetName,
+      formulaRows,
+      dataRows,
+      smartInsertionRow,
+      headers,
+      patternAnalysis
     });
     
     console.log('AI response:', text);
@@ -298,14 +309,12 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
           console.log('Commit flag is true, executing actions...');
           let executedCount = 0;
           
-          console.log(`First summary row index: ${firstSummaryRowIndex}`);
-          
           for (const action of parsed.actions) {
             try {
               if (action.type === 'insertRow') {
-                // Validate insert row position
-                if (action.row >= firstSummaryRowIndex) {
-                  console.error(`Skipping insertRow at row ${action.row}: must be before first summary row ${firstSummaryRowIndex}`);
+                // Validate insert row position using smart insertion logic
+                if (action.row >= smartInsertionRow) {
+                  console.error(`Skipping insertRow at row ${action.row}: must be before smart insertion row ${smartInsertionRow}`);
                   continue;
                 }
                 
