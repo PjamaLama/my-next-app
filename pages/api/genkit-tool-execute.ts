@@ -222,13 +222,19 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       });
 
       if (result && result.actions && result.actions.length > 0) {
-        const updatesForSheet = result.actions.map((action: SheetAction) => ({
-          sheetName: action.sheet || sheetName,
-          cell: `${action.column}${action.row}`,
-          value: action.value,
-          row: action.row,
-          column: action.column
-        }));
+        const updatesForSheet = result.actions.map((action: SheetAction) => {
+          // Validate that the AI is using the correct sheet name
+          if (action.sheet && action.sheet !== sheetName) {
+            console.warn(`AI returned sheet name "${action.sheet}" but expected "${sheetName}". Using expected sheet name.`);
+          }
+          return {
+            sheetName: sheetName, // Always use the expected sheet name from the loop
+            cell: `${action.column}${action.row}`,
+            value: action.value,
+            row: action.row,
+            column: action.column
+          };
+        });
         allUpdates.push(...updatesForSheet);
       }
     }

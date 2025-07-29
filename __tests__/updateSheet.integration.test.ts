@@ -18,10 +18,16 @@ jest.mock('../genkit/updateSheetFlow', () => ({
   updateSheetFlow: jest.fn(),
 }));
 
+// Mock Google Sheets client
+jest.mock('../lib/googleSheets', () => ({
+  getGoogleSheetsClient: jest.fn(),
+}));
+
 // Import the mocked functions
 const mockInsertRow = require('../genkit/tools').insertRow;
 const mockUpdateCell = require('../genkit/tools').updateCell;
 const mockUpdateSheetFlow = require('../genkit/updateSheetFlow').updateSheetFlow;
+const mockGetGoogleSheetsClient = require('../lib/googleSheets').getGoogleSheetsClient;
 
 describe('updateSheet API Integration Test', () => {
   let mockReq: Partial<NextApiRequest>;
@@ -351,5 +357,95 @@ describe('updateSheet API Integration Test', () => {
         })
       );
     });
+  });
+
+  test('should use correct sheet name instead of hardcoded Sheet1', async () => {
+    const testSheetName = 'TestSheet';
+    
+    // Mock the Google Sheets client
+    const mockSheets = {
+      spreadsheets: {
+        get: jest.fn().mockResolvedValue({
+          data: {
+            sheets: [
+              {
+                properties: {
+                  title: testSheetName,
+                  sheetId: 123,
+                  gridProperties: {
+                    rowCount: 10,
+                    columnCount: 26
+                  }
+                }
+              }
+            ]
+          }
+        }),
+        values: {
+          batchUpdate: jest.fn().mockResolvedValue({
+            data: { totalUpdatedCells: 1 }
+          })
+        }
+      }
+    };
+    mockGetGoogleSheetsClient.mockResolvedValue(mockSheets);
+    
+    // Mock the updateSheetFlow to return actions with the correct sheet name
+    mockUpdateSheetFlow.mockResolvedValue({
+      actions: [
+        {
+          type: 'updateCell',
+          sheet: testSheetName, // Use the actual sheet name, not hardcoded Sheet1
+          row: 4,
+          column: 'B',
+          value: '2024-01-04',
+          confidence: 'high',
+        },
+      ],
+    });
+
+    mockReq = {
+      method: 'POST',
+      body: {
+        toolCall: {
+          function: {
+            name: 'update_sheet',
+            arguments: JSON.stringify({
+              transcript: 'Add fuel expense of $50',
+              preview: true, // Use preview mode to avoid actual sheet updates
+            }),
+          },
+        },
+        context: {
+          spreadsheetId: 'test-spreadsheet-id',
+          sheetNames: [testSheetName], // Pass the actual sheet name
+        },
+      },
+    };
+
+    const { default: handler } = await import('../pages/api/genkit-tool-execute');
+    await handler(mockReq as NextApiRequest, mockRes as NextApiResponse);
+
+    // Verify that the updateSheetFlow was called with the correct sheet name
+    expect(mockUpdateSheetFlow).toHaveBeenCalledWith({
+      transcript: 'Add fuel expense of $50',
+      sheetId: 'test-spreadsheet-id',
+      sheetName: testSheetName, // Should use the actual sheet name
+      commit: false, // Preview mode
+    });
+
+    // Verify that the response contains the correct sheet name
+    expect(mockJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        preview: true,
+        result: expect.stringContaining('Preview:'),
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            sheetName: testSheetName, // Should use the actual sheet name, not Sheet1
+          }),
+        ]),
+      })
+    );
   });
 }); 

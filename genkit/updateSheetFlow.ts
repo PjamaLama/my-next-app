@@ -35,7 +35,7 @@ interface UpdateSheetOutput {
 }
 
 // Helper function to fetch real Google Sheets data and convert to CSV format
-const fetchRealSheetDataAsCSV = async (sheetId: string, sheetName: string = 'Sheet1'): Promise<string> => {
+const fetchRealSheetDataAsCSV = async (sheetId: string, sheetName: string): Promise<string> => {
   try {
     console.log(`Fetching real sheet data for: ${sheetId}, sheet: ${sheetName}`);
     
@@ -254,8 +254,12 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
   try {
     console.log('UpdateSheetFlow called with:', input);
     
-    // Fix the sheetName undefined issue by providing a default value
-    const { transcript, sheetId, sheetName = 'Sheet1', commit = false } = input;
+    // Ensure sheetName is provided
+    const { transcript, sheetId, sheetName, commit = false } = input;
+    
+    if (!sheetName) {
+      throw new Error('Sheet name is required for sheet updates');
+    }
     
     // Clean and improve the transcript
     const cleanedTranscript = await cleanTranscript(transcript);
@@ -275,7 +279,8 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
     const { text } = await sheetUpdatePrompt({
       transcript: cleanedTranscript,
       sheetData,
-      firstSummaryRowIndex
+      firstSummaryRowIndex,
+      sheetName
     });
     
     console.log('AI response:', text);

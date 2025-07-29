@@ -19,7 +19,7 @@ Your task:
 3. Never leave required fields blank if a pattern or default exists.
 4. For each change, output one action object with:
    • type: "insertRow" (if you need a new row) or "updateCell" (if filling an existing row).
-   • sheet: the sheet name (e.g. "Sheet1").
+   • sheet: "{{sheetName}}" (use the exact sheet name provided).
    • row: the 1‑based row index.
    • column: the column letter (e.g. "A", "B", etc.).
    • value: the value to write (omit for insertRow).
