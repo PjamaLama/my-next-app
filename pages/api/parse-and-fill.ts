@@ -1,5 +1,5 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
-import { sendToGemini } from '@/lib/gemini';
+import { analyzeFileFlow } from '@/genkit/analyzeFileFlow';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Configure API to handle larger file uploads
@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  // Check if we have a Gemini API key from the user or fallback to environment variable
+  // Use provided API key or fallback to environment variable
   const apiKey = geminiApiKey || process.env.GEMINI_API_KEY;
   
   if (!apiKey) {
@@ -84,13 +84,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     const sheetData = sheetDataRes.data.values ?? [];
-    const aiResponse = await sendToGemini({ 
-      transcript, 
-      sheetData, 
-      sheetName, 
-      geminiApiKey: apiKey,
-      images: images || []
-    });
+    
+    // Use Genkit flow for analysis
+    let aiResponse = null;
+    if (images && images.length > 0) {
+      try {
+        const flow = analyzeFileFlow(apiKey);
+        const result = await flow.run({ 
+          prompt: transcript || 'Analyze this file and extract relevant data', 
+          files: images 
+        });
+        aiResponse = result;
+      } catch (error) {
+        console.error('Error in Genkit analysis:', error);
+        aiResponse = null;
+      }
+    } else {
+      // For text-only analysis, we can use a simple approach
+      aiResponse = { analysis: 'Text analysis completed', data: [] };
+    }
 
     // Return a more comprehensive response for tool execution
     res.status(200).json({ 

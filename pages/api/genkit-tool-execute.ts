@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
+import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 
 // Configure API to handle larger file uploads
 export const config = {
@@ -92,11 +93,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { name, arguments: argsString } = toolCall.function;
     const args = JSON.parse(argsString);
 
+    // Get API key from environment variable
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    
+    // Ensure API key is provided for tools that require it
+    if (!apiKey && (name === 'analyze_images' || name === 'analyze_files' || name === 'extract_data_from_images' || name === 'extract_data_from_files')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Gemini API key is required for this operation.',
+        details: 'Please ensure your GOOGLE_GENAI_API_KEY is configured in your environment variables.'
+      });
+    }
+
     console.log(`API: Executing approved tool: ${name}`);
     console.log(`API: Tool arguments:`, args);
     console.log(`API: Received ${images?.length || 0} images`);
     console.log(`API: Images types:`, images?.map((img: ImageData) => img.mimeType) || []);
-    console.log(`API: Gemini API key provided:`, !!geminiApiKey);
+    console.log(`API: Gemini API key provided:`, !!apiKey);
 
     switch (name) {
       case 'update_sheet':
@@ -110,11 +123,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'analyze_images':
       case 'analyze_files':
-        return await handleAnalyzeImages(args, images, res, geminiApiKey);
+        return await handleAnalyzeImages(args, images, apiKey!, res);
 
       case 'extract_data_from_images':
       case 'extract_data_from_files':
-        return await handleExtractDataFromImages(args, context, images, res, geminiApiKey);
+        return await handleExtractDataFromImages(args, context, images, apiKey!, res);
 
       default:
         return res.status(400).json({
@@ -123,11 +136,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
     }
 
-  } catch (error) {
-    console.error('API: Tool execution failed:', error);
-    
-    // Handle specific error types
+  } catch (error: unknown) {
+    console.error('API: Unhandled error during tool execution:', error);
+    console.error('API: Type of error:', typeof error);
+
+    let errorMessage = 'Failed to execute tool';
+    let errorDetails: string | object = 'An unknown error occurred.';
+
     if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = error.stack || error.message;
       if (error.message.includes('body too large') || error.message.includes('413')) {
         return res.status(413).json({
           error: 'Request too large',
@@ -138,12 +156,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
       }
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+      errorDetails = error;
+    } else if (typeof error === 'object' && error !== null) {
+      // Attempt to stringify other object types for logging
+      try {
+        errorDetails = JSON.stringify(error);
+      } catch (e) {
+        errorDetails = '[Unstringifiable object error]';
+      }
     }
-    
+
     return res.status(500).json({
       success: false,
-      error: 'Failed to execute tool',
-      details: error instanceof Error ? error.message : String(error)
+      error: errorMessage,
+      details: errorDetails
     });
   }
 }
@@ -280,16 +308,31 @@ async function handleGetSheetData(args: ToolArgs, res: NextApiResponse) {
     });
 
     if (response.ok) {
-      const data = await response.json();
-      return res.status(200).json({
-        success: true,
-        result: `Retrieved ${data.data?.length || 0} rows from ${sheetName}`,
-        data: data.data || []
-      });
+      try {
+        const data = await response.json();
+        return res.status(200).json({
+          success: true,
+          result: `Retrieved ${data.data?.length || 0} rows from ${sheetName}`,
+          data: data.data || []
+        });
+      } catch (parseError) {
+        console.error('Failed to parse sheet data response as JSON:', parseError);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to parse sheet data response'
+        });
+      }
     } else {
+      const errorText = await response.text();
+      console.error('Get sheet data API error:', errorText);
+      let details = errorText;
+      if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
+        details = 'Received HTML error page from internal API. Check server logs for details.';
+      }
       return res.status(500).json({
         success: false,
-        error: 'Failed to retrieve sheet data'
+        error: 'Failed to retrieve sheet data',
+        details: details
       });
     }
 
@@ -357,7 +400,7 @@ async function handleAnalyzeVoiceInput(args: ToolArgs, res: NextApiResponse) {
   }
 }
 
-async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: NextApiResponse, geminiApiKey?: string) {
+async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: string, res: NextApiResponse) {
   try {
     const { transcript } = args;
 
@@ -374,37 +417,20 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: Nex
 
     console.log(`Analyzing ${images.length} images/files`);
 
-    // Use Genkit to analyze images - we'll call the existing image processing API
     const analysisResults = [];
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
       
       try {
-        // For PDFs and images, we can use Gemini's multimodal capabilities
-        let analysisPrompt = `Analyze this ${image.mimeType.includes('pdf') ? 'PDF document' : 'image'} and describe what you see. `;
-        
-        if (transcript) {
-          analysisPrompt += `The user asked: "${transcript}". Focus your analysis on what might be relevant to their request.`;
-        } else {
-          analysisPrompt += `Look for any data, text, tables, or information that could be useful for data entry or analysis.`;
-        }
-
-        // Simple image analysis - provide basic analysis without external API calls
-        const fileType = image.mimeType.includes('pdf') ? 'PDF document' : 'image';
-        let analysis = `Successfully processed ${fileType}. `;
-        
-        if (transcript) {
-          analysis += `The user requested: "${transcript}". The file contains visual content that can be analyzed for data extraction.`;
-        } else {
-          analysis += `The file contains visual content that can be analyzed for data extraction.`;
-        }
-        
+        // Create the flow with the provided API key
+        const flow = analyzeFileFlow(apiKey);
+        const result = await flow.run({ prompt: transcript || 'Analyze this file', files: [image] });
         analysisResults.push({
           index: i + 1,
           type: image.mimeType,
-          analysis: analysis,
-          extractedData: null
+          analysis: 'Analysis complete',
+          extractedData: result
         });
       } catch (error) {
         console.error(`Error analyzing image ${i + 1}:`, error);
@@ -442,7 +468,7 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: Nex
   }
 }
 
-async function handleExtractDataFromImages(args: ToolArgs, context: Context, images: ImageData[], res: NextApiResponse, geminiApiKey?: string) {
+async function handleExtractDataFromImages(args: ToolArgs, context: Context, images: ImageData[], apiKey: string, res: NextApiResponse) {
   try {
     const { transcript } = args;
     const { spreadsheetId, sheetName, sheetNames } = context;
@@ -486,11 +512,16 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
 
     let sheetStructure = null;
     if (sheetResponse.ok) {
-      const sheetResult = await sheetResponse.json();
-      sheetStructure = {
-        headers: sheetResult.data[0] || [],
-        rows: sheetResult.data.slice(1) || []
-      };
+      try {
+        const sheetResult = await sheetResponse.json();
+        sheetStructure = {
+          headers: sheetResult.data[0] || [],
+          rows: sheetResult.data.slice(1) || []
+        };
+      } catch (parseError) {
+        console.error('Failed to parse sheet response as JSON:', parseError);
+        // Continue without sheet structure
+      }
     }
 
     const extractionResults = [];
@@ -521,25 +552,41 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
             spreadsheetId,
             sheetName: targetSheetName,
             images: [image],
-            geminiApiKey: geminiApiKey
+            geminiApiKey: apiKey,
           })
         });
 
         if (response.ok) {
-          const extractionData = await response.json();
-          extractionResults.push({
-            index: i + 1,
-            type: image.mimeType,
-            extraction: 'Data extracted successfully',
-            data: extractionData.updates || [],
-            applied: extractionData.success || false
-          });
+          try {
+            const extractionData = await response.json();
+            extractionResults.push({
+              index: i + 1,
+              type: image.mimeType,
+              extraction: 'Data extracted successfully',
+              data: extractionData.updates || [],
+              applied: extractionData.success || false
+            });
+          } catch (parseError) {
+            console.error(`Failed to parse extraction response as JSON for image ${i + 1}:`, parseError);
+            extractionResults.push({
+              index: i + 1,
+              type: image.mimeType,
+              extraction: 'Failed to parse extraction response',
+              error: 'Invalid JSON response'
+            });
+          }
         } else {
+          const errorText = await response.text();
+          console.error(`Extraction API error for image ${i + 1}:`, errorText);
+          let errorDetail = errorText;
+          if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
+            errorDetail = 'Received HTML error page from internal API. Check server logs for details.';
+          }
           extractionResults.push({
             index: i + 1,
             type: image.mimeType,
             extraction: 'Failed to extract data',
-            error: 'API error'
+            error: errorDetail
           });
         }
       } catch (error) {

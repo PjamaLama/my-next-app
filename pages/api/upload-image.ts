@@ -67,7 +67,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           throw new Error(`Failed to upload to Gemini: ${uploadResponse.status}`);
         }
 
-        const uploadResult = await uploadResponse.json();
+        let uploadResult;
+        try {
+          uploadResult = await uploadResponse.json();
+        } catch (parseError) {
+          console.error('Failed to parse upload response as JSON:', parseError);
+          throw new Error('Invalid JSON response from Gemini Files API');
+        }
         
         uploadResults.push({
           originalName: file.originalFilename,

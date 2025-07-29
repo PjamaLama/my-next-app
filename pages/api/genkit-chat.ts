@@ -54,12 +54,42 @@ async function executeToolCall(
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Tool execution failed: ${response.status}`);
+      // Check if the response is JSON or HTML
+      const contentType = response.headers.get('content-type');
+      let errorMessage = `Tool execution failed: ${response.status}`;
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          console.error('Failed to parse error response as JSON:', parseError);
+        }
+      } else {
+        // Handle HTML error responses
+        try {
+          const errorText = await response.text();
+          if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
+            errorMessage = `Server error (${response.status}): Received HTML error page`;
+          } else {
+            errorMessage = `Server error (${response.status}): ${errorText}`;
+          }
+        } catch (textError) {
+          console.error('Failed to read error response text:', textError);
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    console.log(`🔍 [AUTO_EXECUTE] Tool execution result:`, data);
+    let data;
+    try {
+      data = await response.json();
+      console.log(`🔍 [AUTO_EXECUTE] Tool execution result:`, data);
+    } catch (parseError) {
+      console.error('Failed to parse successful response as JSON:', parseError);
+      throw new Error('Invalid JSON response from tool execution');
+    }
     
     return {
       success: data.success,
