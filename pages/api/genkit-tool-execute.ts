@@ -148,6 +148,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
+function formatAnalysesAsMarkdown(analyses: any[]): string {
+  if (!analyses || analyses.length === 0) {
+    return "No analysis results to display.";
+  }
+
+  let markdown = "| File | Type | Analysis | Extracted Data |\n";
+  markdown += "|---|---|---|---|\n";
+
+  for (const analysis of analyses) {
+    const extractedData = analysis.extractedData ? `\`\`\`json\n${JSON.stringify(analysis.extractedData, null, 2)}\n\`\`\`` : "None";
+    markdown += `| ${analysis.index} | ${analysis.type} | ${analysis.analysis} | ${extractedData} |\n`;
+  }
+
+  return markdown;
+}
+
 async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { transcript, preview } = args;
@@ -406,13 +422,13 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], res: Nex
 
     return res.status(200).json({
       success: true,
-      result: summary,
+      result: summary + "\n\n" + formatAnalysesAsMarkdown(analysisResults),
       analyses: analysisResults,
       summary: {
         total: images.length,
         successful: successfulAnalyses,
         failed: images.length - successfulAnalyses,
-        types: [...new Set(images.map(img => img.mimeType))]
+        types: Array.from(new Set(images.map(img => img.mimeType)))
       }
     });
 
