@@ -113,57 +113,23 @@ export const ensureSheetCapacity = async (
   }
 };
 
-// Helper function to find the first summary row index from real Google Sheets data
-export const findFirstSummaryRowIndex = async (sheetId: string, sheetName: string): Promise<number> => {
-  try {
-    console.log(`Finding summary row for sheet: ${sheetId}, ${sheetName}`);
-    
-    const sheets = await getGoogleSheetsClient();
-    const escapedSheetName = escapeSheetName(sheetName);
-    
-    // Try to get sheet data
-    const strategies = [
-      `${escapedSheetName}!A1:Z1000`,
-      `${escapedSheetName}!A:Z`,
-      `${escapedSheetName}!A1:T100`,
-      `${sheetName}!A1:T100`
-    ];
-    
-    for (const range of strategies) {
-      try {
-        const response = await sheets.spreadsheets.values.get({
-          spreadsheetId: sheetId,
-          range: range,
-          valueRenderOption: 'FORMATTED_VALUE',
-          dateTimeRenderOption: 'FORMATTED_STRING',
-        });
-        
-        if (response.data.values && response.data.values.length > 0) {
-          const rows = response.data.values;
-          
-          // Skip the header row (row 1) and look for patterns that indicate summary rows
-          for (let i = 1; i < rows.length; i++) {
-            const rowString = rows[i].join(',').toLowerCase();
-            if (rowString.includes('total') || rowString.includes('sum') || rowString.includes('subtotal') || 
-                rowString.includes('summary') || rowString.includes('balance')) {
-              console.log(`Found potential summary row at index ${i + 1}: ${rows[i].join(',')}`);
-              return i + 1; // Convert to 1-based index
-            }
-          }
-          
-          break; // Successfully got data, stop trying strategies
-        }
-      } catch (rangeError) {
-        console.log(`Range strategy failed: ${range}, trying next...`);
-        continue;
-      }
+// Simplified function to find the last data row (just the last non-empty row)
+export const findLastDataRow = (sheetData: string[][]): number => {
+  console.log(`Analyzing sheet data with ${sheetData.length} rows`);
+  // Start from the bottom and work up to find the last non-empty row
+  for (let i = sheetData.length - 1; i >= 0; i--) {
+    const row = sheetData[i];
+    // Check if row has any non-empty cells
+    const hasData = row.some(cell => {
+      const cellStr = String(cell || '').trim();
+      return cellStr !== '' && cellStr !== null && cellStr !== undefined;
+    });
+    if (hasData) {
+      console.log(`Found last data row at index ${i + 1}: ${row.join(', ')}`);
+      return i + 1; // Convert to 1-based index
     }
-    
-    // If no summary row found, return a high number to allow insertion anywhere
-    return 999999;
-  } catch (error) {
-    console.error('Error finding first summary row:', error);
-    // Return a high number to allow insertion if we can't determine summary rows
-    return 999999;
   }
+  // If no data rows found, return 1 (after header)
+  console.log('No data rows found, returning row 1');
+  return 1;
 }; 

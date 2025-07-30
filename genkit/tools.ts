@@ -1,11 +1,12 @@
 import { getGoogleSheetsClient } from '../lib/googleSheets';
-import { escapeSheetName, ensureSheetCapacity, findFirstSummaryRowIndex } from '../lib/sheetUtils';
+import { escapeSheetName, findLastDataRow, ensureSheetCapacity } from '../lib/sheetUtils';
 
 // Input type for insertRow tool
 interface InsertRowInput {
   sheetId: string;
   sheetName: string;
   row: number;
+  lastDataRow?: number; // Add this parameter to use the lastDataRow from AI analysis
 }
 
 // Input type for updateCell tool
@@ -20,7 +21,7 @@ interface UpdateCellInput {
 // Export the insertRow function
 export const insertRow = async (input: InsertRowInput): Promise<string> => {
   try {
-    const { sheetId, sheetName, row } = input;
+    const { sheetId, sheetName, row, lastDataRow: providedLastDataRow } = input;
     
     console.log(`Inserting row at position ${row} in sheet: ${sheetId}/${sheetName}`);
     
@@ -37,42 +38,33 @@ export const insertRow = async (input: InsertRowInput): Promise<string> => {
     
     const escapedSheetName = escapeSheetName(sheetName);
     
-    // Get current sheet data to check if we're inserting above a function row
-    const currentData = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: `${escapedSheetName}!A1:Z1000`,
-      valueRenderOption: 'FORMATTED_VALUE',
-      dateTimeRenderOption: 'FORMATTED_STRING',
-    });
+    // Ensure sheet has capacity for the target row
+    await ensureSheetCapacity(sheetId, sheetName, row, 'A');
     
-    const sheetData = currentData.data.values || [];
-    const isInsertingAboveFunctionRow = row === sheetData.length && 
-      sheetData[sheetData.length - 1]?.some(cell => {
-        const cellStr = String(cell);
-        return cellStr.startsWith('=') || 
-               cellStr.includes('=SUM') || 
-               cellStr.includes('=TOTAL') ||
-               cellStr.includes('=COUNT') ||
-               cellStr.includes('=AVERAGE') ||
-               cellStr.includes('=IF(') ||
-               cellStr.toUpperCase().includes('FUNCTION');
+    // Use provided lastDataRow if available, otherwise fetch it
+    let lastDataRow = providedLastDataRow;
+    if (lastDataRow === undefined) {
+      console.log('No lastDataRow provided, fetching fresh data...');
+      // Get current sheet data to find the last data row
+      const currentData = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: `${escapedSheetName}!A1:Z1000`,
+        valueRenderOption: 'FORMATTED_VALUE',
+        dateTimeRenderOption: 'FORMATTED_STRING',
       });
-    
-    if (isInsertingAboveFunctionRow) {
-      console.log(`Inserting row above function row at position ${row}`);
+      
+      const sheetData = currentData.data.values || [];
+      lastDataRow = findLastDataRow(sheetData);
     } else {
-      // Find the first summary row to validate insertion position (existing logic)
-      const firstSummaryRowIndex = await findFirstSummaryRowIndex(sheetId, sheetName);
-      
-      // Validate that the insertion row is before the first summary row
-      if (row >= firstSummaryRowIndex) {
-        throw new Error(`Cannot insert row at position ${row}. Insertion must be before the first summary row (row ${firstSummaryRowIndex}).`);
-      }
-      
-      console.log(`Validated insertion: row ${row} is before first summary row ${firstSummaryRowIndex}`);
+      console.log(`Using provided lastDataRow: ${lastDataRow}`);
     }
     
-    // First, get sheet metadata to find the correct sheet ID
+    // Validate: row should be at or after the last data row
+    if (row < lastDataRow) {
+      throw new Error(`Cannot insert row at position ${row}. Must insert at or after the last data row (row ${lastDataRow}).`);
+    }
+    
+    // Get sheet metadata to find the correct sheet ID
     const sheetMetadata = await sheets.spreadsheets.get({
       spreadsheetId: sheetId,
       includeGridData: false
@@ -107,13 +99,8 @@ export const insertRow = async (input: InsertRowInput): Promise<string> => {
       }
     });
     
-    const message = isInsertingAboveFunctionRow 
-      ? `Successfully inserted row above function row at position ${row}`
-      : `Successfully inserted row at position ${row}`;
-    
-    console.log(message);
-    
-    return `${message} in sheet "${sheetName}". Rows below have been shifted down.`;
+    console.log(`Successfully inserted row at position ${row}`);
+    return `Successfully inserted row at position ${row} in sheet "${sheetName}". Rows below have been shifted down.`;
     
   } catch (error) {
     console.error('Error inserting row:', error);

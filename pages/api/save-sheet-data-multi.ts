@@ -2,10 +2,6 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getGoogleSheetsClient } from '../../lib/googleSheets';
 import { escapeSheetName, parseCell, ensureSheetCapacity } from '../../lib/sheetUtils';
 
-function buildCell(col: string, row: number): string {
-  return `${col}${row}`;
-}
-
 interface UpdateItem {
   sheetName: string;
   cell: string;
@@ -67,100 +63,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         console.log(`📋 Processing sheet: "${sheetName}" with ${sheetUpdates.length} updates`);
         
-        // Get sheet metadata to find sheet ID
-        const sheetMetadata = await sheets.spreadsheets.get({
-          spreadsheetId,
-          includeGridData: false
-        });
-        
-        const sheet = sheetMetadata.data.sheets?.find(s => s.properties?.title === sheetName);
-        if (!sheet?.properties?.sheetId) {
-          throw new Error(`Sheet "${sheetName}" not found`);
-        }
-        
-        const sheetId = sheet.properties.sheetId;
-        console.log(`🔍 Found sheet ID: ${sheetId} for "${sheetName}"`);
-        
-        // Sort updates by row to optimize insertion strategy
-        const sortedUpdates = [...sheetUpdates].sort((a, b) => (a.row || 0) - (b.row || 0));
-        
         // Check if we need to expand the sheet for any of the target cells
-        for (const update of sortedUpdates) {
+        for (const update of sheetUpdates) {
           if (update.row && update.column) {
             await ensureSheetCapacity(spreadsheetId, sheetName, update.row, update.column);
           }
         }
         
-        // Group consecutive rows for batch insertion
-        let currentGroup: UpdateItem[] = [];
-        let lastRow = -1;
-        const groups: UpdateItem[][] = [];
-        
-        for (const update of sortedUpdates) {
-          if (!update.row) continue;
-          
-          if (lastRow === -1 || update.row === lastRow + 1) {
-            // Consecutive or first row
-            currentGroup.push(update);
-            lastRow = update.row;
-          } else {
-            // Gap found, start new group
-            if (currentGroup.length > 0) {
-              groups.push(currentGroup);
-            }
-            currentGroup = [update];
-            lastRow = update.row;
-          }
-        }
-        
-        // Add the last group
-        if (currentGroup.length > 0) {
-          groups.push(currentGroup);
-        }
-        
-        console.log(`📦 Created ${groups.length} row groups for insertion optimization`);
-        
-        // Insert rows for each group if needed
-        let rowCount = 0; // Track current row count for insertion calculations
-        for (const group of groups) {
-          const groupStartRow = group[0].row!;
-          const groupEndRow = group[group.length - 1].row!;
-          
-          if (groupStartRow > rowCount + 1) {
-            // Need to insert rows
-            const insertStartIndex = rowCount;
-            const insertEndIndex = groupStartRow - 1;
-            
-            console.log(`➕ Inserting ${insertEndIndex - insertStartIndex} rows at position ${insertStartIndex}`);
-            
-            await sheets.spreadsheets.batchUpdate({
-              spreadsheetId,
-              requestBody: {
-                requests: [{
-                  insertDimension: {
-                    range: {
-                      sheetId,
-                      dimension: 'ROWS',
-                      startIndex: insertStartIndex,
-                      endIndex: insertEndIndex
-                    },
-                    inheritFromBefore: false // Or true if you want to inherit formatting
-                  }
-                }]
-              }
-            });
-
-            console.log(`Inserted ${insertEndIndex - insertStartIndex} rows at startIndex ${insertStartIndex}`);
-            // Update rowCount after insertion
-            rowCount += (insertEndIndex - insertStartIndex);
-          }
-          
-          // Update rowCount to reflect the group
-          rowCount = groupEndRow;
-        }
-
-        // Create batch update data for this sheet (using possibly adjusted cells)
-        const batchData = sortedUpdates.map(update => ({
+        // Create batch update data for this sheet
+        const batchData = sheetUpdates.map(update => ({
           range: `${escapeSheetName(sheetName)}!${update.cell}`,
           values: [[update.value]]
         }));

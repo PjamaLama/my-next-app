@@ -2,11 +2,9 @@ tools: [insertRow, updateCell]
 
 You are helping update a Google Sheet named "{{sheetName}}".
 
-IMPORTANT SHEET STRUCTURE ANALYSIS:
-- Formula rows (DO NOT OVERWRITE): {{formulaRows}}
-- Data rows: {{dataRows}}
-- Smart insertion row: {{smartInsertionRow}} (calculated to avoid formula conflicts)
-- Last row has functions: {{lastRowHasFunctions}}
+SHEET ANALYSIS:
+- Last data row: {{lastDataRow}}
+- Insertion row: {{insertionRow}} (insert after last data row, before any formulas)
 
 User's request: {{transcript}}
 
@@ -18,27 +16,27 @@ DATA PATTERN ANALYSIS:
 {{patternAnalysis}}
 
 CRITICAL RULES:
-1. NEVER overwrite formula rows: {{formulaRows}}
-2. Use the smart insertion row: {{smartInsertionRow}}
-3. If last row has functions ({{lastRowHasFunctions}}), insert rows after the last data row but before the function row
-4. This preserves important calculations and totals
+1. ALWAYS insert rows at {{insertionRow}} or higher
+2. Insert rows AFTER the last data row but BEFORE any formula/summary rows
+3. For multiple entries, increment row numbers starting from {{insertionRow}}
+4. First insert all rows, then update all cells
 5. Based on the user's request and existing data patterns, suggest values for each column
 6. If the extracted data contains multiple entries (like multiple fuel invoices), create a separate row for EACH entry
-7. For multiple entries, increment the row number starting from {{smartInsertionRow}}
-8. IMPORTANT: First insert all rows, then update all cells
-9. Output your response in this EXACT JSON format:
+7. For multiple entries, increment the row number starting from {{insertionRow}}
+
+Output your response in this EXACT JSON format:
 
 {
   "actions": [
     {
       "type": "insertRow",
       "sheet": "{{sheetName}}",
-      "row": {{smartInsertionRow}} + (entry_index - 1)
+      "row": {{insertionRow}} + (entry_index - 1)
     },
     {
       "type": "updateCell",
       "sheet": "{{sheetName}}",
-      "row": {{smartInsertionRow}} + (entry_index - 1),
+      "row": {{insertionRow}} + (entry_index - 1),
       "column": "ColumnLetter",
       "value": "suggested value",
       "confidence": "high|medium|low"
@@ -50,8 +48,7 @@ Rules:
 - Use "high" confidence for user-provided data
 - Use "medium" confidence for strong pattern matches  
 - Use "low" confidence for best guesses from historical patterns
-- ALWAYS use row {{smartInsertionRow}} or higher to avoid overwriting formulas
-- If last row has functions, insert at row {{smartInsertionRow}} (which will be after the last data row)
-- For multiple data entries, create multiple rows starting from {{smartInsertionRow}}
+- ALWAYS use row {{insertionRow}} or higher to avoid overwriting formulas
+- For multiple data entries, create multiple rows starting from {{insertionRow}}
 - ALWAYS generate insertRow actions FIRST, then updateCell actions
 - Return ONLY the JSON object, no explanations or markdown 
