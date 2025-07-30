@@ -2,6 +2,7 @@ import { genkit } from 'genkit';
 import { gemini15Flash, googleAI } from '@genkit-ai/googleai';
 import { getGoogleSheetsClient } from '../lib/googleSheets';
 import { insertRow, updateCell } from './tools';
+import { executeAIWithRetry } from '../lib/aiUtils';
 
 // Configure Genkit instance with Google AI plugin
 const ai = genkit({
@@ -285,18 +286,21 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
     const csvData = sheetData.map(row => row.join(',')).join('\n');
     const headers = sheetData[0].join(', ');
     
-    // Call the AI prompt with template-style data
-    const { text } = await sheetUpdatePrompt({
-      transcript: cleanedTranscript,
-      sheetData: csvData,
-      sheetName,
-      formulaRows,
-      dataRows,
-      smartInsertionRow,
-      headers,
-      patternAnalysis,
-      lastRowHasFunctions: lastRowHasFunctions ? 'true' : 'false'
-    });
+    // Use retry wrapper for AI operations
+    const { text } = await executeAIWithRetry(
+      () => sheetUpdatePrompt({
+        transcript: cleanedTranscript,
+        sheetData: csvData,
+        sheetName,
+        formulaRows,
+        dataRows,
+        smartInsertionRow,
+        headers,
+        patternAnalysis,
+        lastRowHasFunctions: lastRowHasFunctions ? 'true' : 'false'
+      }),
+      'Sheet update analysis with AI model'
+    );
     
     console.log('AI response:', text);
     

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { gemini15Flash, googleAI } from '@genkit-ai/googleai';
 import pdf from 'pdf-parse';
 import Tesseract from 'tesseract.js';
+import { executeAIWithRetry } from '../lib/aiUtils';
 
 // Helper function to extract text from PDF
 async function extractTextFromPDF(base64Data: string): Promise<string> {
@@ -137,8 +138,11 @@ Analyze the extracted text content and extract relevant data in JSON format.`;
         console.log('🔍 [ANALYZE_FILE_FLOW] Prompt length:', fullPrompt.length);
         console.log('🔍 [ANALYZE_FILE_FLOW] Total extracted text length:', extractedContents.reduce((sum, content) => sum + content.textLength, 0));
         
-        // Use the Genkit instance to generate content
-        const { text } = await ai.generate(fullPrompt);
+        // Use the retry wrapper for AI operations
+        const { text } = await executeAIWithRetry(
+          () => ai.generate(fullPrompt),
+          'File analysis with AI model'
+        );
         
         console.log('🔍 [ANALYZE_FILE_FLOW] Genkit model generation successful.');
         console.log('🔍 [ANALYZE_FILE_FLOW] Response length:', text?.length || 0);

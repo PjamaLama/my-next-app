@@ -440,11 +440,26 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: 
         });
       } catch (error) {
         console.error(`Error analyzing image ${i + 1}:`, error);
+        
+        // Provide user-friendly error messages for common AI service issues
+        let errorMessage = 'Analysis failed';
+        if (error instanceof Error) {
+          if (error.message.includes('503') || error.message.includes('overloaded')) {
+            errorMessage = 'The AI service is currently busy. Please try again in a few moments.';
+          } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+            errorMessage = 'Too many requests to the AI service. Please wait a moment and try again.';
+          } else if (error.message.includes('quota exceeded')) {
+            errorMessage = 'AI service quota exceeded. Please check your API key limits.';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+        
         analysisResults.push({
           index: i + 1,
           type: image.mimeType,
           analysis: 'Analysis failed',
-          error: error instanceof Error ? error.message : String(error)
+          error: errorMessage
         });
       }
     }
@@ -466,9 +481,22 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: 
 
   } catch (error) {
     console.error('Image analysis error:', error);
+    
+    // Provide user-friendly error messages
+    let errorMessage = 'Failed to analyze images';
+    if (error instanceof Error) {
+      if (error.message.includes('503') || error.message.includes('overloaded')) {
+        errorMessage = 'The AI service is currently busy. Please try again in a few moments.';
+      } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+        errorMessage = 'Too many requests to the AI service. Please wait a moment and try again.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
     return res.status(500).json({
       success: false,
-      error: 'Failed to analyze images',
+      error: errorMessage,
       details: error instanceof Error ? error.message : String(error)
     });
   }
@@ -540,14 +568,40 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         
       } catch (analysisError) {
         console.error(`Error analyzing file ${i + 1}:`, analysisError);
+        
+        // Provide user-friendly error messages for common AI service issues
+        let errorMessage = 'Unknown error during analysis';
+        if (analysisError instanceof Error) {
+          if (analysisError.message.includes('503') || analysisError.message.includes('overloaded')) {
+            errorMessage = 'The AI service is currently busy. Please try again in a few moments.';
+          } else if (analysisError.message.includes('429') || analysisError.message.includes('rate limit')) {
+            errorMessage = 'Too many requests to the AI service. Please wait a moment and try again.';
+          } else if (analysisError.message.includes('quota exceeded')) {
+            errorMessage = 'AI service quota exceeded. Please check your API key limits.';
+          } else {
+            errorMessage = analysisError.message;
+          }
+        }
+        
         analysisResults.push({
           index: i + 1,
           type: image.mimeType,
           analysis: null,
           success: false,
-          error: analysisError instanceof Error ? analysisError.message : 'Unknown error'
+          error: errorMessage
         });
       }
+    }
+
+    // Check if any analysis succeeded
+    const successfulAnalyses = analysisResults.filter(result => result.success);
+    if (successfulAnalyses.length === 0) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to analyze any files',
+        details: 'All file analysis attempts failed. This may be due to AI service issues or unsupported file types.',
+        analysisResults
+      });
     }
 
     // Now use the updateSheetFlow to process the extracted data and update the sheet
@@ -582,9 +636,10 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       
       return res.status(200).json({
         success: true,
-        result: `Successfully extracted data from ${images.length} files and updated ${targetSheetName}`,
+        result: `Successfully extracted data from ${successfulAnalyses.length} out of ${images.length} files and updated ${targetSheetName}`,
         details: {
           filesProcessed: images.length,
+          successfulAnalyses: successfulAnalyses.length,
           analysisResults,
           updateResult,
           executedActions: updateResult.executedActions || 0
@@ -593,9 +648,22 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       
     } catch (updateError) {
       console.error('Error updating sheet with extracted data:', updateError);
+      
+      // Provide user-friendly error messages for update failures
+      let errorMessage = 'Failed to update sheet with extracted data';
+      if (updateError instanceof Error) {
+        if (updateError.message.includes('503') || updateError.message.includes('overloaded')) {
+          errorMessage = 'The AI service is currently busy. Please try again in a few moments.';
+        } else if (updateError.message.includes('429') || updateError.message.includes('rate limit')) {
+          errorMessage = 'Too many requests to the AI service. Please wait a moment and try again.';
+        } else {
+          errorMessage = updateError.message;
+        }
+      }
+      
       return res.status(500).json({
         success: false,
-        error: 'Failed to update sheet with extracted data',
+        error: errorMessage,
         details: updateError instanceof Error ? updateError.message : String(updateError),
         analysisResults // Still return the analysis results even if update failed
       });
@@ -603,9 +671,22 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
 
   } catch (error) {
     console.error('Error in handleExtractDataFromImages:', error);
+    
+    // Provide user-friendly error messages
+    let errorMessage = 'Failed to extract data from images';
+    if (error instanceof Error) {
+      if (error.message.includes('503') || error.message.includes('overloaded')) {
+        errorMessage = 'The AI service is currently busy. Please try again in a few moments.';
+      } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+        errorMessage = 'Too many requests to the AI service. Please wait a moment and try again.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
     return res.status(500).json({
       success: false,
-      error: 'Failed to extract data from images',
+      error: errorMessage,
       details: error instanceof Error ? error.message : String(error)
     });
   }
