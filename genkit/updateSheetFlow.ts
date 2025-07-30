@@ -1,18 +1,30 @@
 import { genkit } from 'genkit';
-import { gemini15Flash, googleAI } from '@genkit-ai/googleai';
+import { gemini15Flash, gemini15Pro, googleAI } from '@genkit-ai/googleai';
 import { getGoogleSheetsClient } from '../lib/googleSheets';
 import { insertRow, updateCell } from './tools';
-import { executeAIWithRetry } from '../lib/aiUtils';
+import { executeAIWithRetry, executeAIWithModelFallback } from '../lib/aiUtils';
 import { findLastDataRow } from '../lib/sheetUtils';
 
-// Configure Genkit instance with Google AI plugin
-const ai = genkit({
-  plugins: [googleAI()],
-  model: gemini15Flash,
-});
+// Create multiple AI configurations with different models for fallback
+const aiConfigs = [
+  {
+    name: 'gemini-1.5-flash',
+    config: genkit({
+      plugins: [googleAI()],
+      model: gemini15Flash,
+    })
+  },
+  {
+    name: 'gemini-1.5-pro',
+    config: genkit({
+      plugins: [googleAI()],
+      model: gemini15Pro,
+    })
+  }
+];
 
-// Load the sheet update prompt
-const sheetUpdatePrompt = ai.prompt('sheetUpdate');
+// Load the sheet update prompt from the first config
+const sheetUpdatePrompt = aiConfigs[0].config.prompt('sheetUpdate');
 
 // Input type for the flow
 interface UpdateSheetInput {
@@ -97,7 +109,7 @@ const applyGrammarFixes = (text: string): string => {
 };
 
 // Export the flow implementation
-export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: UpdateSheetInput): Promise<UpdateSheetOutput> => {
+export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow', async (input: UpdateSheetInput): Promise<UpdateSheetOutput> => {
   try {
     console.log('UpdateSheetFlow called with:', input);
     
@@ -145,9 +157,9 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
     const csvData = sheetData.map(row => row.join(',')).join('\n');
     const headers = sheetData[0].join(', ');
     
-    // Use retry wrapper for AI operations
-    const { text } = await executeAIWithRetry(
-      () => sheetUpdatePrompt({
+    // Create multiple AI operations for fallback
+    const aiOperations = aiConfigs.map(config => 
+      () => config.config.prompt('sheetUpdate')({
         transcript: cleanedTranscript,
         sheetData: csvData,
         sheetName,
@@ -155,8 +167,13 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
         insertionRow,
         headers,
         patternAnalysis
-      }),
-      'Sheet update analysis with AI model'
+      })
+    );
+    
+    // Use the fallback strategy with multiple models
+    const { text } = await executeAIWithModelFallback(
+      aiOperations,
+      'Sheet update analysis with AI models'
     );
     
     console.log('AI response:', text);

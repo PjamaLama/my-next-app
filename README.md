@@ -1,77 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Report AI - Next.js Application
+
+A Next.js application for AI-powered report generation and Google Sheets integration.
+
+## Features
+
+- AI-powered document analysis and data extraction
+- Google Sheets integration for data management
+- Voice recording and transcription
+- PWA support for mobile devices
+- Real-time data synchronization
+
+## AI Error Handling Improvements
+
+### Problem
+The application was experiencing frequent 503 "Service Unavailable" errors from the Gemini API due to model overload. This was causing:
+- Failed file analysis operations
+- Interrupted data extraction workflows
+- Poor user experience with repeated failures
+
+### Solution
+Implemented comprehensive error handling and retry mechanisms:
+
+#### 1. Enhanced Retry Strategy
+- **Increased retry attempts**: From 3 to 5 attempts
+- **Longer delays**: Base delay increased from 1s to 2s, max delay from 10s to 30s
+- **Better backoff**: Multiplier increased from 2 to 2.5 for more aggressive retry
+
+#### 2. Request Throttling
+- **Rate limiting**: 1.5-second minimum interval between requests
+- **Prevents API overload**: Reduces the chance of hitting rate limits
+- **Automatic throttling**: Built into all AI operations
+
+#### 3. Model Fallback Strategy
+- **Multiple models**: Uses both Gemini 1.5 Flash and Gemini 1.5 Pro
+- **Automatic fallback**: If one model is overloaded, tries the next
+- **Improved reliability**: Higher success rate for AI operations
+
+#### 4. Better Error Detection
+- **Enhanced patterns**: Detects more overload-related error messages
+- **Specific handling**: Different responses for different error types
+- **User-friendly messages**: Clear explanations of what went wrong
+
+### Configuration
+The retry configuration can be adjusted in `lib/aiUtils.ts`:
+
+```typescript
+const defaultRetryConfig: RetryConfig = {
+  maxRetries: 5,           // Number of retry attempts
+  baseDelay: 2000,         // Initial delay in milliseconds
+  maxDelay: 30000,         // Maximum delay in milliseconds
+  backoffMultiplier: 2.5   // Exponential backoff multiplier
+};
+```
+
+### Usage
+All AI operations automatically use the improved error handling:
+
+```typescript
+import { executeAIWithRetry, executeAIWithModelFallback } from './lib/aiUtils';
+
+// Single model with retry
+const result = await executeAIWithRetry(
+  () => aiModel.generate(prompt),
+  'Document analysis'
+);
+
+// Multiple models with fallback
+const operations = [
+  () => model1.generate(prompt),
+  () => model2.generate(prompt)
+];
+const result = await executeAIWithModelFallback(operations, 'Analysis');
+```
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node.js 18+ 
+- Google Cloud Project with Gemini API enabled
+- Google Sheets API credentials
 
+### Installation
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment Variables
+Create a `.env.local` file:
+```env
+GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_api_key
+GOOGLE_SERVICE_ACCOUNT_EMAIL=your_service_account@project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Development
+```bash
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Testing
+```bash
+npm test
+```
 
-## Environment Variables
+## Architecture
 
-For development or deployment, you can set up environment variables:
+- **Frontend**: Next.js 14 with App Router
+- **AI**: Google Gemini API via Genkit
+- **Database**: Google Sheets + Firestore
+- **Authentication**: Firebase Auth
+- **Deployment**: Vercel/Netlify ready
 
-1. Create a `.env.local` file in the project root
-2. Add the following variables:
-   ```
-   # Default Gemini API Key (optional fallback)
-   GEMINI_API_KEY=your_default_gemini_api_key_here
-   
-   # Google Service Account credentials
-   GOOGLE_SERVICE_ACCOUNT_EMAIL=your_service_account_email@your-project.iam.gserviceaccount.com
-   GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour private key here\n-----END PRIVATE KEY-----\n"
-   ```
+## Contributing
 
-Note: Even with a default API key set, users should still add their own API keys in the app settings for security and usage tracking purposes.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
-## API Keys and Authentication
+## License
 
-### Gemini API Key
-
-Each user must add their own Google Gemini API key in the application settings. This key is securely stored in Firebase for each user and is not shared across users. To set up:
-
-1. Sign in to the application
-2. Click on the settings icon in the navigation bar
-3. Enter your Gemini API key in the settings modal
-4. Click "Save API Key"
-
-### Google Sheets Access
-
-To connect your Google Sheets:
-
-1. Make sure your Google Sheet is shared with the service account email (displayed in the app when adding a spreadsheet)
-2. Follow these steps to share your Google Sheet:
-   - Open your Google Sheet
-   - Click the "Share" button in the top right
-   - Enter the service account email address shown in the app
-   - Set permission to "Editor"
-   - Click "Share"
-3. After sharing, add the spreadsheet link in the navigation bar dropdown
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT License - see LICENSE file for details.

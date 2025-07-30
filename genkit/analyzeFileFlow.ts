@@ -1,10 +1,10 @@
 
 import { genkit } from 'genkit';
 import { z } from 'zod';
-import { gemini15Flash, googleAI } from '@genkit-ai/googleai';
+import { gemini15Flash, gemini15Pro, googleAI } from '@genkit-ai/googleai';
 import pdf from 'pdf-parse';
 import Tesseract from 'tesseract.js';
-import { executeAIWithRetry } from '../lib/aiUtils';
+import { executeAIWithRetry, executeAIWithModelFallback } from '../lib/aiUtils';
 
 // Helper function to extract text from PDF
 async function extractTextFromPDF(base64Data: string): Promise<string> {
@@ -49,13 +49,25 @@ async function extractTextFromImage(base64Data: string): Promise<string> {
 }
 
 export const analyzeFileFlow = (apiKey: string) => {
-  // Configure Genkit instance with Google AI plugin and the provided API key
-  const ai = genkit({
-    plugins: [googleAI({ apiKey })],
-    model: gemini15Flash,
-  });
+  // Create multiple AI configurations with different models for fallback
+  const aiConfigs = [
+    {
+      name: 'gemini-1.5-flash',
+      config: genkit({
+        plugins: [googleAI({ apiKey })],
+        model: gemini15Flash,
+      })
+    },
+    {
+      name: 'gemini-1.5-pro',
+      config: genkit({
+        plugins: [googleAI({ apiKey })],
+        model: gemini15Pro,
+      })
+    }
+  ];
 
-  return ai.defineFlow(
+  return aiConfigs[0].config.defineFlow(
     {
       name: 'analyzeFileFlow',
       inputSchema: z.object({
@@ -134,14 +146,19 @@ Example output format (return exactly like this, no markdown):
 Analyze the extracted text content and extract relevant data in JSON format.`;
 
       try {
-        console.log('🔍 [ANALYZE_FILE_FLOW] Attempting to generate content with Genkit model...');
+        console.log('🔍 [ANALYZE_FILE_FLOW] Attempting to generate content with multiple models...');
         console.log('🔍 [ANALYZE_FILE_FLOW] Prompt length:', fullPrompt.length);
         console.log('🔍 [ANALYZE_FILE_FLOW] Total extracted text length:', extractedContents.reduce((sum, content) => sum + content.textLength, 0));
         
-        // Use the retry wrapper for AI operations
-        const { text } = await executeAIWithRetry(
-          () => ai.generate(fullPrompt),
-          'File analysis with AI model'
+        // Create multiple AI operations for fallback
+        const aiOperations = aiConfigs.map(config => 
+          () => config.config.generate(fullPrompt)
+        );
+        
+        // Use the fallback strategy with multiple models
+        const { text } = await executeAIWithModelFallback(
+          aiOperations,
+          'File analysis with AI models'
         );
         
         console.log('🔍 [ANALYZE_FILE_FLOW] Genkit model generation successful.');
@@ -186,7 +203,7 @@ Analyze the extracted text content and extract relevant data in JSON format.`;
           };
         }
       } catch (error) {
-        console.error('🔍 [ANALYZE_FILE_FLOW] Error during model generation:', error);
+        console.error('🔍 [ANALYZE_FILE_FLOW] All models failed:', error);
         throw error;
       }
     }
