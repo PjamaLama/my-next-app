@@ -7,6 +7,10 @@ import { ServiceAccountProvider } from "./providers/ServiceAccountProvider";
 import { SettingsProvider } from "./providers/SettingsProvider"; // Import the new SettingsProvider
 import { FirestoreSyncProvider } from "./providers/FirestoreSyncProvider";
 import NavBar from "./NavBar";
+import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
+
+// Enable Firebase telemetry for Genkit monitoring
+enableFirebaseTelemetry();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
