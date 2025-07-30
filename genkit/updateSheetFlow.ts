@@ -256,15 +256,8 @@ export const updateSheetFlow = ai.defineFlow('updateSheetFlow', async (input: Up
     // Fetch real Google Sheets data as structured data
     const sheets = await getGoogleSheetsClient();
     
-    // Helper function to properly escape sheet names for Google Sheets API
-    const escapeSheetName = (name: string) => {
-      // If the sheet name contains spaces, special characters, or starts with a digit,
-      // wrap it in single quotes and escape any existing single quotes
-      if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
-        return `'${name.replace(/'/g, "''")}'`;
-      }
-      return name;
-    };
+    // Use shared utility for escaping sheet names
+    const { escapeSheetName } = await import('../lib/sheetUtils');
     
     const escapedSheetName = escapeSheetName(sheetName);
     
