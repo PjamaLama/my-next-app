@@ -49,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { toolCall, context, images, geminiApiKey } = req.body;
+    const { toolCall, context, images } = req.body;
 
     // Validate file sizes before processing
     if (images && images.length > 0) {
@@ -163,7 +163,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Attempt to stringify other object types for logging
       try {
         errorDetails = JSON.stringify(error);
-      } catch (e) {
+              } catch {
         errorDetails = '[Unstringifiable object error]';
       }
     }
@@ -176,7 +176,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-function formatAnalysesAsMarkdown(analyses: any[]): string {
+function formatAnalysesAsMarkdown(analyses: Array<{ index: number; type: string; analysis: unknown; success: boolean; error?: string; extractedData?: unknown }>): string {
   if (!analyses || analyses.length === 0) {
     return "No analysis results to display.";
   }
@@ -423,7 +423,14 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: 
 
     console.log(`Analyzing ${images.length} images/files`);
 
-    const analysisResults = [];
+    const analysisResults: Array<{
+      index: number;
+      type: string;
+      analysis: string;
+      success: boolean;
+      error?: string;
+      extractedData?: unknown;
+    }> = [];
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
@@ -436,6 +443,7 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: 
           index: i + 1,
           type: image.mimeType,
           analysis: 'Analysis complete',
+          success: true,
           extractedData: result
         });
       } catch (error) {
@@ -459,6 +467,7 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: 
           index: i + 1,
           type: image.mimeType,
           analysis: 'Analysis failed',
+          success: false,
           error: errorMessage
         });
       }
@@ -541,9 +550,10 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
     const analysisResults: Array<{
       index: number;
       type: string;
-      analysis: any;
+      analysis: unknown;
       success: boolean;
       error?: string;
+      extractedData?: unknown;
     }> = [];
     
     for (let i = 0; i < images.length; i++) {

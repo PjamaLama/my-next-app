@@ -965,7 +965,7 @@ export default function Home() {
           role: 'system' as const,
           content: `Tool execution completed`,
           timestamp: new Date(),
-          toolResults: data.toolResults.map((result: any, index: number) => ({
+          toolResults: data.toolResults.map((result: { toolId?: string; result: string; success: boolean; details?: unknown }, index: number) => ({
             id: result.toolId || `tool_result_${index}`,
             result: result.result,
             success: result.success,
@@ -1008,6 +1008,7 @@ export default function Home() {
 
 
   // Function to execute tool after confirmation
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const executeTool = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } }) => {
 
 
@@ -2156,6 +2157,7 @@ const filterMessages = (messages: ChatMessage[], filter: 'all' | 'conversation' 
   }
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const suggestRelevantActions = (message: string, uploadedImages: UploadedImage[], hasSpreadsheet: boolean) => {
   const suggestions = [];
   

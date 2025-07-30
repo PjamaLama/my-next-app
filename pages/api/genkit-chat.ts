@@ -16,8 +16,8 @@ interface Context {
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
-      analysis: any;
-      extractedData?: any;
+      analysis: unknown;
+      extractedData?: unknown;
       timestamp: number;
     }>;
     lastUpdated: number;
@@ -140,7 +140,7 @@ function generateFollowUpActions(message: string, context: Context): Array<{
   if (lowerMessage.includes('add') || lowerMessage.includes('1') || lowerMessage.includes('spreadsheet')) {
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
       const latestAnalysis = context.fileAnalysis.files[context.fileAnalysis.files.length - 1];
-      if (latestAnalysis.extractedData && latestAnalysis.extractedData.length > 0) {
+      if (latestAnalysis.extractedData && Array.isArray(latestAnalysis.extractedData) && latestAnalysis.extractedData.length > 0) {
         actions.push({
           id: `tool_${Date.now()}_add_data`,
           type: 'function',
@@ -328,13 +328,13 @@ async function processMessage(
             } else {
               analysisData = result.result;
             }
-          } catch (e) {
+          } catch {
             analysisData = { rawResult: result.result };
           }
           
           // Store analysis for each file
           if (context.fileAnalysis) {
-            images.forEach((image, index) => {
+            images.forEach((image) => {
               context.fileAnalysis!.files.push({
                 mimeType: image.mimeType,
                 analysis: analysisData,
@@ -372,7 +372,7 @@ async function processMessage(
       // If analysis was done recently (within last 5 minutes), provide intelligent response
       if (timeSinceAnalysis < 5 * 60 * 1000) {
         console.log(`🔍 [INTELLIGENT_RESPONSE] Generating intelligent response for recent analysis (${timeSinceAnalysis}ms ago)`);
-        const extractedData = latestAnalysis.extractedData || [];
+        const extractedData = Array.isArray(latestAnalysis.extractedData) ? latestAnalysis.extractedData : [];
         
         if (extractedData.length > 0) {
           console.log(`🔍 [INTELLIGENT_RESPONSE] Found ${extractedData.length} data points to display`);
@@ -380,7 +380,7 @@ async function processMessage(
           
           // Add a summary of extracted data
           if (Array.isArray(extractedData)) {
-            extractedData.slice(0, 5).forEach((item, index) => {
+            extractedData.slice(0, 5).forEach((item) => {
               if (item.field && item.value) {
                 response += `• **${item.field}**: ${item.value}\n`;
               }
