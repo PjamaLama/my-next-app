@@ -71,7 +71,7 @@ export const ensureSheetCapacity = async (
           properties: {
             sheetId: targetSheet.properties.sheetId,
             gridProperties: {
-              rowCount: Math.max(currentRowCount, targetRowIndex + 10) // Add some buffer
+              rowCount: targetRowIndex + 1 // Expand to exactly the target row needed
             }
           },
           fields: 'gridProperties.rowCount'
