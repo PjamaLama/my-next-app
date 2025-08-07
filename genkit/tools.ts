@@ -173,6 +173,7 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
     console.log(`🔗 [N8N] Session ID: ${sessionId}`);
     console.log(`🔗 [N8N] Message: ${message}`);
     console.log(`🔗 [N8N] Sheets: ${sheetNames.join(', ')}`);
+    console.log(`🔗 [N8N] Spreadsheet ID: ${spreadsheetId}`);
     
     // Prepare payload for n8n
     const payload = {
@@ -182,35 +183,71 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
       spreadsheetId,
       spreadsheetUrl: input.spreadsheetUrl,
       callbackUrl: input.callbackUrl || `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/n8n-callback`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Add additional context that n8n might need
+      context: {
+        source: 'genkit-chat',
+        version: '1.0.0',
+        environment: process.env.NODE_ENV || 'development'
+      }
     };
 
-    // Get n8n webhook URL from environment
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
-    if (!n8nWebhookUrl) {
-      throw new Error('N8N_WEBHOOK_URL environment variable not configured');
-    }
+    // Use the provided n8n webhook URL
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.sheetyai.com/webhook/c6bddb96-fe3e-4314-a07d-09435faed94f';
+    
+    console.log(`🔗 [N8N] Using webhook URL: ${n8nWebhookUrl}`);
 
     // Trigger the n8n workflow
     const response = await fetch(n8nWebhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'ReportAI-Genkit/1.0.0'
       },
       body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`🔗 [N8N] Workflow failed with status ${response.status}:`, errorText);
+      
+      // Handle specific n8n production workflow not activated error
+      if (response.status === 404 && errorText.includes('not registered') && errorText.includes('production')) {
+        throw new Error(`N8N production workflow not activated. Please activate the workflow using the toggle in the top-right of the n8n editor, then try again.`);
+      }
+      
+      // Handle specific n8n test mode error
+      if (response.status === 404 && errorText.includes('not registered')) {
+        throw new Error(`N8N webhook not activated. Please click the 'Test workflow' button in your n8n dashboard, then try again. (Test mode webhooks only work for one call after activation)`);
+      }
+      
+      // Handle other n8n errors
+      if (response.status === 404) {
+        throw new Error(`N8N webhook not found. Please check your n8n workflow configuration and ensure the webhook is properly deployed.`);
+      }
+      
       throw new Error(`N8N workflow failed: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
+    let result;
+    try {
+      result = await response.json();
+    } catch (parseError) {
+      // If response is not JSON, treat it as success
+      result = { success: true, message: 'Workflow triggered successfully' };
+    }
+
     console.log(`🔗 [N8N] Workflow triggered successfully:`, result);
     
     return `Processing sheet update via n8n... (Session: ${sessionId})`;
   } catch (error) {
     console.error('🔗 [N8N] Error triggering n8n workflow:', error);
+    
+    // Provide a more helpful error message
+    if (error instanceof Error && error.message.includes('N8N webhook not activated')) {
+      throw error; // Re-throw the specific error
+    }
+    
     throw new Error(`Failed to trigger n8n workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }; 

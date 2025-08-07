@@ -13,6 +13,8 @@ export const config = {
 interface Context {
   spreadsheetId?: string;
   sheetName?: string;
+  sheetNames?: string[];
+  spreadsheetUrl?: string;
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
@@ -217,30 +219,44 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
       spreadsheetId,
       spreadsheetUrl: input.spreadsheetUrl,
       callbackUrl: input.callbackUrl || `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/n8n-callback`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Add additional context that n8n might need
+      context: {
+        source: 'genkit-chat',
+        version: '1.0.0',
+        environment: process.env.NODE_ENV || 'development'
+      }
     };
 
-    // Get n8n webhook URL from environment
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
-    if (!n8nWebhookUrl) {
-      throw new Error('N8N_WEBHOOK_URL environment variable not configured');
-    }
+    // Use the provided n8n webhook URL
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.sheetyai.com/webhook/c6bddb96-fe3e-4314-a07d-09435faed94f';
+    
+    console.log(`🔗 [N8N] Using webhook URL: ${n8nWebhookUrl}`);
 
     // Trigger the n8n workflow
     const response = await fetch(n8nWebhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'ReportAI-Genkit/1.0.0'
       },
       body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`🔗 [N8N] Workflow failed with status ${response.status}:`, errorText);
       throw new Error(`N8N workflow failed: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
+    let result;
+    try {
+      result = await response.json();
+    } catch (parseError) {
+      // If response is not JSON, treat it as success
+      result = { success: true, message: 'Workflow triggered successfully' };
+    }
+
     console.log(`🔗 [N8N] Workflow triggered successfully:`, result);
     
     return `Processing sheet update via n8n... (Session: ${sessionId})`;
