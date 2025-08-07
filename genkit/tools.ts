@@ -1,5 +1,8 @@
 import { getGoogleSheetsClient } from '../lib/googleSheets';
 import { escapeSheetName, findLastDataRow, ensureSheetCapacity } from '../lib/sheetUtils';
+import { genkit } from 'genkit';
+import { z } from 'zod';
+import { gemini15Flash, googleAI } from '@genkit-ai/googleai';
 
 // Input type for insertRow tool
 interface InsertRowInput {
@@ -154,6 +157,165 @@ export const updateCell = async (input: UpdateCellInput): Promise<string> => {
   }
 }; 
 
+// New function to parse extracted data using Genkit
+async function parseExtractedDataWithGenkit(
+  extractedData: unknown, 
+  fileIndex: number, 
+  context?: any
+): Promise<Array<Record<string, any>>> {
+  try {
+    // If extractedData is already an array of objects, return it with fileIndex
+    if (Array.isArray(extractedData)) {
+      return extractedData.map((item: any) => ({
+        ...item,
+        fileIndex
+      }));
+    }
+
+    // If extractedData is a string (raw text), use Genkit to parse it
+    if (typeof extractedData === 'string') {
+      const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+      if (!apiKey) {
+        console.warn('No Google GenAI API key found, returning raw text as single object');
+        return [{
+          rawText: extractedData,
+          fileIndex
+        }];
+      }
+
+      // Create Genkit configuration
+      const aiConfig = genkit({
+        plugins: [googleAI({ apiKey })],
+        model: gemini15Flash,
+      });
+
+      // Define the parsing flow
+      const parseFlow = aiConfig.defineFlow(
+        {
+          name: 'parseExtractedData',
+          inputSchema: z.object({
+            rawText: z.string(),
+            context: z.any().optional(),
+          }),
+          outputSchema: z.array(z.record(z.any())),
+        },
+        async ({ rawText, context }) => {
+          const prompt = `You are an expert data analyst. Parse the following raw text into structured JSON objects with meaningful keys.
+
+Raw text to parse:
+${rawText}
+
+Context (if available):
+${context ? JSON.stringify(context, null, 2) : 'No context provided'}
+
+Instructions:
+1. Analyze the raw text and identify key-value pairs, dates, amounts, names, addresses, etc.
+2. Convert the text into an array of JSON objects with meaningful keys
+3. Use keys like "Date", "Total", "Amount", "Invoice Number", "Customer Name", "Address", etc. based on the content
+4. If the text contains multiple entries (like multiple invoices), create separate objects for each entry
+5. Return ONLY a valid JSON array of objects, no markdown formatting or explanations
+
+Example output format:
+[
+  {
+    "Station": "Glenfair Service Station & Daventry Roads",
+    "Phone": "4840183737",
+    "Invoice Type": "VAT invoice",
+    "Fuel Type": "Ultimate Diesel",
+    "Liters": "50",
+    "Unit Price": "22.09",
+    "Total": "685.50",
+    "Ticket No": "7016",
+    "Batch No": "769",
+    "Reg": "NR33581",
+    "Date": "25/07/25",
+    "Time": "16:10",
+    "POS CNo": "13106",
+    "Shift": "60 6667 850"
+  }
+]
+
+Parse the raw text and return the structured data:`;
+
+          const { text } = await aiConfig.generate(prompt);
+          
+          if (!text) {
+            throw new Error('No output from Genkit model');
+          }
+
+          // Clean up the output to remove markdown formatting if present
+          let cleanedOutput = text.trim();
+          
+          // Remove markdown code blocks if present
+          if (cleanedOutput.includes('```json')) {
+            cleanedOutput = cleanedOutput.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+          }
+          
+          // Remove any leading/trailing whitespace
+          cleanedOutput = cleanedOutput.trim();
+          
+          try {
+            // Attempt to parse the cleaned output as JSON
+            const parsedResult = JSON.parse(cleanedOutput);
+            
+            // Ensure it's an array
+            if (Array.isArray(parsedResult)) {
+              return parsedResult;
+            } else if (typeof parsedResult === 'object') {
+              return [parsedResult];
+            } else {
+              throw new Error('Parsed result is not an object or array');
+            }
+          } catch (parseError) {
+            console.error('Failed to parse Genkit output as JSON:', parseError);
+            console.error('Raw output:', cleanedOutput);
+            
+            // Return the raw text as a single object if parsing fails
+            return [{
+              rawText: extractedData,
+              parseError: parseError instanceof Error ? parseError.message : String(parseError),
+              fileIndex
+            }];
+          }
+        }
+      );
+
+      const result = await parseFlow.run({
+        rawText: extractedData,
+        context
+      });
+
+      // Add fileIndex to each object - handle the result properly
+      const parsedData = Array.isArray(result) ? result : [result];
+      return parsedData.map((item: Record<string, any>) => ({
+        ...item,
+        fileIndex
+      }));
+    }
+
+    // If extractedData is an object, convert it to array with fileIndex
+    if (typeof extractedData === 'object' && extractedData !== null) {
+      return [{
+        ...extractedData,
+        fileIndex
+      }];
+    }
+
+    // Fallback: return as single object with fileIndex
+    return [{
+      rawData: extractedData,
+      fileIndex
+    }];
+  } catch (error) {
+    console.error('Error parsing extracted data with Genkit:', error);
+    return [{
+      rawData: extractedData,
+      parseError: error instanceof Error ? error.message : String(error),
+      fileIndex
+    }];
+  }
+}
+
 // New n8n integration tool
 interface N8nSheetUpdateInput {
   message: string;
@@ -193,6 +355,56 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
     console.log(`🔗 [N8N] File data count: ${input.fileData?.length || 0}`); // This log will now show 0
     console.log(`🔗 [N8N] File analysis count: ${input.fileAnalysis?.files?.length || 0}`);
     
+    // Process fileAnalysis.files to create fileAnalysisData
+    let fileAnalysisData: Array<Record<string, any>> = [];
+    
+    if (input.fileAnalysis?.files && input.fileAnalysis.files.length > 0) {
+      console.log(`🔗 [N8N] Processing ${input.fileAnalysis.files.length} files for data extraction`);
+      
+      // Process each file's extractedData
+      for (let i = 0; i < input.fileAnalysis.files.length; i++) {
+        const file = input.fileAnalysis.files[i];
+        console.log(`🔗 [N8N] Processing file ${i + 1}: ${file.mimeType}`);
+        
+        if (file.extractedData) {
+          try {
+            // Use Genkit to parse the extractedData
+            const parsedData = await parseExtractedDataWithGenkit(
+              file.extractedData, 
+              i, 
+              input.context
+            );
+            
+            // Add the parsed data to the combined array
+            fileAnalysisData.push(...parsedData);
+            
+            console.log(`🔗 [N8N] Successfully parsed ${parsedData.length} entries from file ${i + 1}`);
+          } catch (error) {
+            console.error(`🔗 [N8N] Error parsing file ${i + 1}:`, error);
+            
+            // Add error entry to maintain fileIndex tracking
+            fileAnalysisData.push({
+              error: `Failed to parse file ${i + 1}`,
+              errorDetails: error instanceof Error ? error.message : String(error),
+              fileIndex: i
+            });
+          }
+        } else {
+          console.log(`🔗 [N8N] No extractedData found for file ${i + 1}`);
+          
+          // Add empty entry to maintain fileIndex tracking
+          fileAnalysisData.push({
+            error: `No extracted data available for file ${i + 1}`,
+            fileIndex: i
+          });
+        }
+      }
+    } else {
+      console.log(`🔗 [N8N] No fileAnalysis.files found, sending empty fileAnalysisData`);
+    }
+    
+    console.log(`🔗 [N8N] Total fileAnalysisData entries: ${fileAnalysisData.length}`);
+    
     // Prepare payload for n8n - exclude large file data to avoid 413 errors
     const payload = {
       sessionId,
@@ -205,7 +417,7 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
       // Add essential data only (exclude large file data)
       sheetData: input.sheetData,
       // fileData: input.fileData, // Removed as per user's latest instruction
-      fileAnalysis: input.fileAnalysis,
+      fileAnalysisData, // New field: processed and combined data from all files
       context: input.context || {
         source: 'genkit-chat',
         version: '1.0.0',
