@@ -2164,4 +2164,178 @@ export default function Home() {
                       </button>
                     </div>
                     {finalSubmitStatus && finalSubmitStatus !== 'sending' && (
-                      <p className={`mt-2 text-sm ${finalSubmitStatus === 'success' ? 'text-green-600' : 'text-red-600'}`
+                      <p className={`mt-2 text-sm ${finalSubmitStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                        {finalSubmitStatus === 'success' ? 'Data saved successfully!' : 'Failed to save data.'}
+                      </p>
+                    )}
+                  </>
+                )}
+                </div>
+              </section>
+            </div>
+          )}
+
+
+          <RecentActivity activity={activity} activityError={activityError} />
+      </div>
+    </div>
+
+    {/* Background Operation Loading Indicator */}
+    {backgroundOperation.isRunning && (
+      <div className="fixed bottom-4 right-4 z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-4 max-w-sm">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                {backgroundOperation.operation}
+              </p>
+              {backgroundOperation.progress && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {backgroundOperation.progress}
+                </p>
+              )}
+            </div>
+            <div className="flex-shrink-0">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  );
+}
+
+// Helper functions for Phase 2 - Smart Intent Detection
+const detectDataEntry = (text: string): boolean => {
+  const dataEntryKeywords = [
+    'add', 'update', 'insert', 'create', 'save', 'record', 'log', 'enter',
+    'total', 'amount', 'quantity', 'date', 'name', 'email', 'phone', 'address',
+    'expense', 'income', 'payment', 'sale', 'order', 'customer', 'item'
+  ];
+  
+  const hasNumbers = /\d/.test(text);
+  const hasDataKeywords = dataEntryKeywords.some(keyword => 
+    text.toLowerCase().includes(keyword)
+  );
+  
+  // Consider it data entry if it has numbers AND data keywords, or specific patterns
+  const hasDataPattern = /(\$\d+|\d+\.\d+|\d+\/\d+\/\d+|\w+@\w+\.\w+)/.test(text);
+  
+  return (hasNumbers && hasDataKeywords) || hasDataPattern;
+};
+
+const detectIntent = (text: string): 'data_entry' | 'question' | 'instruction' | 'general' => {
+  const questionWords = ['what', 'how', 'when', 'where', 'why', 'who', 'which', 'can you', 'do you'];
+  const instructionWords = ['please', 'can you', 'help me', 'i need', 'show me'];
+  
+  if (questionWords.some(word => text.toLowerCase().startsWith(word))) {
+    return 'question';
+  }
+  if (detectDataEntry(text)) {
+    return 'data_entry';
+  }
+  if (instructionWords.some(word => text.toLowerCase().includes(word))) {
+    return 'instruction';
+  }
+  return 'general';
+};
+
+const getSmartPlaceholder = (uploadedImages: UploadedImage[], defaultSpreadsheetId: string | null, selectedSheetName: string | null): string => {
+  if (!defaultSpreadsheetId) return "First, select a spreadsheet above...";
+  if (uploadedImages.length > 0) return `Describe what to do with these ${uploadedImages.length} file${uploadedImages.length !== 1 ? 's' : ''}...`;
+  if (!selectedSheetName) return "Ask me about your spreadsheet or add data...";
+  return "Add data, ask questions, or give instructions...";
+};
+
+const getMessageTypeIcon = (messageType?: string): string => {
+  switch (messageType) {
+    case 'voice': return '🎤';
+    case 'text': return '💬';
+    case 'sheet_update': return '📊';
+    case 'tool_execution': return '⚙️';
+    case 'ai_response': return '🤖';
+    default: return '💬';
+  }
+};
+
+const getMessageTypeColor = (messageType?: string): string => {
+  switch (messageType) {
+    case 'voice': return 'text-blue-600';
+    case 'text': return 'text-blue-600';
+    case 'sheet_update': return 'text-green-600';
+    case 'tool_execution': return 'text-orange-600';
+    case 'ai_response': return 'text-gray-600';
+    default: return 'text-blue-600';
+  }
+};
+
+const detectMissedSheetIntent = (userMessage: string, aiResponse: string): boolean => {
+  const hasDataPattern = detectDataEntry(userMessage);
+  const aiDidntMentionSheet = !aiResponse.toLowerCase().includes('sheet') && 
+                              !aiResponse.toLowerCase().includes('spreadsheet') &&
+                              !aiResponse.toLowerCase().includes('update') &&
+                              !aiResponse.toLowerCase().includes('add');
+  
+  return hasDataPattern && aiDidntMentionSheet;
+};
+
+const filterMessages = (messages: ChatMessage[], filter: 'all' | 'conversation' | 'sheet_updates') => {
+  switch (filter) {
+    case 'conversation':
+      return messages.filter(msg => 
+        msg.messageType === 'voice' || 
+        msg.messageType === 'text' || 
+        msg.messageType === 'ai_response'
+      );
+    case 'sheet_updates':
+      return messages.filter(msg => 
+        msg.messageType === 'sheet_update' || 
+        msg.messageType === 'tool_execution' ||
+        (msg.toolCalls && msg.toolCalls.length > 0) ||
+        (msg.toolResults && msg.toolResults.length > 0)
+      );
+    default:
+      return messages;
+  }
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const suggestRelevantActions = (message: string, uploadedImages: UploadedImage[], hasSpreadsheet: boolean) => {
+  const suggestions = [];
+  
+  if (detectDataEntry(message) && hasSpreadsheet) {
+    suggestions.push({
+      icon: "📊",
+      text: "Add to spreadsheet",
+      action: "data_entry"
+    });
+  }
+  
+  if (message.toLowerCase().includes('analyze') || message.toLowerCase().includes('report')) {
+    suggestions.push({
+      icon: "📈",
+      text: "Analyze data",
+      action: "analyze"
+    });
+  }
+  
+  if (uploadedImages.length > 0) {
+    suggestions.push({
+      icon: "👁️",
+      text: "Extract data from files",
+      action: "extract_data"
+    });
+  }
+  
+  if (message.toLowerCase().includes('question') || message.includes('?')) {
+    suggestions.push({
+      icon: "❓",
+      text: "Answer question",
+      action: "question"
+    });
+  }
+  
+  return suggestions;
+};

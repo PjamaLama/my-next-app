@@ -229,7 +229,7 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
     };
 
     // Use the provided n8n webhook URL
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.sheetyai.com/webhook/c6bddb96-fe3e-4314-a07d-09435faed94f';
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.sheetyai.com/webhook-test/c6bddb96-fe3e-4314-a07d-09435faed94f';
     
     console.log(`🔗 [N8N] Using webhook URL: ${n8nWebhookUrl}`);
 
