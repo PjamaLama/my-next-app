@@ -15,6 +15,7 @@ interface Context {
   sheetName?: string;
   sheetNames?: string[];
   spreadsheetUrl?: string;
+  sheetData?: any; // Add sheet data to context
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
@@ -274,6 +275,34 @@ async function processMessage(
   images: ImageData[] = []
 ) {
   try {
+    // Fetch sheet data if we have spreadsheet and sheet information
+    let sheetData = null;
+    if (context?.spreadsheetId && context?.sheetNames && context.sheetNames.length > 0) {
+      try {
+        console.log(`🔍 [PROCESS_MESSAGE] Fetching sheet data for ${context.sheetNames[0]} in ${context.spreadsheetId}`);
+        
+        // Fetch the current sheet data
+        const sheetResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/get-sheet-data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            spreadsheetId: context.spreadsheetId, 
+            sheetName: context.sheetNames[0] 
+          })
+        });
+
+        if (sheetResponse.ok) {
+          const sheetResult = await sheetResponse.json();
+          sheetData = sheetResult.data;
+          console.log(`✅ [PROCESS_MESSAGE] Successfully fetched ${sheetData?.length || 0} rows of sheet data`);
+        } else {
+          console.warn(`⚠️ [PROCESS_MESSAGE] Failed to fetch sheet data: ${sheetResponse.status}`);
+        }
+      } catch (error) {
+        console.error(`❌ [PROCESS_MESSAGE] Error fetching sheet data:`, error);
+      }
+    }
+
     // Analyze the message for intent
     const lowerMessage = message.toLowerCase();
     let intent = 'chat';
@@ -389,7 +418,11 @@ async function processMessage(
         message,
         sheetNames: context.sheetNames,
         spreadsheetId: context.spreadsheetId,
-        spreadsheetUrl: context.spreadsheetUrl
+        spreadsheetUrl: context.spreadsheetUrl,
+        sheetData: sheetData, // Pass fetched sheet data
+        fileData: [], // ✅ Don't send raw file data - only send analysis
+        fileAnalysis: context.fileAnalysis, // Pass file analysis results (extracted data)
+        context: context // Pass full context
       });
 
       return {
@@ -597,6 +630,22 @@ async function executeN8nTool(input: {
   sheetNames: string[];
   spreadsheetId?: string;
   spreadsheetUrl?: string;
+  sheetData?: any;
+  fileData?: Array<{ // Optional - not sent to n8n anymore, only fileAnalysis is sent
+    data: string;
+    mimeType: string;
+    name?: string;
+  }>;
+  fileAnalysis?: {
+    files: Array<{
+      mimeType: string;
+      analysis: unknown;
+      extractedData?: unknown;
+      timestamp: number;
+    }>;
+    lastUpdated: number;
+  };
+  context?: any;
 }) {
   try {
     const { updateSheetViaN8n } = await import('../../genkit/tools');
@@ -605,7 +654,11 @@ async function executeN8nTool(input: {
       message: input.message,
       sheetNames: input.sheetNames,
       spreadsheetId: input.spreadsheetId,
-      spreadsheetUrl: input.spreadsheetUrl
+      spreadsheetUrl: input.spreadsheetUrl,
+      sheetData: input.sheetData,
+      // fileData: input.fileData, // Removed - not sending raw file data to n8n
+      fileAnalysis: input.fileAnalysis,
+      context: input.context
     });
 
     return {

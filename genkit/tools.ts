@@ -162,6 +162,23 @@ interface N8nSheetUpdateInput {
   spreadsheetId?: string;
   sessionId?: string;
   callbackUrl?: string;
+  // Add new fields for complete data
+  sheetData?: any; // Current sheet data
+  fileData?: Array<{ // This was previously used to pass raw file data, now it's removed from payload
+    data: string;
+    mimeType: string;
+    name?: string;
+  }>; // Uploaded files
+  fileAnalysis?: {
+    files: Array<{
+      mimeType: string;
+      analysis: unknown;
+      extractedData?: unknown;
+      timestamp: number;
+    }>;
+    lastUpdated: number;
+  }; // File analysis results
+  context?: any; // Additional context
 }
 
 // Export the n8n sheet update function
@@ -174,8 +191,10 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
     console.log(`🔗 [N8N] Message: ${message}`);
     console.log(`🔗 [N8N] Sheets: ${sheetNames.join(', ')}`);
     console.log(`🔗 [N8N] Spreadsheet ID: ${spreadsheetId}`);
+    console.log(`🔗 [N8N] File data count: ${input.fileData?.length || 0}`); // This log will now show 0
+    console.log(`🔗 [N8N] File analysis count: ${input.fileAnalysis?.files?.length || 0}`);
     
-    // Prepare payload for n8n
+    // Prepare payload for n8n - exclude large file data to avoid 413 errors
     const payload = {
       sessionId,
       message,
@@ -184,8 +203,11 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
       spreadsheetUrl: input.spreadsheetUrl,
       callbackUrl: input.callbackUrl || `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/n8n-callback`,
       timestamp: new Date().toISOString(),
-      // Add additional context that n8n might need
-      context: {
+      // Add essential data only (exclude large file data)
+      sheetData: input.sheetData,
+      // fileData: input.fileData, // Removed as per user's latest instruction
+      fileAnalysis: input.fileAnalysis,
+      context: input.context || {
         source: 'genkit-chat',
         version: '1.0.0',
         environment: process.env.NODE_ENV || 'development'
