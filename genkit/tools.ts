@@ -172,7 +172,6 @@ interface N8nSheetUpdateInput {
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
-      analysis?: unknown; // Made optional since we're only storing extractedData
       extractedData?: unknown;
       timestamp: number;
     }>;

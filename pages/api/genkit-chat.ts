@@ -19,7 +19,6 @@ interface Context {
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
-      analysis?: unknown; // Made optional since we're only storing extractedData
       extractedData?: unknown;
       timestamp: number;
     }>;
@@ -409,55 +408,46 @@ async function processMessage(
             };
           }
           
-          // Get the structured analysis data from the response
-          let analysisData = null;
-          if (result.analyses) {
-            // Use the structured analyses data directly
-            analysisData = result.analyses;
-            console.log(`🔍 [CONTEXT] Found structured analyses data:`, analysisData);
+          // Get the extracted data directly from the result
+          let extractedData = null;
+          if (result.analyses && Array.isArray(result.analyses)) {
+            // Use the analyses array directly
+            extractedData = result.analyses.map((analysis: any) => 
+              analysis.extractedData?.result?.extracted_data || analysis.extractedData || []
+            ).flat();
+            console.log(`🔍 [CONTEXT] Found analyses data:`, extractedData);
           } else if (result.details && result.details.analyses) {
-            // Fallback: use the structured analyses data from details
-            analysisData = result.details.analyses;
-            console.log(`🔍 [CONTEXT] Found structured analyses data in details:`, analysisData);
+            // Fallback: use the analyses data from details
+            extractedData = result.details.analyses.map((analysis: any) => 
+              analysis.extractedData?.result?.extracted_data || analysis.extractedData || []
+            ).flat();
+            console.log(`🔍 [CONTEXT] Found analyses data in details:`, extractedData);
           } else {
             // Fallback: try to parse the result as JSON
             try {
               if (typeof result.result === 'string') {
-                analysisData = JSON.parse(result.result);
+                const parsed = JSON.parse(result.result);
+                extractedData = parsed.extracted_data || parsed.result?.extracted_data || [];
               } else {
-                analysisData = result.result;
+                extractedData = result.result?.extracted_data || result.result?.result?.extracted_data || [];
               }
             } catch {
-              analysisData = { rawResult: result.result };
+              extractedData = [];
             }
           }
           
-          // Store analysis for each file
-          if (context.fileAnalysis) {
-            if (Array.isArray(analysisData)) {
-              // If we have structured analyses data, use it directly
-              analysisData.forEach((analysis: any, index: number) => {
-                context.fileAnalysis!.files.push({
-                  mimeType: images[index]?.mimeType || 'unknown',
-                  // Remove analysis field - only store extractedData
-                  extractedData: analysis?.extractedData?.result?.extracted_data || analysis?.extractedData || [],
-                  timestamp: Date.now()
-                });
+          // Store extracted data for each file
+          if (context.fileAnalysis && extractedData) {
+            images.forEach((image) => {
+              context.fileAnalysis!.files.push({
+                mimeType: image.mimeType,
+                extractedData: extractedData,
+                timestamp: Date.now()
               });
-            } else {
-              // Fallback: store for each image
-              images.forEach((image) => {
-                context.fileAnalysis!.files.push({
-                  mimeType: image.mimeType,
-                  // Remove analysis field - only store extractedData
-                  extractedData: analysisData?.extracted_data || analysisData?.result?.extracted_data || [],
-                  timestamp: Date.now()
-                });
-              });
-            }
+            });
             
             context.fileAnalysis.lastUpdated = Date.now();
-            console.log(`🔍 [CONTEXT] Stored analysis for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
+            console.log(`🔍 [CONTEXT] Stored extracted data for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
           }
           
           enhancedResponse += `\n\n📄 **File Analysis Complete:**\n${result.result}`;
@@ -489,7 +479,7 @@ async function processMessage(
         sheetData: sheetData, // Pass fetched sheet data
         fileData: [], // ✅ Don't send raw file data - only send analysis
         fileAnalysis: context.fileAnalysis, // Pass file analysis results (extracted data)
-        context: context // Pass full context
+        context: { ...context, fileAnalysis: undefined } // Pass context but remove fileAnalysis to avoid duplication
       });
 
       return {
@@ -645,7 +635,6 @@ async function executeN8nTool(input: {
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
-      analysis?: unknown; // Made optional since we're only storing extractedData
       extractedData?: unknown;
       timestamp: number;
     }>;
