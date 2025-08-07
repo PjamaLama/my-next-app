@@ -107,6 +107,7 @@ async function executeToolCall(
       success: data.success,
       result: data.result,
       details: data.details,
+      analyses: data.analyses, // Pass through the analyses field
       toolId: toolCall.id
     };
   } catch (error) {
@@ -412,29 +413,7 @@ async function processMessage(
                            lowerMessage.includes('sheet') ||
                            lowerMessage.includes('spreadsheet');
 
-    if (isSheetOperation && context?.spreadsheetId && context?.sheetNames) {
-      // Use n8n for sheet operations
-      const n8nResult = await executeN8nTool({
-        message,
-        sheetNames: context.sheetNames,
-        spreadsheetId: context.spreadsheetId,
-        spreadsheetUrl: context.spreadsheetUrl,
-        sheetData: sheetData, // Pass fetched sheet data
-        fileData: [], // ✅ Don't send raw file data - only send analysis
-        fileAnalysis: context.fileAnalysis, // Pass file analysis results (extracted data)
-        context: context // Pass full context
-      });
-
-      return {
-        response: n8nResult.message,
-        toolCalls: [],
-        pendingToolCalls: [],
-        toolResults: [n8nResult],
-        context: context
-      };
-    }
-
-    // Auto-execute all suggested tools
+    // Auto-execute all suggested tools FIRST (including file analysis)
     const toolResults = [];
     let enhancedResponse = '';
     
@@ -454,29 +433,52 @@ async function processMessage(
             };
           }
           
-          // Parse the analysis result to extract structured data
+          // Get the structured analysis data from the response
           let analysisData = null;
-          try {
-            if (typeof result.result === 'string') {
-              // Try to parse the result as JSON
-              analysisData = JSON.parse(result.result);
-            } else {
-              analysisData = result.result;
+          if (result.analyses) {
+            // Use the structured analyses data directly
+            analysisData = result.analyses;
+            console.log(`🔍 [CONTEXT] Found structured analyses data:`, analysisData);
+          } else if (result.details && result.details.analyses) {
+            // Fallback: use the structured analyses data from details
+            analysisData = result.details.analyses;
+            console.log(`🔍 [CONTEXT] Found structured analyses data in details:`, analysisData);
+          } else {
+            // Fallback: try to parse the result as JSON
+            try {
+              if (typeof result.result === 'string') {
+                analysisData = JSON.parse(result.result);
+              } else {
+                analysisData = result.result;
+              }
+            } catch {
+              analysisData = { rawResult: result.result };
             }
-          } catch {
-            analysisData = { rawResult: result.result };
           }
           
           // Store analysis for each file
           if (context.fileAnalysis) {
-            images.forEach((image) => {
-              context.fileAnalysis!.files.push({
-                mimeType: image.mimeType,
-                analysis: analysisData,
-                extractedData: analysisData?.extracted_data || [],
-                timestamp: Date.now()
+            if (Array.isArray(analysisData)) {
+              // If we have structured analyses data, use it directly
+              analysisData.forEach((analysis: any, index: number) => {
+                context.fileAnalysis!.files.push({
+                  mimeType: images[index]?.mimeType || 'unknown',
+                  analysis: analysis,
+                  extractedData: analysis?.extractedData || [],
+                  timestamp: Date.now()
+                });
               });
-            });
+            } else {
+              // Fallback: store for each image
+              images.forEach((image) => {
+                context.fileAnalysis!.files.push({
+                  mimeType: image.mimeType,
+                  analysis: analysisData,
+                  extractedData: analysisData?.extracted_data || [],
+                  timestamp: Date.now()
+                });
+              });
+            }
             
             context.fileAnalysis.lastUpdated = Date.now();
             console.log(`🔍 [CONTEXT] Stored analysis for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
@@ -493,6 +495,36 @@ async function processMessage(
       } else {
         enhancedResponse += `\n\n❌ **Tool Execution Failed:**\n${result.result}`;
       }
+    }
+
+    // NOW check if this is a sheet-related operation (after file analysis is complete)
+    if (isSheetOperation && context?.spreadsheetId && context?.sheetNames) {
+      // Debug logging for file analysis
+      console.log(`🔍 [N8N_CALL] About to call n8n with fileAnalysis:`, context.fileAnalysis);
+      console.log(`🔍 [N8N_CALL] File analysis files count:`, context.fileAnalysis?.files?.length || 0);
+      if (context.fileAnalysis?.files && context.fileAnalysis.files.length > 0) {
+        console.log(`🔍 [N8N_CALL] First file analysis:`, context.fileAnalysis.files[0]);
+      }
+      
+      // Use n8n for sheet operations
+      const n8nResult = await executeN8nTool({
+        message,
+        sheetNames: context.sheetNames,
+        spreadsheetId: context.spreadsheetId,
+        spreadsheetUrl: context.spreadsheetUrl,
+        sheetData: sheetData, // Pass fetched sheet data
+        fileData: [], // ✅ Don't send raw file data - only send analysis
+        fileAnalysis: context.fileAnalysis, // Pass file analysis results (extracted data)
+        context: context // Pass full context
+      });
+
+      return {
+        response: n8nResult.message,
+        toolCalls: [],
+        pendingToolCalls: [],
+        toolResults: [n8nResult],
+        context: context
+      };
     }
 
     // Generate intelligent conversational response based on analysis results
