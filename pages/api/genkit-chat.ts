@@ -145,17 +145,8 @@ function generateFollowUpActions(message: string, context: Context): Array<{
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
       const latestAnalysis = context.fileAnalysis.files[context.fileAnalysis.files.length - 1];
       if (latestAnalysis.extractedData && Array.isArray(latestAnalysis.extractedData) && latestAnalysis.extractedData.length > 0) {
-        actions.push({
-          id: `tool_${Date.now()}_add_data`,
-          type: 'function',
-          function: {
-            name: 'extract_data_from_files',
-            arguments: JSON.stringify({
-              transcript: 'Add the extracted data to the spreadsheet',
-              files: context.fileAnalysis.files.length
-            })
-          }
-        });
+        // Note: Sheet operations are now handled by n8n, not through extract_data_from_files
+        console.log(`🔍 [FOLLOW_UP] User wants to add data to spreadsheet - this will be handled by n8n`);
       }
     }
   }
@@ -335,9 +326,8 @@ async function processMessage(
     if (hasFiles) {
       // Determine the appropriate tool name based on file types
       const toolName = hasPDFs ? 'analyze_files' : 'analyze_images';
-      const extractToolName = hasPDFs ? 'extract_data_from_files' : 'extract_data_from_images';
       
-      // If files are provided, suggest analysis tools
+      // If files are provided, suggest analysis tools ONLY
       suggestedTools.push({
         id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type: 'function',
@@ -351,21 +341,7 @@ async function processMessage(
         }
       });
       
-      // If the message also mentions sheet operations with files
-      if (lowerMessage.includes('add') || lowerMessage.includes('extract') || lowerMessage.includes('data from')) {
-        intent = 'extract_from_files';
-        suggestedTools.push({
-          id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          type: 'function',
-          function: {
-            name: extractToolName,
-            arguments: JSON.stringify({ 
-              transcript: message,
-              files: images.length
-            })
-          }
-        });
-      }
+      // REMOVED: extract_data_from_files tool - n8n will handle all sheet operations
     } else {
       // Original intent detection for text-only messages
       if (lowerMessage.includes('add') || lowerMessage.includes('insert') || lowerMessage.includes('new')) {
@@ -485,8 +461,6 @@ async function processMessage(
           }
           
           enhancedResponse += `\n\n📄 **File Analysis Complete:**\n${result.result}`;
-        } else if (toolCall.function.name === 'extract_data_from_files' || toolCall.function.name === 'extract_data_from_images') {
-          enhancedResponse += `\n\n📊 **Data Extraction Complete:**\n${result.result}`;
         } else if (toolCall.function.name === 'update_sheet') {
           enhancedResponse += `\n\n✅ **Spreadsheet Updated:**\n${result.result}`;
         } else if (toolCall.function.name === 'get_sheet_data') {
