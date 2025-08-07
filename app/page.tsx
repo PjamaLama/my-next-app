@@ -2196,4 +2196,34 @@ const suggestRelevantActions = (message: string, uploadedImages: UploadedImage[]
   return suggestions;
 };
 
+// Add state for n8n session tracking
+const [n8nSessions, setN8nSessions] = useState<Map<string, any>>(new Map());
+
+// Add function to check n8n session status
+const checkN8nSessionStatus = async (sessionId: string) => {
+  try {
+    const response = await fetch(`/api/n8n-session-status?sessionId=${sessionId}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.status === 'completed') {
+        // Update UI with final result
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === sessionId 
+            ? { ...msg, content: data.finalResponse, status: 'completed' }
+            : msg
+        ));
+      } else if (data.status === 'processing') {
+        // Update UI with partial response
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === sessionId 
+            ? { ...msg, content: data.partialResponse, status: 'processing' }
+            : msg
+        ));
+      }
+    }
+  } catch (error) {
+    console.error('Error checking n8n session status:', error);
+  }
+};
+
 

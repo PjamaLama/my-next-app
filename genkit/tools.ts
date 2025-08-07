@@ -153,3 +153,64 @@ export const updateCell = async (input: UpdateCellInput): Promise<string> => {
     throw new Error(`Failed to update cell: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }; 
+
+// New n8n integration tool
+interface N8nSheetUpdateInput {
+  message: string;
+  sheetNames: string[];
+  spreadsheetUrl?: string;
+  spreadsheetId?: string;
+  sessionId?: string;
+  callbackUrl?: string;
+}
+
+// Export the n8n sheet update function
+export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<string> => {
+  try {
+    const { message, sheetNames, spreadsheetId, sessionId = `session-${Date.now()}` } = input;
+    
+    console.log(`🔗 [N8N] Triggering n8n workflow for sheet update`);
+    console.log(`🔗 [N8N] Session ID: ${sessionId}`);
+    console.log(`🔗 [N8N] Message: ${message}`);
+    console.log(`🔗 [N8N] Sheets: ${sheetNames.join(', ')}`);
+    
+    // Prepare payload for n8n
+    const payload = {
+      sessionId,
+      message,
+      sheetNames,
+      spreadsheetId,
+      spreadsheetUrl: input.spreadsheetUrl,
+      callbackUrl: input.callbackUrl || `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/n8n-callback`,
+      timestamp: new Date().toISOString()
+    };
+
+    // Get n8n webhook URL from environment
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+    if (!n8nWebhookUrl) {
+      throw new Error('N8N_WEBHOOK_URL environment variable not configured');
+    }
+
+    // Trigger the n8n workflow
+    const response = await fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`N8N workflow failed: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log(`🔗 [N8N] Workflow triggered successfully:`, result);
+    
+    return `Processing sheet update via n8n... (Session: ${sessionId})`;
+  } catch (error) {
+    console.error('🔗 [N8N] Error triggering n8n workflow:', error);
+    throw new Error(`Failed to trigger n8n workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}; 

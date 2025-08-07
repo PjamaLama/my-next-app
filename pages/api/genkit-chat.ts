@@ -189,7 +189,68 @@ function generateFollowUpActions(message: string, context: Context): Array<{
   return actions;
 }
 
-// Simple chat processing with image support and automatic tool execution
+// New n8n integration tool
+interface N8nSheetUpdateInput {
+  message: string;
+  sheetNames: string[];
+  spreadsheetUrl?: string;
+  spreadsheetId?: string;
+  sessionId?: string;
+  callbackUrl?: string;
+}
+
+// Export the n8n sheet update function
+export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<string> => {
+  try {
+    const { message, sheetNames, spreadsheetId, sessionId = `session-${Date.now()}` } = input;
+    
+    console.log(`🔗 [N8N] Triggering n8n workflow for sheet update`);
+    console.log(`🔗 [N8N] Session ID: ${sessionId}`);
+    console.log(`🔗 [N8N] Message: ${message}`);
+    console.log(`🔗 [N8N] Sheets: ${sheetNames.join(', ')}`);
+    
+    // Prepare payload for n8n
+    const payload = {
+      sessionId,
+      message,
+      sheetNames,
+      spreadsheetId,
+      spreadsheetUrl: input.spreadsheetUrl,
+      callbackUrl: input.callbackUrl || `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/n8n-callback`,
+      timestamp: new Date().toISOString()
+    };
+
+    // Get n8n webhook URL from environment
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+    if (!n8nWebhookUrl) {
+      throw new Error('N8N_WEBHOOK_URL environment variable not configured');
+    }
+
+    // Trigger the n8n workflow
+    const response = await fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`N8N workflow failed: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log(`🔗 [N8N] Workflow triggered successfully:`, result);
+    
+    return `Processing sheet update via n8n... (Session: ${sessionId})`;
+  } catch (error) {
+    console.error('🔗 [N8N] Error triggering n8n workflow:', error);
+    throw new Error(`Failed to trigger n8n workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+// Update the processMessage function to use n8n for sheet operations
 async function processMessage(
   message: string, 
   context: Context, 
@@ -297,6 +358,31 @@ async function processMessage(
           });
         }
       }
+    }
+
+    // Check if this is a sheet-related operation
+    const isSheetOperation = lowerMessage.includes('add') || 
+                           lowerMessage.includes('update') || 
+                           lowerMessage.includes('insert') || 
+                           lowerMessage.includes('sheet') ||
+                           lowerMessage.includes('spreadsheet');
+
+    if (isSheetOperation && context?.spreadsheetId && context?.sheetNames) {
+      // Use n8n for sheet operations
+      const n8nResult = await executeN8nTool({
+        message,
+        sheetNames: context.sheetNames,
+        spreadsheetId: context.spreadsheetId,
+        spreadsheetUrl: context.spreadsheetUrl
+      });
+
+      return {
+        response: n8nResult.message,
+        toolCalls: [],
+        pendingToolCalls: [],
+        toolResults: [n8nResult],
+        context: context
+      };
     }
 
     // Auto-execute all suggested tools
@@ -485,6 +571,38 @@ async function processMessage(
       pendingToolCalls: [],
       toolResults: [],
       context: context // Return original context even on error
+    };
+  }
+}
+
+// New function to execute n8n tool
+async function executeN8nTool(input: {
+  message: string;
+  sheetNames: string[];
+  spreadsheetId?: string;
+  spreadsheetUrl?: string;
+}) {
+  try {
+    const { updateSheetViaN8n } = await import('../../genkit/tools');
+    
+    const result = await updateSheetViaN8n({
+      message: input.message,
+      sheetNames: input.sheetNames,
+      spreadsheetId: input.spreadsheetId,
+      spreadsheetUrl: input.spreadsheetUrl
+    });
+
+    return {
+      success: true,
+      result: result,
+      message: result
+    };
+  } catch (error) {
+    console.error('Error executing n8n tool:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      message: 'Failed to process sheet update via n8n'
     };
   }
 }
