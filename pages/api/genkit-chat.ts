@@ -107,6 +107,7 @@ async function executeToolCall(
       result: data.result,
       details: data.details,
       analyses: data.analyses, // Pass through the analyses field
+      extractions: data.extractions, // Pass through the extractions field
       toolId: toolCall.id
     };
   } catch (error) {
@@ -394,13 +395,78 @@ async function processMessage(
     
     for (const toolCall of suggestedTools) {
       console.log(`🔍 [AUTO_EXECUTE] Auto-executing tool: ${toolCall.function.name}`);
-      const result = await executeToolCall(toolCall, context, images);
+      
+      let result;
+      
+      // Use extract_text_only instead of analyze_files for faster processing
+      if (toolCall.function.name === 'analyze_files' || toolCall.function.name === 'analyze_images') {
+        // Replace with extract_text_only for faster processing
+        const extractToolCall = {
+          ...toolCall,
+          function: {
+            ...toolCall.function,
+            name: 'extract_text_only',
+            arguments: JSON.stringify({
+              transcript: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments).transcript || 'Extract text from files' : 'Extract text from files',
+              fileCount: images.length,
+              fileTypes: images.map(img => img.mimeType)
+            })
+          }
+        };
+        
+        console.log(`🔍 [AUTO_EXECUTE] Replaced ${toolCall.function.name} with extract_text_only for faster processing`);
+        result = await executeToolCall(extractToolCall, context, images);
+      } else {
+        result = await executeToolCall(toolCall, context, images);
+      }
+      
       toolResults.push(result);
       
       // Store analysis results in context for future reference
       if (result.success) {
-        if (toolCall.function.name === 'analyze_files' || toolCall.function.name === 'analyze_images') {
-          // Store file analysis results
+        // Check the actual tool that was executed (not the original tool name)
+        const executedToolName = toolCall.function.name === 'analyze_files' || toolCall.function.name === 'analyze_images' 
+          ? 'extract_text_only' 
+          : toolCall.function.name;
+          
+        if (executedToolName === 'extract_text_only') {
+          // Store extracted text results
+          if (!context.fileAnalysis) {
+            context.fileAnalysis = {
+              files: [],
+              lastUpdated: Date.now()
+            };
+          }
+          
+          // Get the extracted text directly from the result
+          let extractedTexts = null;
+          if (result.extractions && Array.isArray(result.extractions)) {
+            // Use the extractions array directly
+            extractedTexts = result.extractions.map((extraction: any) => 
+              extraction.extractedText || ''
+            );
+            console.log(`🔍 [CONTEXT] Found extracted texts:`, extractedTexts.length, 'files');
+          } else {
+            extractedTexts = [];
+          }
+          
+          // Store extracted text for each file
+          if (context.fileAnalysis && extractedTexts) {
+            images.forEach((image, index) => {
+              context.fileAnalysis!.files.push({
+                mimeType: image.mimeType,
+                extractedData: extractedTexts[index] || '',
+                timestamp: Date.now()
+              });
+            });
+            
+            context.fileAnalysis.lastUpdated = Date.now();
+            console.log(`🔍 [CONTEXT] Stored extracted text for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
+          }
+          
+          enhancedResponse += `\n\n📄 **Text Extraction Complete:**\n${result.result}`;
+        } else if (executedToolName === 'analyze_files' || executedToolName === 'analyze_images') {
+          // Store file analysis results (keeping this for backward compatibility)
           if (!context.fileAnalysis) {
             context.fileAnalysis = {
               files: [],
