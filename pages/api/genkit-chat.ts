@@ -19,7 +19,7 @@ interface Context {
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
-      analysis: unknown;
+      analysis?: unknown; // Made optional since we're only storing extractedData
       extractedData?: unknown;
       timestamp: number;
     }>;
@@ -439,8 +439,8 @@ async function processMessage(
               analysisData.forEach((analysis: any, index: number) => {
                 context.fileAnalysis!.files.push({
                   mimeType: images[index]?.mimeType || 'unknown',
-                  analysis: analysis,
-                  extractedData: analysis?.extractedData || [],
+                  // Remove analysis field - only store extractedData
+                  extractedData: analysis?.extractedData?.result?.extracted_data || analysis?.extractedData || [],
                   timestamp: Date.now()
                 });
               });
@@ -449,8 +449,8 @@ async function processMessage(
               images.forEach((image) => {
                 context.fileAnalysis!.files.push({
                   mimeType: image.mimeType,
-                  analysis: analysisData,
-                  extractedData: analysisData?.extracted_data || [],
+                  // Remove analysis field - only store extractedData
+                  extractedData: analysisData?.extracted_data || analysisData?.result?.extracted_data || [],
                   timestamp: Date.now()
                 });
               });
@@ -645,7 +645,7 @@ async function executeN8nTool(input: {
   fileAnalysis?: {
     files: Array<{
       mimeType: string;
-      analysis: unknown;
+      analysis?: unknown; // Made optional since we're only storing extractedData
       extractedData?: unknown;
       timestamp: number;
     }>;
