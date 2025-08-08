@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
+const isWindows = process.platform === 'win32';
+const isCI = Boolean(process.env.CI) || Boolean(process.env.VERCEL);
+
 const nextConfig: NextConfig = {
-  // Use a custom dist directory to avoid Windows file locks on .next/trace
-  distDir: '.next-build',
   images: {
     remotePatterns: [
       {
@@ -34,8 +35,8 @@ const nextConfig: NextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
-  // Disable trace output
-  output: 'standalone',
+  // Avoid trace output on local Windows to prevent EPERM on .next/trace
+  outputFileTracing: !(isWindows && !isCI),
   // Disable Next.js telemetry
   env: {
     NEXT_TELEMETRY_DISABLED: '1',
