@@ -4,6 +4,7 @@ import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetF
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { ensureSheetCapacity } from '@/lib/sheetUtils';
+import { suggestHeaderMapping } from '@/lib/mapping';
 import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
 import { buildExistingKeySet, filterNewRows } from '@/lib/dedupe';
@@ -547,7 +548,9 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
           success: true,
           result: `Preview: ${allUpdates.length} cells would be updated across ${sheetNames.length} sheet(s).`,
           actions: allUpdates,
-          preview: true
+          preview: true,
+          // pass through any flow-generated preview for confidence display
+          flowPreview: (typeof (result as any) === 'object' && (result as any).preview) ? (result as any).preview : undefined
         });
       } else {
         // Actually update the sheets
@@ -921,7 +924,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         .flat();
       let updateResult: any;
       if (Array.isArray(extractedRows) && extractedRows.length > 0) {
-        // Build actions directly from rows mapped to headers if possible
+        // Build actions directly from rows mapped to headers using synonym-aware mapping
         const sheets = await getGoogleSheetsClient();
         // Fetch headers to map object keys to columns
         const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${targetSheetName}!A1:T1` });
@@ -938,9 +941,24 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         for (let i = 0; i < extractedRows.length; i++) {
           const rowIndex = startRow + i;
           actions.push({ type: 'insertRow', sheet: targetSheetName, row: rowIndex });
+          const rowObj = extractedRows[i] as Record<string, unknown>;
+          const incomingKeys = Object.keys(rowObj);
+          // Compute mapping suggestions once per row
+          const suggestions = suggestHeaderMapping(incomingKeys, headers);
+          // Build a map from incoming key -> target header when confidence is reasonable
+          const keyToHeader: Record<string, string> = {};
+          suggestions.forEach(s => { if (s.targetHeader && s.confidence >= 0.5) keyToHeader[s.incomingKey] = s.targetHeader; });
           headers.forEach((h, idx) => {
-            if (extractedRows[i][h] != null && extractedRows[i][h] !== '') {
-              actions.push({ type: 'updateCell', sheet: targetSheetName, row: rowIndex, column: colLetters(idx), value: String(extractedRows[i][h]) });
+            // Prefer exact header match; otherwise check mapped keys
+            let val: unknown = undefined;
+            if (Object.prototype.hasOwnProperty.call(rowObj, h)) {
+              val = (rowObj as any)[h];
+            } else {
+              const fromKey = Object.entries(keyToHeader).find(([, target]) => target === h)?.[0];
+              if (fromKey) val = (rowObj as any)[fromKey];
+            }
+            if (val != null && String(val).trim() !== '') {
+              actions.push({ type: 'updateCell', sheet: targetSheetName, row: rowIndex, column: colLetters(idx), value: String(val) });
             }
           });
         }

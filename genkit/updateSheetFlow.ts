@@ -1,6 +1,7 @@
 import { genkit } from 'genkit';
 import { gemini15Flash, gemini15Pro, googleAI } from '@genkit-ai/googleai';
 import { getGoogleSheetsClient } from '../lib/googleSheets';
+import { suggestHeaderMapping, inferColumnTypes, matchRowIdentity, parseDateFlexible, parseDecimal } from '../lib/mapping';
 import { insertRow, updateCell } from './tools';
 import { executeAIWithRetry, executeAIWithModelFallback } from '../lib/aiUtils';
 import { findLastDataRow } from '../lib/sheetUtils';
@@ -43,9 +44,11 @@ interface UpdateSheetOutput {
     column: string;
     value?: string | number;
     confidence: 'high' | 'medium' | 'low';
+    reason?: string;
   }>;
-  success?: boolean; // New field to indicate execution success
-  executedActions?: number; // Number of actions that were executed
+  preview?: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }>; // dry-run preview
+  success?: boolean;
+  executedActions?: number;
 }
 
 // Simplified sheet analysis for AI
@@ -155,7 +158,9 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
     
     // Convert to CSV for the prompt
     const csvData = sheetData.map(row => row.join(',')).join('\n');
-    const headers = sheetData[0].join(', ');
+    const headers = sheetData[0];
+    const rowsOnly = sheetData.slice(1);
+    const columnTypes = inferColumnTypes(headers, rowsOnly);
     
     // Create multiple AI operations for fallback
     const aiOperations = aiConfigs.map(config => 
@@ -165,7 +170,7 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
         sheetName,
         lastDataRow,
         insertionRow,
-        headers,
+        headers: headers.join(', '),
         patternAnalysis
       })
     );
@@ -186,6 +191,45 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
       if (parsed && parsed.actions && Array.isArray(parsed.actions)) {
         console.log(`Successfully parsed ${parsed.actions.length} actions`);
         
+        // Build a dry-run preview grouped by row with confidence and reasons
+        try {
+          const headerLetters = (idx: number) => {
+            let n = idx + 1, s = '';
+            while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+            return s;
+          };
+          const colCount = headers.length;
+          const previews: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }> = [];
+          const byRow = new Map<number, Record<string, string>>();
+          for (const action of parsed.actions as Array<{ type: string; row: number; column: string; value?: string }>) {
+            if (action.type !== 'updateCell') continue;
+            const m = action.column.match(/^[A-Z]+$/);
+            if (!m) continue;
+            const colIndex = action.column.split('').reduce((acc: number, ch: string) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
+            if (colIndex < 0 || colIndex >= colCount) continue;
+            const hdr = headers[colIndex];
+            const obj = byRow.get(action.row) || {};
+            obj[hdr] = String(action.value ?? '');
+            byRow.set(action.row, obj);
+          }
+          for (const [row, obj] of byRow.entries()) {
+            // Heuristic confidence: date parse success, numeric columns parse success
+            let votes = 0, total = 1;
+            for (const [k, v] of Object.entries(obj)) {
+              total++;
+              const t = columnTypes[k] || 'string';
+              if (t === 'date' && parseDateFlexible(v)) votes++;
+              else if (t === 'number' && parseDecimal(v) != null) votes++;
+              else if (t === 'string' && v.trim().length > 0) votes += 0.5;
+            }
+            const confidence = Math.max(0.1, Math.min(1, votes / total));
+            previews.push({ row, updates: obj, confidence });
+          }
+          (parsed as UpdateSheetOutput).preview = previews.sort((a, b) => a.row - b.row);
+        } catch (e) {
+          console.warn('Failed to build preview from actions:', e);
+        }
+
         // If commit is true, execute the actions
         if (commit) {
           console.log('Commit flag is true, executing actions...');

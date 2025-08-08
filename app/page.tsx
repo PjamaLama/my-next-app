@@ -1016,10 +1016,11 @@ export default function Home() {
       
       {
         // Regular AI response with optional quick replies and structured tables
+        const suppressResponseText = Boolean((data as any).suppressResponseText);
         const aiMessage = {
           id: `msg_${Date.now()}_ai`,
           role: 'assistant' as const,
-          content: data.response || 'I processed your request.',
+          content: suppressResponseText ? '' : (data.response || 'I processed your request.'),
           timestamp: new Date(),
           messageType: 'ai_response' as const,
           toolCalls: data.toolCalls || [],
@@ -1042,8 +1043,8 @@ export default function Home() {
         setTimeout(() => setMissedIntentSuggestion(null), 10000);
       }
 
-      // Handle tool results from automatic execution
-      if (data.toolResults && data.toolResults.length > 0) {
+      // Handle tool results from automatic execution (skip noisy system message for file-only uploads)
+      if (!(data as any).suppressResponseText && data.toolResults && data.toolResults.length > 0) {
         console.log(`🔍 [CHAT] Received ${data.toolResults.length} tool results from automatic execution`);
         
         // Add tool results to chat
@@ -1856,11 +1857,43 @@ export default function Home() {
                       <Toolbelt
                         responsePrefs={responsePrefs}
                         onChangeResponsePrefs={setResponsePrefs}
-                        onGenerateReport={() => {
-                          // If there is typed text, keep it; otherwise use a default command
-                          const input = (editingText && editingText.trim()) ? editingText.trim() : 'Generate a report';
-                          processWithAIChat(input);
-                          setEditingText('');
+                        onGenerateReport={async () => {
+                          // Build a tool call for generate_report and navigate to /report with a token
+                          try {
+                            await ensureSession();
+                            const toolCall = {
+                              id: `tool_${Date.now()}_generate_report`,
+                              type: 'function' as const,
+                              function: {
+                                name: 'generate_report',
+                                arguments: JSON.stringify({ responsePrefs })
+                              }
+                            };
+                            const response = await fetch('/api/genkit-tool-execute', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                toolCall,
+                                context: {
+                                  spreadsheetId: defaultSpreadsheetId,
+                                  sheetNames: selectedSheetNames,
+                                }
+                              })
+                            });
+                            if (!response.ok) {
+                              const text = await response.text();
+                              throw new Error(text || 'Failed to generate report');
+                            }
+                            const json = await response.json();
+                            const report = json.report;
+                            if (!report) throw new Error('No report returned');
+                            // Persist in sessionStorage and open report page
+                            const key = `report_${Date.now()}`;
+                            sessionStorage.setItem(key, JSON.stringify(report));
+                            window.open(`/report?key=${encodeURIComponent(key)}`, '_blank');
+                          } catch (e) {
+                            setSendResult(`Error generating report: ${e instanceof Error ? e.message : String(e)}`);
+                          }
                         }}
                       />
                       {listening && (transcript || interimText) && (

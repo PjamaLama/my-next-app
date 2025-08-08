@@ -886,6 +886,7 @@ async function processMessage(
 
     // Enhanced intent detection with file consideration (images and PDFs)
     const hasFiles = images && images.length > 0;
+    const isFileOnly = hasFiles && (!message || message.trim() === '');
     const hasPDFs = hasFiles && images.some(img => img.mimeType === 'application/pdf');
     const hasImages = hasFiles && images.some(img => img.mimeType.startsWith('image/'));
     
@@ -1080,8 +1081,11 @@ async function processMessage(
             console.log(`🔍 [CONTEXT] Stored extracted text for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
           }
           
-          // Keep the chat clean: avoid dumping markdown. Provide a short note; rely on structured tables added later.
-          enhancedResponse += `\n\nText extraction complete. See previews below.`;
+          // Keep the chat clean: avoid dumping markdown.
+          // When the user only uploaded files (no text), do not add extra response text.
+          if (!isFileOnly) {
+            enhancedResponse += `\n\nText extraction complete. See previews below.`;
+          }
         } else if (executedToolName === 'analyze_files' || executedToolName === 'analyze_images') {
           // Store file analysis results (keeping this for backward compatibility)
           if (!context.fileAnalysis) {
@@ -1216,36 +1220,40 @@ async function processMessage(
         console.log(`🔍 [INTELLIGENT_RESPONSE] Generating intelligent response for recent analysis (${timeSinceAnalysis}ms ago)`);
         const extractedData = Array.isArray(latestAnalysis.extractedData) ? latestAnalysis.extractedData : [];
         
-        if (extractedData.length > 0) {
-          console.log(`🔍 [INTELLIGENT_RESPONSE] Found ${extractedData.length} data points to display`);
-          response = `I've analyzed your file and found ${extractedData.length} data points. Here's what I found:\n\n`;
-          
-          // Add a summary of extracted data
-          if (Array.isArray(extractedData)) {
-            extractedData.slice(0, 5).forEach((item) => {
-              if (item.field && item.value) {
-                response += `• **${item.field}**: ${item.value}\n`;
-              }
-            });
+        if (!isFileOnly) {
+          if (extractedData.length > 0) {
+            console.log(`🔍 [INTELLIGENT_RESPONSE] Found ${extractedData.length} data points to display`);
+            response = `I've analyzed your file and found ${extractedData.length} data points. Here's what I found:\n\n`;
             
-            if (extractedData.length > 5) {
-              response += `• ... and ${extractedData.length - 5} more items\n`;
+            // Add a summary of extracted data
+            if (Array.isArray(extractedData)) {
+              extractedData.slice(0, 5).forEach((item) => {
+                if (item.field && item.value) {
+                  response += `• **${item.field}**: ${item.value}\n`;
+                }
+              });
+              
+              if (extractedData.length > 5) {
+                response += `• ... and ${extractedData.length - 5} more items\n`;
+              }
             }
+            
+            response += `\n**What would you like me to do next?**\n`;
+            response += `1. 📊 Add this data to your spreadsheet\n`;
+            response += `2. 🔍 Extract additional information\n`;
+            response += `3. 📋 Generate a summary report\n`;
+            response += `4. 💬 Ask me questions about the data`;
+          } else {
+            response = `I've analyzed your file but didn't find structured data to extract. The file appears to be a ${latestAnalysis.mimeType}.\n\n`;
+            response += `**What would you like me to do next?**\n`;
+            response += `1. 🔍 Try a different analysis approach\n`;
+            response += `2. 📝 Extract text content instead\n`;
+            response += `3. 📋 Generate a document summary\n`;
+            response += `4. 💬 Ask me questions about the content`;
           }
-          
-          response += `\n**What would you like me to do next?**\n`;
-          response += `1. 📊 Add this data to your spreadsheet\n`;
-          response += `2. 🔍 Extract additional information\n`;
-          response += `3. 📋 Generate a summary report\n`;
-          response += `4. 💬 Ask me questions about the data`;
-          
         } else {
-          response = `I've analyzed your file but didn't find structured data to extract. The file appears to be a ${latestAnalysis.mimeType}.\n\n`;
-          response += `**What would you like me to do next?**\n`;
-          response += `1. 🔍 Try a different analysis approach\n`;
-          response += `2. 📝 Extract text content instead\n`;
-          response += `3. 📋 Generate a document summary\n`;
-          response += `4. 💬 Ask me questions about the content`;
+          // File-only: suppress generic assistant text, rely on extracted previews
+          response = '';
         }
       } else {
         // Analysis is older, provide standard response
@@ -1268,7 +1276,11 @@ async function processMessage(
             break;
           default:
             if (hasFiles) {
-              response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
+              if (!isFileOnly) {
+                response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
+              } else {
+                response = '';
+              }
             } else {
               response = `How can I help? You can ask me to update your sheet, fetch data, or extract info from files.`;
             }
@@ -1278,7 +1290,7 @@ async function processMessage(
       // No analysis results, use standard response logic
       switch (intent) {
         case 'extract_from_files':
-          response = `I've analyzed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and extracted the relevant data.`;
+          response = isFileOnly ? '' : `I've analyzed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and extracted the relevant data.`;
           break;
         case 'add_data':
           response = `I've processed your request to add new data${fileInfo} to your spreadsheet "${context?.sheetName || 'current sheet'}".`;
@@ -1295,7 +1307,7 @@ async function processMessage(
           break;
         default:
           if (hasFiles) {
-            response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
+            response = isFileOnly ? '' : `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
           } else {
             response = `How can I help? You can ask me to update your sheet, fetch data, or extract info from files.`;
           }
@@ -1568,7 +1580,7 @@ async function processMessage(
     }
 
     // Add enhanced response with tool results
-    if (enhancedResponse) {
+    if (!isFileOnly && enhancedResponse) {
       response += enhancedResponse;
     }
 
@@ -1584,7 +1596,7 @@ async function processMessage(
     const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
 
     return {
-      response: response || 'Here is an overview generated from your selected sheet(s).',
+      response: isFileOnly ? '' : (response || 'Here is an overview generated from your selected sheet(s).'),
       toolCalls: [], // No manual tool calls needed
       pendingToolCalls: [], // No pending tools - all executed automatically
       toolResults: toolResults, // Include the results of auto-executed tools
@@ -1593,7 +1605,8 @@ async function processMessage(
       quickReplies,
       dataTables,
       charts,
-      insights
+      insights,
+      suppressResponseText: isFileOnly
     };
 
   } catch (error) {
