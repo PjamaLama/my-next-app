@@ -11,9 +11,7 @@ import NavBar from "./NavBar";
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import SidePanel from './components/SidePanel';
 import { DialogProvider } from './providers/DialogProvider';
-import dynamic from 'next/dynamic';
-
-const MobileSidebarButton = dynamic(() => import('./components/MobileSidebarButton'), { ssr: false });
+import MobileSidebarButton from './components/MobileSidebarButton';
 
 // Enable Firebase telemetry for Genkit monitoring
 enableFirebaseTelemetry();

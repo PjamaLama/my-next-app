@@ -188,6 +188,7 @@ export default function Home() {
   const [recentFileAnalysis, setRecentFileAnalysis] = useState<FileAnalysisContext | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [quickAddLoading, setQuickAddLoading] = useState(false);
+  const [tableActionState, setTableActionState] = useState<Record<string, 'idle' | 'loading' | 'done'>>({});
   // Last Google identity for "Continue as" UX
   const [lastGoogle, setLastGoogle] = useState<{ email?: string; name?: string; photo?: string } | null>(null);
   useEffect(() => {
@@ -928,6 +929,41 @@ export default function Home() {
       setSendResult('Quick add failed');
     } finally {
       setQuickAddLoading(false);
+    }
+  };
+
+  const addExtractedTableToSheet = async (messageId: string, tableIndex: number, table: { headers: string[]; rows: string[][]; title?: string }) => {
+    if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+      setSendResult('Select a spreadsheet and sheet first.');
+      return;
+    }
+    const key = `${messageId}_${tableIndex}`;
+    setTableActionState(prev => ({ ...prev, [key]: 'loading' }));
+    try {
+      // Build a transcript from the table content (join lines)
+      const text = table.rows.map(r => r.join(' ')).join('\n');
+      const transcript = `Add the following extracted data to my selected sheet(s). Create one row per logical entry.\n\n${text}`;
+      const toolCall = {
+        id: `tool_${Date.now()}_add_extracted_${tableIndex}`,
+        type: 'function' as const,
+        function: { name: 'update_sheet', arguments: JSON.stringify({ transcript, preview: false }) }
+      };
+      const resp = await fetch('/api/genkit-tool-execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toolCall,
+          context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
+          images: []
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data?.success) throw new Error(data?.error || 'Failed');
+      setTableActionState(prev => ({ ...prev, [key]: 'done' }));
+      setSendResult(data.result || 'Extracted data added to sheet');
+    } catch (e) {
+      setTableActionState(prev => ({ ...prev, [key]: 'idle' }));
+      setSendResult('Failed to add extracted data');
     }
   };
 
@@ -1766,7 +1802,7 @@ export default function Home() {
                     {message.role === 'assistant' && Array.isArray(message.tables) && message.tables.length > 0 && (
                       <div className="mt-2 space-y-3">
                         {message.tables.map((t, tIdx) => (
-                          <div key={`${message.id}_table_${tIdx}`} className="overflow-x-auto max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-white/5">
+                          <div key={`${message.id}_table_${tIdx}`} className="relative overflow-x-auto max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-white/5">
                             {t.title && (
                               <div className="px-3 py-2 border-b border-white/10 text-[12px] font-semibold text-white/90">
                                 {t.title}
@@ -1808,6 +1844,29 @@ export default function Home() {
                                 </tfoot>
                               )}
                             </table>
+                            {/* Inline quick action (overlay at top-right) */}
+                            <div className="absolute top-1.5 right-2 z-10">
+                              <button
+                                onClick={() => addExtractedTableToSheet(message.id, tIdx, { headers: t.headers, rows: t.rows, title: t.title })}
+                                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
+                                title={`Map and add this extracted data${selectedSheetNames?.length ? ` to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}` : ''}`}
+                              >
+                                {tableActionState[`${message.id}_${tIdx}`] === 'loading' ? (
+                                  <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
+                                ) : tableActionState[`${message.id}_${tIdx}`] === 'done' ? (
+                                  <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                                ) : (
+                                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12"/></svg>
+                                )}
+                                <span>
+                                  {tableActionState[`${message.id}_${tIdx}`] === 'done' ? 'Added' : (
+                                    selectedSheetNames && selectedSheetNames.length > 0
+                                      ? `Add extracted data to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}`
+                                      : 'Add extracted data'
+                                  )}
+                                </span>
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
