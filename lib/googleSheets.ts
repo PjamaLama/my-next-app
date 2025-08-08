@@ -3,7 +3,16 @@ import { JWT } from 'google-auth-library';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
+let cachedSheets: ReturnType<typeof google.sheets> | null = null;
+let cachedAt = 0;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 export const getGoogleSheetsClient = async (retries = 3) => {
+  // Return cached client if still fresh
+  if (cachedSheets && Date.now() - cachedAt < CACHE_TTL_MS) {
+    return cachedSheets;
+  }
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(`🔐 Attempting Google Sheets authentication (attempt ${attempt}/${retries})`);
@@ -24,7 +33,9 @@ export const getGoogleSheetsClient = async (retries = 3) => {
       console.log(`✅ Google Sheets authentication successful on attempt ${attempt}`);
 
       const sheets = google.sheets({ version: 'v4', auth: client });
-      return sheets;
+      cachedSheets = sheets;
+      cachedAt = Date.now();
+      return cachedSheets;
       
     } catch (error) {
       console.error(`❌ Authentication attempt ${attempt} failed:`, error);

@@ -63,12 +63,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         console.log(`📋 Processing sheet: "${sheetName}" with ${sheetUpdates.length} updates`);
         
-        // Check if we need to expand the sheet for any of the target cells
-        for (const update of sheetUpdates) {
-          if (update.row && update.column) {
-            await ensureSheetCapacity(spreadsheetId, sheetName, update.row, update.column);
-          }
-        }
+        // Ensure capacity ONCE per sheet using max row/column across updates
+        const maxRow = sheetUpdates.reduce((m, u) => Math.max(m, u.row || 1), 1);
+        const maxColumn = sheetUpdates.reduce((m, u) => {
+          if (!u.column) return m;
+          return u.column.length > m.length ? u.column : m;
+        }, 'A');
+        await ensureSheetCapacity(spreadsheetId, sheetName, maxRow, maxColumn);
         
         // Create batch update data for this sheet
         const batchData = sheetUpdates.map(update => ({

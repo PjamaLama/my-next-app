@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
+import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { insertRow } from '../../genkit/tools';
 
 // Configure API to handle larger file uploads
@@ -436,24 +437,19 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: 
       extractedData?: unknown;
     }> = [];
 
-    for (let i = 0; i < images.length; i++) {
-      const image = images[i];
-      
+    await Promise.allSettled(images.map(async (image, idx) => {
       try {
-        // Create the flow with the provided API key
         const flow = analyzeFileFlow(apiKey);
         const result = await flow.run({ prompt: transcript || 'Analyze this file', files: [image] });
         analysisResults.push({
-          index: i + 1,
+          index: idx + 1,
           type: image.mimeType,
           analysis: 'Analysis complete',
           success: true,
           extractedData: result
         });
       } catch (error) {
-        console.error(`Error analyzing image ${i + 1}:`, error);
-        
-        // Provide user-friendly error messages for common AI service issues
+        console.error(`Error analyzing image ${idx + 1}:`, error);
         let errorMessage = 'Analysis failed';
         if (error instanceof Error) {
           if (error.message.includes('503') || error.message.includes('overloaded')) {
@@ -468,14 +464,14 @@ async function handleAnalyzeImages(args: ToolArgs, images: ImageData[], apiKey: 
         }
         
         analysisResults.push({
-          index: i + 1,
+          index: idx + 1,
           type: image.mimeType,
           analysis: 'Analysis failed',
           success: false,
           error: errorMessage
         });
       }
-    }
+    }));
 
     const successfulAnalyses = analysisResults.filter(result => !result.error).length;
     const summary = `Successfully analyzed ${successfulAnalyses} out of ${images.length} ${images.length === 1 ? 'file' : 'files'}`;
@@ -651,17 +647,31 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       // Build actions: first perform required insertRow operations, then batch cell updates
       const actions = Array.isArray(updateResult?.actions) ? updateResult.actions : [];
 
-      // Execute insertRow actions first (sequentially)
+      // Execute insertRow actions first using one batchUpdate (ordered ascending)
       const insertRowActions = actions.filter((a: any) => a.type === 'insertRow');
-      for (const a of insertRowActions) {
+      if (insertRowActions.length > 0) {
         try {
-          await insertRow({
-            sheetId: spreadsheetId,
-            sheetName: targetSheetName,
-            row: a.row
-          });
+          const sheets = await getGoogleSheetsClient();
+          const sheetMetadata = await sheets.spreadsheets.get({ spreadsheetId, includeGridData: false });
+          const target = sheetMetadata.data.sheets?.find(s => s.properties?.title === targetSheetName);
+          if (target?.properties?.sheetId == null) throw new Error(`Sheet ${targetSheetName} not found`);
+          const internalSheetId = target.properties.sheetId;
+          const sorted = [...insertRowActions].sort((a, b) => a.row - b.row);
+          const requests = sorted.map(a => ({
+            insertRange: {
+              range: {
+                sheetId: internalSheetId,
+                startRowIndex: a.row - 1,
+                endRowIndex: a.row,
+                startColumnIndex: 0,
+                endColumnIndex: 0
+              },
+              shiftDimension: 'ROWS'
+            }
+          }));
+          await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
         } catch (e) {
-          console.warn('insertRow failed:', e);
+          console.warn('Batch insert rows failed:', e);
         }
       }
 
