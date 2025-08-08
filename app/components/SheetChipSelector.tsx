@@ -118,7 +118,7 @@ const SheetChipSelector: React.FC = () => {
   return (
     <div className="space-y-3">
       {/* Sheet chips with inline compact controls */}
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center">
         {sheetNames.map(name => {
           const isSelected = selectedSheetNames.includes(name);
           const structure = sheetStructureCache[name];
@@ -128,7 +128,7 @@ const SheetChipSelector: React.FC = () => {
               key={name}
               onClick={() => toggleSheetSelection(name)}
               className={`
-                px-4 py-2 rounded-full text-sm font-medium transition-all duration-200
+                px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full text-[11px] sm:text-sm font-medium transition-all duration-200
                 focus:outline-none
                 ${isSelected
                   ? 'text-green-700 dark:text-green-300 border-2 border-green-500/80 bg-green-50 dark:bg-green-900/20 shadow-sm'
@@ -139,15 +139,15 @@ const SheetChipSelector: React.FC = () => {
               {/* Sheet icon */}
               <div className="flex items-center gap-2">
                 {isSelected && (
-                  <svg className="w-4 h-4 text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
                 )}
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <span>{name}</span>
+                <span className="truncate max-w-[40vw] sm:max-w-none">{name}</span>
                 {isUnstructured && (
-                  <span title="Unstructured format" className="ml-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-300/60">
-                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5a.75.75 0 00-1.5 0v7a.75.75 0 001.5 0V7zm-1 10a1 1 0 102 0 1 1 0 00-2 0z"/></svg>
+                  <span title="Unstructured format" className="ml-1 inline-flex items-center gap-1 text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-300/60">
+                    <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5a.75.75 0 00-1.5 0v7a.75.75 0 001.5 0V7zm-1 10a1 1 0 102 0 1 1 0 00-2 0z"/></svg>
                     Unstructured
                   </span>
                 )}

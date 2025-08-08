@@ -17,7 +17,7 @@ const MobileSidebarButton: React.FC = () => {
     <button
       type="button"
       onClick={openSidebar}
-      className="sm:hidden fixed bottom-4 right-4 z-30 h-12 w-12 rounded-full bg-sky-600 text-white shadow-lg shadow-black/30 grid place-items-center active:scale-95"
+      className="sm:hidden fixed bottom-24 right-4 z-60 h-12 w-12 rounded-full bg-sky-600 text-white shadow-lg shadow-black/30 grid place-items-center active:scale-95"
       aria-label="Open chats"
       title="Open chats"
     >

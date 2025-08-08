@@ -1747,7 +1747,7 @@ export default function Home() {
           <div
             ref={messagesContainerRef}
             className="px-3 sm:px-4 pt-2 overflow-y-auto"
-            style={{ height: 'calc(100vh - 120px)', paddingBottom: bottomBarHeight + 16 }}
+            style={{ height: 'calc(100vh - 120px)', paddingBottom: bottomBarHeight + 16, paddingTop: 8 }}
           >
             <div className="space-y-3">
               {chatMessages.map((message, idx) => (

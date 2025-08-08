@@ -39,8 +39,8 @@ const NavBar: React.FC = () => {
           </Link>
         </div>
 
-        {/* Right area intentionally minimal */}
-        <div className="flex items-center gap-4">
+        {/* Right area */}
+        <div className="flex items-center gap-2 sm:gap-4">
           {NAV_LINKS.map(link => (
             <Link
               key={link.name}
@@ -51,6 +51,18 @@ const NavBar: React.FC = () => {
               <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 hover:scale-x-100 transition-all duration-300 origin-left" />
             </Link>
           ))}
+          {/* Mobile hamburger to open sidebar */}
+          <button
+            type="button"
+            aria-label="Open menu"
+            title="Open menu"
+            className="sm:hidden inline-flex items-center justify-center h-9 w-9 rounded-lg border border-white/10 text-white/80 hover:text-white hover:border-white/40"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-sidebar'))}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
         </div>
       </div>
     </nav>
