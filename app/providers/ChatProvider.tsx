@@ -153,6 +153,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           delete (copy as any)[key];
         }
       }
+      // Firestore requires no undefined values; replace undefined with null
+      for (const key of Object.keys(copy)) {
+        if (copy[key] === undefined) {
+          (copy as any)[key] = null;
+        }
+      }
       return copy as ChatMessage;
     });
     const last = messages[messages.length - 1];

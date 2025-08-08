@@ -1,5 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
@@ -195,18 +197,6 @@ function buildSmartTables(
   // Simple selected columns view (non-aggregated) with lightweight AI-derived columns
   const idxs = selectedIdxs || headers.map((_, i) => i).slice(0, 5);
   const outHeaders = idxs.map((i) => headers[i]);
-
-  // Identify a metric column from full headers to compute deltas
-  const metricHints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
-  let metricIdx = -1;
-  for (const hint of metricHints) {
-    const idx = bestHeaderIndex(headers, hint);
-    if (idx >= 0) { metricIdx = idx; break; }
-  }
-  if (metricIdx < 0) {
-    const candidateIdx = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
-    metricIdx = candidateIdx >= 0 ? candidateIdx : -1;
-  }
 
   // Compute average for metric if available
   let avg: number | null = null;
