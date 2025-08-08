@@ -916,15 +916,9 @@ async function processMessage(
     // Fast-path greeting/small talk: no tools or sheet calls
     const isGreeting = /^(hi|hello|hey|yo|howdy|good\s+(morning|afternoon|evening))\b/i.test(message.trim());
     if (isGreeting) {
-      const greetingResponse = `Hi! I'm here to help. You can:
- - Add or update rows in your Google Sheet
- - Fetch and summarize current sheet data
- - Extract data from images/PDFs and insert into the sheet
- 
- What would you like to do?`;
       const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, false);
       return {
-        response: greetingResponse,
+        response: 'Hi! How can I help?',
         toolCalls: [],
         pendingToolCalls: [],
         toolResults: [],
@@ -1139,11 +1133,7 @@ async function processMessage(
             console.log(`🔍 [CONTEXT] Stored extracted text for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
           }
           
-          // Keep the chat clean: avoid dumping markdown.
-          // When the user only uploaded files (no text), do not add extra response text.
-          if (!isFileOnly) {
-            enhancedResponse += `\n\nText extraction complete. See previews below.`;
-          }
+          // No extra text; previews are shown via dataTables
         } else if (executedToolName === 'analyze_files' || executedToolName === 'analyze_images') {
           // Store file analysis results (keeping this for backward compatibility)
           if (!context.fileAnalysis) {
@@ -1195,20 +1185,20 @@ async function processMessage(
             console.log(`🔍 [CONTEXT] Stored extracted data for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
           }
           
-           enhancedResponse += `\n\n📄 **File Analysis Complete:**\n${result.result}`;
+           // No extra text; rely on tables built from analyses
         } else if (toolCall.function.name === 'update_sheet') {
-          enhancedResponse += `\n\n✅ **Spreadsheet Updated:**\n${result.result}`;
+          enhancedResponse += `\nUpdated spreadsheet.`;
         } else if (toolCall.function.name === 'get_sheet_data') {
-          enhancedResponse += `\n\n📋 **Sheet Data Retrieved:**\n${result.result}`;
+          // No extra text; data is rendered from tables
         } else if (toolCall.function.name === 'get_sheet_stats') {
-          enhancedResponse += `\n\n🔢 **Sheet Stats:**\n${result.result}`;
+          // No extra text; insights/tables will convey stats
         } else if (toolCall.function.name === 'get_column_stats') {
-          enhancedResponse += `\n\n🔎 **Column Stats:**\n${result.result}`;
+          // No extra text; insights/tables will convey stats
         } else if (toolCall.function.name === 'extract_data_from_files') {
-          enhancedResponse += `\n\n✅ **Data Extracted and Sheet Updated:**\n${result.result}`;
+          enhancedResponse += `\nData extracted and sheet updated.`;
         }
       } else {
-        enhancedResponse += `\n\n❌ **Tool Execution Failed:**\n${result.result}`;
+        enhancedResponse += `\nTool error: ${result.result}`;
       }
     }
 
@@ -1272,7 +1262,7 @@ async function processMessage(
       console.warn('QA over sheets failed', e);
     }
 
-    // Check if we have recent analysis results to provide intelligent suggestions
+    // Check if we have recent analysis results to provide concise feedback
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
       const latestAnalysis = context.fileAnalysis.files[context.fileAnalysis.files.length - 1];
       const timeSinceAnalysis = Date.now() - (context.fileAnalysis.lastUpdated || 0);
@@ -1284,94 +1274,69 @@ async function processMessage(
         
         if (!isFileOnly) {
           if (extractedData.length > 0) {
-            console.log(`🔍 [INTELLIGENT_RESPONSE] Found ${extractedData.length} data points to display`);
-            response = `I've analyzed your file and found ${extractedData.length} data points. Here's what I found:\n\n`;
-            
-            // Add a summary of extracted data
-            if (Array.isArray(extractedData)) {
-              extractedData.slice(0, 5).forEach((item) => {
-                if (item.field && item.value) {
-                  response += `• **${item.field}**: ${item.value}\n`;
-                }
-              });
-              
-              if (extractedData.length > 5) {
-                response += `• ... and ${extractedData.length - 5} more items\n`;
-              }
-            }
-            
-            response += `\n**What would you like me to do next?**\n`;
-            response += `1. 📊 Add this data to your spreadsheet\n`;
-            response += `2. 🔍 Extract additional information\n`;
-            response += `3. 📋 Generate a summary report\n`;
-            response += `4. 💬 Ask me questions about the data`;
+            response = `Extracted ${extractedData.length} item(s) from file(s).`;
           } else {
-            response = `I've analyzed your file but didn't find structured data to extract. The file appears to be a ${latestAnalysis.mimeType}.\n\n`;
-            response += `**What would you like me to do next?**\n`;
-            response += `1. 🔍 Try a different analysis approach\n`;
-            response += `2. 📝 Extract text content instead\n`;
-            response += `3. 📋 Generate a document summary\n`;
-            response += `4. 💬 Ask me questions about the content`;
+            response = `No structured data found in the uploaded file(s).`;
           }
         } else {
           // File-only: suppress generic assistant text, rely on extracted previews
           response = '';
         }
       } else {
-        // Analysis is older, provide standard response
+        // Analysis is older; keep concise
         switch (intent) {
           case 'extract_from_files':
-            response = `I've analyzed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and extracted the relevant data.`;
+            response = images.length > 0 ? `Analyzed ${images.length} file(s).` : '';
             break;
           case 'add_data':
-            response = `I've processed your request to add new data${fileInfo} to your spreadsheet "${context?.sheetName || 'current sheet'}".`;
+            response = `Added data to sheet.`;
             break;
           case 'update_data':
-            response = `I've updated your spreadsheet "${context?.sheetName || 'current sheet'}" based on your input${fileInfo}.`;
+            response = `Updated sheet.`;
             break;
           case 'get_data':
             if (context?.sheetName) {
-              response = `I've retrieved the current data from your "${context.sheetName}" sheet.`;
+              response = '';
             } else {
-              response = `I'd be happy to help you get data, but you'll need to select a spreadsheet and sheet first. Please choose your target sheet and try again.`;
+              response = `Select a spreadsheet and sheet to continue.`;
             }
             break;
           default:
             if (hasFiles) {
               if (!isFileOnly) {
-                response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
+                response = images.length > 0 ? `Processed ${images.length} file(s).` : '';
               } else {
                 response = '';
               }
             } else {
-              response = `How can I help? You can ask me to update your sheet, fetch data, or extract info from files.`;
+              response = '';
             }
         }
       }
     } else {
-      // No analysis results, use standard response logic
+      // No analysis results; keep concise
       switch (intent) {
         case 'extract_from_files':
-          response = isFileOnly ? '' : `I've analyzed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and extracted the relevant data.`;
+          response = isFileOnly ? '' : (images.length > 0 ? `Analyzed ${images.length} file(s).` : '');
           break;
         case 'add_data':
-          response = `I've processed your request to add new data${fileInfo} to your spreadsheet "${context?.sheetName || 'current sheet'}".`;
+          response = `Added data to sheet.`;
           break;
         case 'update_data':
-          response = `I've updated your spreadsheet "${context?.sheetName || 'current sheet'}" based on your input${fileInfo}.`;
+          response = `Updated sheet.`;
           break;
         case 'get_data':
           if (context?.sheetName) {
-            response = `I've retrieved the current data from your "${context.sheetName}" sheet.`;
+            response = '';
           } else {
-            response = `I'd be happy to help you get data, but you'll need to select a spreadsheet and sheet first. Please choose your target sheet and try again.`;
+            response = `Select a spreadsheet and sheet to continue.`;
           }
           break;
         default:
           if (hasFiles) {
-            response = isFileOnly ? '' : `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
+            response = isFileOnly ? '' : (images.length > 0 ? `Processed ${images.length} file(s).` : '');
           } else {
-            response = `How can I help? You can ask me to update your sheet, fetch data, or extract info from files.`;
+            response = '';
           }
       }
     }
@@ -1491,7 +1456,7 @@ async function processMessage(
       console.warn('Insights generation failed', e);
     }
 
-    // If we have pre-hydrated sheet data in context and the user explicitly asked, add a tiny, low-token overview
+    // If we have pre-hydrated sheet data in context and the user explicitly asked, add tiny overview tables only (no text)
     const shouldSummarize = hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles);
     const looksLikeDataRequest = intent === 'get_data' || /\b(about|overview|summary|summar(y|ise)|show|what's in|tell me)\b/i.test(message);
     if (shouldSummarize && looksLikeDataRequest) {
@@ -1499,8 +1464,7 @@ async function processMessage(
         ? selectedSheetNames.filter(n => hydratedSheetData[n])
         : Object.keys(hydratedSheetData);
       if (sheetsToDescribe.length > 0) {
-        // Provide a short lead-in and push structured tables for UI rendering
-        response += '\n\n📋 Selected sheets overview:';
+        // Push structured tables for UI rendering only
         sheetsToDescribe.slice(0, 3).forEach((name) => {
           const table = hydratedSheetData[name] || [];
           const shaped = structureForDisplay(table);
@@ -1511,7 +1475,7 @@ async function processMessage(
       }
     }
 
-    // Provide a concise data preview ONLY when explicitly requested
+    // Provide a concise data preview ONLY by returning structured tables (avoid markdown text)
     if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles) && (looksLikeDataRequest || intent === 'get_data' || wantsExplicitDataView)) {
       const wantToday = /\b(today|today'?s\s*entry)\b/i.test(message);
       const wantAll = /\b(all|everything|full|entire)\b/i.test(message);
@@ -1523,20 +1487,13 @@ async function processMessage(
       const mRange = message.match(/\bfrom\s+([0-9\-\/\.\s]+)\s+(to|until|through)\s+([0-9\-\/\.\s]+)\b/i);
       const sheetsToShow = selectedSheetNames.length > 0 ? selectedSheetNames.filter(n => hydratedSheetData[n]) : Object.keys(hydratedSheetData);
 
-      const formatTable = (name: string, tableRaw: string[][], rows: number, columnsLimit = 5): string => {
+      const formatTable = (name: string, tableRaw: string[][], rows: number, columnsLimit = 5): void => {
         const shaped = structureForDisplay(tableRaw);
-        if (shaped.headers.length === 0) return `\n- ${name}: empty`;
+        if (shaped.headers.length === 0) return;
         const headers = shaped.headers.slice(0, columnsLimit);
         const body = shaped.rows.slice(0, rows).map(r => r.slice(0, columnsLimit));
         // Add to structured tables for UI rendering
         dataTables.push({ title: name, headers, rows: body });
-        let out = `\n\n▶ ${name}`;
-        out += `\n| ${headers.join(' | ')} |`;
-        out += `\n| ${headers.map(() => '---').join(' | ')} |`;
-        body.forEach(r => { out += `\n| ${r.join(' | ')} |`; });
-        const remaining = Math.max(0, shaped.rows.length - rows);
-        if (remaining > 0) out += `\n… ${remaining} more row(s)`;
-        return out;
       };
 
       const normalizeDate = (value: string): string => {
@@ -1548,7 +1505,6 @@ async function processMessage(
       };
 
       const todayKey = dayjs().format('YYYY-MM-DD');
-      let dataPreview = '';
       let matchedAny = false;
       let columnAskAnswered = false;
       let columnAskAnswerText = '';
@@ -1557,7 +1513,7 @@ async function processMessage(
         const raw = hydratedSheetData[name] || [];
         const shaped = structureForDisplay(raw);
         if (shaped.headers.length === 0 || shaped.rows.length === 0) {
-          dataPreview += `\n\n▶ ${name}\n(no data)`;
+          // No rows to display for this sheet; skip
           continue;
         }
         const headers = shaped.headers;
@@ -1618,7 +1574,7 @@ async function processMessage(
         if (wantToday && dateColIdx >= 0) {
           const todays = shaped.rows.filter(r => normalizeDate(r[dateColIdx] || '') === todayKey);
           const take = todays.length > 0 ? todays : [shaped.rows[shaped.rows.length - 1]]; // fallback to latest
-          dataPreview += formatTable(name, [headers, ...take] as unknown as string[][], take.length);
+          formatTable(name, [headers, ...take] as unknown as string[][], take.length);
           matchedAny = matchedAny || todays.length > 0;
           continue;
         }
@@ -1634,35 +1590,28 @@ async function processMessage(
           });
           if (inRange.length > 0) {
             const rows = Math.min(10, inRange.length);
-            dataPreview += formatTable(name, [headers, ...inRange.slice(0, rows)] as unknown as string[][], rows);
+            formatTable(name, [headers, ...inRange.slice(0, rows)] as unknown as string[][], rows);
             matchedAny = true;
           } else {
             // Fallback to latest row if no matches
             const latest = [headers, shaped.rows[shaped.rows.length - 1]];
-            dataPreview += formatTable(name, latest as unknown as string[][], 1);
+            formatTable(name, latest as unknown as string[][], 1);
           }
           continue;
         }
         if (wantAll) {
           const rows = Math.min(10, shaped.rows.length);
-          dataPreview += formatTable(name, [headers, ...shaped.rows] as unknown as string[][], rows);
+          formatTable(name, [headers, ...shaped.rows] as unknown as string[][], rows);
           matchedAny = matchedAny || rows > 0;
           continue;
         }
         if (wantRecent) {
           const rows = Math.min(3, shaped.rows.length);
           const recent = [headers, ...shaped.rows.slice(-rows)];
-          dataPreview += formatTable(name, recent as unknown as string[][], rows);
+          formatTable(name, recent as unknown as string[][], rows);
           matchedAny = matchedAny || rows > 0;
           continue;
         }
-      }
-      if (dataPreview && dataTables.length === 0) {
-        // If existing response is generic, replace it with a more helpful lead-in
-        const generic = 'How can I help? You can ask me to update your sheet, fetch data, or extract info from files.';
-        const lead = matchedAny ? "Here's the data you asked for:" : 'No rows matched that request; showing the latest available:';
-        response = response && !response.includes(generic) ? response : lead;
-        response += `\n\n📄 Data preview:${dataPreview}`;
       }
 
       // Prefer a direct answer if we detected a column ask
@@ -1686,9 +1635,9 @@ async function processMessage(
 
     // Build quick replies (lightweight, history-aware)
     const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
-
+    
     return {
-      response: isFileOnly ? '' : (response || 'Here is an overview generated from your selected sheet(s).'),
+      response: isFileOnly ? '' : (response || ''),
       toolCalls: [], // No manual tool calls needed
       pendingToolCalls: [], // No pending tools - all executed automatically
       toolResults: toolResults, // Include the results of auto-executed tools
