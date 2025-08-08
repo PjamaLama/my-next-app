@@ -13,47 +13,42 @@ const ServiceAccountInfo: React.FC<ServiceAccountInfoProps> = ({ serviceAccountE
     try {
       await navigator.clipboard.writeText(serviceAccountEmail);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1200);
     } catch (err) {
       console.error('Failed to copy: ', err);
     }
   };
 
   return (
-    <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
-      <div className="flex flex-col space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-blue-900 dark:text-blue-100">
-            Service Account Email
-          </h3>
+    <div className="glass rounded-xl border border-white/10 p-4 mb-4">
+      <div className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium text-white">Service Account Email</h3>
+        <div className="relative">
+          <div className="bg-white/5 rounded-lg border border-white/10 p-2 pr-12 flex items-center justify-between break-all">
+            <code className="text-xs sm:text-sm font-mono text-white/90 select-all">
+              {serviceAccountEmail}
+            </code>
+          </div>
           <button
             onClick={copyToClipboard}
-            className="text-xs bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-200 px-2 py-1 rounded flex items-center transition-colors"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 h-9 w-9 inline-flex items-center justify-center rounded-full bg-white/10 border border-white/10 text-white/90 hover:bg-white/20 hover:scale-105 transition"
+            aria-label="Copy service account email"
+            title={copied ? 'Copied!' : 'Copy'}
           >
             {copied ? (
-              <>
-                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Copied!
-              </>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 12l4 4 10-10" />
+              </svg>
             ) : (
-              <>
-                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                </svg>
-                Copy
-              </>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="8" y="8" width="11" height="11" rx="2.5"/>
+                <path d="M6 16H5a2 2 0 01-2-2V5a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
             )}
           </button>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 p-2 flex items-center justify-between break-all">
-          <code className="text-xs sm:text-sm font-mono text-gray-800 dark:text-gray-200">
-            {serviceAccountEmail}
-          </code>
-        </div>
-        <p className="text-xs text-blue-700 dark:text-blue-300">
-          <svg className="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <p className="text-xs text-white/70">
+          <svg className="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Share your Google Sheet with this email address to grant access

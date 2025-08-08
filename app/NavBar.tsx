@@ -39,7 +39,26 @@ const NavBar: React.FC = () => {
   const [newOption, setNewOption] = useState("");
   const [addingSheet, setAddingSheet] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   useEffect(() => setIsClient(true), []);
+
+  // Set default theme to dark if none set
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const html = document.documentElement;
+    if (!html.classList.contains('theme-dark') && !html.classList.contains('theme-light')) {
+      html.classList.add('theme-dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    if (!isClient) return;
+    const html = document.documentElement;
+    const isDark = html.classList.contains('theme-dark');
+    // If currently dark, switch to light; otherwise back to dark
+    html.classList.toggle('theme-dark', !isDark);
+    html.classList.toggle('theme-light', isDark);
+  };
 
   // Removed: Gemini API Key settings modal state
   // const [settingsOpen, setSettingsOpen] = useState(false);
@@ -188,8 +207,11 @@ const NavBar: React.FC = () => {
         <div className="w-full max-w-md sm:max-w-lg modal-panel overflow-hidden">
           <div className="modal-header">
             <h3 className="text-lg sm:text-xl font-semibold text-white">Select Spreadsheet</h3>
-            <button onClick={() => setSheetDropdownOpen(false)} className="btn-icon btn-ghost" aria-label="Close">
-              <svg className="icon-20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            <button onClick={() => setSheetDropdownOpen(false)} className="h-9 w-9 inline-flex items-center justify-center rounded-full bg-white/10 border border-white/10 text-white/90 hover:bg-white/20 hover:scale-105 transition" aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 22a10 10 0 100-20 10 10 0 000 20z" opacity="0.15" />
+                <path d="M15 9l-6 6M9 9l6 6" />
+              </svg>
             </button>
           </div>
           <div className="overflow-y-auto max-h-[70vh]">
@@ -198,13 +220,15 @@ const NavBar: React.FC = () => {
                 <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
               )}
               <div className="space-y-3">
-                <input
-                  value={newOption}
-                  onChange={e => setNewOption(e.target.value)}
-                  placeholder="Paste Google Sheets share link or ID..."
-                  className="w-full rounded-xl px-4 py-3 bg-white/5 text-white placeholder-white/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
-                />
+                <div className="rounded-xl bg-white/5 border border-white/10 focus-within:ring-2 focus-within:ring-sky-500">
+                  <input
+                    value={newOption}
+                    onChange={e => setNewOption(e.target.value)}
+                    placeholder="Paste Google Sheets share link or ID..."
+                    className="w-full rounded-xl px-4 py-3 bg-transparent text-white placeholder-white/50 border-0 outline-none"
+                    onKeyDown={e => { if (e.key === 'Enter') addOption(); }}
+                  />
+                </div>
                 <p className="text-xs text-white/60">💡 Paste the share link from Google Sheets (Share → Copy link)</p>
                 <button
                   onClick={addOption}
@@ -250,13 +274,15 @@ const NavBar: React.FC = () => {
                         </div>
                         <button
                           onClick={e => { e.stopPropagation(); if (window.confirm('Delete this spreadsheet?')) deleteOption(option.id); }}
-                          className="btn-icon btn-ghost text-red-300 hover:text-red-200"
-                          aria-label="Delete"
+                          className="h-9 w-9 inline-flex items-center justify-center rounded-full bg-white/10 border border-white/10 text-red-300 hover:text-red-200 hover:bg-white/20 hover:scale-105 transition"
+                          aria-label="Delete spreadsheet"
+                          title="Delete"
                         >
-                          <svg className="icon-20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M6 8v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V8"/>
-                            <path d="M9 4h2a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2z"/>
-                            <line x1="4" y1="7" x2="16" y2="7"/>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M3 6h18" />
+                            <path d="M8 6l1-2h6l1 2" />
+                            <rect x="8" y="6" width="8" height="12" rx="2" />
+                            <path d="M10 10v6M14 10v6" />
                           </svg>
                         </button>
                       </div>
@@ -274,7 +300,7 @@ const NavBar: React.FC = () => {
   // Removed Gemini API key handler
 
   return (
-    <nav className="sticky top-0 z-50 backdrop-blur-xl bg-black/30 dark:bg-black/30 border-b border-white/10 shadow-[0_1px_0_0_rgba(255,255,255,0.06)] overflow-x-hidden gloss">
+    <nav className="sticky top-0 z-[60] backdrop-blur-xl bg-black/30 dark:bg-black/30 border-b border-white/10 shadow-[0_1px_0_0_rgba(255,255,255,0.06)] overflow-visible gloss">
       <div className="container mx-auto flex justify-between items-center px-3 sm:px-4 py-2 max-w-full">
           {/* Logo and Title - Properly aligned for mobile */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -338,37 +364,47 @@ const NavBar: React.FC = () => {
                   {sheetSelectorModal}
                 </div>
 
-                {/* User avatar and settings - Mobile optimized */}
-                <div className="flex items-center gap-1 sm:gap-2">
-                  {user?.photoURL ? (
-                    <Image
-                      src={user.photoURL}
-                      alt={user.displayName || 'User'}
-                      width={36}
-                      height={36}
-                      className="rounded-full border border-white/20"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20" />
+                {/* User avatar and menu */}
+                <div className="relative z-[70]">
+                  <button
+                    onClick={() => setProfileOpen(prev => !prev)}
+                    className="rounded-full border border-white/20 overflow-hidden focus:outline-none focus:ring-2 focus:ring-sky-400 w-9 h-9"
+                    aria-label="Profile menu"
+                  >
+                    {user?.photoURL ? (
+                      <Image src={user.photoURL} alt={user.displayName || 'User'} width={36} height={36} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full rounded-full bg-white/10" />
+                    )}
+                  </button>
+
+                  {profileOpen && isClient && (
+                    <div className="absolute right-0 mt-2 w-52 glass rounded-xl border border-white/10 shadow-xl p-2 z-[80]">
+                      <div className="px-2 py-2 text-xs text-white/70 truncate">
+                        {user?.email || 'Account'}
+                      </div>
+                      <button
+                        onClick={() => { toggleTheme(); setProfileOpen(false);} }
+                        className="menu-item"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                          <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                        </svg>
+                        <span>Toggle theme</span>
+                      </button>
+                      <button
+                        onClick={() => { signOutUser(); setProfileOpen(false);} }
+                        className="menu-item"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                          <path d="M16 17l5-5-5-5" />
+                          <path d="M21 12H9" />
+                          <path d="M13 21H7a2 2 0 01-2-2V5a2 2 0 012-2h6" />
+                        </svg>
+                        <span>Sign out</span>
+                      </button>
+                    </div>
                   )}
-
-                  <button
-                    onClick={() => setSettingsOpen(!settingsOpen)}
-                    className="btn-icon btn-secondary text-white/90"
-                    aria-label="Settings"
-                  >
-                    <svg className="icon-20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </button>
-
-                  <button
-                    onClick={signOutUser}
-                    className="btn btn-danger text-xs sm:text-sm"
-                  >
-                    Sign out
-                  </button>
                 </div>
               </>
             )}

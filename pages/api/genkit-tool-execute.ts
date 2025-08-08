@@ -751,7 +751,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
               const row = parseInt(match[2], 10);
               const col = match[1];
               // Map column letters to header index by A=0 etc.
-              const colIdx = col.split('').reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
+              const colIdx = col.split('').reduce((acc: number, ch: string) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
               const header = cached.headers[colIdx];
               if (!header) continue;
               const obj = rowMap.get(row) || {};
@@ -770,7 +770,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
               const exists = existingKeys.has(require('crypto').createHash('sha1').update(k).digest('hex'));
               if (!exists) uniqueRowSet.add(row);
             }
-            updates = updates.filter(up => {
+            updates = updates.filter((up: { sheetName: string; cell: string; value: string }) => {
               const m = up.cell.match(/([A-Z]+)(\d+)/);
               if (!m) return true;
               const row = parseInt(m[2], 10);

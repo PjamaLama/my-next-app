@@ -148,8 +148,7 @@ export default function Home() {
   // State for missed intent detection and fallback UI
   const [missedIntentSuggestion, setMissedIntentSuggestion] = useState<string | null>(null);
   
-  // State for message filtering and grouping
-  const [messageFilter, setMessageFilter] = useState<'all' | 'conversation' | 'sheet_updates'>('all');
+  // Removed message filter UI
   
   // Removed n8n session tracking; Genkit flow handles updates synchronously
   
@@ -1317,52 +1316,15 @@ export default function Home() {
             {/* Chat Messages Display */}
             {chatMessages.length > 0 && (
               <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-sm font-semibold text-white/90">AI Conversation</h3>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setMessageFilter('all')}
-                        className={`px-2 py-1 text-xs rounded glass-soft border border-white/10 ${
-                          messageFilter === 'all' ? 'bg-sky-500/30 text-white' : 'text-white/70 hover:text-white'
-                        }`}
-                      >
-                        All
-                      </button>
-                      <button
-                        onClick={() => setMessageFilter('conversation')}
-                        className={`px-2 py-1 text-xs rounded glass-soft border border-white/10 ${
-                          messageFilter === 'conversation' ? 'bg-sky-500/30 text-white' : 'text-white/70 hover:text-white'
-                        }`}
-                      >
-                        Chat
-                      </button>
-                      <button
-                        onClick={() => setMessageFilter('sheet_updates')}
-                        className={`px-2 py-1 text-xs rounded glass-soft border border-white/10 ${
-                          messageFilter === 'sheet_updates' ? 'bg-sky-500/30 text-white' : 'text-white/70 hover:text-white'
-                        }`}
-                      >
-                        Updates
-                      </button>
-                    </div>
-                  </div>
-                  <button
-                    onClick={clearChat}
-                    className="text-xs text-white/60 hover:text-white px-2 py-1 rounded"
-                  >
-                    Clear Chat
-                  </button>
-                </div>
                 <div className="space-y-3 max-h-80 overflow-y-auto bg-black/20 rounded-lg p-4 border border-white/10">
-                  {filterMessages(chatMessages, messageFilter).map((message) => (
+                  {chatMessages.map((message) => (
                     <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
                       <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow ${
-                        message.role === 'user'
-                          ? 'bg-sky-500/80 text-white'
-                          : message.role === 'system'
-                          ? 'bg-white/10 text-white/80 border border-white/10'
-                          : 'bg-white/5 text-white/90 border border-white/10'
+                         message.role === 'user'
+                           ? 'bg-sky-500/80 text-white'
+                           : message.role === 'system'
+                           ? 'bg-white/10 text-white/80 border border-white/10'
+                           : 'bg-white/5 text-white/90 border border-white/10'
                       }`}>
                         <div className="flex items-center gap-2 mb-1 opacity-80">
                           <span className={`text-xs ${getMessageTypeColor(message.messageType)}`}>
@@ -1431,7 +1393,7 @@ export default function Home() {
             <div className="relative w-full overflow-visible px-4">
               <div className="relative w-full">
                 <div className="w-full mb-4">
-                  <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-2 focus-within:ring-sky-500 transition-all duration-200">
+                  <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
                     {uploadedImages.length > 0 && (
                       <div className="p-3 border-b border-white/10">
                         <div className="flex flex-wrap gap-2">

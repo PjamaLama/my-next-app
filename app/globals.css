@@ -233,10 +233,22 @@ button:active {
   }
 }
 
-/* Improve focus visibility for accessibility */
-*:focus-visible {
+/* Improve focus visibility for accessibility without heavy input outlines */
+/* Restrict default outline to interactive controls that benefit from it */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
+}
+
+/* Soften or remove outlines for text inputs/textarea to avoid glowing borders */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 /* Loading spinner improvements */
@@ -361,3 +373,52 @@ button:active {
   .glass-soft { background: rgba(255,255,255,0.5); border-color: rgba(0,0,0,0.08); }
   .modal-overlay { background: rgba(0,0,0,0.4); }
 }
+
+/* Explicit theme overrides (manual switch) */
+html.theme-light {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #171717;
+  --box-bg: #f4f4f4;
+  --box-fg: #171717;
+  --input-bg: #fff;
+  --input-fg: #171717;
+  --button-bg: #171717;
+  --button-fg: #fff;
+  /* menu */
+  --menu-btn-bg: rgba(255,255,255,0.9);
+  --menu-btn-bg-hover: rgba(255,255,255,1);
+  --menu-btn-fg: #111111;
+  --menu-btn-border: rgba(0,0,0,0.12);
+}
+html.theme-dark {
+  color-scheme: dark;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --box-bg: #18181b;
+  --box-fg: #ededed;
+  --input-bg: #23232a;
+  --input-fg: #ededed;
+  --button-bg: #ededed;
+  --button-fg: #18181b;
+  /* menu */
+  --menu-btn-bg: rgba(0,0,0,0.6);
+  --menu-btn-bg-hover: rgba(0,0,0,0.72);
+  --menu-btn-fg: #ffffff;
+  --menu-btn-border: rgba(255,255,255,0.12);
+}
+
+/* Dropdown menu item */
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--menu-btn-bg);
+  color: var(--menu-btn-fg);
+  border: 1px solid var(--menu-btn-border);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.menu-item:hover { background: var(--menu-btn-bg-hover); }
