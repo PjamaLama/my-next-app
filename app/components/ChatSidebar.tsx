@@ -207,18 +207,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </button>
         </div>
         </div>
-        <div className="flex-1 overflow-y-auto py-2">
-          {/* Chats list under Chats header */}
-          {visibleSessions.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
-          ) : (
-            <ul className="space-y-1">
-            {visibleSessions.map((s) => renderSessionRow(s))}
-            </ul>
-          )}
+        <div className="flex-1 min-h-0">
+          <div className="overflow-y-auto py-2">
+            {/* Chats list under Chats header */}
+            {visibleSessions.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
+            ) : (
+              <ul className="space-y-1">
+              {visibleSessions.map((s) => renderSessionRow(s))}
+              </ul>
+            )}
+          </div>
 
-          {/* Spreadsheets manager below chats */}
-          <div className="mt-3 px-3 py-2 border-t border-white/10">
+          {/* Spreadsheets manager below chats (separate from chat scroll) */}
+          <div className="px-3 py-2 border-t border-white/10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-white/90">
                 <TableIcon className="w-3.5 h-3.5" />
@@ -303,7 +305,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               </div>
             )}
           </div>
-
           {/* Connected spreadsheets list */}
           <div className="mt-2 px-3 pb-3 space-y-1">
             {spreadsheetsLoading && (
@@ -355,7 +356,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               );
             })}
           </div>
-          
         </div>
       </div>
     );
@@ -382,18 +382,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-0 py-2">
-        {/* Chats list under Chats header */}
-        {visibleSessions.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
-        ) : (
-          <ul className="space-y-1">
-            {visibleSessions.map((s) => renderSessionRow(s))}
-          </ul>
-        )}
+      <div className="flex-1 min-h-0">
+        <div className="overflow-y-auto px-0 py-2">
+          {/* Chats list under Chats header */}
+          {visibleSessions.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
+          ) : (
+            <ul className="space-y-1">
+              {visibleSessions.map((s) => renderSessionRow(s))}
+            </ul>
+          )}
+        </div>
 
-        {/* Spreadsheets manager below chats */}
-        <div className="mt-4 mx-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
+        {/* Spreadsheets manager below chats (separate from chat scroll) */}
+        <div className="mt-2 mx-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
           {/* Manager header */}
           <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-b border-white/10">
           <div className="flex items-center justify-between">
@@ -524,14 +526,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             );
           })}
         </div>
-
-        {visibleSessions.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
-        ) : (
-          <ul className="space-y-1">
-            {visibleSessions.map((s) => renderSessionRow(s))}
-          </ul>
-        )}
       </div>
     </div>
   );
