@@ -42,7 +42,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     if (!user) return;
-    const userDocRef = doc(db, "users", user.uid);
+    const userDocRef = doc(db, "users", user.uid, "private", "profile");
     const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -109,7 +109,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const saveDefaultSelections = async (spreadsheetId: string, sheetNames: string[]) => {
     if (!user) return;
     try {
-      await setDoc(doc(db, "users", user.uid), {
+      await setDoc(doc(db, "users", user.uid, "private", "profile"), {
         defaultSpreadsheetId: spreadsheetId,
         selectedSheetNames: sheetNames
       }, { merge: true });

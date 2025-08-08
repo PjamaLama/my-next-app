@@ -1,9 +1,11 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { useSheet } from '../providers/SheetProvider';
+import { useDialog } from '../providers/DialogProvider';
 
 const SheetChipSelector: React.FC = () => {
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides, setUnstructuredOverride } = useSheet();
+  const { notify } = useDialog();
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,14 +122,29 @@ const SheetChipSelector: React.FC = () => {
                 if (!resp.ok) {
                   const t = await resp.text();
                   console.error('Convert failed:', t);
-                  alert('Conversion failed.');
+                  await notify({
+                    title: 'Conversion failed',
+                    description: 'Could not convert the sheet. Please try again later.',
+                    tone: 'danger',
+                    okText: 'Close'
+                  });
                 } else {
                   const j = await resp.json();
-                  alert(`Created new structured sheet: ${j.newSheetName}`);
+                  await notify({
+                    title: 'Structured sheet created',
+                    description: `New sheet: ${j.newSheetName}`,
+                    tone: 'success',
+                    okText: 'Great'
+                  });
                 }
               } catch (e) {
                 console.error(e);
-                alert('Conversion error');
+                await notify({
+                  title: 'Conversion error',
+                  description: 'An error occurred during conversion.',
+                  tone: 'danger',
+                  okText: 'Close'
+                });
               }
             }}
             title="Convert selected unstructured sheet into a new structured sheet"

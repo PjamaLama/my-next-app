@@ -8,6 +8,7 @@ import { Plus, Trash2, MessageSquare, Table as TableIcon, ChevronDown, ChevronUp
 import { useSheet } from "../providers/SheetProvider";
 import { useFirebase } from "../providers/FirebaseProvider";
 import ServiceAccountInfo from "./ServiceAccountInfo";
+import { useDialog } from "../providers/DialogProvider";
 dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
@@ -19,6 +20,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, ensureSession } = useChat();
   const { user } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, allSheetNames, selectedSheetNames, setSelectedSheetNames } = useSheet();
+  const { confirm, notify } = useDialog();
   const [creating, setCreating] = useState(false);
   const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; spreadsheetId: string; title?: string }>>([]);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
@@ -156,7 +158,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           {/* Right-side actions */}
           <div className="ml-auto flex items-center gap-1 shrink-0 mr-3">
             <button
-              onClick={async (e) => { e.stopPropagation(); if (confirm('Delete this chat?')) { await deleteSession(s.id); await ensureSession(); } }}
+              onClick={async (e) => {
+                e.stopPropagation();
+                const ok = await confirm({
+                  title: 'Delete chat',
+                  description: 'This will permanently delete this conversation. This action cannot be undone.',
+                  tone: 'danger',
+                  confirmText: 'Delete',
+                  cancelText: 'Cancel',
+                });
+                if (ok) {
+                  await deleteSession(s.id);
+                  await ensureSession();
+                }
+              }}
               className={`grid place-items-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-300/30 leading-none`}
               title="Delete"
               aria-label="Delete chat"
@@ -320,7 +335,16 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                   <button
-                    onClick={() => removeSpreadsheetOption(s.id, s.spreadsheetId)}
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: 'Remove spreadsheet',
+                        description: 'Disconnect this spreadsheet from your account? You can add it again later.',
+                        tone: 'warning',
+                        confirmText: 'Remove',
+                        cancelText: 'Cancel',
+                      });
+                      if (ok) await removeSpreadsheetOption(s.id, s.spreadsheetId);
+                    }}
                     className="grid place-items-center h-6 w-6 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
                     title="Remove"
                     aria-label="Remove spreadsheet"

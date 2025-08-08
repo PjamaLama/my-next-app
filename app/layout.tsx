@@ -10,6 +10,7 @@ import { ChatProvider } from "./providers/ChatProvider";
 import NavBar from "./NavBar";
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import SidePanel from './components/SidePanel';
+import { DialogProvider } from './providers/DialogProvider';
 
 // Enable Firebase telemetry for Genkit monitoring
 enableFirebaseTelemetry();
@@ -95,14 +96,16 @@ export default function RootLayout({
         <FirebaseProvider>
           <SheetProvider>
             <ServiceAccountProvider>
-              <SettingsProvider> {/* Wrap with SettingsProvider */}
+              <SettingsProvider>
                 <FirestoreSyncProvider>
                   <ChatProvider>
-                    {/* Sidebar renders only when logged in; margin should follow CSS var */}
-                    <SidePanel />
-                    <div className="transition-all" style={{ marginLeft: 'var(--sidebar-width, 0px)' }}>
-                      {children}
-                    </div>
+                    <DialogProvider>
+                      {/* Sidebar renders only when logged in; margin should follow CSS var */}
+                      <SidePanel />
+                      <div className="transition-all" style={{ marginLeft: 'var(--sidebar-width, 0px)' }}>
+                        {children}
+                      </div>
+                    </DialogProvider>
                   </ChatProvider>
                 </FirestoreSyncProvider>
               </SettingsProvider>

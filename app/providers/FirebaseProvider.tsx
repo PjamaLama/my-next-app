@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from "firebase/auth";
-import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp, runTransaction } from "firebase/firestore";
+import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB42SldA3_l6LZ6l2axTIdrMhvSrmcIMEU",
@@ -60,61 +60,38 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     return () => unsubscribe();
   }, []);
 
-  // Ensure a user document exists on sign-in so we can reliably count beta testers
+  // Ensure a user profile subdocument exists (under allowed subcollection rules)
   useEffect(() => {
     if (!user) return;
     const ensureUserDoc = async () => {
       try {
-        const userDocRef = doc(db, "users", user.uid);
-        const betaMetaRef = doc(db, "meta", "beta");
-
-        await runTransaction(db, async (tx) => {
-          const [metaSnap, userSnap] = await Promise.all([
-            tx.get(betaMetaRef),
-            tx.get(userDocRef)
-          ]);
-
-          let capacity = 100;
-          let testerCount = 0;
-          if (!metaSnap.exists()) {
-            tx.set(betaMetaRef, { capacity, testerCount });
+        const profileRef = doc(db, "users", user.uid, "private", "profile");
+        const snap = await getDoc(profileRef);
+        const baseData: Record<string, unknown> = {
+          email: user.email || null,
+          displayName: user.displayName || null,
+          photoURL: user.photoURL || null,
+          lastLoginAt: serverTimestamp(),
+        };
+        if (!snap.exists()) {
+          baseData.createdAt = serverTimestamp();
+          baseData.betaTester = true; // default allow access without global count
+          baseData.betaWaitlist = false;
+          setBetaTester(true);
+          setBetaWaitlist(false);
+        } else {
+          const data = snap.data() as any;
+          if (typeof data.betaTester !== 'boolean' && typeof data.betaWaitlist !== 'boolean') {
+            baseData.betaTester = true;
+            baseData.betaWaitlist = false;
+            setBetaTester(true);
+            setBetaWaitlist(false);
           } else {
-            const metaData = metaSnap.data() as { capacity?: number; testerCount?: number };
-            capacity = typeof metaData.capacity === 'number' ? metaData.capacity : capacity;
-            testerCount = typeof metaData.testerCount === 'number' ? metaData.testerCount : testerCount;
+            setBetaTester(!!data.betaTester);
+            setBetaWaitlist(!!data.betaWaitlist);
           }
-
-          const baseData: Record<string, unknown> = {
-            email: user.email || null,
-            displayName: user.displayName || null,
-            photoURL: user.photoURL || null,
-            lastLoginAt: serverTimestamp(),
-          };
-
-          if (!userSnap.exists()) {
-            baseData.createdAt = serverTimestamp();
-          }
-
-          const alreadyTester = userSnap.exists() && !!(userSnap.data() as any).betaTester;
-          const alreadyWaitlist = userSnap.exists() && !!(userSnap.data() as any).betaWaitlist;
-
-          if (!alreadyTester && !alreadyWaitlist) {
-            if (testerCount < capacity) {
-              baseData.betaTester = true;
-              baseData.betaWaitlist = false;
-              tx.update(betaMetaRef, { testerCount: testerCount + 1 });
-              setBetaTester(true);
-              setBetaWaitlist(false);
-            } else {
-              baseData.betaTester = false;
-              baseData.betaWaitlist = true;
-              setBetaTester(false);
-              setBetaWaitlist(true);
-            }
-          }
-
-          tx.set(userDocRef, baseData, { merge: true });
-        });
+        }
+        await setDoc(profileRef, baseData, { merge: true });
       } catch (e) {
         console.error("Error ensuring user document:", e);
       }
@@ -122,11 +99,11 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     void ensureUserDoc();
   }, [user]);
 
-  // Load Gemini API key from Firestore when user changes
+  // Load profile fields (Gemini API key, beta flags) from profile subdocument
   useEffect(() => {
     if (!user) return;
-    const userDocRef = doc(db, "users", user.uid);
-    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+    const profileRef = doc(db, "users", user.uid, "private", "profile");
+    const unsubUserDoc = onSnapshot(profileRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.geminiApiKey) {
@@ -178,7 +155,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const saveGeminiApiKey = async (key: string) => {
     if (!user) return;
     try {
-      await setDoc(doc(db, "users", user.uid), { geminiApiKey: key.trim() }, { merge: true });
+      await setDoc(doc(db, "users", user.uid, "private", "profile"), { geminiApiKey: key.trim() }, { merge: true });
       setGeminiApiKey(key.trim());
       return Promise.resolve();
     } catch (e) {

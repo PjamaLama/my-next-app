@@ -24,6 +24,7 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
+import { useDialog } from './providers/DialogProvider';
 
 
 
@@ -109,6 +110,7 @@ export default function Home() {
   const { user, loading, signInWithGoogle, authError, betaTester, betaWaitlist } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
+  const { notify } = useDialog();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
@@ -205,7 +207,12 @@ export default function Home() {
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; // eslint-disable-line @typescript-eslint/no-explicit-any
     if (!SpeechRecognitionClass) {
       console.error('Speech recognition not supported in this browser');
-      alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
+      notify({
+        title: 'Speech recognition not supported',
+        description: 'Please use Chrome, Edge, or Safari for voice input.',
+        tone: 'info',
+        okText: 'Got it'
+      });
       return;
     }
     
@@ -1608,36 +1615,7 @@ export default function Home() {
                   ) : (
                     defaultSpreadsheetId && allSheetNames.length > 0 && (
                       <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
-                        <div className="flex flex-wrap gap-1.5">
-                          {allSheetNames.map((name) => {
-                            const active = selectedSheetNames?.includes(name);
-                            return (
-                              <button
-                                key={name}
-                                onClick={() => {
-                                  const set = new Set(selectedSheetNames || []);
-                                  if (set.has(name)) set.delete(name); else set.add(name);
-                                  setSelectedSheetNames(Array.from(set));
-                                }}
-                                className={`px-2 py-0.5 rounded-full text-[11px] border transition-all duration-200 max-w-[160px] truncate ${
-                                  active
-                                    ? 'border-2 border-green-500/80 bg-green-600/10 text-green-200 shadow-sm'
-                                    : 'border-transparent bg-white/5 text-white/90 hover:bg-white/10'
-                                }`}
-                                aria-pressed={active}
-                                aria-label={`Select sheet ${name}`}
-                                title={name}
-                              >
-                                <span className="inline-flex items-center gap-1">
-                                  {active && (
-                                    <svg className="w-3 h-3 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                                  )}
-                                  <span className="truncate">{name}</span>
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <SheetChipSelector />
                       </div>
                     )
                   )}

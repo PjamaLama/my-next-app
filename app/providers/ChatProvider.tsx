@@ -110,7 +110,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setChatMessagesState([]);
       return;
     }
-    const chatDocRef = doc(db, "users", user.uid, "chats", currentSessionId);
+    const chatDocRef = doc(db, "users", user.uid, "private", "chats", currentSessionId);
     const unsub = onSnapshot(chatDocRef, (snap) => {
       if (!snap.exists()) {
         setChatMessagesState([]);
@@ -133,7 +133,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const persistMessages = useCallback(async (messages: ChatMessage[]) => {
     if (!user || !currentSessionId) return;
-    const chatDocRef = doc(db, "users", user.uid, "chats", currentSessionId);
+    const chatDocRef = doc(db, "users", user.uid, "private", "chats", currentSessionId);
     const updatedAt = new Date().toISOString();
     const safeMessages = messages.map((m) => {
       const copy: Record<string, unknown> = { ...m } as Record<string, unknown>;
@@ -230,7 +230,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteSession = useCallback(async (id: string) => {
     if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "chats", id));
+    await deleteDoc(doc(db, "users", user.uid, "private", "chats", id));
     if (currentSessionId === id) {
       setCurrentSessionId(null);
       setChatMessagesState([]);
@@ -239,7 +239,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const renameSession = useCallback(async (id: string, title: string) => {
     if (!user) return;
-    const ref = doc(db, "users", user.uid, "chats", id);
+    const ref = doc(db, "users", user.uid, "private", "chats", id);
     await updateDoc(ref, { title });
   }, [user]);
 
