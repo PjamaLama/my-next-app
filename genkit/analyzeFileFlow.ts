@@ -113,7 +113,7 @@ export const analyzeFileFlow = (apiKey: string) => {
       }
       
       // Create a comprehensive prompt with extracted text
-      const fullPrompt = `You are an expert data analyst. A user has uploaded ${files.length} file(s) and asked the following:
+      const fullPrompt = `You are an expert data analyst that extracts tabular fuel/expense entries suitable for Google Sheets. A user has uploaded ${files.length} file(s) and asked the following:
 
 "${prompt}"
 
@@ -122,24 +122,27 @@ ${extractedContents.map((content, index) => `File ${index + 1} (${content.mimeTy
 ${content.extractedText}
 ---`).join('\n\n')}
 
-Your task is to analyze the extracted text content and extract the requested information in a structured JSON format. 
+Your task is to analyze the extracted text content and return a STRICT JSON with an array of normalized row objects. Normalize values:
+- Dates: DD/MM/YY or ISO YYYY-MM-DD
+- Amounts and numbers: plain decimals without currency symbols
+Return ONLY JSON, no markdown.
 
 IMPORTANT INSTRUCTIONS:
-1. Analyze the extracted text content from each file.
-2. Look for structured data like invoices, forms, tables, lists, etc.
-3. Extract key-value pairs, dates, amounts, names, addresses, etc.
-4. Return ONLY raw JSON without any markdown formatting, code blocks, or explanations.
-5. Do not wrap your response in \`\`\`json\`\`\` blocks.
-6. Do not include any text outside the JSON structure.
-7. If you cannot extract specific data, return an empty array but still return valid JSON.
+1. Parse each file and identify entries relevant for spreadsheet rows.
+2. Normalize keys to common spreadsheet headers if present: ["Date","Driver","Reg#","Vehicle","KM Start","KM End","Business Km","Prvt Km","Leave Km","Total Km","TOWN VISITED","CLIENT SEEN","CLIENT CALLED","PHONE NUMBER","DETAILS OF VISIT","KM at Filling","Fuel in liters","Fuel Cost in Rands","SALES MADE"]
+3. Return ONLY raw JSON without markdown or explanations.
+4. If nothing can be extracted, return { "extracted_rows": [] }.
 
-Example output format (return exactly like this, no markdown):
+Example output format (RETURN EXACTLY JSON, no code fences):
 {
-  "extracted_data": [
-    { "field": "Invoice Number", "value": "12345" },
-    { "field": "Amount Due", "value": "$500.00" },
-    { "field": "Date", "value": "2024-01-15" },
-    { "field": "Customer Name", "value": "John Doe" }
+  "extracted_rows": [
+    {
+      "Date": "25/07/25",
+      "Reg#": "NR33581",
+      "TOWN VISITED": "Glenfair Service Station & Daventry Roads",
+      "Fuel in liters": "50",
+      "Fuel Cost in Rands": "685.50"
+    }
   ]
 }
 
@@ -187,7 +190,8 @@ Analyze the extracted text content and extract relevant data in JSON format.`;
           const parsedResult = typeof cleanedOutput === 'string' ? JSON.parse(cleanedOutput) : cleanedOutput;
           
           console.log('🔍 [ANALYZE_FILE_FLOW] Successfully parsed JSON result');
-          console.log('🔍 [ANALYZE_FILE_FLOW] Extracted data count:', parsedResult.extracted_data?.length || 0);
+          const rowsCount = Array.isArray((parsedResult as any).extracted_rows) ? (parsedResult as any).extracted_rows.length : 0;
+          console.log('🔍 [ANALYZE_FILE_FLOW] Extracted rows count:', rowsCount);
           
           return parsedResult;
         } catch (parseError) {

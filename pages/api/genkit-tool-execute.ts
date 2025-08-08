@@ -2,6 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import { getCachedHeaders } from '@/lib/sheetHeaderCache';
+import { buildExistingKeySet, filterNewRows } from '@/lib/dedupe';
 import { insertRow } from '../../genkit/tools';
 
 // Configure API to handle larger file uploads
@@ -618,29 +620,50 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
     try {
       console.log('Processing extracted data with updateSheetFlow...');
       
-      // Combine all extracted data into a single transcript
-      const extractedData = analysisResults
-        .filter(result => result.success && result.analysis)
-        .map(result => {
-          if (typeof result.analysis === 'string') {
-            return result.analysis;
-          } else if (result.analysis && typeof result.analysis === 'object') {
-            return JSON.stringify(result.analysis);
-          }
-          return '';
-        })
-        .join('\n\n');
-      
-      // Create an enhanced transcript that includes the extracted data
-      const enhancedTranscript = `${transcript || 'Add the following data to the spreadsheet'}\n\nIMPORTANT: The extracted data contains multiple entries. Please create a separate row for each entry in the data.\n\nExtracted data:\n${extractedData}`;
-      
-      // Call the updateSheetFlow to get actions ONLY (no direct commit for batching)
-      const updateResult = await updateSheetFlow({
-        transcript: enhancedTranscript,
-        sheetId: spreadsheetId,
-        sheetName: targetSheetName,
-        commit: false
-      });
+      // Prefer structured rows if present; otherwise fallback to transcript method
+      const extractedRows = analysisResults
+        .map(r => (r.analysis as any)?.extracted_rows)
+        .filter(Boolean)
+        .flat();
+      let updateResult: any;
+      if (Array.isArray(extractedRows) && extractedRows.length > 0) {
+        // Build actions directly from rows mapped to headers if possible
+        const sheets = await getGoogleSheetsClient();
+        // Fetch headers to map object keys to columns
+        const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${targetSheetName}!A1:T1` });
+        const headers = (meta.data.values?.[0] || []) as string[];
+        const colLetters = (idx: number) => {
+          let n = idx + 1, s = '';
+          while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+          return s;
+        };
+        // Determine insertion start using cached last row if available
+        const cached = getCachedHeaders(spreadsheetId, targetSheetName);
+        const startRow = (cached?.lastDataRow || 1) + 1;
+        const actions: any[] = [];
+        for (let i = 0; i < extractedRows.length; i++) {
+          const rowIndex = startRow + i;
+          actions.push({ type: 'insertRow', sheet: targetSheetName, row: rowIndex });
+          headers.forEach((h, idx) => {
+            if (extractedRows[i][h] != null && extractedRows[i][h] !== '') {
+              actions.push({ type: 'updateCell', sheet: targetSheetName, row: rowIndex, column: colLetters(idx), value: String(extractedRows[i][h]) });
+            }
+          });
+        }
+        updateResult = { actions };
+      } else {
+        // Fallback: combine as transcript and let updateSheetFlow infer actions
+        const extractedData = analysisResults
+          .filter(result => result.success && result.analysis)
+          .map(result => {
+            if (typeof result.analysis === 'string') return result.analysis;
+            if (result.analysis && typeof result.analysis === 'object') return JSON.stringify(result.analysis);
+            return '';
+          })
+          .join('\n\n');
+        const enhancedTranscript = `${transcript || 'Add the following data to the spreadsheet'}\n\nIMPORTANT: The extracted data contains multiple entries. Please create a separate row for each entry in the data.\n\nExtracted data:\n${extractedData}`;
+        updateResult = await updateSheetFlow({ transcript: enhancedTranscript, sheetId: spreadsheetId, sheetName: targetSheetName, commit: false });
+      }
 
       console.log('UpdateSheetFlow (no-commit) result:', updateResult);
 
@@ -676,13 +699,68 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       }
 
       // Then prepare updateCell actions for batch update
-      const updates = actions
+      let updates = actions
         .filter((a: any) => a.type === 'updateCell')
         .map((a: any) => ({
           sheetName: targetSheetName,
           cell: `${a.column}${a.row}`,
           value: a.value ?? ''
         }));
+
+      // Optional dedupe: if we have headers cached, try to filter out duplicates based on key fields
+      const cached = getCachedHeaders(spreadsheetId, targetSheetName);
+      if (cached && cached.headers && cached.headers.length > 0) {
+        // Choose key columns you care about for dedupe
+        const keyHeaders = ['Date', 'Reg#', 'TOWN VISITED', 'Fuel in liters', 'Fuel Cost in Rands']
+          .filter(h => cached.headers.includes(h));
+        if (keyHeaders.length > 0) {
+          try {
+            const sheets = await getGoogleSheetsClient();
+            const range = `${targetSheetName.includes(' ')? `'${targetSheetName.replace(/'/g, "''")}'`: targetSheetName}!A1:T${Math.max(2, cached.lastDataRow + 20)}`;
+            const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+            const existing = (resp.data.values || []) as string[][];
+            const existingKeys = buildExistingKeySet(existing, cached.headers, keyHeaders);
+
+            // Convert cell updates into row-shaped objects to dedupe; keep only unique new rows
+            const headerIndex: Record<string, number> = {};
+            cached.headers.forEach((h, i) => (headerIndex[h] = i));
+            const rowMap = new Map<number, Record<string, string>>();
+            for (const up of updates) {
+              const match = up.cell.match(/([A-Z]+)(\d+)/);
+              if (!match) continue;
+              const row = parseInt(match[2], 10);
+              const col = match[1];
+              // Map column letters to header index by A=0 etc.
+              const colIdx = col.split('').reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
+              const header = cached.headers[colIdx];
+              if (!header) continue;
+              const obj = rowMap.get(row) || {};
+              obj[header] = String(up.value ?? '');
+              rowMap.set(row, obj);
+            }
+            const candidates = Array.from(rowMap.values());
+            const unique = filterNewRows(candidates, existingKeys, keyHeaders);
+
+            // Rebuild updates only for unique rows
+            const uniqueRowSet = new Set<number>();
+            for (const [row, obj] of rowMap.entries()) {
+              const keyObj: any = {};
+              keyHeaders.forEach(h => (keyObj[h] = obj[h] ?? ''));
+              const k = keyHeaders.map(h => String(keyObj[h]).trim().toLowerCase()).join('|');
+              const exists = existingKeys.has(require('crypto').createHash('sha1').update(k).digest('hex'));
+              if (!exists) uniqueRowSet.add(row);
+            }
+            updates = updates.filter(up => {
+              const m = up.cell.match(/([A-Z]+)(\d+)/);
+              if (!m) return true;
+              const row = parseInt(m[2], 10);
+              return uniqueRowSet.has(row);
+            });
+          } catch (e) {
+            console.warn('Dedupe phase skipped due to error:', e);
+          }
+        }
+      }
 
       // If there are no updates, return early
       if (updates.length === 0) {

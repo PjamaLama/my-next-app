@@ -841,23 +841,38 @@ export default function Home() {
       if (uploadedImages.length > 0) {
         try {
           for (const img of uploadedImages) {
-            // Convert file to base64
-            const reader = new FileReader();
-            const base64Data = await new Promise<string>((resolve, reject) => {
-              reader.onload = () => {
-                const result = reader.result as string;
-                // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
-                const base64 = result.split(',')[1];
-                resolve(base64);
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(img.file);
-            });
-            
-            imageData.push({
-              data: base64Data,
-              mimeType: img.file.type
-            });
+            // Convert with compression for images
+            if (img.fileType === 'image') {
+              try {
+                const { compressImageFile } = await import('../lib/imageCompression');
+                const compressed = await compressImageFile(img.file, 1600, 0.7);
+                imageData.push({ data: compressed.base64, mimeType: compressed.mimeType });
+              } catch {
+                const reader = new FileReader();
+                const base64Data = await new Promise<string>((resolve, reject) => {
+                  reader.onload = () => {
+                    const result = reader.result as string;
+                    const base64 = result.split(',')[1];
+                    resolve(base64);
+                  };
+                  reader.onerror = reject;
+                  reader.readAsDataURL(img.file);
+                });
+                imageData.push({ data: base64Data, mimeType: img.file.type });
+              }
+            } else {
+              const reader = new FileReader();
+              const base64Data = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => {
+                  const result = reader.result as string;
+                  const base64 = result.split(',')[1];
+                  resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(img.file);
+              });
+              imageData.push({ data: base64Data, mimeType: img.file.type });
+            }
           }
         } catch (error) {
           console.error('Error processing images:', error);
