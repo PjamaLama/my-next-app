@@ -192,13 +192,72 @@ function buildSmartTables(
     return tables;
   }
 
-  // Simple selected columns view (non-aggregated)
+  // Simple selected columns view (non-aggregated) with lightweight AI-derived columns
   const idxs = selectedIdxs || headers.map((_, i) => i).slice(0, 5);
   const outHeaders = idxs.map((i) => headers[i]);
-  const body = filtered.slice(-10).map((r) => idxs.map((i) => String(r[i] ?? '')));
+
+  // Identify a metric column from full headers to compute deltas
+  const metricHints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
+  let metricIdx = -1;
+  for (const hint of metricHints) {
+    const idx = bestHeaderIndex(headers, hint);
+    if (idx >= 0) { metricIdx = idx; break; }
+  }
+  if (metricIdx < 0) {
+    const candidateIdx = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
+    metricIdx = candidateIdx >= 0 ? candidateIdx : -1;
+  }
+
+  // Compute average for metric if available
+  let avg: number | null = null;
+  if (metricIdx >= 0) {
+    const nums = filtered.map(r => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
+    if (nums.length > 0) avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+  }
+
+  // Detect date column for timeliness hints
+  const dateIdx2 = headers.findIndex((h) => /date|timestamp|time/i.test(h));
+
+  // Append derived columns
+  const derivedHeaders: string[] = [];
+  if (avg != null) derivedHeaders.push(`Δ vs Avg(${headers[metricIdx]})`);
+  if (dateIdx2 >= 0) derivedHeaders.push('When');
+  derivedHeaders.push('AI Insight');
+
+  const body = filtered.slice(-10).map((r) => {
+    const base = idxs.map((i) => String(r[i] ?? ''));
+    const derived: string[] = [];
+    // Δ vs Avg
+    if (avg != null) {
+      const n = parseNumber(r[metricIdx]);
+      const delta = n != null ? n - avg : null;
+      derived.push(delta != null ? `${delta >= 0 ? '+' : ''}${Number(delta.toFixed(2))}` : 'n/a');
+    }
+    // When
+    if (dateIdx2 >= 0) {
+      const d = dayjs(String(r[dateIdx2] || ''));
+      derived.push(d.isValid() ? d.fromNow() : 'n/a');
+    }
+    // AI Insight
+    let insight = '';
+    if (avg != null) {
+      const n = parseNumber(r[metricIdx]);
+      if (n != null) insight = n > avg ? 'Above average' : n < avg ? 'Below average' : 'At average';
+    }
+    if (!insight && dateIdx2 >= 0) {
+      const d = dayjs(String(r[dateIdx2] || ''));
+      if (d.isValid()) {
+        if (d.isAfter(dayjs().subtract(1, 'day'))) insight = 'Recent';
+        else if (d.isBefore(dayjs().subtract(30, 'day'))) insight = 'Older';
+      }
+    }
+    derived.push(insight || '—');
+    return [...base, ...derived];
+  });
+
   tables.push({
     title: `${sheetName}${range?.label ? ` · ${range.label}` : ''}`,
-    headers: outHeaders,
+    headers: [...outHeaders, ...derivedHeaders],
     rows: body,
     summary: `Showing ${body.length} of ${filtered.length} row(s).`
   });
@@ -612,7 +671,9 @@ async function processMessage(
         });
       } else if (lowerMessage.includes('show') || lowerMessage.includes('get') || lowerMessage.includes('display') || lowerMessage.includes('data')) {
         intent = 'get_data';
-        if (context?.spreadsheetId && context?.sheetName) {
+        const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
+        const targetSheet = (context?.sheetName as string) || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
+        if (context?.spreadsheetId && targetSheet) {
           suggestedTools.push({
             id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             type: 'function',
@@ -620,7 +681,7 @@ async function processMessage(
               name: 'get_sheet_data',
               arguments: JSON.stringify({ 
                 spreadsheetId: context.spreadsheetId, 
-                sheetName: context.sheetName 
+                sheetName: targetSheet 
               })
             }
           });
@@ -1062,7 +1123,7 @@ async function processMessage(
     const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
 
     return {
-      response,
+      response: response || 'Here is an overview generated from your selected sheet(s).',
       toolCalls: [], // No manual tool calls needed
       pendingToolCalls: [], // No pending tools - all executed automatically
       toolResults: toolResults, // Include the results of auto-executed tools

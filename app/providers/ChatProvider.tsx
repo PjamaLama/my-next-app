@@ -35,6 +35,8 @@ export type ChatMessage = {
   }>;
   messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
   quickReplies?: string[];
+  sheetsUsed?: string[];
+  tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
 };
 
 export type ChatSession = {
@@ -115,12 +117,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       const data = snap.data() as {
-        messages?: Array<Omit<ChatMessage, 'timestamp'> & { timestamp?: string }>
+        messages?: Array<(Omit<ChatMessage, 'timestamp'> & { timestamp?: string }) & { tablesJson?: string }>
       };
-      const messages = (data.messages ?? []).map((m) => ({
-        ...m,
-        timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
-      })) as ChatMessage[];
+      const messages = (data.messages ?? []).map((m) => {
+        const out: any = { ...m, timestamp: m.timestamp ? new Date(m.timestamp) : new Date() };
+        if ((m as any).tablesJson && !out.tables) {
+          try { out.tables = JSON.parse((m as any).tablesJson); } catch {}
+        }
+        return out as ChatMessage;
+      }) as ChatMessage[];
       setChatMessagesState(messages);
     });
     return () => unsub();
@@ -136,9 +141,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (copy.timestamp instanceof Date) {
         copy.timestamp = (copy.timestamp as Date).toISOString();
       }
-      // Remove UI-only fields that may contain nested arrays (not supported by Firestore)
-      // e.g., tables: { headers: string[], rows: string[][] }[]
-      if ('tables' in copy) {
+      // Persist tables as JSON string to avoid nested array limitations
+      if ('tables' in copy && Array.isArray((copy as any).tables)) {
+        try { (copy as any).tablesJson = JSON.stringify((copy as any).tables); } catch {}
         delete (copy as any).tables;
       }
       // Defensive: strip any top-level field that is an array of arrays
