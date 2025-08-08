@@ -15,6 +15,18 @@ interface N8nCallbackPayload {
   }>;
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var n8nCallbacks: Map<string, {
+    status: 'processing' | 'completed' | 'error';
+    partialResponse?: string;
+    finalResponse?: string;
+    error?: string;
+    actions?: Array<{ type: 'insertRow' | 'updateCell'; sheet: string; row: number; column?: string; value?: string; }>;
+    timestamp: string;
+  }> | undefined;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -33,8 +45,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // For now, we'll use a simple in-memory store (not recommended for production)
     
     // TODO: Implement proper session storage (Redis, database, etc.)
-    global.n8nCallbacks = global.n8nCallbacks || new Map();
-    global.n8nCallbacks.set(sessionId, {
+    globalThis.n8nCallbacks = globalThis.n8nCallbacks || new Map();
+    globalThis.n8nCallbacks.set(sessionId, {
       status,
       partialResponse,
       finalResponse,

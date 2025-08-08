@@ -7,6 +7,8 @@ import { useSheet } from './providers/SheetProvider';
 import { useServiceAccount } from './providers/ServiceAccountProvider';
 import ServiceAccountInfo from './components/ServiceAccountInfo';
 import { db } from './providers/FirebaseProvider';
+import dynamic from 'next/dynamic';
+const ChatSidebar = dynamic(() => import('./components/ChatSidebar'), { ssr: false });
 import {
   collection,
   doc,
@@ -235,6 +237,7 @@ const NavBar: React.FC = () => {
 
           {/* Desktop Nav Links - Hidden on mobile */}
           <div className="hidden md:flex items-center gap-6">
+            <ChatSidebar />
             {NAV_LINKS.map(link => (
               <Link
                 key={link.name}
@@ -249,6 +252,10 @@ const NavBar: React.FC = () => {
 
           {/* User section: Optimized for mobile */}
           <div className="flex items-center gap-1 sm:gap-4 flex-shrink-0">
+            {/* Mobile Chats button */}
+            <div className="md:hidden">
+              <ChatSidebar />
+            </div>
             {user && (
               <>
                 {/* Spreadsheet Selector - Mobile-first design */}
