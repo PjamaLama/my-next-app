@@ -10,6 +10,11 @@ interface SheetContextType {
   selectedSheetNames: string[];
   setDefaultSpreadsheetId: (id: string) => void;
   setSelectedSheetNames: (names: string[]) => void;
+  // Prefetch/cache state exposed so it survives page re-mounts and across chats
+  allSheetNames: string[];
+  sheetDataCache: Record<string, string[][]>;
+  sheetsPrefetched: boolean;
+  setSheetDataCache: React.Dispatch<React.SetStateAction<Record<string, string[][]>>>;
 }
 
 const SheetContext = createContext<SheetContextType | null>(null);
@@ -26,6 +31,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const { user } = useFirebase();
   const [defaultSpreadsheetId, setDefaultSpreadsheetIdState] = useState<string>("");
   const [selectedSheetNames, setSelectedSheetNamesState] = useState<string[]>([]);
+  const [allSheetNames, setAllSheetNames] = useState<string[]>([]);
+  const [sheetDataCache, setSheetDataCache] = useState<Record<string, string[][]>>({});
+  const [sheetsPrefetched, setSheetsPrefetched] = useState<boolean>(false);
 
   useEffect(() => {
     if (!user) return;
@@ -42,6 +50,52 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     return () => unsubUserDoc();
   }, [user]);
+
+  // Prefetch all sheet names and data once per selected spreadsheet (moved from page component)
+  useEffect(() => {
+    let cancelled = false;
+    const doPrefetch = async () => {
+      if (!defaultSpreadsheetId) {
+        setAllSheetNames([]);
+        setSheetDataCache({});
+        setSheetsPrefetched(false);
+        return;
+      }
+      // Reset caches when spreadsheet changes
+      setAllSheetNames([]);
+      setSheetDataCache({});
+      setSheetsPrefetched(false);
+      try {
+        const namesRes = await fetch('/api/get-sheet-names', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId })
+        });
+        const namesJson = await namesRes.json();
+        const names: string[] = namesJson.sheetNames || namesJson.data || [];
+        if (cancelled) return;
+        setAllSheetNames(names);
+
+        for (const name of names) {
+          try {
+            const dataRes = await fetch('/api/get-sheet-data', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: name })
+            });
+            const dataJson = await dataRes.json();
+            if (cancelled) return;
+            setSheetDataCache(prev => ({ ...prev, [name]: dataJson.data || [] }));
+          } catch (e) {
+            console.warn('Prefetch sheet data failed for', name, e);
+          }
+        }
+        if (!cancelled) setSheetsPrefetched(true);
+      } catch (e) {
+        console.warn('Prefetch sheet names failed', e);
+      }
+    };
+    void doPrefetch();
+    return () => { cancelled = true; };
+  }, [defaultSpreadsheetId]);
 
   const saveDefaultSelections = async (spreadsheetId: string, sheetNames: string[]) => {
     if (!user) return;
@@ -75,7 +129,11 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         defaultSpreadsheetId,
         selectedSheetNames,
         setDefaultSpreadsheetId,
-        setSelectedSheetNames
+        setSelectedSheetNames,
+        allSheetNames,
+        sheetDataCache,
+        sheetsPrefetched,
+        setSheetDataCache
       }}
     >
       {children}

@@ -106,16 +106,14 @@ export default function Home() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, authError } = useFirebase();
-  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(true);
   // Prefetched sheet metadata and cache
-  const [allSheetNames, setAllSheetNames] = useState<string[]>([]);
-  const [sheetDataCache, setSheetDataCache] = useState<Record<string, string[][]>>({});
-  const [sheetsPrefetched, setSheetsPrefetched] = useState<boolean>(false);
+  // moved to provider
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
   const [listening, setListening] = useState(false);
@@ -134,7 +132,7 @@ export default function Home() {
 
   
   // Chat provider hooks to ensure session and persist messages for AI title generation
-  const { ensureSession, setChatMessages: setProviderChatMessages } = useChat();
+  const { ensureSession, setChatMessages: setProviderChatMessages, chatMessages: providerChatMessages } = useChat();
   // Add state for available spreadsheet options
   // const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
 
@@ -147,7 +145,7 @@ export default function Home() {
   const [bottomBarHeight, setBottomBarHeight] = useState(0);
   
   // Chat functionality state
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const chatMessages = providerChatMessages as unknown as ChatMessage[];
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{
     id: string;
     type: 'function';
@@ -424,7 +422,7 @@ export default function Home() {
       }
     }, 250);
     return () => clearTimeout(timeoutId);
-  }, [defaultSpreadsheetId, selectedSheetNames, allSheetNames, sheetsPrefetched, sheetDataCache]);
+  }, [defaultSpreadsheetId, selectedSheetNames, allSheetNames, sheetsPrefetched, sheetDataCache, setSheetDataCache]);
 
 
 
@@ -781,7 +779,6 @@ export default function Home() {
           preview: img.preview
         }))
       };
-      setChatMessages(prev => [...prev, userMessage]);
       setProviderChatMessages(prev => [...prev, userMessage as unknown as ProviderChatMessage]);
       
       // Clear transcript
@@ -932,7 +929,6 @@ export default function Home() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined
         };
-        setChatMessages(prev => [...prev, aiMessage]);
         setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
       }
 
@@ -960,7 +956,6 @@ export default function Home() {
             details: result.details
           }))
         };
-        setChatMessages(prev => [...prev, toolResultMessage]);
         setProviderChatMessages(prev => [...prev, toolResultMessage as unknown as ProviderChatMessage]);
       }
 
@@ -992,7 +987,6 @@ export default function Home() {
         content: `Error: ${errorMessage}`,
         timestamp: new Date()
       };
-      setChatMessages(prev => [...prev, errorMessageObj]);
       setProviderChatMessages(prev => [...prev, errorMessageObj as unknown as ProviderChatMessage]);
     } finally {
       setChatProcessing(false);
@@ -1027,7 +1021,7 @@ export default function Home() {
       timestamp: new Date(),
       isProcessing: true
     };
-    setChatMessages(prev => [...prev, processingMessage]);
+    setProviderChatMessages(prev => [...prev, processingMessage as unknown as ProviderChatMessage]);
     
     try {
       // Prepare images for tool execution if available
@@ -1137,7 +1131,7 @@ export default function Home() {
       const data = await response.json();
       
       // Remove processing message
-      setChatMessages(prev => prev.filter(msg => !msg.isProcessing));
+      setProviderChatMessages(prev => prev.filter(msg => !(msg as any).isProcessing) as unknown as ProviderChatMessage[]);
       
       // Now remove the tool call from pendingToolCalls after execution
       console.log(`🔍 [EXECUTE_TOOL] Removing tool call ${toolCall.id} from pendingToolCalls after execution`);
@@ -1156,7 +1150,7 @@ export default function Home() {
           details: data.details || null
         }]
       };
-      setChatMessages(prev => [...prev, resultMessage]);
+      setProviderChatMessages(prev => [...prev, resultMessage as unknown as ProviderChatMessage]);
 
       // If this was an image analysis or extraction, clear the uploaded images
       if (imageData.length > 0 && data.success) {
@@ -1171,7 +1165,7 @@ export default function Home() {
       console.error('Tool execution error:', error);
       
       // Remove processing message
-      setChatMessages(prev => prev.filter(msg => !msg.isProcessing));
+      setProviderChatMessages(prev => prev.filter(msg => !(msg as any).isProcessing) as unknown as ProviderChatMessage[]);
       
       // Remove the tool call from pendingToolCalls even on error
       console.log(`🔍 [EXECUTE_TOOL] Removing tool call ${toolCall.id} from pendingToolCalls after error`);
@@ -1183,7 +1177,7 @@ export default function Home() {
         content: `❌ Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date()
       };
-      setChatMessages(prev => [...prev, errorMessage]);
+      setProviderChatMessages(prev => [...prev, errorMessage as unknown as ProviderChatMessage]);
     } finally {
       setChatProcessing(false);
       // Clear background operation state
@@ -1199,56 +1193,12 @@ export default function Home() {
 
   // Function to clear chat
   const clearChat = () => {
-    setChatMessages([]);
+    setProviderChatMessages([] as unknown as ProviderChatMessage[]);
     setPendingToolCalls([]);
     setSendResult("");
   };
 
-  // Prefetch all sheet names and data once per selected spreadsheet
-  useEffect(() => {
-    let cancelled = false;
-    const doPrefetch = async () => {
-      if (!defaultSpreadsheetId) {
-        setAllSheetNames([]);
-        setSheetDataCache({});
-        setSheetsPrefetched(false);
-        return;
-      }
-      // Reset caches when spreadsheet changes
-      setAllSheetNames([]);
-      setSheetDataCache({});
-      setSheetsPrefetched(false);
-      try {
-        const namesRes = await fetch('/api/get-sheet-names', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId })
-        });
-        const namesJson = await namesRes.json();
-        const names: string[] = namesJson.sheetNames || namesJson.data || [];
-        if (cancelled) return;
-        setAllSheetNames(names);
-
-        for (const name of names) {
-          try {
-            const dataRes = await fetch('/api/get-sheet-data', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: name })
-            });
-            const dataJson = await dataRes.json();
-            if (cancelled) return;
-            setSheetDataCache(prev => ({ ...prev, [name]: dataJson.data || [] }));
-          } catch (e) {
-            console.warn('Prefetch sheet data failed for', name, e);
-          }
-        }
-        if (!cancelled) setSheetsPrefetched(true);
-      } catch (e) {
-        console.warn('Prefetch sheet names failed', e);
-      }
-    };
-    void doPrefetch();
-    return () => { cancelled = true; };
-  }, [defaultSpreadsheetId]);
+  // Prefetch moved into provider to avoid reloading on new chats
 
 
 
