@@ -20,41 +20,71 @@ function looksLikeHeaderCell(value: unknown): boolean {
 
 export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta {
   const issues: string[] = [];
-  const totalRows = sheetData.length;
-  const firstRow = sheetData[0] || [];
 
-  // Basic heuristics
-  const nonEmptyFirstRow = firstRow.filter(c => String(c ?? '').trim() !== '');
-  const headerCandidates = nonEmptyFirstRow.filter(looksLikeHeaderCell);
-  const uniqueHeaderCount = new Set(headerCandidates.map(h => String(h).toLowerCase())).size;
+  // Guard: empty sheet
+  if (!sheetData || sheetData.length === 0) {
+    return {
+      isStructured: false,
+      confidence: 0,
+      issues: ['Sheet has no rows.'],
+      detectedHeaders: null,
+      columnCount: 0,
+      dataRowCount: 0,
+    };
+  }
 
-  if (headerCandidates.length === 0) {
+  const headerRow = (sheetData[0] || []).map(v => String(v ?? ''));
+
+  // Determine header span: last non-empty cell in first row
+  let headerLastIdx = -1;
+  for (let i = headerRow.length - 1; i >= 0; i--) {
+    if (headerRow[i].trim() !== '') {
+      headerLastIdx = i;
+      break;
+    }
+  }
+  const headerCount = Math.max(0, headerLastIdx + 1);
+
+  // Validate headers: all cells within header span must be non-empty and look like header text
+  let headerValid = headerCount > 0;
+  if (!headerValid) {
     issues.push('First row does not appear to contain headers.');
   }
-  if (uniqueHeaderCount !== headerCandidates.length) {
-    issues.push('Duplicate-like values found in first row.');
+  for (let i = 0; i < headerCount; i++) {
+    const cell = headerRow[i];
+    if (cell.trim() === '') {
+      headerValid = false;
+      issues.push(`Header cell at column ${i + 1} is empty.`);
+    } else if (!looksLikeHeaderCell(cell)) {
+      headerValid = false;
+      issues.push(`Header cell at column ${i + 1} does not look like a header (likely numeric or too short).`);
+    }
   }
 
-  // Determine expected column count by the mode of non-empty row lengths (more robust than first row)
-  const nonEmptyRows = sheetData.filter(r => (r || []).some(c => String(c ?? '').trim() !== ''));
-  const lengthCounts = new Map<number, number>();
-  for (const r of nonEmptyRows) {
-    const len = r.length;
-    lengthCounts.set(len, (lengthCounts.get(len) || 0) + 1);
-  }
-  const expectedCols = (Array.from(lengthCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]) || (nonEmptyFirstRow.length || Math.max(...sheetData.map(r => r.length)) || 0);
-  let consistentRows = 0;
+  // Check uniformity: every non-empty data row must NOT have any non-empty cell beyond headerCount
   let dataRows = 0;
-  for (let i = 1; i < sheetData.length; i++) {
-    const row = sheetData[i] || [];
-    const nonEmpty = row.some(c => String(c ?? '').trim() !== '');
-    if (!nonEmpty) continue;
+  let conformingRows = 0;
+  for (let r = 1; r < sheetData.length; r++) {
+    const row = sheetData[r] || [];
+    const hasAnyData = (row || []).some(c => String(c ?? '').trim() !== '');
+    if (!hasAnyData) continue; // ignore blank rows
     dataRows++;
-    // consider consistent when row length is within +/- 1 of expected and not drastically sparse
-    const width = row.length;
-    const filled = row.filter(c => String(c ?? '').trim() !== '').length;
-    if (Math.abs(width - expectedCols) <= 1 && filled >= Math.max(1, Math.floor(expectedCols * 0.5))) {
-      consistentRows++;
+
+    // Find last non-empty index in this row
+    let lastNonEmptyIdx = -1;
+    for (let c = row.length - 1; c >= 0; c--) {
+      if (String(row[c] ?? '').trim() !== '') {
+        lastNonEmptyIdx = c;
+        break;
+      }
+    }
+
+    if (lastNonEmptyIdx < headerCount) {
+      // No data beyond header span → conforms (missing cells are allowed)
+      conformingRows++;
+    } else {
+      // There is data at or beyond headerCount → violation
+      issues.push(`Row ${r + 1} has data beyond header columns (column ${lastNonEmptyIdx + 1} > ${headerCount}).`);
     }
   }
 
@@ -62,22 +92,16 @@ export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta
     issues.push('No data rows found.');
   }
 
-  // How much of the expected columns are covered by header-like values
-  const headerCoverage = expectedCols > 0 ? Math.min(1, headerCandidates.length / expectedCols) : 0;
-  const headerScore = headerCandidates.length >= 3 ? 0.6 : headerCandidates.length === 2 ? 0.45 : headerCandidates.length === 1 ? 0.2 : 0;
-  const consistencyScore = dataRows > 0 ? consistentRows / dataRows : 0;
-  // Favor precision: default to unstructured unless we are reasonably sure
-  const confidence = Math.max(0, Math.min(1, 0.4 * headerScore + 0.6 * consistencyScore));
-
-  // Stricter criteria: require enough header-like cells and decent consistency
-  const isStructured = headerCoverage >= 0.6 && consistencyScore >= 0.7 && confidence >= 0.6 && issues.length <= 1;
+  // Confidence as fraction of conforming rows among data rows
+  const confidence = dataRows > 0 ? conformingRows / dataRows : 0;
+  const isStructured = headerValid && dataRows > 0 && conformingRows === dataRows;
 
   return {
     isStructured,
     confidence,
     issues,
-    detectedHeaders: headerCandidates.length > 0 ? (firstRow as string[]) : null,
-    columnCount: expectedCols,
+    detectedHeaders: headerCount > 0 ? (headerRow.slice(0, headerCount) as string[]) : null,
+    columnCount: headerCount,
     dataRowCount: dataRows,
   };
 }
