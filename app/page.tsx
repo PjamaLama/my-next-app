@@ -121,7 +121,7 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user, loading, signInWithGoogle, authError, betaTester, betaWaitlist } = useFirebase();
+  const { user, loading, signInWithGoogle, authError, betaTester, betaWaitlist, continueWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides, setDefaultSpreadsheetId } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   const { notify } = useDialog();
@@ -188,6 +188,19 @@ export default function Home() {
   const [recentFileAnalysis, setRecentFileAnalysis] = useState<FileAnalysisContext | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [quickAddLoading, setQuickAddLoading] = useState(false);
+  // Last Google identity for "Continue as" UX
+  const [lastGoogle, setLastGoogle] = useState<{ email?: string; name?: string; photo?: string } | null>(null);
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const email = localStorage.getItem('lastGoogleEmail') || undefined;
+      const name = localStorage.getItem('lastGoogleName') || undefined;
+      const photo = localStorage.getItem('lastGooglePhoto') || undefined;
+      if (email || name || photo) setLastGoogle({ email, name, photo });
+    } catch (_) {
+      // ignore
+    }
+  }, []);
   const isFileAnalysisFresh = (fa: FileAnalysisContext | null) => {
     if (!fa || !fa.lastUpdated) return false;
     const FIVE_MINUTES = 5 * 60 * 1000;
@@ -1517,10 +1530,10 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
               {/* Hero copy */}
               <div>
-                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300 sheen">
+                <h1 className="text-[38px] sm:text-6xl leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-white drop-shadow-[0_2px_16px_rgba(255,255,255,0.08)]">
                   Speak data. Sheety AI writes it to your Sheets.
                 </h1>
-                <p className="mt-4 text-white/80 leading-relaxed text-base">
+                <p className="mt-4 text-white/90 leading-relaxed text-[15px]">
                   Turn voice or text into structured, validated spreadsheet updates. Fast, accurate, and built for mobile.
                 </p>
                 <div className="mt-6 flex flex-col sm:flex-row gap-3">
@@ -1533,11 +1546,12 @@ export default function Home() {
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
                     {betaFull ? 'Join waitlist' : 'Join the beta'}
                   </button>
+                  {/* Continue with Google (login hint) if seen before */}
                   <button
-                    onClick={signInWithGoogle}
-                    className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 tilt-hover"
+                    onClick={() => continueWithGoogle?.(typeof window !== 'undefined' ? localStorage.getItem('lastGoogleEmail') || undefined : undefined)}
+                    className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20"
                   >
-                    Already joined? Log in
+                    Continue with Google
                   </button>
                   <a href="#how-it-works" className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10">
                     See how it works

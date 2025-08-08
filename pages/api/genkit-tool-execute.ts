@@ -825,11 +825,11 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
     // Handle both sheetName (singular) and sheetNames (plural) for backward compatibility
     const targetSheetName = sheetName || (Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames[0] : null);
 
-    if (!spreadsheetId || !targetSheetName) {
+    if (!spreadsheetId || (!targetSheetName && (!Array.isArray(sheetNames) || sheetNames.length === 0))) {
       console.error('Missing context:', { spreadsheetId, sheetName, sheetNames, targetSheetName });
       return res.status(400).json({
         success: false,
-        error: 'Spreadsheet ID and sheet name are required for data extraction',
+        error: 'Spreadsheet ID and at least one sheet name are required for data extraction',
         details: {
           provided: {
             spreadsheetId: !!spreadsheetId,
@@ -924,71 +924,73 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         .flat();
       let updateResult: any;
       if (Array.isArray(extractedRows) && extractedRows.length > 0) {
-        // Build actions directly from rows mapped to headers using synonym-aware mapping
+        // Build actions directly from rows mapped to headers using synonym-aware mapping across multiple selected sheets
         const sheets = await getGoogleSheetsClient();
-        // Fetch headers to map object keys to columns
-        const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${targetSheetName}!A1:T1000` });
-        const allValues = (meta.data.values || []) as string[][];
-        const headers = (allValues[0] || []) as string[];
-        const colLetters = (idx: number) => {
-          let n = idx + 1, s = '';
-          while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
-          return s;
-        };
-        // Determine insertion start using cached last row if available
-        const cached = getCachedHeaders(spreadsheetId, targetSheetName);
-        const lastDataRow = Math.max(1, (cached?.lastDataRow || (allValues.length > 1 ? allValues.length - 1 : 1)));
-        let nextInsertRow = lastDataRow + 1;
-        const existingRows = allValues; // includes header
-        const actions: any[] = [];
-        for (let i = 0; i < extractedRows.length; i++) {
-          const rowObj = extractedRows[i] as Record<string, unknown>;
-          const incomingKeys = Object.keys(rowObj);
-          // Compute mapping suggestions once per row
-          const suggestions = suggestHeaderMapping(incomingKeys, headers);
-          // Build a map from incoming key -> target header when confidence is reasonable
-          const keyToHeader: Record<string, string> = {};
-          suggestions.forEach(s => { if (s.targetHeader && s.confidence >= 0.5) keyToHeader[s.incomingKey] = s.targetHeader; });
-          // Build an object keyed by actual headers with chosen values
-          const mappedByHeader: Record<string, string> = {};
-          headers.forEach((h) => {
-            let val: unknown = undefined;
-            if (Object.prototype.hasOwnProperty.call(rowObj, h)) {
-              val = (rowObj as any)[h];
-            } else {
-              const fromKey = Object.entries(keyToHeader).find(([, target]) => target === h)?.[0];
-              if (fromKey) val = (rowObj as any)[fromKey];
-            }
-            if (val != null && String(val).trim() !== '') {
-              mappedByHeader[h] = String(val);
-            }
-          });
+        const selectedNames = Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames : [targetSheetName!];
+        const sheetMeta: Record<string, { headers: string[]; values: string[][]; nextRow: number }> = {};
+        const colLetters = (idx: number) => { let n = idx + 1, s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+        for (const sn of selectedNames) {
+          const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sn}!A1:T1000` });
+          const values = (meta.data.values || []) as string[][];
+          const headers = (values[0] || []) as string[];
+          const cached = getCachedHeaders(spreadsheetId, sn);
+          const lastDataRow = Math.max(1, (cached?.lastDataRow || (values.length > 1 ? values.length - 1 : 1)));
+          sheetMeta[sn] = { headers, values, nextRow: lastDataRow + 1 };
+        }
 
-          // Try to match an existing row to avoid duplicates and perform updates
+        const actions: any[] = [];
+        for (const rowObjRaw of extractedRows as Array<Record<string, unknown>>) {
+          const incomingKeys = Object.keys(rowObjRaw);
+          // Choose best sheet by mapping confidence
+          let bestSheet = selectedNames[0];
+          let bestScore = -1;
+          let bestMapped: Record<string, string> = {};
+          for (const sn of selectedNames) {
+            const { headers } = sheetMeta[sn];
+            const suggestions = suggestHeaderMapping(incomingKeys, headers);
+            const keyToHeader: Record<string, string> = {};
+            let score = 0;
+            suggestions.forEach(s => { if (s.targetHeader && s.confidence >= 0.5) { keyToHeader[s.incomingKey] = s.targetHeader; score += s.confidence; } });
+            const mapped: Record<string, string> = {};
+            headers.forEach(h => {
+              let val: unknown = undefined;
+              if (Object.prototype.hasOwnProperty.call(rowObjRaw, h)) val = (rowObjRaw as any)[h];
+              else {
+                const fromKey = Object.entries(keyToHeader).find(([, t]) => t === h)?.[0];
+                if (fromKey) val = (rowObjRaw as any)[fromKey];
+              }
+              if (val != null && String(val).trim() !== '') mapped[h] = String(val);
+            });
+            const mappedCount = Object.keys(mapped).length;
+            const finalScore = mappedCount >= 2 ? score + mappedCount * 0.1 : score * 0.5;
+            if (finalScore > bestScore) { bestScore = finalScore; bestSheet = sn; bestMapped = mapped; }
+          }
+
+          // Insert/update on bestSheet
+          const { headers, values } = sheetMeta[bestSheet];
+          const existingRows = values;
           const matchIdx = matchRowIdentity(headers, existingRows, {
-            Date: mappedByHeader['Date'] || mappedByHeader['date'] || '',
-            'Reg#': mappedByHeader['Reg#'] || mappedByHeader['Registration'] || mappedByHeader['Vehicle Reg'] || '',
-            Vehicle: mappedByHeader['Vehicle'] || '',
-            'Fuel Cost in Rands': mappedByHeader['Fuel Cost in Rands'] || mappedByHeader['Amount'] || mappedByHeader['Total'] || ''
+            Date: bestMapped['Date'] || (bestMapped as any)['date'] || '',
+            'Reg#': bestMapped['Reg#'] || (bestMapped as any)['Registration'] || (bestMapped as any)['Vehicle Reg'] || '',
+            Vehicle: bestMapped['Vehicle'] || '',
+            'Fuel Cost in Rands': bestMapped['Fuel Cost in Rands'] || (bestMapped as any)['Amount'] || (bestMapped as any)['Total'] || ''
           });
 
           if (matchIdx >= 0) {
-            // Update existing row (matchIdx is 1-based including header row in our helper; ensure it aligns)
-            const targetRow = matchIdx + 1; // existingRows includes header at index 0
+            const targetRow = matchIdx + 1;
             headers.forEach((h, idx) => {
-              const val = mappedByHeader[h];
+              const val = bestMapped[h];
               if (val != null && String(val).trim() !== '') {
-                actions.push({ type: 'updateCell', sheet: targetSheetName, row: targetRow, column: colLetters(idx), value: String(val) });
+                actions.push({ type: 'updateCell', sheet: bestSheet, row: targetRow, column: colLetters(idx), value: String(val) });
               }
             });
           } else {
-            // Insert a new row at the next insertion point
-            const rowIndex = nextInsertRow++;
-            actions.push({ type: 'insertRow', sheet: targetSheetName, row: rowIndex });
+            const rowIndex = sheetMeta[bestSheet].nextRow++;
+            actions.push({ type: 'insertRow', sheet: bestSheet, row: rowIndex });
             headers.forEach((h, idx) => {
-              const val = mappedByHeader[h];
+              const val = bestMapped[h];
               if (val != null && String(val).trim() !== '') {
-                actions.push({ type: 'updateCell', sheet: targetSheetName, row: rowIndex, column: colLetters(idx), value: String(val) });
+                actions.push({ type: 'updateCell', sheet: bestSheet, row: rowIndex, column: colLetters(idx), value: String(val) });
               }
             });
           }
