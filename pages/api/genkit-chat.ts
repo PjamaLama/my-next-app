@@ -1013,38 +1013,14 @@ async function processMessage(
     for (const toolCall of suggestedTools) {
       console.log(`🔍 [AUTO_EXECUTE] Auto-executing tool: ${toolCall.function.name}`);
       
-      let result;
-      
-      // Use extract_text_only instead of analyze_files/analyze_images for faster processing when just analyzing
-      if (toolCall.function.name === 'analyze_files' || toolCall.function.name === 'analyze_images') {
-        // Replace with extract_text_only for faster processing
-        const extractToolCall = {
-          ...toolCall,
-          function: {
-            ...toolCall.function,
-            name: 'extract_text_only',
-            arguments: JSON.stringify({
-              transcript: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments).transcript || 'Extract text from files' : 'Extract text from files',
-              fileCount: images.length,
-              fileTypes: images.map(img => img.mimeType)
-            })
-          }
-        };
-        
-        console.log(`🔍 [AUTO_EXECUTE] Replaced ${toolCall.function.name} with extract_text_only for faster processing`);
-        result = await executeToolCall(extractToolCall, context, images);
-      } else {
-        result = await executeToolCall(toolCall, context, images);
-      }
+      const result = await executeToolCall(toolCall, context, images);
       
       toolResults.push(result);
       
       // Store analysis results in context for future reference
       if (result.success) {
         // Check the actual tool that was executed (not the original tool name)
-        const executedToolName = toolCall.function.name === 'analyze_files' || toolCall.function.name === 'analyze_images' 
-          ? 'extract_text_only' 
-          : toolCall.function.name;
+        const executedToolName = toolCall.function.name;
           
         if (executedToolName === 'extract_text_only') {
           // Store extracted text results
@@ -1137,7 +1113,7 @@ async function processMessage(
             console.log(`🔍 [CONTEXT] Stored extracted data for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
           }
           
-          enhancedResponse += `\n\n📄 **File Analysis Complete:**\n${result.result}`;
+           enhancedResponse += `\n\n📄 **File Analysis Complete:**\n${result.result}`;
         } else if (toolCall.function.name === 'update_sheet') {
           enhancedResponse += `\n\n✅ **Spreadsheet Updated:**\n${result.result}`;
         } else if (toolCall.function.name === 'get_sheet_data') {
@@ -1329,27 +1305,62 @@ async function processMessage(
       }
     }
 
-    // If we extracted plain text from PDFs/images, present a compact table preview
+    // If we extracted plain text or structured rows from PDFs/images, present a compact table preview
     try {
       const extractions = toolResults
         .map(r => (r as any).extractions)
         .filter(Boolean)
         .flat();
-      if (Array.isArray(extractions) && extractions.length > 0) {
+      const analysesFromTools = toolResults
+        .map(r => (r as any).analyses)
+        .filter(Boolean)
+        .flat();
+
+      if ((Array.isArray(extractions) && extractions.length > 0) || (Array.isArray(analysesFromTools) && analysesFromTools.length > 0)) {
         const filePreviews: StructuredTable[] = [];
-        for (let i = 0; i < Math.min(extractions.length, 5); i++) {
+        // Prefer structured previews from extractions
+        for (let i = 0; i < Math.min(Array.isArray(extractions) ? extractions.length : 0, 5); i++) {
           const ex = (extractions as any[])[i];
-          if (ex && ex.success && typeof ex.extractedText === 'string') {
+          if (!ex || !ex.success) continue;
+          // Prefer structured rows from extraction if present
+          if (Array.isArray(ex.structured) && ex.structured.length > 0) {
+            const allKeys = Array.from(new Set(ex.structured.flatMap((r: any) => Object.keys(r))));
+            const rows = ex.structured.slice(0, 50).map((r: any) => allKeys.map(k => String(r[k] ?? '')));
+            filePreviews.push({
+              title: `Structured Extracted Data (File ${i + 1})`,
+              headers: allKeys,
+              rows
+            });
+            continue;
+          }
+          // Fallback to plain text preview
+          if (typeof ex.extractedText === 'string') {
             const text = (ex.extractedText as string).trim();
             if (text) {
               const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
               const rows = lines.map((l: string) => [l.slice(0, 120)]);
-              filePreviews.push({
-                title: `Extracted Text Preview (File ${i + 1})`,
-                headers: ['Line'],
-                rows
-              });
+              filePreviews.push({ title: `Extracted Text Preview (File ${i + 1})`, headers: ['Line'], rows });
             }
+          }
+        }
+        // Also render structured tables from analyses (analyze_files/analyze_images)
+        for (let i = 0; i < Math.min(Array.isArray(analysesFromTools) ? analysesFromTools.length : 0, 5); i++) {
+          const a = (analysesFromTools as any[])[i];
+          if (!a || a.success === false) continue;
+          const data = a.extractedData;
+          let rowsArr: any[] | null = null;
+          if (data && typeof data === 'object') {
+            if (Array.isArray((data as any).extracted_rows)) rowsArr = (data as any).extracted_rows as any[];
+            else if ((data as any).result && Array.isArray((data as any).result.extracted_rows)) rowsArr = (data as any).result.extracted_rows as any[];
+          }
+          if (Array.isArray(rowsArr) && rowsArr.length > 0) {
+            const allKeys = Array.from(new Set(rowsArr.flatMap((r: any) => Object.keys(r))));
+            const rows = rowsArr.slice(0, 50).map((r: any) => allKeys.map(k => String(r[k] ?? '')));
+            filePreviews.push({
+              title: `Structured Extracted Data (File ${i + 1})`,
+              headers: allKeys,
+              rows
+            });
           }
         }
         if (filePreviews.length > 0) {

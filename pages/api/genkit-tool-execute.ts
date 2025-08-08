@@ -1198,6 +1198,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       error?: string;
       extractedText?: string;
       textLength?: number;
+      structured?: Array<Record<string, unknown>>;
     }> = [];
 
     for (let i = 0; i < images.length; i++) {
@@ -1227,12 +1228,34 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
           extractedText = 'Unknown file type - cannot extract text';
         }
 
+        // Run lightweight AI structuring on the extracted text
+        let structured: Array<Record<string, unknown>> | undefined;
+        try {
+          const { genkit } = await import('genkit');
+          const { googleAI, gemini15Flash } = await import('@genkit-ai/googleai');
+          const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+          if (apiKey) {
+            const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+            const prompt = `You receive raw text extracted from a user-uploaded file. Extract ALL structured entries relevant for spreadsheet rows and return STRICT JSON as {"extracted_rows": [ ... ]}. Normalize dates and numbers. Raw text:\n\n${extractedText.slice(0, 6000)}`;
+            const { text } = await ai.generate(prompt);
+            if (text) {
+              let cleaned = text.trim();
+              if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
+              const parsed = JSON.parse(cleaned);
+              if (parsed && Array.isArray(parsed.extracted_rows)) structured = parsed.extracted_rows as Array<Record<string, unknown>>;
+            }
+          }
+        } catch (e) {
+          console.warn('Structuring pass skipped:', e);
+        }
+
         extractionResults.push({
           index: i + 1,
           type: image.mimeType,
           success: true,
           extractedText: extractedText,
-          textLength: extractedText.length
+          textLength: extractedText.length,
+          structured
         });
 
         console.log(`🔍 [EXTRACT_TEXT_ONLY] Extracted ${extractedText.length} characters from file ${i + 1}`);
