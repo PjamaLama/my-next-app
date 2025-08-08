@@ -94,6 +94,7 @@ type ChatMessage = {
     messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
     quickReplies?: string[];
     sheetsUsed?: string[];
+    tables?: Array<{ title?: string; headers: string[]; rows: string[][] }>;
   };
 
 
@@ -1348,7 +1349,7 @@ export default function Home() {
             style={{ height: 'calc(100vh - 120px)' }}
           >
             <div className="space-y-3">
-              {chatMessages.map((message) => (
+              {chatMessages.map((message, idx) => (
                 <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={
@@ -1365,6 +1366,73 @@ export default function Home() {
                       <span className="text-[11px]">{message.timestamp.toLocaleTimeString()}</span>
                     </div>
                     <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+
+                    {/* Render user attachments inside the bubble, WhatsApp-style */}
+                    {message.role === 'user' && Array.isArray(message.attachments) && message.attachments.length > 0 && (
+                      <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {message.attachments.map(att => (
+                          <div key={att.id} className="relative overflow-hidden rounded-lg border border-white/20 bg-black/20">
+                            {att.fileType === 'image' && att.preview ? (
+                              // Use img for object URLs to avoid Next Image domain issues
+                              <img src={att.preview} alt={att.name} className="block w-full h-24 object-cover" />
+                            ) : (
+                              <div className="flex items-center gap-2 px-3 py-2 text-xs">
+                                <svg className="w-4 h-4 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <span className="truncate">{att.name}</span>
+                              </div>
+                            )}
+                            {/* Sending indicator on the most recent user message while processing */}
+                            {idx === chatMessages.length - 1 && chatProcessing && (
+                              <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px] flex items-center justify-center">
+                                <span className="inline-flex items-center gap-2 text-xs text-white/90">
+                                  <span className="inline-block w-3 h-3 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
+                                  Sending…
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Render assistant data tables as rich tables */}
+                    {message.role === 'assistant' && Array.isArray(message.tables) && message.tables.length > 0 && (
+                      <div className="mt-2 space-y-3">
+                        {message.tables.map((t, tIdx) => (
+                          <div key={`${message.id}_table_${tIdx}`} className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                            {t.title && (
+                              <div className="px-3 py-2 border-b border-white/10 text-[12px] font-semibold text-white/90">
+                                {t.title}
+                              </div>
+                            )}
+                            <table className="min-w-full text-[12px]">
+                              <thead className="bg-sky-500/10">
+                                <tr>
+                                  {t.headers.map((h, hIdx) => (
+                                    <th key={hIdx} className="px-3 py-2 text-left font-semibold text-sky-200 whitespace-nowrap border-b border-white/10">
+                                      {h}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {t.rows.map((row, rIdx) => (
+                                  <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-white/0' : 'bg-white/[0.03]'}>
+                                    {row.map((cell, cIdx) => (
+                                      <td key={cIdx} className="px-3 py-2 text-white/90 whitespace-nowrap border-b border-white/10">
+                                        {String(cell)}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {message.role === 'assistant' && Array.isArray(message.sheetsUsed) && message.sheetsUsed.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {message.sheetsUsed.map((name) => (
