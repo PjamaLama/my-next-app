@@ -936,6 +936,7 @@ async function processMessage(
       // Original intent detection for text-only messages
       if (lowerMessage.includes('add') || lowerMessage.includes('insert') || lowerMessage.includes('new')) {
         intent = 'add_data';
+        if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('update_sheet')) {
         suggestedTools.push({
           id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           type: 'function',
@@ -944,11 +945,13 @@ async function processMessage(
             arguments: JSON.stringify({ transcript: message })
           }
         });
+        }
       } else if (/\b[A-Z]{1,3}\d+\b/.test(message) && (lowerMessage.includes('set') || lowerMessage.includes('change') || lowerMessage.includes('update'))) {
         // Detect direct cell update like "set B12 to 123"
         const cellMatch = message.match(/\b([A-Z]{1,3}\d+)\b/);
         const valueMatch = message.match(/to\s+(.+)$/i);
         if (cellMatch && context?.spreadsheetId && context?.sheetNames?.length) {
+          if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('update_single_cell')) {
           suggestedTools.push({
             id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             type: 'function',
@@ -962,9 +965,11 @@ async function processMessage(
               })
             }
           });
+          }
         }
       } else if (lowerMessage.includes('update') || lowerMessage.includes('change') || lowerMessage.includes('edit')) {
         intent = 'update_data';
+        if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('update_sheet')) {
         suggestedTools.push({
           id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           type: 'function',
@@ -973,11 +978,13 @@ async function processMessage(
             arguments: JSON.stringify({ transcript: message })
           }
         });
+        }
       } else if (lowerMessage.includes('show') || lowerMessage.includes('get') || lowerMessage.includes('display') || lowerMessage.includes('data')) {
         intent = 'get_data';
         const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
         const targetSheet = (context?.sheetName as string) || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
         if (context?.spreadsheetId && targetSheet) {
+          if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('get_sheet_data')) {
           suggestedTools.push({
             id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             type: 'function',
@@ -989,6 +996,7 @@ async function processMessage(
               })
             }
           });
+          }
         }
       }
     }

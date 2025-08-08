@@ -26,6 +26,7 @@ import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
 import { useDialog } from './providers/DialogProvider';
 import dynamic from 'next/dynamic';
+import Toolbelt from './components/Toolbelt';
 
 
 
@@ -170,6 +171,7 @@ export default function Home() {
   const [chatProcessing, setChatProcessing] = useState(false);
   const [showCharts, setShowCharts] = useState<boolean>(false);
   const [showStats, setShowStats] = useState<boolean>(false);
+  const [enabledTools, setEnabledTools] = useState<string[]>(['update_sheet','get_sheet_data','update_single_cell','analyze_images','analyze_files','extract_text_only','extract_data_from_files','convert_unstructured_sheet']);
 
   const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
   
@@ -938,7 +940,7 @@ export default function Home() {
               ).map(name => [name, sheetDataCache[name]]).filter(([, v]) => Array.isArray(v))
             ),
             allSheetNames,
-            availableTools: ['update_sheet_cells', 'insert_sheet_row', 'analyze_sheet_data', 'bulk_update_cells'],
+            availableTools: enabledTools,
           },
           conversationHistory: chatMessages.slice(-5),
           images: imageData // Include processed images
@@ -1820,6 +1822,9 @@ export default function Home() {
                   )}
 
                   <div className="relative">
+                    <div className="absolute right-2 -top-9">
+                      <Toolbelt selected={enabledTools} onChange={setEnabledTools} />
+                    </div>
                     <textarea
                       value={displayText}
                       onChange={(e) => setEditingText(e.target.value)}

@@ -215,13 +215,55 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
   try {
     const sheets = await getGoogleSheetsClient();
     const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
-    const resp = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `${escaped}!A1:Z1000`,
-      valueRenderOption: 'FORMATTED_VALUE',
-      dateTimeRenderOption: 'FORMATTED_STRING'
-    });
-    const data = resp.data.values || [];
+
+    // Read source data using dynamic dimensions and robust fallbacks
+    const meta = await sheets.spreadsheets.get({ spreadsheetId, includeGridData: false });
+    const sourceSheet = meta.data.sheets?.find(s => s.properties?.title === sheetName);
+    if (!sourceSheet?.properties?.gridProperties) {
+      return res.status(404).json({ success: false, error: `Sheet "${sheetName}" not found in spreadsheet` });
+    }
+    const rowCount = sourceSheet.properties.gridProperties.rowCount || 1000;
+    const columnCount = sourceSheet.properties.gridProperties.columnCount || 26;
+    const getColumnLetter = (num: number) => {
+      let result = '';
+      while (num > 0) { num--; result = String.fromCharCode(65 + (num % 26)) + result; num = Math.floor(num / 26); }
+      return result || 'A';
+    };
+    const endColumn = getColumnLetter(columnCount);
+
+    const strategies = [
+      `${escaped}!A1:${endColumn}${Math.min(rowCount, 2000)}`,
+      `${escaped}!A:${endColumn}`,
+      `${escaped}!A1:${endColumn}200`,
+      `${escaped}!A1:T100`
+    ];
+
+    let data: string[][] = [];
+    let lastReadError: unknown = null;
+    for (const strategy of strategies) {
+      try {
+        const resp = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: strategy,
+          valueRenderOption: 'FORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING'
+        });
+        data = (resp.data.values || []) as string[][];
+        // If we got any rows at all, accept this strategy
+        if (data.length > 0) break;
+      } catch (err) {
+        lastReadError = err;
+        continue;
+      }
+    }
+
+    if (!data || data.length === 0) {
+      const detail = lastReadError instanceof Error ? lastReadError.message : String(lastReadError || 'Unknown read error');
+      return res.status(500).json({ success: false, error: 'Failed to read source sheet data for conversion', details: detail });
+    }
+
+    // Build CSV for AI conversion
+    const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
     const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
     const converted = (await convertSheetFlow.run({ sheetName, sheetCsv: csv })) as unknown as ConvertOutput;
     if (!converted.headers?.length) {
