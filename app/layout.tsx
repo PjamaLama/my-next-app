@@ -6,6 +6,7 @@ import { SheetProvider } from "./providers/SheetProvider";
 import { ServiceAccountProvider } from "./providers/ServiceAccountProvider";
 import { SettingsProvider } from "./providers/SettingsProvider"; // Import the new SettingsProvider
 import { FirestoreSyncProvider } from "./providers/FirestoreSyncProvider";
+import { ChatProvider } from "./providers/ChatProvider";
 import NavBar from "./NavBar";
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 
@@ -94,8 +95,10 @@ export default function RootLayout({
             <ServiceAccountProvider>
               <SettingsProvider> {/* Wrap with SettingsProvider */}
                 <FirestoreSyncProvider>
-                  <NavBar />
-                  {children}
+                  <ChatProvider>
+                    <NavBar />
+                    {children}
+                  </ChatProvider>
                 </FirestoreSyncProvider>
               </SettingsProvider>
             </ServiceAccountProvider>
