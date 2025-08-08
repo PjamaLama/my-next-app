@@ -94,7 +94,7 @@ type ChatMessage = {
     messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
     quickReplies?: string[];
     sheetsUsed?: string[];
-    tables?: Array<{ title?: string; headers: string[]; rows: string[][] }>;
+    tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
   };
 
 
@@ -1407,6 +1407,9 @@ export default function Home() {
                                 {t.title}
                               </div>
                             )}
+                            {t.summary && (
+                              <div className="px-3 pt-2 text-[12px] text-white/80">{t.summary}</div>
+                            )}
                             <table className="min-w-full text-[12px]">
                               <thead className="bg-sky-500/10">
                                 <tr>
@@ -1428,6 +1431,17 @@ export default function Home() {
                                   </tr>
                                 ))}
                               </tbody>
+                              {Array.isArray(t.footer) && t.footer.length > 0 && (
+                                <tfoot>
+                                  <tr className="bg-white/[0.04]">
+                                    {t.footer.map((cell, fIdx) => (
+                                      <td key={fIdx} className="px-3 py-2 text-white/95 font-semibold border-t border-white/10">
+                                        {String(cell)}
+                                       </td>)
+                                    )}
+                                  </tr>
+                                </tfoot>
+                              )}
                             </table>
                           </div>
                         ))}

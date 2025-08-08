@@ -59,7 +59,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           {/* Right-side actions */}
           <div className="ml-auto flex items-center gap-1 shrink-0 mr-3">
             <button
-              onClick={(e) => { e.stopPropagation(); if (confirm('Delete this chat?')) deleteSession(s.id); }}
+              onClick={async (e) => { e.stopPropagation(); if (confirm('Delete this chat?')) { await deleteSession(s.id); await ensureSession(); } }}
               className={`grid place-items-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-300/30 leading-none`}
               title="Delete"
               aria-label="Delete chat"

@@ -41,6 +41,170 @@ interface ImageData {
   mimeType: string;
 }
 
+// ---- Smart table utilities -------------------------------------------------
+type StructuredTable = { title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string };
+
+function normalizeToken(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function bestHeaderIndex(headers: string[], query: string): number {
+  const q = normalizeToken(query);
+  const qParts = q.split(' ').filter(Boolean);
+  let bestIdx = -1;
+  let bestScore = 0;
+  headers.forEach((h, i) => {
+    const hNorm = normalizeToken(h);
+    let score = 0;
+    if (hNorm === q) score += 4;
+    qParts.forEach((p) => {
+      if (p.length >= 3 && hNorm.includes(p)) score += 1;
+    });
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  });
+  return bestIdx;
+}
+
+function detectDateWindow(message: string) {
+  const mDays = message.match(/(?:past|last)\s+(\d+)\s+days?/i);
+  const mWeek = /(?:past|last)\s+(?:week|7\s*days)/i.test(message);
+  const mMonth = /(?:past|last)\s+(?:30\s*days|month)/i.test(message);
+  const mRange = message.match(/from\s+([0-9\-\/.\s]+)\s+(?:to|until|through)\s+([0-9\-\/.\s]+)/i);
+  const wantToday = /\btoday\b/i.test(message);
+  if (mRange) {
+    return { start: dayjs(mRange[1]).startOf('day'), end: dayjs(mRange[2]).endOf('day'), label: `Range ${mRange[1]} → ${mRange[2]}` };
+  }
+  if (wantToday) return { start: dayjs().startOf('day'), end: dayjs().endOf('day'), label: 'Today' };
+  if (mDays) {
+    const n = parseInt(mDays[1], 10);
+    return { start: dayjs().subtract(n, 'day').startOf('day'), end: dayjs().endOf('day'), label: `Last ${n} days` };
+  }
+  if (mWeek) return { start: dayjs().subtract(7, 'day').startOf('day'), end: dayjs().endOf('day'), label: 'Last 7 days' };
+  if (mMonth) return { start: dayjs().subtract(30, 'day').startOf('day'), end: dayjs().endOf('day'), label: 'Last 30 days' };
+  return null;
+}
+
+function parseNumber(value: unknown): number | null {
+  if (value == null) return null;
+  const s = String(value).replace(/[,\s]/g, '');
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildSmartTables(
+  message: string,
+  hydratedSheetData: Record<string, string[][]>,
+  selectedSheetNames: string[]
+): StructuredTable[] {
+  if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return [];
+
+  const msg = message.toLowerCase();
+  const wantAggregate = /(total|sum|average|avg|count|group)/i.test(message);
+  const groupMatch = message.match(/\b(?:by|per)\s+([a-z][a-z0-9_\s]{2,})/i);
+  const wantsColumns = Array.from(message.matchAll(/\b(columns?|show|include)\s+([a-z0-9_,\s-]{3,})/gi)).map((m) => m[2]);
+
+  // Choose sheet
+  const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
+  const sheetName = candidateNames.find((n) => msg.includes(normalizeToken(n))) || candidateNames[0];
+  const table = hydratedSheetData[sheetName] || [];
+  if (table.length <= 1) return [];
+
+  const headers = table[0];
+  const rows = table.slice(1);
+
+  // Filter by date window if a date column exists
+  const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
+  const range = detectDateWindow(message);
+  const filtered = range && dateIdx >= 0
+    ? rows.filter((r) => {
+        const d = dayjs(String(r[dateIdx] || ''));
+        return d.isValid() && (d.isAfter(range.start) || d.isSame(range.start)) && (d.isBefore(range.end) || d.isSame(range.end));
+      })
+    : rows;
+
+  // Pick metric column
+  const metricHints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
+  let metricIdx = -1;
+  for (const hint of metricHints) {
+    const idx = bestHeaderIndex(headers, hint);
+    if (idx >= 0) { metricIdx = idx; break; }
+  }
+  if (metricIdx < 0) {
+    // fallback to first numeric-looking column
+    const candidateIdx = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
+    metricIdx = candidateIdx >= 0 ? candidateIdx : 0;
+  }
+
+  // Group by column if requested
+  let groupIdx = -1;
+  if (groupMatch) {
+    groupIdx = bestHeaderIndex(headers, groupMatch[1].trim());
+  }
+
+  // Column selection parsing
+  let selectedIdxs: number[] | null = null;
+  if (wantsColumns.length > 0) {
+    selectedIdxs = [];
+    const chunk = wantsColumns[wantsColumns.length - 1];
+    const names = chunk.split(/[,]+/).map((s) => s.trim()).filter(Boolean);
+    names.forEach((name) => {
+      const idx = bestHeaderIndex(headers, name);
+      if (idx >= 0) selectedIdxs!.push(idx);
+    });
+    if (selectedIdxs.length === 0) selectedIdxs = null;
+  }
+
+  const tables: StructuredTable[] = [];
+
+  if (wantAggregate || groupIdx >= 0) {
+    // Aggregated view
+    const keyTitle = groupIdx >= 0 ? headers[groupIdx] : 'All Rows';
+    const valueTitle = `Sum(${headers[metricIdx]})`;
+    const map = new Map<string, { sum: number; count: number }>();
+    for (const r of filtered) {
+      const key = groupIdx >= 0 ? String(r[groupIdx] ?? 'Unknown') : 'All';
+      const n = parseNumber(r[metricIdx]) ?? 0;
+      const prev = map.get(key) || { sum: 0, count: 0 };
+      prev.sum += n;
+      prev.count += 1;
+      map.set(key, prev);
+    }
+    const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, sum: v.sum, count: v.count }));
+    entries.sort((a, b) => b.sum - a.sum);
+    const rowsOut = entries.slice(0, 20).map((e) => [e.key, String(Number(e.sum.toFixed(2))), String(e.count)]);
+    const total = entries.reduce((acc, e) => acc + e.sum, 0);
+    const totalCount = entries.reduce((acc, e) => acc + e.count, 0);
+    const footer = ['Total', String(Number(total.toFixed(2))), String(totalCount)];
+    const when = range?.label ? ` · ${range.label}` : '';
+    tables.push({
+      title: `${sheetName} · ${groupIdx >= 0 ? `by ${keyTitle}` : 'aggregate'}${when}`,
+      headers: [keyTitle, valueTitle, 'Count'],
+      rows: rowsOut,
+      footer,
+      summary: `Aggregated ${totalCount} row(s). ${valueTitle} = ${Number(total.toFixed(2))}.`
+    });
+    return tables;
+  }
+
+  // Simple selected columns view (non-aggregated)
+  const idxs = selectedIdxs || headers.map((_, i) => i).slice(0, 5);
+  const outHeaders = idxs.map((i) => headers[i]);
+  const body = filtered.slice(-10).map((r) => idxs.map((i) => String(r[i] ?? '')));
+  tables.push({
+    title: `${sheetName}${range?.label ? ` · ${range.label}` : ''}`,
+    headers: outHeaders,
+    rows: body,
+    summary: `Showing ${body.length} of ${filtered.length} row(s).`
+  });
+  return tables;
+}
+
 // Generate lightweight quick replies using AI (fallback to heuristics if unavailable)
 async function generateQuickReplies(
   message: string,
@@ -608,7 +772,7 @@ async function processMessage(
     let response = '';
     const fileInfo = hasFiles ? ` along with ${images.length} ${images.length === 1 ? 'file' : 'files'}` : '';
     // Will carry structured tables for the client to render nicely
-    const dataTables: Array<{ title?: string; headers: string[]; rows: string[][] }> = [];
+    const dataTables: StructuredTable[] = [];
 
     // Check if we have recent analysis results to provide intelligent suggestions
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
@@ -706,9 +870,21 @@ async function processMessage(
       }
     }
 
-    // If we have pre-hydrated sheet data in context and relevant intent, add a tiny, low-token overview
-    const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
+    // Smart table builder: create views based on user request (filters, group-by, totals)
     const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
+    const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
+    if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0) {
+      try {
+        const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
+        if (smart.length > 0) {
+          dataTables.push(...smart);
+        }
+      } catch (e) {
+        console.warn('Smart table build failed', e);
+      }
+    }
+
+    // If we have pre-hydrated sheet data in context and relevant intent, add a tiny, low-token overview
     const shouldSummarize = hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles);
     const looksLikeDataRequest = intent === 'get_data' || /\b(about|overview|summary|summar(y|ise)|show|what's in|tell me)/i.test(message);
     if (shouldSummarize && (looksLikeDataRequest || intent === 'chat')) {
