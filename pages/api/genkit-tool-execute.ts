@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
-import { convertSheetFlow } from '../../genkit/convertSheetFlow';
+import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
@@ -222,7 +222,7 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
     });
     const data = resp.data.values || [];
     const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
-    const converted = await convertSheetFlow.run({ sheetName, sheetCsv: csv });
+    const converted = (await convertSheetFlow.run({ sheetName, sheetCsv: csv })) as unknown as ConvertOutput;
     if (!converted.headers?.length) {
       return res.status(500).json({ success: false, error: 'Conversion failed' });
     }
