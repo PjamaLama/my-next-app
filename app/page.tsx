@@ -13,7 +13,8 @@ import {
   query,
   where,
   orderBy,
-  limit
+  limit,
+  doc
 } from "firebase/firestore";
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -129,9 +130,9 @@ export default function Home() {
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
 
   // Beta program live count
-  const BETA_LIMIT = 100;
+  const [betaLimit, setBetaLimit] = useState<number>(100);
   const [betaCount, setBetaCount] = useState<number>(0);
-  const spotsLeft = Math.max(0, BETA_LIMIT - betaCount);
+  const spotsLeft = Math.max(0, betaLimit - betaCount);
   const betaFull = spotsLeft <= 0;
 
   
@@ -386,11 +387,18 @@ export default function Home() {
     return () => unsubOptions();
   }, [user]);
 
-  // Live subscribe to beta tester count
+  // Live subscribe to centralized beta meta document
   useEffect(() => {
-    const q = query(collection(db, "users"), where("betaTester", "==", true));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setBetaCount(snapshot.size);
+    const metaRef = doc(db, 'meta', 'beta');
+    const unsub = onSnapshot(metaRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as { capacity?: number; testerCount?: number };
+        setBetaLimit(typeof data.capacity === 'number' ? data.capacity : 100);
+        setBetaCount(typeof data.testerCount === 'number' ? data.testerCount : 0);
+      } else {
+        setBetaLimit(100);
+        setBetaCount(0);
+      }
     });
     return () => unsub();
   }, []);
@@ -1320,7 +1328,7 @@ export default function Home() {
               <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-sm shadow-sm ${betaFull ? 'border-red-400/40 text-red-200 bg-red-500/10' : 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10'}`}>
                 <span className="font-semibold">Private Beta</span>
                 <span className="opacity-80">{betaFull ? 'Beta full' : `${spotsLeft} spots left`}</span>
-                <span className="opacity-60 text-xs">{betaCount}/{BETA_LIMIT}</span>
+                <span className="opacity-60 text-xs">{betaCount}/{betaLimit}</span>
               </div>
             </div>
           </div>
@@ -1347,6 +1355,12 @@ export default function Home() {
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
                     {betaFull ? 'Join waitlist' : 'Join the beta'}
+                  </button>
+                  <button
+                    onClick={signInWithGoogle}
+                    className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10"
+                  >
+                    Already joined? Log in
                   </button>
                   <a href="#how-it-works" className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10">
                     See how it works
@@ -1380,6 +1394,9 @@ export default function Home() {
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
                     {betaFull ? 'Join waitlist' : 'Join the beta'}
                   </button>
+                  <div className="mt-3 text-center">
+                    <button onClick={signInWithGoogle} className="text-xs text-white/80 hover:text-white underline">Already joined? Log in</button>
+                  </div>
                   {authError && (
                     <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-sm">
                       <p className="font-medium">Authentication Error</p>

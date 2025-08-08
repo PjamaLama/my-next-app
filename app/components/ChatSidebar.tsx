@@ -273,7 +273,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </div>
 
           {/* Connected spreadsheets list */}
-          <div className="px-2 py-2 space-y-1 border-t border-white/10">
+          <div className="mt-2 px-3 pb-3 space-y-1">
             {spreadsheetsLoading && (
               <div className="text-xs text-white/60 px-2">Loading spreadsheets…</div>
             )}
@@ -283,7 +283,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             {spreadsheets.map((s) => {
               const active = defaultSpreadsheetId === s.spreadsheetId;
               return (
-                <div key={s.id} className={`group flex items-center gap-2 px-2 py-1 rounded-md ${active ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                <div key={s.id} className={`group flex items-center gap-2 px-2 py-1 rounded-md border border-white/10 ${active ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'}`}>
                   <button
                     onClick={() => setDefaultSpreadsheetId(s.spreadsheetId)}
                     className="flex-1 text-left min-w-0"
@@ -352,38 +352,42 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         )}
 
         {/* Spreadsheets manager below chats */}
-        <div className="mt-3 px-3 py-2 border-top border-white/10">
+        <div className="mt-4 mx-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
+          {/* Manager header */}
+          <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-b border-white/10">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <TableIcon className="w-4 h-4" />
-              {!peek && 'Spreadsheets'}
-              <span className="text-xs text-white/60">{!peek && `(${spreadsheets.length})`}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setAddOpen(o => !o)}
-                className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50`}
-                title="Add spreadsheet"
-                aria-label="Add spreadsheet"
-              >
-                <Plus className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
-              </button>
-              <button
-                onClick={() => setConfigOpen(o => !o)}
-                className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 ml-1`}
-                title="Configuration"
-                aria-label="Configuration"
-              >
-                {configOpen ? <ChevronUp className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} /> : <ChevronDown className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />}
-              </button>
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <TableIcon className="w-4 h-4" />
+                {!peek && 'Spreadsheets'}
+                <span className="text-xs text-white/60">{!peek && `(${spreadsheets.length})`}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setAddOpen(o => !o)}
+                  className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50`}
+                  title="Add spreadsheet"
+                  aria-label="Add spreadsheet"
+                >
+                  <Plus className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+                </button>
+                <button
+                  onClick={() => setConfigOpen(o => !o)}
+                  className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 ml-1`}
+                  title="Configuration"
+                  aria-label="Configuration"
+                >
+                  {configOpen ? <ChevronUp className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} /> : <ChevronDown className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />}
+                </button>
+              </div>
             </div>
           </div>
+          </div>
           {addOpen && (
-            <div className="mt-2 flex items-center gap-2">
+            <div className="px-3 py-2 bg-black/20 border-b border-white/10 flex items-center gap-2">
               <input
                 value={newSheetId}
                 onChange={(e) => setNewSheetId(e.target.value)}
-                placeholder="Paste Google Sheet ID"
+                placeholder="Paste full Google Sheets URL or ID"
                 className="flex-1 px-2 py-1 text-xs rounded-md bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none"
               />
               <button
@@ -396,7 +400,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             </div>
           )}
           {configOpen && (
-            <div className="mt-3 space-y-2 text-xs text-white/80">
+            <div className="px-3 py-3 space-y-3">
               {serviceAccountEmail && (
                 <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
               )}

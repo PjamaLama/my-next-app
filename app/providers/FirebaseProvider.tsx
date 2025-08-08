@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from "firebase/auth";
-import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp, runTransaction } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB42SldA3_l6LZ6l2axTIdrMhvSrmcIMEU",
@@ -66,30 +66,55 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     const ensureUserDoc = async () => {
       try {
         const userDocRef = doc(db, "users", user.uid);
-        const existing = await getDoc(userDocRef);
-        const baseData: Record<string, unknown> = {
-          email: user.email || null,
-          displayName: user.displayName || null,
-          photoURL: user.photoURL || null,
-          lastLoginAt: serverTimestamp(),
-        };
-        // Only set createdAt/betaTester on first creation
-        if (!existing.exists()) {
-          baseData.createdAt = serverTimestamp();
-          // Check current beta count and set tester or waitlist accordingly
-          const { getDocs, collection, query, where } = await import("firebase/firestore");
-          const q = query(collection(db, "users"), where("betaTester", "==", true));
-          const snap = await getDocs(q);
-          if (snap.size < 100) {
-            baseData.betaTester = true;
-            setBetaTester(true);
+        const betaMetaRef = doc(db, "meta", "beta");
+
+        await runTransaction(db, async (tx) => {
+          const [metaSnap, userSnap] = await Promise.all([
+            tx.get(betaMetaRef),
+            tx.get(userDocRef)
+          ]);
+
+          let capacity = 100;
+          let testerCount = 0;
+          if (!metaSnap.exists()) {
+            tx.set(betaMetaRef, { capacity, testerCount });
           } else {
-            baseData.betaWaitlist = true;
-            setBetaTester(false);
-            setBetaWaitlist(true);
+            const metaData = metaSnap.data() as { capacity?: number; testerCount?: number };
+            capacity = typeof metaData.capacity === 'number' ? metaData.capacity : capacity;
+            testerCount = typeof metaData.testerCount === 'number' ? metaData.testerCount : testerCount;
           }
-        }
-        await setDoc(userDocRef, baseData, { merge: true });
+
+          const baseData: Record<string, unknown> = {
+            email: user.email || null,
+            displayName: user.displayName || null,
+            photoURL: user.photoURL || null,
+            lastLoginAt: serverTimestamp(),
+          };
+
+          if (!userSnap.exists()) {
+            baseData.createdAt = serverTimestamp();
+          }
+
+          const alreadyTester = userSnap.exists() && !!(userSnap.data() as any).betaTester;
+          const alreadyWaitlist = userSnap.exists() && !!(userSnap.data() as any).betaWaitlist;
+
+          if (!alreadyTester && !alreadyWaitlist) {
+            if (testerCount < capacity) {
+              baseData.betaTester = true;
+              baseData.betaWaitlist = false;
+              tx.update(betaMetaRef, { testerCount: testerCount + 1 });
+              setBetaTester(true);
+              setBetaWaitlist(false);
+            } else {
+              baseData.betaTester = false;
+              baseData.betaWaitlist = true;
+              setBetaTester(false);
+              setBetaWaitlist(true);
+            }
+          }
+
+          tx.set(userDocRef, baseData, { merge: true });
+        });
       } catch (e) {
         console.error("Error ensuring user document:", e);
       }
