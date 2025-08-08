@@ -1327,12 +1327,7 @@ export default function Home() {
               </div>
             )}
 
-            {chatMessages.length === 0 && defaultSpreadsheetId && !sheetsPrefetched && (
-              <div className="mb-4 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
-                <p className="text-sm">Preparing your sheets…</p>
-                <p className="text-xs opacity-80">Fetching sheet names and data so chat can answer quickly.</p>
-              </div>
-            )}
+            {/* Removed top 'Preparing your sheets…' bubble; a centered loader now appears in the composer */}
 
             {/* Sheet chips moved to compact bar above the input */}
 
@@ -1347,11 +1342,11 @@ export default function Home() {
             <div className="relative w-full">
               <div className="w-full mb-2">
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
-                  {/* Compact chat list directly above chips/input */}
+                  {/* Compact chat list directly above chips/input (no scrollbar, only recent messages) */}
                   {chatMessages.length > 0 && (
-                    <div className="max-h-72 overflow-y-auto p-3 border-b border-white/10 bg-black/10 rounded-t-2xl">
+                    <div className="p-3 border-b border-white/10 bg-black/10 rounded-t-2xl">
                       <div className="space-y-2">
-                        {chatMessages.map((message) => (
+                        {chatMessages.slice(-2).map((message) => (
                           <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-[85%] p-2 rounded-xl text-xs shadow ${
                               message.role === 'user'
@@ -1376,39 +1371,46 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  {defaultSpreadsheetId && allSheetNames.length > 0 && (
-                    <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
-                      <div className="flex flex-wrap gap-1.5">
-                        {allSheetNames.map((name) => {
-                          const active = selectedSheetNames?.includes(name);
-                          return (
-                            <button
-                              key={name}
-                              onClick={() => {
-                                const set = new Set(selectedSheetNames || []);
-                                if (set.has(name)) set.delete(name); else set.add(name);
-                                setSelectedSheetNames(Array.from(set));
-                              }}
-                              className={`px-2 py-0.5 rounded-full text-[11px] border transition-all duration-200 max-w-[160px] truncate ${
-                                active
-                                  ? 'bg-sky-600 text-white border-transparent shadow-sm'
-                                  : 'bg-white/5 text-white/90 border-white/15 hover:bg-white/10'
-                              }`}
-                              aria-pressed={active}
-                              aria-label={`Select sheet ${name}`}
-                              title={name}
-                            >
-                              <span className="inline-flex items-center gap-1">
-                                {active && (
-                                  <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                                )}
-                                <span className="truncate">{name}</span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                  {defaultSpreadsheetId && (!sheetsPrefetched || allSheetNames.length === 0) ? (
+                    <div className="px-3 py-2 border-b border-white/10 bg-black/20 rounded-t-2xl flex items-center justify-center gap-2 text-white/80 text-xs">
+                      <span className="inline-block w-3 h-3 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" />
+                      Preparing your sheets…
                     </div>
+                  ) : (
+                    defaultSpreadsheetId && allSheetNames.length > 0 && (
+                      <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
+                        <div className="flex flex-wrap gap-1.5">
+                          {allSheetNames.map((name) => {
+                            const active = selectedSheetNames?.includes(name);
+                            return (
+                              <button
+                                key={name}
+                                onClick={() => {
+                                  const set = new Set(selectedSheetNames || []);
+                                  if (set.has(name)) set.delete(name); else set.add(name);
+                                  setSelectedSheetNames(Array.from(set));
+                                }}
+                                className={`px-2 py-0.5 rounded-full text-[11px] border transition-all duration-200 max-w-[160px] truncate ${
+                                  active
+                                    ? 'bg-sky-600 text-white border-transparent shadow-sm'
+                                    : 'bg-white/5 text-white/90 border-white/15 hover:bg-white/10'
+                                }`}
+                                aria-pressed={active}
+                                aria-label={`Select sheet ${name}`}
+                                title={name}
+                              >
+                                <span className="inline-flex items-center gap-1">
+                                  {active && (
+                                    <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                                  )}
+                                  <span className="truncate">{name}</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )
                   )}
                   {uploadedImages.length > 0 && (
                     <div className="p-3 border-b border-white/10">

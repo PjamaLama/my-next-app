@@ -56,7 +56,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           tabIndex={0}
           onClick={() => handleSelect(s.id)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelect(s.id); }}
-          className={`w-full text-left ${peek ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center gap-2 ${peek ? 'pr-10' : 'pr-12'} cursor-pointer select-none`}
+          className={`w-full text-left ${peek ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center gap-2 cursor-pointer select-none`}
           style={{ background: 'transparent' }}
         >
           <div className="min-w-0 flex-1">
@@ -79,22 +79,22 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             )}
           </div>
           {/* Right-side actions */}
-          <div className="ml-auto flex items-center gap-1 shrink-0">
+          <div className="ml-auto flex items-center gap-1 shrink-0 pr-3">
             <button
               onClick={(e) => { e.stopPropagation(); startRename(s.id, s.title); }}
-              className={`hidden sm:inline inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/15 text-white/70 hover:text-white hover:border-white/40 focus:outline-none focus:ring-1 focus:ring-white/30`}
+              className={`hidden sm:inline grid place-items-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/15 text-white/70 hover:text-white hover:border-white/40 focus:outline-none focus:ring-1 focus:ring-white/30 leading-none`}
               title="Rename"
               aria-label="Rename chat"
             >
-              <Pencil className={`${peek ? 'w-3 h-3' : 'w-3 h-3'}`} />
+              <Pencil className={`${peek ? 'w-3 h-3' : 'w-3 h-3'} block`} />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); if (confirm('Delete this chat?')) deleteSession(s.id); }}
-              className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-300/30`}
+              className={`grid place-items-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-300/30 leading-none`}
               title="Delete"
               aria-label="Delete chat"
             >
-              <Trash2 className={`${peek ? 'w-3 h-3' : 'w-3 h-3'}`} />
+              <Trash2 className={`${peek ? 'w-3 h-3' : 'w-3 h-3'} block`} />
             </button>
           </div>
         </div>
