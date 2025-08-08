@@ -183,17 +183,17 @@ const NavBar: React.FC = () => {
   // Modal content rendered via portal
   const sheetSelectorModal = (sheetDropdownOpen && isClient) ? createPortal(
     <>
-      <div className="fixed inset-0 z-[100] bg-black/60" onClick={() => setSheetDropdownOpen(false)} />
+      <div className="modal-overlay z-[100]" onClick={() => setSheetDropdownOpen(false)} />
       <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-        <div className="w-full max-w-md sm:max-w-lg glass rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
-          <div className="flex items-center justify-between p-4 sm:p-5 border-b border-white/10">
+        <div className="w-full max-w-md sm:max-w-lg modal-panel overflow-hidden">
+          <div className="modal-header">
             <h3 className="text-lg sm:text-xl font-semibold text-white">Select Spreadsheet</h3>
-            <button onClick={() => setSheetDropdownOpen(false)} className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            <button onClick={() => setSheetDropdownOpen(false)} className="btn-icon btn-ghost" aria-label="Close">
+              <svg className="icon-20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
           <div className="overflow-y-auto max-h-[70vh]">
-            <div className="p-4 sm:p-5 border-b border-white/10">
+            <div className="modal-body border-b border-white/10">
               {!serviceAccountLoading && serviceAccountEmail && (
                 <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
               )}
@@ -209,7 +209,7 @@ const NavBar: React.FC = () => {
                 <button
                   onClick={addOption}
                   disabled={addingSheet || !newOption.trim()}
-                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition disabled:opacity-50">
+                  className="btn btn-primary w-full disabled:opacity-50">
                   {addingSheet ? "Adding..." : "Add Spreadsheet"}
                 </button>
               </div>
@@ -217,7 +217,7 @@ const NavBar: React.FC = () => {
             <div className="p-3 sm:p-4">
               {options.length === 0 ? (
                 <div className="p-10 text-center text-white/60">
-                  <svg className="w-12 h-12 mx-auto mb-3 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-12 h-12 mx-auto mb-3 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   <p className="text-sm">No spreadsheets found.</p>
@@ -250,8 +250,10 @@ const NavBar: React.FC = () => {
                         </div>
                         <button
                           onClick={e => { e.stopPropagation(); if (window.confirm('Delete this spreadsheet?')) deleteOption(option.id); }}
-                          className="p-2 text-red-300 hover:text-red-200 rounded-lg hover:bg-red-500/10 transition-colors">
-                          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          className="btn-icon btn-ghost text-red-300 hover:text-red-200"
+                          aria-label="Delete"
+                        >
+                          <svg className="icon-20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
                             <path d="M6 8v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V8"/>
                             <path d="M9 4h2a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2z"/>
                             <line x1="4" y1="7" x2="16" y2="7"/>
@@ -284,7 +286,7 @@ const NavBar: React.FC = () => {
                 <span className="text-base sm:text-lg md:text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300 drop-shadow-sm truncate block leading-tight">
                   Sheety AI
                 </span>
-                <span className="hidden sm:block text-xs font-medium text-white/70 leading-tight">
+                <span className="hidden sm:block text-xs font-medium text-white/80 leading-tight">
                   Sheets, automated by AI
                 </span>
               </div>
@@ -293,7 +295,7 @@ const NavBar: React.FC = () => {
           </div>
 
           {/* Desktop Nav Links - Hidden on mobile */}
-          <div className="hidden md:flex items-center gap-6 text-white/80">
+          <div className="hidden md:flex items-center gap-6 text-white/90">
             {NAV_LINKS.map(link => (
               <Link
                 key={link.name}
@@ -307,16 +309,16 @@ const NavBar: React.FC = () => {
           </div>
 
           {/* User section: Optimized for mobile */}
-          <div className="flex items-center gap-1 sm:gap-4 flex-shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 md:gap-4 flex-shrink-0">
             {user && (
               <>
                 {/* Spreadsheet Selector - Mobile-first design */}
                 <div className="relative">
                   <button
                     onClick={() => setSheetDropdownOpen(!sheetDropdownOpen)}
-                    className="flex items-center gap-2 glass-soft border border-white/10 text-white px-3 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sky-400 text-xs sm:text-sm min-h-[44px]"
+                    className="btn btn-secondary text-white text-xs sm:text-sm min-h-[40px]"
                   >
-                    <svg width="14" height="14" className="sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <svg className="icon-20 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <path d="M9 9h6v6H9z" />
                     </svg>
@@ -324,11 +326,11 @@ const NavBar: React.FC = () => {
                       {currentSpreadsheet?.label || 'Select'}
                     </span>
                     <svg 
-                      className={`w-3 h-3 sm:w-4 sm:h-4 transition-transform flex-shrink-0 ${sheetDropdownOpen ? 'rotate-180' : ''}`} 
+                      className={`icon-16 transition-transform flex-shrink-0 ${sheetDropdownOpen ? 'rotate-180' : ''}`} 
                       fill="none" 
                       stroke="currentColor" 
                       strokeWidth="2" 
-                      viewBox="0 0 24 24"
+                      viewBox="0 0 24 24" aria-hidden="true"
                     >
                       <path d="M6 9l6 6 6-6" />
                     </svg>
@@ -338,35 +340,32 @@ const NavBar: React.FC = () => {
 
                 {/* User avatar and settings - Mobile optimized */}
                 <div className="flex items-center gap-1 sm:gap-2">
-                  {/* User avatar */}
                   {user?.photoURL ? (
                     <Image
                       src={user.photoURL}
                       alt={user.displayName || 'User'}
                       width={36}
                       height={36}
-                      className="rounded-full border border-white/10"
+                      className="rounded-full border border-white/20"
                     />
                   ) : (
-                    <div className="w-9 h-9 rounded-full bg-white/10 border border-white/10" />
+                    <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20" />
                   )}
 
-                  {/* Settings button */}
                   <button
                     onClick={() => setSettingsOpen(!settingsOpen)}
-                    className="p-2 rounded-lg glass-soft border border-white/10 text-white/80 hover:text-white hover:bg-white/10"
+                    className="btn-icon btn-secondary text-white/90"
                     aria-label="Settings"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="icon-20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </button>
 
-                  {/* Sign out */}
                   <button
                     onClick={signOutUser}
-                    className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm"
+                    className="btn btn-danger text-xs sm:text-sm"
                   >
                     Sign out
                   </button>
