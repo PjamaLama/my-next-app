@@ -99,7 +99,7 @@ export default function RootLayout({
                   <ChatProvider>
                     <SidePanel />
                     <div className="transition-all" style={{ marginLeft: 'var(--sidebar-width, 300px)' }}>
-                      <NavBar />
+                      {/* Hide top nav to give full space to chat; branding moved to sidebar */}
                       {children}
                     </div>
                   </ChatProvider>

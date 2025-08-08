@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import dynamic from 'next/dynamic';
 import { LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import Image from 'next/image';
 import { useFirebase } from '../providers/FirebaseProvider';
 
 const ChatSidebar = dynamic(() => import('./ChatSidebar'), { ssr: false });
@@ -32,9 +33,20 @@ const SidePanel: React.FC = () => {
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-4" aria-hidden="true" />
-            <div className="text-xs text-white/60">Workspace</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="bg-white/10 rounded-lg p-1.5">
+                <Image src="/logo.png" alt="Sheety AI" width={20} height={20} className="dark:invert" />
+              </div>
+              {!peek && (
+                <div className="min-w-0">
+                  <div className="text-sm font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 truncate">
+                    Sheety AI
+                  </div>
+                  <div className="text-[10px] text-white/70 truncate">Sheets, automated by AI</div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button

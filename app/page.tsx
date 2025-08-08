@@ -143,6 +143,8 @@ export default function Home() {
   const [uploadingImages, setUploadingImages] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const bottomBarRef = useRef<HTMLDivElement>(null);
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
   
   // Chat functionality state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -1268,6 +1270,29 @@ export default function Home() {
     }
   }, [chatMessages, chatProcessing]);
 
+  // Observe bottom bar height to prevent overlap and keep layout compact
+  useEffect(() => {
+    const element = bottomBarRef.current;
+    if (!element || typeof window === 'undefined') return;
+
+    const updateHeight = () => {
+      setBottomBarHeight(element.getBoundingClientRect().height);
+    };
+
+    updateHeight();
+
+    // ResizeObserver to react to content changes (chips, uploads, etc.)
+    const observer = new ResizeObserver(() => updateHeight());
+    observer.observe(element);
+
+    // Also respond to window resizes
+    window.addEventListener('resize', updateHeight);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, []);
+
 
   if (loading) {
     return (
@@ -1345,8 +1370,8 @@ export default function Home() {
           {/* Full chat history area */}
           <div
             ref={messagesContainerRef}
-            className="px-3 sm:px-4 pt-2 pb-44 overflow-y-auto"
-            style={{ height: 'calc(100vh - 120px)' }}
+            className="px-3 sm:px-4 pt-2 overflow-y-auto"
+            style={{ height: 'calc(100vh - 120px)', paddingBottom: bottomBarHeight + 16 }}
           >
             <div className="space-y-3">
               {chatMessages.map((message, idx) => (
@@ -1474,6 +1499,7 @@ export default function Home() {
 
           {/* Docked input bar pinned to bottom of viewport with stacked chat list above chips/input */}
           <div
+            ref={bottomBarRef}
             className="fixed bottom-0 right-0 z-50 w-auto overflow-visible px-3 sm:px-4"
             style={{ left: 'var(--sidebar-width, 300px)', paddingBottom: 'env(safe-area-inset-bottom)' }}
           >
@@ -1522,7 +1548,7 @@ export default function Home() {
                     )
                   )}
                   {uploadedImages.length > 0 && (
-                    <div className="p-3 border-b border-white/10">
+                    <div className="p-2 border-b border-white/10">
                       <div className="flex flex-wrap gap-2">
                         {(() => {
                           const progress = getFileSizeProgress();
@@ -1531,25 +1557,25 @@ export default function Home() {
                             const isLarge = fileInfo.percentage > 80;
                             const isOverLimit = fileInfo.percentage > 100;
                             return (
-                              <div key={image.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
+                              <div key={image.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs border ${
                                 isOverLimit ? 'bg-red-500/10 border-red-400/30 text-red-300' :
                                 isLarge ? 'bg-yellow-500/10 border-yellow-400/30 text-yellow-200' :
                                 'bg-sky-500/10 border-sky-400/30 text-sky-200'
                               }`}>
                                 {image.fileType === 'image' ? (
-                                  <svg className="w-4 h-4 text-sky-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <svg className="w-3.5 h-3.5 text-sky-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                   </svg>
                                 ) : (
-                                  <svg className="w-4 h-4 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <svg className="w-3.5 h-3.5 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                   </svg>
                                 )}
                                 <div className="flex flex-col min-w-0">
-                                  <span className="font-medium truncate max-w-[120px]">
+                                  <span className="font-medium truncate max-w-[110px]">
                                     {image.file.name}
                                   </span>
-                                  <span className="text-xs">
+                                  <span className="text-[10px]">
                                     {fileInfo.sizeMB}MB ({fileInfo.percentage.toFixed(0)}% of limit)
                                   </span>
                                 </div>
@@ -1557,7 +1583,7 @@ export default function Home() {
                                   onClick={() => { URL.revokeObjectURL(image.preview); setUploadedImages(prev => prev.filter(img => img.id !== image.id)); }}
                                   className="ml-1 text-white/40 hover:text-white/80"
                                 >
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <line x1="4" y1="4" x2="16" y2="16" />
                                     <line x1="16" y1="4" x2="4" y2="16" />
                                   </svg>
@@ -1573,7 +1599,7 @@ export default function Home() {
                         const totalSizeMB = progress.totalSizeMB;
                         const fileCount = uploadedImages.length;
                         return (
-                          <div className="mt-2 px-3 py-2 rounded-lg text-xs bg-black/20 border border-white/10">
+                          <div className="mt-1 px-2 py-1 rounded-lg text-[11px] bg-black/20 border border-white/10">
                             <div className="flex items-center justify-between">
                               <span className="text-white/80 font-medium">
                                 📦 Total: {totalSizeMB}MB ({fileCount} file{fileCount !== 1 ? 's' : ''})
@@ -1605,8 +1631,8 @@ export default function Home() {
                         ? `Add context about your ${uploadedImages.length} attached file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
                         : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : null)
                       }
-                      rows={3}
-                      className={`w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-white/50 text-white ${
+                      rows={2}
+                      className={`w-full p-3 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-white/50 text-white ${
                         listening ? 'border-l-4 border-l-sky-500' : ''
                       }`}
                       style={{
@@ -1619,11 +1645,11 @@ export default function Home() {
                       {listening && (transcript || interimText) && (
                         <button
                           onClick={() => { setTranscript(""); setInterimText(""); }}
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition"
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition"
                           title="Clear voice input"
                           aria-label="Clear voice input"
                         >
-                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <line x1="6" y1="6" x2="18" y2="18" />
                             <line x1="18" y1="6" x2="6" y2="18" />
                           </svg>
@@ -1633,19 +1659,19 @@ export default function Home() {
                       <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={handleImageUpload} className="hidden" id="text-area-upload" />
                       <label
                         htmlFor="text-area-upload"
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
                           uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/70 hover:bg-white/10 hover:text-white'
                         }`}
                         title="Add images or PDFs"
                         aria-label="Add images or PDFs"
                       >
                         {uploadingImages ? (
-                          <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                          <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                           </svg>
                         ) : (
-                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05L12 20.49a5.5 5.5 0 11-7.78-7.78l10-10a3.5 3.5 0 114.95 4.95l-10 10a1.5 1.5 0 11-2.12-2.12l9-9" />
                           </svg>
                         )}
@@ -1669,19 +1695,19 @@ export default function Home() {
                             setListening(true);
                           }
                         }}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 ${
                           listening ? 'bg-red-600 text-white shadow ring-2 ring-red-400/30 animate-pulse' : 'bg-sky-600 hover:bg-sky-700 text-white shadow'
                         }`}
                         title={listening ? "Stop recording" : "Start voice recording"}
                         aria-label={listening ? "Stop recording" : "Start voice recording"}
                       >
                         {listening ? (
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <circle cx="12" cy="12" r="10" />
                             <rect x="9" y="9" width="6" height="6" rx="1" />
                           </svg>
                         ) : (
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V7a3 3 0 10-6 0v5a3 3 0 003 3z" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v3m0 0H9m3 0h3" />
@@ -1692,11 +1718,11 @@ export default function Home() {
                       {(editingText.trim() || uploadedImages.length > 0) && (
                         <button
                           onClick={() => { processWithAIChat(editingText.trim() || 'Analyze these files'); setEditingText(''); }}
-                          className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
+                          className="w-9 h-9 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
                           title="Send"
                           aria-label="Send"
                         >
-                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5l16.5 7.5-16.5 7.5 3.75-7.5-3.75-7.5z" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 12h9.75" />
                           </svg>
