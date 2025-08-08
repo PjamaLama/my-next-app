@@ -4,7 +4,7 @@ import { useSheet } from '../providers/SheetProvider';
 import { useDialog } from '../providers/DialogProvider';
 
 const SheetChipSelector: React.FC = () => {
-  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides, setUnstructuredOverride } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides } = useSheet();
   const { notify } = useDialog();
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -97,9 +97,8 @@ const SheetChipSelector: React.FC = () => {
 
   return (
     <div className="space-y-3">
-      {/* Sheet chips with compact control overlay */}
-      <div className="relative">
-        <div className="flex flex-wrap gap-2 pr-36 pb-12">
+      {/* Sheet chips with inline compact controls */}
+      <div className="flex flex-wrap gap-2 items-center">
         {sheetNames.map(name => {
           const isSelected = selectedSheetNames.includes(name);
           const structure = sheetStructureCache[name];
@@ -136,62 +135,57 @@ const SheetChipSelector: React.FC = () => {
             </button>
           );
         })}
-        </div>
-        {/* Compact controls anchored bottom-right */}
-        <div className="absolute bottom-2 right-2 flex items-center gap-2">
-          <span className="text-[11px] text-gray-600 dark:text-gray-300 whitespace-nowrap">Select sheets to edit</span>
+        {/* Right-aligned compact controls */}
+        <div className="ml-auto flex items-center gap-2 shrink-0">
           {selectedSheetNames.length > 0 && (
-            <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800/50 whitespace-nowrap">
               {selectedSheetNames.length} selected
             </span>
           )}
-          {selectedSheetNames.length > 0 && (
+          {selectedSheetNames.some(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false))) && (
             <button
               type="button"
-              className="text-[11px] px-2 py-1 rounded border bg-white dark:bg-gray-800 hover:bg-gray-50"
+              className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 whitespace-nowrap"
               onClick={async () => {
-                const first = selectedSheetNames.find(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
-                if (!first) return;
                 const spreadsheetId = defaultSpreadsheetId;
+                const targets = selectedSheetNames.filter(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
+                if (!spreadsheetId || targets.length === 0) return;
                 try {
-                  const resp = await fetch('/api/genkit-tool-execute', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      toolCall: { function: { name: 'convert_unstructured_sheet', arguments: JSON.stringify({ spreadsheetId, sheetName: first }) } }
-                    })
+                  const results = await Promise.allSettled(targets.map(async (name) => {
+                    const resp = await fetch('/api/genkit-tool-execute', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        toolCall: { function: { name: 'convert_unstructured_sheet', arguments: JSON.stringify({ spreadsheetId, sheetName: name }) } }
+                      })
+                    });
+                    if (!resp.ok) throw new Error(await resp.text());
+                    return resp.json();
+                  }));
+                  const okCount = results.filter(r => r.status === 'fulfilled').length;
+                  const failCount = results.length - okCount;
+                  await notify({
+                    title: failCount === 0 ? 'Conversion complete' : 'Conversion partially complete',
+                    description: failCount === 0 ? `Converted ${okCount} sheet${okCount !== 1 ? 's' : ''}.` : `Converted ${okCount}, ${failCount} failed.`,
+                    tone: failCount === 0 ? 'success' : 'warning',
+                    okText: 'OK'
                   });
-                  if (!resp.ok) {
-                    const t = await resp.text();
-                    console.error('Convert failed:', t);
-                    await notify({
-                      title: 'Conversion failed',
-                      description: 'Could not convert the sheet. Please try again later.',
-                      tone: 'danger',
-                      okText: 'Close'
-                    });
-                  } else {
-                    const j = await resp.json();
-                    await notify({
-                      title: 'Structured sheet created',
-                      description: `New sheet: ${j.newSheetName}`,
-                      tone: 'success',
-                      okText: 'Great'
-                    });
-                  }
                 } catch (e) {
                   console.error(e);
                   await notify({
                     title: 'Conversion error',
-                    description: 'An error occurred during conversion.',
+                    description: 'An error occurred while converting selected sheets.',
                     tone: 'danger',
                     okText: 'Close'
                   });
                 }
               }}
-              title="Convert selected unstructured sheet into a new structured sheet"
+              title="Convert selected unstructured sheets into structured sheets"
             >
-              Convert to structured
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M5 4h14a1 1 0 011 1v6a1 1 0 01-1 1h-6v6a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zm1 2v4h4V6H6zm6 0v4h6V6h-6zM6 12v6h6v-6H6z"/>
+              </svg>
+              <span className="hidden sm:inline">Convert</span>
             </button>
           )}
         </div>
