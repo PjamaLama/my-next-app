@@ -108,7 +108,7 @@ export default function Home() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, authError, betaTester, betaWaitlist } = useFirebase();
-  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides, setDefaultSpreadsheetId } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   const { notify } = useDialog();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
@@ -140,6 +140,10 @@ export default function Home() {
   
 
   
+  // Inline spreadsheet add UI state
+  const [newSheetId, setNewSheetId] = useState<string>("");
+  const [addingSheet, setAddingSheet] = useState<boolean>(false);
+  const [serviceAccountChecked, setServiceAccountChecked] = useState<boolean>(false);
   // Chat provider hooks to ensure session and persist messages for AI title generation
   const { ensureSession, setChatMessages: setProviderChatMessages, chatMessages: providerChatMessages } = useChat();
   // Add state for available spreadsheet options
@@ -409,6 +413,54 @@ export default function Home() {
     });
     return () => unsub();
   }, []);
+
+  // Load service account email once for add-sheet helper
+  useEffect(() => {
+    if (serviceAccountChecked) return;
+    fetch('/api/get-service-account')
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => { /* useServiceAccount provides email; no local state update needed */ })
+      .catch(() => {})
+      .finally(() => setServiceAccountChecked(true));
+  }, [serviceAccountChecked]);
+
+  const normalizeSheetId = (input: string): string => {
+    const trimmed = (input || '').trim();
+    if (!trimmed) return '';
+    try {
+      const url = new URL(trimmed);
+      const segments = url.pathname.split('/').filter(Boolean);
+      const dIndex = segments.findIndex((seg) => seg === 'd');
+      if (dIndex !== -1 && segments[dIndex + 1]) {
+        return segments[dIndex + 1];
+      }
+    } catch {
+      // Not a full URL; fall through
+    }
+    if (trimmed.includes('/d/')) {
+      const afterD = trimmed.split('/d/')[1] || '';
+      return afterD.split('/')[0] || trimmed;
+    }
+    return trimmed;
+  };
+
+  const handleAddSpreadsheet = async () => {
+    const parsedId = normalizeSheetId(newSheetId);
+    if (!parsedId || !user) return;
+    setAddingSheet(true);
+    try {
+      // Try to capture spreadsheet title for UX
+      const meta = await fetch(`/api/get-sheet-names?spreadsheetId=${encodeURIComponent(parsedId)}`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .catch(() => ({} as any));
+      const title = (meta && (meta as any).spreadsheetTitle) || undefined;
+      await addDoc(collection(db, 'users', user.uid, 'options'), { spreadsheetId: parsedId, title });
+      setDefaultSpreadsheetId(parsedId);
+      setNewSheetId("");
+    } finally {
+      setAddingSheet(false);
+    }
+  };
 
 
 
@@ -1460,11 +1512,46 @@ export default function Home() {
           {/* Only show a lightweight nudge if no spreadsheet is selected */}
           {chatMessages.length === 0 && !defaultSpreadsheetId && (
             <div className="mx-3 sm:mx-4 mt-4 mb-2 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
-              <p className="text-sm mb-2">No spreadsheet selected.</p>
-              <p className="text-xs opacity-80 mb-3">Please add or select a spreadsheet to enable smart updates.</p>
-              <div className="flex gap-2">
-                <a href={process.env.NEXT_PUBLIC_SHEETS_LINK || '#'} target="_blank" className="px-3 py-1.5 text-xs rounded-lg bg-sky-600 hover:bg-sky-700 text-white">Open Google Sheets</a>
+              <p className="text-sm mb-2">No spreadsheet connected yet.</p>
+              <p className="text-xs opacity-80 mb-3">Paste a Google Sheets URL or ID to connect, then you can select sheets and start updating.</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  value={newSheetId}
+                  onChange={(e) => setNewSheetId(e.target.value)}
+                  placeholder="Paste full Google Sheets URL or ID"
+                  className="flex-1 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white placeholder-white/50 focus:outline-none"
+                />
+                <button
+                  onClick={handleAddSpreadsheet}
+                  disabled={addingSheet || !newSheetId.trim()}
+                  className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {addingSheet ? 'Adding…' : 'Add spreadsheet'}
+                </button>
+                <a
+                  href={process.env.NEXT_PUBLIC_SHEETS_LINK || 'https://sheets.google.com'}
+                  target="_blank"
+                  className="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white"
+                >
+                  Open Google Sheets
+                </a>
               </div>
+              {serviceAccountEmail && (
+                <div className="mt-3 text-[12px] text-white/80 bg-black/20 border border-white/10 rounded-lg p-2 flex items-center justify-between gap-2">
+                  <span>Make sure to share this spreadsheet with the service account as Editor:</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/90 text-[11px] select-all">{serviceAccountEmail}</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(serviceAccountEmail)}
+                      className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/90 text-[11px] hover:bg-white/20"
+                      title="Copy service account email"
+                      aria-label="Copy service account email"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1607,17 +1694,10 @@ export default function Home() {
             <div className="relative w-full">
               <div className="w-full mb-2">
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
-                  {defaultSpreadsheetId && allSheetNames.length === 0 ? (
-                    <div className="px-3 py-2 border-b border-white/10 bg-black/20 rounded-t-2xl flex items-center justify-center gap-2 text-white/80 text-xs">
-                      <span className="inline-block w-3 h-3 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" />
-                      Preparing your sheets…
+                  {defaultSpreadsheetId && (
+                    <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
+                      <SheetChipSelector />
                     </div>
-                  ) : (
-                    defaultSpreadsheetId && allSheetNames.length > 0 && (
-                      <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
-                        <SheetChipSelector />
-                      </div>
-                    )
                   )}
                   {uploadedImages.length > 0 && (
                     <div className="p-2 border-b border-white/10">
