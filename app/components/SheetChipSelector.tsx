@@ -33,10 +33,17 @@ const SheetChipSelector: React.FC = () => {
           return res.json();
         })
         .then(data => {
-          setSheetNames(data.sheetNames);
+          const names: string[] = Array.isArray(data.sheetNames) ? data.sheetNames : [];
+          setSheetNames(names);
+          // Drop stale selections that no longer exist
+          const current = selectedSheetNamesRef.current;
+          const pruned = current.filter((n: string) => names.includes(n));
+          if (pruned.length !== current.length) {
+            setSelectedSheetNamesRef.current(pruned);
+          }
           // Only set default selection if no sheets are currently selected
-          if (data.sheetNames.length > 0 && selectedSheetNamesRef.current.length === 0) {
-            setSelectedSheetNamesRef.current([data.sheetNames[0]]);
+          if (names.length > 0 && pruned.length === 0) {
+            setSelectedSheetNamesRef.current([names[0]]);
           }
         })
         .catch(err => {

@@ -103,6 +103,16 @@ type ChatMessage = {
     insights?: string[];
   };
 
+  // Ephemeral file-analysis context shared across a few turns
+  interface FileAnalysisContext {
+    files: Array<{
+      mimeType: string;
+      extractedData?: unknown;
+      timestamp: number;
+    }>;
+    lastUpdated: number;
+  }
+
 
 
 
@@ -173,6 +183,16 @@ export default function Home() {
   const [showStats, setShowStats] = useState<boolean>(false);
   const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
   const [previewModal, setPreviewModal] = useState<{ open: boolean; rows: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }> | null; summary?: string }>({ open: false, rows: null });
+
+  // Keep recent file-analysis results so follow-up turns can reference them
+  const [recentFileAnalysis, setRecentFileAnalysis] = useState<FileAnalysisContext | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [quickAddLoading, setQuickAddLoading] = useState(false);
+  const isFileAnalysisFresh = (fa: FileAnalysisContext | null) => {
+    if (!fa || !fa.lastUpdated) return false;
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    return Date.now() - fa.lastUpdated < FIVE_MINUTES;
+  };
 
   const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
   
@@ -493,6 +513,8 @@ export default function Home() {
   useEffect(() => {
     if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) return;
     const focus = selectedSheetNames[0];
+    // If focus is not present in latest known sheet list, skip fetch
+    if (allSheetNames.length > 0 && !allSheetNames.includes(focus)) return;
     // Skip if already cached, or if prefetch is handling it
     if (sheetDataCache[focus] && sheetDataCache[focus].length > 0) return;
     if (!sheetsPrefetched && allSheetNames.includes(focus)) return;
@@ -508,6 +530,10 @@ export default function Home() {
           const { data } = await res.json();
           setSheetDataCache(prev => ({ ...prev, [focus]: data || [] }));
           console.log(`✅ Cached ${data?.length || 0} rows for "${focus}"`);
+        } else if (res.status === 404) {
+          // Sheet no longer exists: drop it from selection
+          const remaining = selectedSheetNames.filter(n => n !== focus);
+          setSelectedSheetNames(remaining);
         }
       } catch (error) {
         console.error('❌ Error fetching sheet data:', error);
@@ -758,8 +784,7 @@ export default function Home() {
   };
 
   // Image upload handlers
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
+  const handleFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
     setUploadingImages(true);
@@ -767,11 +792,12 @@ export default function Home() {
 
     try {
       // Check file sizes and get warnings/errors
-      const { warnings, errors } = checkFileSizes(files);
+      const { warnings, errors } = checkFileSizes(files as FileList);
 
       // Process files
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      const arr = Array.from(files as unknown as File[]);
+      for (let i = 0; i < arr.length; i++) {
+        const file = arr[i];
         
         // Validate file type
         const isImage = file.type.startsWith('image/');
@@ -828,6 +854,12 @@ export default function Home() {
     } finally {
       setUploadingImages(false);
     }
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    await handleFiles(files);
   };
 
 
@@ -952,6 +984,8 @@ export default function Home() {
             ),
             allSheetNames,
             responsePrefs,
+            // include recent file analysis so the server can use it across turns
+            fileAnalysis: isFileAnalysisFresh(recentFileAnalysis) ? recentFileAnalysis : undefined,
           },
           conversationHistory: chatMessages.slice(-5),
           images: imageData // Include processed images
@@ -1012,6 +1046,13 @@ export default function Home() {
         // Update sheet names if provided
         if (data.context.sheetNames) {
           setSelectedSheetNames(data.context.sheetNames);
+        }
+        // Persist recent file analyses for a few minutes for follow-up turns
+        if (data.context.fileAnalysis && data.context.fileAnalysis.lastUpdated) {
+          try {
+            const fa = data.context.fileAnalysis as FileAnalysisContext;
+            setRecentFileAnalysis(fa);
+          } catch {}
         }
       }
       
@@ -1177,7 +1218,8 @@ export default function Home() {
           context: {
             spreadsheetId: defaultSpreadsheetId,
             sheetNames: selectedSheetNames,
-            unstructuredSheets: selectedSheetNames.filter(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)))
+            unstructuredSheets: selectedSheetNames.filter(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false))),
+            fileAnalysis: isFileAnalysisFresh(recentFileAnalysis) ? recentFileAnalysis : undefined
           },
           images: imageData
         }),
@@ -1751,7 +1793,19 @@ export default function Home() {
             className="fixed bottom-0 right-0 z-50 w-auto overflow-visible px-3 sm:px-4"
             style={{ left: 'var(--sidebar-width, 300px)', paddingBottom: 'env(safe-area-inset-bottom)' }}
           >
-            <div className="relative w-full">
+            <div
+              className={`relative w-full ${dragOver ? 'ring-2 ring-sky-400 rounded-2xl' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={async (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const dtFiles = e.dataTransfer?.files;
+                if (dtFiles && dtFiles.length > 0) {
+                  await handleFiles(dtFiles);
+                }
+              }}
+            >
               <div className="w-full mb-2">
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200 overflow-visible">
                   {defaultSpreadsheetId && (
@@ -1896,6 +1950,74 @@ export default function Home() {
                             setSendResult(`Error generating report: ${e instanceof Error ? e.message : String(e)}`);
                           }
                         }}
+                        onPreviewUpdates={async () => {
+                          if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+                            setSendResult('Select a spreadsheet and sheet first.');
+                            return;
+                          }
+                          setChatProcessing(true);
+                          try {
+                            const toolCall = {
+                              id: `tool_${Date.now()}_preview`,
+                              type: 'function' as const,
+                              function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: editingText || transcript || 'Preview updates', preview: true }) }
+                            };
+                            const resp = await fetch('/api/genkit-tool-execute', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                toolCall,
+                                context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
+                                images: []
+                              })
+                            });
+                            const data = await resp.json();
+                            if (resp.ok && data?.preview) {
+                              const previewRows = (data.flowPreview || []).slice(0, 100);
+                              setPreviewModal({ open: true, rows: previewRows, summary: data.result });
+                            } else {
+                              setSendResult(data?.error || 'Preview failed');
+                            }
+                          } catch (e) {
+                            setSendResult('Preview failed');
+                          } finally {
+                            setChatProcessing(false);
+                          }
+                        }}
+                        onApplyUpdates={async () => {
+                          if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+                            setSendResult('Select a spreadsheet and sheet first.');
+                            return;
+                          }
+                          setChatProcessing(true);
+                          try {
+                            const toolCall = {
+                              id: `tool_${Date.now()}_apply`,
+                              type: 'function' as const,
+                              function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: editingText || transcript || 'Apply updates', preview: false }) }
+                            };
+                            const resp = await fetch('/api/genkit-tool-execute', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                toolCall,
+                                context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
+                                images: []
+                              })
+                            });
+                            const data = await resp.json();
+                            if (resp.ok && data?.success) {
+                              setSendResult(data.result || 'Applied updates');
+                              setPreviewModal({ open: false, rows: null });
+                            } else {
+                              setSendResult(data?.error || 'Apply failed');
+                            }
+                          } catch (e) {
+                            setSendResult('Apply failed');
+                          } finally {
+                            setChatProcessing(false);
+                          }
+                        }}
                       />
                       {listening && (transcript || interimText) && (
                         <button
@@ -1995,6 +2117,162 @@ export default function Home() {
               )}
             </div>
           </div>
+
+          {/* Preview Modal */}
+          {previewModal.open && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60">
+              <div className="w-[90vw] max-w-3xl max-h-[80vh] overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0e] text-white shadow-2xl">
+                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                  <div className="text-sm font-semibold">Preview updates</div>
+                  <button className="text-white/60 hover:text-white" onClick={() => setPreviewModal({ open: false, rows: null })} aria-label="Close preview">✕</button>
+                </div>
+                <div className="p-4 overflow-auto" style={{ maxHeight: '65vh' }}>
+                  {previewModal.summary && (
+                    <div className="mb-3 text-[12px] text-white/80">{previewModal.summary}</div>
+                  )}
+                  {Array.isArray(previewModal.rows) && previewModal.rows.length > 0 ? (
+                    <table className="min-w-full text-[12px]">
+                      <thead>
+                        <tr className="bg-white/5">
+                          <th className="px-3 py-2 text-left">Row</th>
+                          <th className="px-3 py-2 text-left">Updates</th>
+                          <th className="px-3 py-2 text-left">Confidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewModal.rows.map((r, idx) => (
+                          <tr key={idx} className={idx % 2 === 0 ? 'bg-white/0' : 'bg-white/[0.03]'}>
+                            <td className="px-3 py-2">{r.row}</td>
+                            <td className="px-3 py-2">
+                              <div className="space-y-1">
+                                {Object.entries(r.updates).map(([k, v]) => (
+                                  <div key={k} className="flex items-center gap-2"><span className="text-white/60">{k}:</span> <span className="text-white/90">{String(v)}</span></div>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`${r.confidence >= 0.8 ? 'text-emerald-300' : r.confidence >= 0.5 ? 'text-yellow-300' : 'text-red-300'}`}>{Math.round(r.confidence * 100)}%</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-white/70 text-sm">No changes detected.</div>
+                  )}
+                </div>
+                <div className="px-4 py-3 border-t border-white/10 flex items-center justify-end gap-2">
+                  <button className="px-3 py-1.5 rounded-md border border-white/15 text-[12px]" onClick={() => setPreviewModal({ open: false, rows: null })}>Close</button>
+                  <button className="px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px]" onClick={async () => {
+                    if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+                      setSendResult('Select a spreadsheet and sheet first.');
+                      return;
+                    }
+                    setChatProcessing(true);
+                    try {
+                      const toolCall = {
+                        id: `tool_${Date.now()}_apply_direct`,
+                        type: 'function' as const,
+                        function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: editingText || transcript || 'Apply updates', preview: false }) }
+                      };
+                      const resp = await fetch('/api/genkit-tool-execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames }, images: [] })
+                      });
+                      const data = await resp.json();
+                      if (resp.ok && data?.success) {
+                        setSendResult(data.result || 'Applied updates');
+                        setPreviewModal({ open: false, rows: null });
+                      } else {
+                        setSendResult(data?.error || 'Apply failed');
+                      }
+                    } catch (e) {
+                      setSendResult('Apply failed');
+                    } finally {
+                      setChatProcessing(false);
+                    }
+                  }}>Apply changes</button>
+                </div>
+                      </div>
+                      {/* Quick Add to selected sheet */}
+                      <div className="mt-2 flex items-center justify-between gap-2 text-[12px]">
+                        <div className="text-white/70">{uploadedImages.length} file{uploadedImages.length !== 1 ? 's' : ''} ready</div>
+                        <button
+                          disabled={quickAddLoading || !defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0}
+                          onClick={async () => {
+                            if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+                              setSendResult('Select a spreadsheet and sheet first.');
+                              return;
+                            }
+                            setQuickAddLoading(true);
+                            try {
+                              // Build files payload as base64
+                              const filesPayload: Array<{ data: string; mimeType: string }> = [];
+                              for (const img of uploadedImages) {
+                                const reader = new FileReader();
+                                // eslint-disable-next-line no-await-in-loop
+                                const base64Data = await new Promise<string>((resolve, reject) => {
+                                  reader.onload = () => {
+                                    const result = reader.result as string;
+                                    resolve(result.split(',')[1]);
+                                  };
+                                  reader.onerror = reject;
+                                  reader.readAsDataURL(img.file);
+                                });
+                                filesPayload.push({ data: base64Data, mimeType: img.file.type });
+                              }
+
+                              // Use extract_data_from_files (end-to-end) when possible; fallback to analyze+update
+                              const toolCall = {
+                                id: `tool_${Date.now()}_quick_add`,
+                                type: 'function' as const,
+                                function: { name: 'extract_data_from_files', arguments: JSON.stringify({ transcript: 'Add data from these files to the selected sheet' }) }
+                              };
+                              const resp = await fetch('/api/genkit-tool-execute', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  toolCall,
+                                  context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
+                                  images: filesPayload
+                                })
+                              });
+                              const data = await resp.json();
+                              if (resp.ok && data?.success) {
+                                setSendResult(data.result || 'Added extracted data to sheet');
+                                // Clear uploaded previews
+                                uploadedImages.forEach(img => URL.revokeObjectURL(img.preview));
+                                setUploadedImages([]);
+                              } else {
+                                setSendResult(data?.error || 'Quick add failed');
+                              }
+                            } catch (e) {
+                              setSendResult('Quick add failed');
+                            } finally {
+                              setQuickAddLoading(false);
+                            }
+                          }}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border ${quickAddLoading ? 'bg-white/10 text-white/60' : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400/40'}`}
+                          title="Extract and add data from these files to the selected sheet"
+                        >
+                          {quickAddLoading ? (
+                            <>
+                              <span className="inline-block w-3 h-3 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
+                              Adding…
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12" />
+                              </svg>
+                              Add to selected sheet
+                            </>
+                          )}
+                        </button>
+                      </div>
+            </div>
+          )}
 
           {/* Stepper modal remains unchanged */}
         </div>

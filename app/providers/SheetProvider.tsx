@@ -80,6 +80,18 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (cancelled) return;
         setAllSheetNames(names);
 
+        // Reconcile selected sheets with the latest list from the spreadsheet
+        // Remove any selections that no longer exist
+        if (selectedSheetNames.length > 0) {
+          const filteredSelected = selectedSheetNames.filter(n => names.includes(n));
+          if (filteredSelected.length !== selectedSheetNames.length) {
+            setSelectedSheetNamesState(filteredSelected);
+            if (defaultSpreadsheetId) {
+              void saveDefaultSelections(defaultSpreadsheetId, filteredSelected);
+            }
+          }
+        }
+
         for (const name of names) {
           try {
             const dataRes = await fetch('/api/get-sheet-data', {
