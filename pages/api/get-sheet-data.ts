@@ -142,7 +142,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               setCachedHeaders(spreadsheetId, sheetName, headers, lastRow);
             }
 
-            return res.status(200).json({ data: values });
+            // Always include structure analysis so UI can flag unstructured sheets
+            let structure = null;
+            try {
+              structure = analyzeSheetStructure(values as string[][]);
+            } catch (e) {
+              console.warn(`⚠️ [${requestId}] Structure analysis failed:`, e);
+            }
+
+            return res.status(200).json({ data: values, structure });
             
           } catch (strategyError: unknown) {
             const errorMsg = strategyError instanceof Error ? strategyError.message : String(strategyError);
@@ -214,7 +222,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
             
             console.log(`✅ [${requestId}] Fallback success: ${fallback}, rows: ${response.data.values?.length || 0}`);
-            return res.status(200).json({ data: response.data.values });
+            const values = response.data.values || [];
+            let structure = null;
+            try {
+              structure = analyzeSheetStructure(values as string[][]);
+            } catch (e) {
+              console.warn(`⚠️ [${requestId}] Structure analysis failed:`, e);
+            }
+            return res.status(200).json({ data: values, structure });
             
           } catch (fallbackError: unknown) {
             const fbErrorMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);

@@ -80,11 +80,16 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   };
 
   const handleAddSpreadsheet = async () => {
-    if (!newSheetId.trim()) return;
+    const normalizeSheetId = (input: string): string => {
+      const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      return (match?.[1] || input).trim();
+    };
+    const parsedId = normalizeSheetId(newSheetId);
+    if (!parsedId) return;
     setAddingSheet(true);
     try {
-      await saveSpreadsheetOption(newSheetId.trim());
-      setDefaultSpreadsheetId(newSheetId.trim());
+      await saveSpreadsheetOption(parsedId);
+      setDefaultSpreadsheetId(parsedId);
       setNewSheetId("");
     } finally {
       setAddingSheet(false);
