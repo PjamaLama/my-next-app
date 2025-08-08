@@ -4,6 +4,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
+import { analyzeSheetStructure } from '@/lib/sheetStructure';
 
 // Configure API to handle larger file uploads
 export const config = {
@@ -114,9 +115,39 @@ function detectDateWindow(message: string) {
 
 function parseNumber(value: unknown): number | null {
   if (value == null) return null;
-  const s = String(value).replace(/[,\s]/g, '');
+  const s = String(value).replace(/[\,\s]/g, '');
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : null;
+}
+
+// Reshape messy/unstructured tables into headers + uniform rows for display
+function structureForDisplay(rawTable: string[][]): { headers: string[]; rows: string[][] } {
+  const safe: string[][] = Array.isArray(rawTable) ? rawTable.map(r => Array.isArray(r) ? r.map(v => String(v ?? '')) : []) : [];
+  if (!safe || safe.length === 0) return { headers: [], rows: [] };
+  try {
+    const meta = analyzeSheetStructure(safe);
+    if (meta && meta.columnCount > 0 && meta.detectedHeaders && (meta.isStructured || meta.confidence >= 0.5)) {
+      const width = meta.columnCount;
+      const headers = meta.detectedHeaders.slice(0, width).map(h => String(h ?? ''));
+      const rows = safe.slice(1).map(r => {
+        const shaped = r.slice(0, width).map(v => String(v ?? ''));
+        while (shaped.length < width) shaped.push('');
+        return shaped;
+      }).filter(r => r.some(c => String(c).trim() !== ''));
+      return { headers, rows };
+    }
+  } catch {}
+  // Fallback: synthesize headers from first non-empty row, pad rows to width
+  const firstNonEmpty = safe.find(r => (r || []).some(v => String(v ?? '').trim() !== '')) || [];
+  const width = Math.max(1, firstNonEmpty.length);
+  const toLetters = (n: number) => { let s = '', x = n; while (x > 0) { const m = (x - 1) % 26; s = String.fromCharCode(65 + m) + s; x = Math.floor((x - 1) / 26); } return s || 'A'; };
+  const headers = Array.from({ length: width }, (_, i) => String(firstNonEmpty[i] ?? '').trim() || `Column ${toLetters(i + 1)}`);
+  const rows = safe.slice(1).map(r => {
+    const shaped = r.slice(0, width).map(v => String(v ?? ''));
+    while (shaped.length < width) shaped.push('');
+    return shaped;
+  }).filter(r => r.some(c => String(c).trim() !== ''));
+  return { headers, rows };
 }
 
 function buildSmartTables(
@@ -135,10 +166,11 @@ function buildSmartTables(
   const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
   const sheetName = candidateNames.find((n) => msg.includes(normalizeToken(n))) || candidateNames[0];
   const table = hydratedSheetData[sheetName] || [];
-  if (table.length <= 1) return [];
-
-  const headers = table[0];
-  const rows = table.slice(1);
+  if (table.length === 0) return [];
+  const shaped = structureForDisplay(table);
+  const headers = shaped.headers;
+  const rows = shaped.rows;
+  if (headers.length === 0 || rows.length === 0) return [];
 
   // Filter by date window if a date column exists
   const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
@@ -347,10 +379,11 @@ function answerQuestionFromSheets(
   const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
   const sheetName = candidateNames.find((n) => lower.includes(normalizeToken(n))) || candidateNames[0];
   const table = hydratedSheetData[sheetName] || [];
-  if (table.length <= 1) return null;
-
-  const headers = table[0];
-  const rows = table.slice(1);
+  if (table.length === 0) return null;
+  const shaped = structureForDisplay(table);
+  const headers = shaped.headers;
+  const rows = shaped.rows;
+  if (headers.length === 0 || rows.length === 0) return null;
 
   const range = detectDateWindow(message);
   const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
@@ -477,10 +510,11 @@ function buildChartSpecs(
   const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
   const sheetName = candidateNames.find((n) => message.toLowerCase().includes(normalizeToken(n))) || candidateNames[0];
   const table = hydratedSheetData[sheetName] || [];
-  if (table.length <= 1) return charts;
-
-  const headers = table[0];
-  const rows = table.slice(1);
+  if (table.length === 0) return charts;
+  const shaped = structureForDisplay(table);
+  const headers = shaped.headers;
+  const rows = shaped.rows;
+  if (headers.length === 0 || rows.length === 0) return charts;
 
   // Explicit chart kind override (e.g., "bar chart", "line chart", "pie chart")
   const explicitKind: 'bar' | 'line' | 'pie' | null = /\bbar\s+chart\b/i.test(message)
@@ -610,7 +644,7 @@ async function generateQuickReplies(
 
     if (intent === 'get_data') {
       if (hydratedSheetData && primarySheet) {
-        if (hasDate) suggestions.push("Today’s entries");
+        if (hasDate) suggestions.push("Today's entries");
         if (hasDate) suggestions.push('Past 7 days');
         suggestions.push('Last 3 rows');
         // Propose a column-specific quick filter if we can find a likely column and a value
@@ -630,7 +664,7 @@ async function generateQuickReplies(
     // General
     if (hydratedSheetData && primarySheet) {
       suggestions.push('Show this sheet');
-      if (hasDate) suggestions.push('Today’s entries');
+      if (hasDate) suggestions.push("Today's entries");
       suggestions.push('Unique values');
     } else {
       suggestions.push('Add a new row');
@@ -1425,9 +1459,9 @@ async function processMessage(
         response += '\n\n📋 Selected sheets overview:';
         sheetsToDescribe.slice(0, 3).forEach((name) => {
           const table = hydratedSheetData[name] || [];
-          const headers = (table[0] || []).slice(0, 5);
-          // Show the latest row (tiny table preview)
-          const body = table.length > 1 ? [table[table.length - 1].slice(0, 5)] : [];
+          const shaped = structureForDisplay(table);
+          const headers = shaped.headers.slice(0, 5);
+          const body = shaped.rows.length > 0 ? [shaped.rows[shaped.rows.length - 1].slice(0, 5)] : [];
           dataTables.push({ title: name, headers, rows: body });
         });
       }
@@ -1445,17 +1479,18 @@ async function processMessage(
       const mRange = message.match(/\bfrom\s+([0-9\-\/\.\s]+)\s+(to|until|through)\s+([0-9\-\/\.\s]+)\b/i);
       const sheetsToShow = selectedSheetNames.length > 0 ? selectedSheetNames.filter(n => hydratedSheetData[n]) : Object.keys(hydratedSheetData);
 
-      const formatTable = (name: string, table: string[][], rows: number, columnsLimit = 5): string => {
-        if (!table || table.length === 0) return `\n- ${name}: empty`;
-        const headers = (table[0] || []).slice(0, columnsLimit);
-        const body = table.slice(1, 1 + rows).map(r => r.slice(0, columnsLimit));
+      const formatTable = (name: string, tableRaw: string[][], rows: number, columnsLimit = 5): string => {
+        const shaped = structureForDisplay(tableRaw);
+        if (shaped.headers.length === 0) return `\n- ${name}: empty`;
+        const headers = shaped.headers.slice(0, columnsLimit);
+        const body = shaped.rows.slice(0, rows).map(r => r.slice(0, columnsLimit));
         // Add to structured tables for UI rendering
         dataTables.push({ title: name, headers, rows: body });
         let out = `\n\n▶ ${name}`;
         out += `\n| ${headers.join(' | ')} |`;
         out += `\n| ${headers.map(() => '---').join(' | ')} |`;
         body.forEach(r => { out += `\n| ${r.join(' | ')} |`; });
-        const remaining = Math.max(0, table.length - 1 - rows);
+        const remaining = Math.max(0, shaped.rows.length - rows);
         if (remaining > 0) out += `\n… ${remaining} more row(s)`;
         return out;
       };
@@ -1475,12 +1510,13 @@ async function processMessage(
       let columnAskAnswerText = '';
       let columnAskSourceSheet: string | null = null;
       for (const name of sheetsToShow.slice(0, 3)) {
-        const table = hydratedSheetData[name] || [];
-        if (table.length <= 1) {
+        const raw = hydratedSheetData[name] || [];
+        const shaped = structureForDisplay(raw);
+        if (shaped.headers.length === 0 || shaped.rows.length === 0) {
           dataPreview += `\n\n▶ ${name}\n(no data)`;
           continue;
         }
-        const headers = table[0];
+        const headers = shaped.headers;
         const dateColIdx = headers.findIndex(h => /date|timestamp|time/i.test(h));
         
         // Distinct/unique values for a referenced column
@@ -1536,9 +1572,9 @@ async function processMessage(
           }
         }
         if (wantToday && dateColIdx >= 0) {
-          const todays = table.slice(1).filter(r => normalizeDate(r[dateColIdx] || '') === todayKey);
-          const take = todays.length > 0 ? todays : [table[table.length - 1]]; // fallback to latest
-          dataPreview += formatTable(name, [headers, ...take], take.length);
+          const todays = shaped.rows.filter(r => normalizeDate(r[dateColIdx] || '') === todayKey);
+          const take = todays.length > 0 ? todays : [shaped.rows[shaped.rows.length - 1]]; // fallback to latest
+          dataPreview += formatTable(name, [headers, ...take] as unknown as string[][], take.length);
           matchedAny = matchedAny || todays.length > 0;
           continue;
         }
@@ -1547,32 +1583,32 @@ async function processMessage(
           const start = mRange
             ? dayjs(normalizeDate(mRange[1].trim())).startOf('day')
             : dayjs().subtract(wantPastNDays || wantLastWeek || 0, 'day').startOf('day');
-          const inRange = table.slice(1).filter(r => {
+          const inRange = shaped.rows.filter(r => {
             const key = normalizeDate(r[dateColIdx] || '');
             const d = dayjs(key);
             return d.isValid() && (d.isAfter(start) || d.isSame(start)) && (d.isBefore(end) || d.isSame(end));
           });
           if (inRange.length > 0) {
             const rows = Math.min(10, inRange.length);
-            dataPreview += formatTable(name, [headers, ...inRange.slice(0, rows)], rows);
+            dataPreview += formatTable(name, [headers, ...inRange.slice(0, rows)] as unknown as string[][], rows);
             matchedAny = true;
           } else {
             // Fallback to latest row if no matches
-            const latest = [headers, table[table.length - 1]];
-            dataPreview += formatTable(name, latest, 1);
+            const latest = [headers, shaped.rows[shaped.rows.length - 1]];
+            dataPreview += formatTable(name, latest as unknown as string[][], 1);
           }
           continue;
         }
         if (wantAll) {
-          const rows = Math.min(10, table.length - 1);
-          dataPreview += formatTable(name, table, rows);
+          const rows = Math.min(10, shaped.rows.length);
+          dataPreview += formatTable(name, [headers, ...shaped.rows] as unknown as string[][], rows);
           matchedAny = matchedAny || rows > 0;
           continue;
         }
         if (wantRecent) {
-          const rows = Math.min(3, table.length - 1);
-          const recent = [headers, ...table.slice(-rows)];
-          dataPreview += formatTable(name, recent, rows);
+          const rows = Math.min(3, shaped.rows.length);
+          const recent = [headers, ...shaped.rows.slice(-rows)];
+          dataPreview += formatTable(name, recent as unknown as string[][], rows);
           matchedAny = matchedAny || rows > 0;
           continue;
         }
@@ -1580,7 +1616,7 @@ async function processMessage(
       if (dataPreview && dataTables.length === 0) {
         // If existing response is generic, replace it with a more helpful lead-in
         const generic = 'How can I help? You can ask me to update your sheet, fetch data, or extract info from files.';
-        const lead = matchedAny ? 'Here’s the data you asked for:' : 'No rows matched that request; showing the latest available:';
+        const lead = matchedAny ? "Here's the data you asked for:" : 'No rows matched that request; showing the latest available:';
         response = response && !response.includes(generic) ? response : lead;
         response += `\n\n📄 Data preview:${dataPreview}`;
       }

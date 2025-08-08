@@ -136,7 +136,6 @@ export default function Home() {
   const [listening, setListening] = useState(false);
   const listeningRef = useRef(listening);
   const [editingText, setEditingText] = useState("");
-  const [displayText, setDisplayText] = useState("");
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [stepperModalOpen, setStepperModalOpen] = useState(false);
@@ -414,12 +413,7 @@ export default function Home() {
     console.log('Interim text changed:', interimText);
   }, [interimText]);
 
-  // Update display text when voice recording or editing text changes
-  useEffect(() => {
-    const newDisplayText = editingText + (listening ? (transcript + interimText) : '');
-    setDisplayText(newDisplayText);
-    console.log('Display text updated:', newDisplayText);
-  }, [editingText, listening, transcript, interimText]);
+  // Note: We keep the textarea bound only to editingText to preserve caret position while listening.
 
   // Debug editingText changes
   useEffect(() => {
@@ -1750,7 +1744,7 @@ export default function Home() {
                     className={
                       `max-w-[85%] px-3 py-2 rounded-2xl text-sm ` +
                       (message.role === 'user'
-                        ? 'bg-sky-600 text-white shadow'
+                        ? 'matte-emerald text-white shadow'
                         : message.role === 'system'
                         ? 'text-white/70 italic'
                         : 'text-white/90')
@@ -2032,14 +2026,19 @@ export default function Home() {
 
                   <div className="relative">
                     <textarea
-                      value={displayText}
+                      value={editingText}
                       onChange={(e) => setEditingText(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                          if (editingText.trim() || uploadedImages.length > 0) {
-                            processWithAIChat(editingText.trim() || '');
+                          // Include any active transcript snippets before sending
+                          const voiceSuffix = listening ? (transcript + interimText) : '';
+                          const toSend = (editingText + (voiceSuffix ? ` ${voiceSuffix}` : '')).trim();
+                          if (toSend || uploadedImages.length > 0) {
+                            processWithAIChat(toSend);
                             setEditingText('');
+                            // Clear voice buffers if we consumed them
+                            if (voiceSuffix) { setTranscript(""); setInterimText(""); }
                           }
                         }
                       }}
@@ -2246,9 +2245,15 @@ export default function Home() {
                         )}
                       </button>
 
-                      {(editingText.trim() || uploadedImages.length > 0) && (
+                      {(editingText.trim() || (listening && (transcript || interimText)) || uploadedImages.length > 0) && (
                         <button
-                          onClick={() => { processWithAIChat(editingText.trim() || ''); setEditingText(''); }}
+                          onClick={() => {
+                            const voiceSuffix = listening ? (transcript + interimText) : '';
+                            const toSend = (editingText + (voiceSuffix ? ` ${voiceSuffix}` : '')).trim();
+                            processWithAIChat(toSend);
+                            setEditingText('');
+                            if (voiceSuffix) { setTranscript(""); setInterimText(""); }
+                          }}
                           className="w-9 h-9 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
                           title="Send"
                           aria-label="Send"

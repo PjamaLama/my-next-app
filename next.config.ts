@@ -35,8 +35,6 @@ const nextConfig: NextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
-  // Avoid trace output on local Windows to prevent EPERM on .next/trace
-  outputFileTracing: !(isWindows && !isCI),
   // Disable Next.js telemetry
   env: {
     NEXT_TELEMETRY_DISABLED: '1',

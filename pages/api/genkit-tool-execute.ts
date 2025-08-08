@@ -1351,6 +1351,16 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
           }
           if (val != null && String(val).trim() !== '') mapped[h] = String(val);
         });
+        // Heuristic: if the target sheet has an 'Item' column and our incoming has 'DETAILS OF VISIT', map it strongly
+        const hasItem = headers.some(h => h.toLowerCase() === 'item');
+        if (hasItem && !mapped['Item']) {
+          const prefer = (rowObjRaw as any)['DETAILS OF VISIT'] || (rowObjRaw as any)['Details of Visit'] || (rowObjRaw as any)['details of visit'];
+          if (prefer) mapped['Item'] = String(prefer);
+        }
+        // Normalize amount preference: prefer Total Incl if present into amount-like columns
+        if (!mapped['Fuel Cost in Rands'] && (rowObjRaw as any)['Total Incl']) {
+          mapped['Fuel Cost in Rands'] = String((rowObjRaw as any)['Total Incl']);
+        }
         const mappedCount = Object.keys(mapped).length;
         const finalScore = mappedCount >= 2 ? score + mappedCount * 0.1 : score * 0.5;
         if (finalScore > bestScore) { bestScore = finalScore; bestSheet = sn; bestMapped = mapped; }

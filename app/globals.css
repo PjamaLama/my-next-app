@@ -234,6 +234,17 @@ button:active {
   }
 }
 
+/* Matte, slightly grainy emerald background for user chat bubbles */
+.matte-emerald {
+  background-color: #0d8b51; /* muted Google Sheets green */
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 3px 3px, 3px 3px;
+  background-position: 0 0, 1px 1px;
+  filter: saturate(0.9) brightness(0.98);
+}
+
 /* Improve focus visibility for accessibility without heavy input outlines */
 /* Restrict default outline to interactive controls that benefit from it */
 a:focus-visible,

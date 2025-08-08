@@ -27,9 +27,15 @@ const DEFAULT_SYNONYMS: Record<string, string[]> = {
   'business km': ['business kms', 'work km', 'work kms'],
   'prvt km': ['private km', 'private kms', 'personal km', 'prvt kms'],
   'fuel in liters': ['fuel in litres', 'liters', 'litres', 'fuel liters', 'fuel litres', 'fuel qty', 'qty', 'quantity'],
-  'fuel cost in rands': ['fuel cost', 'cost', 'amount', 'price', 'rands', 'zar', 'total cost'],
+  'fuel cost in rands': ['fuel cost', 'cost', 'amount', 'price', 'rands', 'zar', 'total cost', 'total incl', 'total including', 'total inc', 'incl total'],
   'town visited': ['town', 'city', 'location', 'destination'],
-  'sales made': ['sales', 'revenue', 'total sales']
+  'sales made': ['sales', 'revenue', 'total sales'],
+  // Financial/receipt sheets
+  'item': ['details of visit', 'details', 'visit', 'merchant', 'vendor', 'shop', 'restaurant', 'place', 'description', 'item name'],
+  'category': ['type', 'group', 'class'],
+  'ex vat': ['ex vat', 'exclusive', 'excl', 'net', 'subtotal', 'before vat'],
+  'vat': ['vat', 'tax', 'value added tax', 'v.a.t'],
+  'total incl': ['total including', 'incl total', 'grand total', 'amount', 'total', 'fuel cost in rands']
 };
 
 function normalizeToken(text: string): string {
@@ -150,12 +156,12 @@ export function matchRowIdentity(headers: string[], existingRows: string[][], ca
   const dateIdx = getIdx('date');
   const regIdx = getIdx('reg#') ?? getIdx('registration') ?? getIdx('vehicle reg');
   const vehicleIdx = getIdx('vehicle');
-  const amountIdx = getIdx('fuel cost in rands') ?? getIdx('amount') ?? getIdx('total');
+  const amountIdx = getIdx('fuel cost in rands') ?? getIdx('total incl') ?? getIdx('amount') ?? getIdx('total');
 
   const candidateDate = candidate['Date'] || candidate['date'] || '';
   const candidateReg = candidate['Reg#'] || candidate['registration'] || candidate['Vehicle Reg'] || '';
   const candidateVehicle = candidate['Vehicle'] || candidate['vehicle'] || '';
-  const candidateAmount = candidate['Fuel Cost in Rands'] || candidate['Amount'] || candidate['Total'] || '';
+  const candidateAmount = candidate['Fuel Cost in Rands'] || (candidate as any)['Total Incl'] || (candidate as any)['total incl'] || candidate['Amount'] || candidate['Total'] || '';
 
   const candDateKey = parseDateFlexible(candidateDate) || candidateDate;
   const candAmount = parseDecimal(candidateAmount);
