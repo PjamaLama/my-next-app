@@ -671,6 +671,10 @@ async function processMessage(
       response += `\n\nCurrently connected to: ${context.sheetName}`;
     }
 
+    // If client sent pre-cached sheet names/data in context, keep them for the model/tooling layer
+    // Note: We do not auto-fetch here; the client should hydrate context once per spreadsheet
+    // context.sheetData can carry a subset or specific sheet data when needed
+
     // Build quick replies (lightweight, history-aware)
     const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
 

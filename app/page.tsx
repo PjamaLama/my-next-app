@@ -109,6 +109,10 @@ export default function Home() {
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(true);
+  // Prefetched sheet metadata and cache
+  const [allSheetNames, setAllSheetNames] = useState<string[]>([]);
+  const [sheetDataCache, setSheetDataCache] = useState<Record<string, string[][]>>({});
+  const [sheetsPrefetched, setSheetsPrefetched] = useState<boolean>(false);
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
   const [listening, setListening] = useState(false);
@@ -892,6 +896,9 @@ export default function Home() {
           context: {
             spreadsheetId: defaultSpreadsheetId,
             sheetNames: selectedSheetNames,
+            // hydrate chat with prefetched sheet info so server can avoid refetches
+            sheetData: sheetDataCache,
+            allSheetNames,
             availableTools: ['update_sheet_cells', 'insert_sheet_row', 'analyze_sheet_data', 'bulk_update_cells'],
           },
           conversationHistory: chatMessages.slice(-5),
@@ -1237,6 +1244,52 @@ export default function Home() {
     setSendResult("");
   };
 
+  // Prefetch all sheet names and data once per selected spreadsheet
+  useEffect(() => {
+    let cancelled = false;
+    const doPrefetch = async () => {
+      if (!defaultSpreadsheetId) {
+        setAllSheetNames([]);
+        setSheetDataCache({});
+        setSheetsPrefetched(false);
+        return;
+      }
+      // Reset caches when spreadsheet changes
+      setAllSheetNames([]);
+      setSheetDataCache({});
+      setSheetsPrefetched(false);
+      try {
+        const namesRes = await fetch('/api/get-sheet-names', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId })
+        });
+        const namesJson = await namesRes.json();
+        const names: string[] = namesJson.sheetNames || namesJson.data || [];
+        if (cancelled) return;
+        setAllSheetNames(names);
+
+        for (const name of names) {
+          try {
+            const dataRes = await fetch('/api/get-sheet-data', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: name })
+            });
+            const dataJson = await dataRes.json();
+            if (cancelled) return;
+            setSheetDataCache(prev => ({ ...prev, [name]: dataJson.data || [] }));
+          } catch (e) {
+            console.warn('Prefetch sheet data failed for', name, e);
+          }
+        }
+        if (!cancelled) setSheetsPrefetched(true);
+      } catch (e) {
+        console.warn('Prefetch sheet names failed', e);
+      }
+    };
+    void doPrefetch();
+    return () => { cancelled = true; };
+  }, [defaultSpreadsheetId]);
+
 
 
 
@@ -1403,6 +1456,24 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Upfront spreadsheet selection nudges */}
+            {chatMessages.length === 0 && !defaultSpreadsheetId && (
+              <div className="mb-4 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
+                <p className="text-sm mb-2">No spreadsheet selected.</p>
+                <p className="text-xs opacity-80 mb-3">Please add or select a spreadsheet to enable smart updates.</p>
+                <div className="flex gap-2">
+                  <a href={process.env.NEXT_PUBLIC_SHEETS_LINK || '#'} target="_blank" className="px-3 py-1.5 text-xs rounded-lg bg-sky-600 hover:bg-sky-700 text-white">Open Google Sheets</a>
+                </div>
+              </div>
+            )}
+
+            {chatMessages.length === 0 && defaultSpreadsheetId && !sheetsPrefetched && (
+              <div className="mb-4 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
+                <p className="text-sm">Preparing your sheets…</p>
+                <p className="text-xs opacity-80">Fetching sheet names and data so chat can answer quickly.</p>
               </div>
             )}
 
