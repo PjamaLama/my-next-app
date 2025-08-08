@@ -1311,7 +1311,7 @@ export default function Home() {
     <>
       <PWAInstaller />
       <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-0 overflow-x-hidden">
-        <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-32 sm:pb-40 pt-0">
+        <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-48 sm:pb-56 pt-0">
           {/* Main Voice/Text Input Section - Mobile optimized */}
           <section className="glass rounded-2xl p-4 sm:p-6 space-y-4 border border-white/10 animate-fade-in-up">
             {/* Chat Messages Display */}
@@ -1463,40 +1463,7 @@ export default function Home() {
               </div>
             )}
 
-            {defaultSpreadsheetId && allSheetNames.length > 0 && (
-              <div className="mb-3">
-                <div className="flex flex-wrap gap-2">
-                  {allSheetNames.map(name => {
-                    const active = selectedSheetNames?.includes(name);
-                    return (
-                      <button
-                        key={name}
-                        onClick={() => {
-                          const set = new Set(selectedSheetNames || []);
-                          if (set.has(name)) set.delete(name); else set.add(name);
-                          setSelectedSheetNames(Array.from(set));
-                        }}
-                        className={`px-3 py-1.5 rounded-full text-xs border transition-all duration-200 ${
-                          active
-                            ? 'bg-gradient-to-r from-sky-600 to-fuchsia-600 text-white border-transparent shadow-sm ring-2 ring-sky-400/40'
-                            : 'bg-white/5 text-white/90 border-white/15 hover:bg-white/10'
-                        }`}
-                        aria-pressed={active}
-                        aria-label={`Select sheet ${name}`}
-                        title={name}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {active && (
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                          )}
-                          {name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {/* Sheet chips moved to compact bar above the input */}
 
             {/* AI Chat Input Section moved outside to avoid transformed ancestor affecting fixed positioning */}
           </section>
@@ -1509,6 +1476,40 @@ export default function Home() {
             <div className="relative w-full">
               <div className="w-full mb-2">
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
+                  {defaultSpreadsheetId && allSheetNames.length > 0 && (
+                    <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
+                      <div className="flex flex-wrap gap-1.5">
+                        {allSheetNames.map((name) => {
+                          const active = selectedSheetNames?.includes(name);
+                          return (
+                            <button
+                              key={name}
+                              onClick={() => {
+                                const set = new Set(selectedSheetNames || []);
+                                if (set.has(name)) set.delete(name); else set.add(name);
+                                setSelectedSheetNames(Array.from(set));
+                              }}
+                              className={`px-2 py-0.5 rounded-full text-[11px] border transition-all duration-200 max-w-[160px] truncate ${
+                                active
+                                  ? 'bg-sky-600 text-white border-transparent shadow-sm'
+                                  : 'bg-white/5 text-white/90 border-white/15 hover:bg-white/10'
+                              }`}
+                              aria-pressed={active}
+                              aria-label={`Select sheet ${name}`}
+                              title={name}
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                {active && (
+                                  <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                                )}
+                                <span className="truncate">{name}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {uploadedImages.length > 0 && (
                     <div className="p-3 border-b border-white/10">
                       <div className="flex flex-wrap gap-2">
