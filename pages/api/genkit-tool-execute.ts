@@ -232,6 +232,41 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
     };
     const endColumn = getColumnLetter(columnCount);
 
+    // Create the STRUCTURED sheet up-front to ensure the original sheet is never modified
+    const baseName = (typeof newSheetName === 'string' && newSheetName.trim()) ? newSheetName.trim() : `${sheetName} (Structured)`;
+    const existingNames = new Set((meta.data.sheets || []).map(s => s.properties?.title).filter(Boolean) as string[]);
+
+    const chooseUniqueName = (): string => {
+      if (!existingNames.has(baseName)) return baseName;
+      let i = 2;
+      while (i < 1000) {
+        const candidate = `${baseName} ${i}`;
+        if (!existingNames.has(candidate)) return candidate;
+        i++;
+      }
+      return `${baseName} ${Date.now()}`;
+    };
+
+    let targetName = chooseUniqueName();
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: { requests: [{ addSheet: { properties: { title: targetName } } }] }
+      });
+    } catch (e: any) {
+      const msg = (e?.message || '').toString();
+      if (msg.includes('already exists') || msg.includes('Duplicate') || msg.includes('409')) {
+        // Retry once with a timestamped name
+        targetName = `${baseName} ${Date.now()}`;
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: { requests: [{ addSheet: { properties: { title: targetName } } }] }
+        });
+      } else {
+        throw e;
+      }
+    }
+
     const strategies = [
       `${escaped}!A1:${endColumn}${Math.min(rowCount, 2000)}`,
       `${escaped}!A:${endColumn}`,
@@ -258,16 +293,24 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
       }
     }
 
+    let sourceReadWarning: string | undefined;
     if (!data || data.length === 0) {
       const detail = lastReadError instanceof Error ? lastReadError.message : String(lastReadError || 'Unknown read error');
-      return res.status(500).json({ success: false, error: 'Failed to read source sheet data for conversion', details: detail });
+      sourceReadWarning = `Source read produced no rows. Details: ${detail}`;
+      data = [];
     }
 
     // Build CSV for AI conversion
     const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
-    let converted = (await convertSheetFlow.run({ sheetName, sheetCsv: csv })) as unknown as ConvertOutput;
+    let converted: ConvertOutput | null = null;
+    try {
+      converted = (await convertSheetFlow.run({ sheetName, sheetCsv: csv })) as unknown as ConvertOutput;
+    } catch (convErr) {
+      // Proceed with heuristic fallback below
+      converted = null;
+    }
 
-    // Fallback: if AI conversion failed or returned empty, derive a structured table heuristically
+    // Fallback: if AI conversion failed, threw, or returned empty, derive a structured table heuristically
     if (!converted || !Array.isArray(converted.headers) || converted.headers.length === 0) {
       try {
         const metaAnalysis = analyzeSheetStructure(data);
@@ -307,53 +350,7 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
     }
 
     // Helper to generate a unique sheet name avoiding collisions
-    const baseName = (typeof newSheetName === 'string' && newSheetName.trim()) ? newSheetName.trim() : `${sheetName} (Structured)`;
-    const existingNames = new Set((meta.data.sheets || []).map(s => s.properties?.title).filter(Boolean) as string[]);
-
-    const chooseUniqueName = (): string => {
-      if (!existingNames.has(baseName)) return baseName;
-      // Try numbered suffixes up to a reasonable bound
-      // If baseName already ends with (Structured) or similar, append a counter
-      let i = 2;
-      while (i < 1000) {
-        const candidate = `${baseName} ${i}`;
-        if (!existingNames.has(candidate)) return candidate;
-        i++;
-      }
-      // Fallback to timestamp
-      return `${baseName} ${Date.now()}`;
-    };
-
-    const createSheetWithUniqueName = async (): Promise<string> => {
-      let targetName = chooseUniqueName();
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          await sheets.spreadsheets.batchUpdate({
-            spreadsheetId,
-            requestBody: { requests: [{ addSheet: { properties: { title: targetName } } }] }
-          });
-          return targetName;
-        } catch (e: any) {
-          const msg = (e?.message || '').toString();
-          // If the error indicates duplicate name, pick a new one and retry
-          if (msg.includes('already exists') || msg.includes('Duplicate') || msg.includes('409')) {
-            existingNames.add(targetName);
-            targetName = chooseUniqueName();
-            continue;
-          }
-          throw e;
-        }
-      }
-      // If repeated duplicate errors, append timestamp and try once
-      const finalName = `${baseName} ${Date.now()}`;
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: { requests: [{ addSheet: { properties: { title: finalName } } }] }
-      });
-      return finalName;
-    };
-
-    const targetName = await createSheetWithUniqueName();
+    // targetName is already created above
 
     // Ensure the new sheet has enough capacity for the data
     const totalRows = (converted.rows?.length || 0) + 1; // +1 for headers
@@ -394,7 +391,7 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
       valueInputOption: 'RAW',
       requestBody: { values }
     });
-    return res.status(200).json({ success: true, newSheetName: targetName, rows: converted.rows.length });
+    return res.status(200).json({ success: true, newSheetName: targetName, rows: normalizedRows.length, warning: sourceReadWarning });
   } catch (e) {
     return res.status(500).json({ success: false, error: e instanceof Error ? e.message : String(e) });
   }

@@ -1822,9 +1822,6 @@ export default function Home() {
                   )}
 
                   <div className="relative">
-                    <div className="absolute right-2 -top-11">
-                      <Toolbelt selected={enabledTools} onChange={setEnabledTools} />
-                    </div>
                     <textarea
                       value={displayText}
                       onChange={(e) => setEditingText(e.target.value)}
@@ -1852,6 +1849,8 @@ export default function Home() {
                     />
 
                     <div className="absolute right-2 bottom-2 flex items-center gap-2">
+                      {/* Toolbelt icon inside the action row to avoid overlapping top controls */}
+                      <Toolbelt selected={enabledTools} onChange={setEnabledTools} />
                       {listening && (transcript || interimText) && (
                         <button
                           onClick={() => { setTranscript(""); setInterimText(""); }}
