@@ -97,9 +97,9 @@ export default function RootLayout({
               <SettingsProvider> {/* Wrap with SettingsProvider */}
                 <FirestoreSyncProvider>
                   <ChatProvider>
+                    {/* Sidebar renders only when logged in; margin should follow CSS var */}
                     <SidePanel />
-                    <div className="transition-all" style={{ marginLeft: 'var(--sidebar-width, 300px)' }}>
-                      {/* Hide top nav to give full space to chat; branding moved to sidebar */}
+                    <div className="transition-all" style={{ marginLeft: 'var(--sidebar-width, 0px)' }}>
                       {children}
                     </div>
                   </ChatProvider>

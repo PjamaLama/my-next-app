@@ -1313,19 +1313,25 @@ export default function Home() {
           <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-fuchsia-500/20 blur-3xl rounded-full" />
         </div>
 
+        {/* Top centered beta status */}
+        <div className="relative">
+          <div className="mx-auto max-w-6xl px-6 pt-14">
+            <div className="flex items-center justify-center">
+              <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-sm shadow-sm ${betaFull ? 'border-red-400/40 text-red-200 bg-red-500/10' : 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10'}`}>
+                <span className="font-semibold">Private Beta</span>
+                <span className="opacity-80">{betaFull ? 'Beta full' : `${spotsLeft} spots left`}</span>
+                <span className="opacity-60 text-xs">{betaCount}/{BETA_LIMIT}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Hero */}
         <section className="relative">
           <div className="mx-auto max-w-6xl px-6 pt-20 pb-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
               {/* Hero copy */}
               <div>
-                <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-white/20 bg-white/5 mb-4">
-                  <span className="opacity-80">Private Beta</span>
-                  <span className={`ml-2 inline-flex items-center gap-2 text-xs px-2 py-0.5 rounded-full border ${betaFull ? 'border-red-400/40 text-red-200 bg-red-500/10' : 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10'}`}>
-                    {betaFull ? 'Beta full' : `${spotsLeft} spots left`}
-                  </span>
-                  <span className="opacity-60">{betaCount}/{BETA_LIMIT}</span>
-                </div>
                 <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300">
                   Speak data. Sheety AI writes it to your Sheets.
                 </h1>

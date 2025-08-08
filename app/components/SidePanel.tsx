@@ -24,6 +24,11 @@ const SidePanel: React.FC = () => {
     }
   }, [width]);
 
+  // Hide sidebar entirely on landing (logged-out) state
+  if (!user) {
+    return null;
+  }
+
   return (
     <aside
       className="fixed left-0 top-0 bottom-0 z-40 bg-gray-900/90 text-white border-r border-white/10 shadow-sm"
