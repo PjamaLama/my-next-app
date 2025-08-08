@@ -1547,21 +1547,19 @@ export default function Home() {
                     {betaFull ? 'Join waitlist' : 'Join the beta'}
                   </button>
                   {/* Continue with Google (login hint) if seen before */}
-                  <button
-                    onClick={() => continueWithGoogle?.(typeof window !== 'undefined' ? localStorage.getItem('lastGoogleEmail') || undefined : undefined)}
-                    className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20"
-                  >
-                    Continue with Google
-                  </button>
+                  {lastGoogle?.email && (
+                    <button
+                      onClick={() => continueWithGoogle?.(lastGoogle.email)}
+                      className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20"
+                    >
+                      Continue as {lastGoogle.name || lastGoogle.email}
+                    </button>
+                  )}
                   <a href="#how-it-works" className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10">
                     See how it works
                   </a>
                 </div>
-                <div className="mt-6 grid grid-cols-3 gap-2 text-[10px] text-white/60 max-w-sm">
-                  <div className="glass-soft rounded-lg p-2 text-center">Google Sign-In</div>
-                  <div className="glass-soft rounded-lg p-2 text-center">Voice + Text</div>
-                  <div className="glass-soft rounded-lg p-2 text-center">Write to Sheets</div>
-                </div>
+                {/* Compact feature hints removed to reduce redundancy */}
               </div>
               {/* Login card (kept) */}
               <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover">
@@ -1595,11 +1593,7 @@ export default function Home() {
                       <p className="mt-1">{authError}</p>
                     </div>
                   )}
-                  <div className="mt-6 grid grid-cols-3 gap-2 text-[10px] text-white/60">
-                    <div className="glass-soft rounded-lg p-2 text-center">Google Sign-In</div>
-                    <div className="glass-soft rounded-lg p-2 text-center">Voice + Text</div>
-                    <div className="glass-soft rounded-lg p-2 text-center">Write to Sheets</div>
-                  </div>
+                  {/* Redundant badges removed to keep the card clean */}
                 </div>
                 </div>
               </div>

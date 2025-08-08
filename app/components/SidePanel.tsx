@@ -9,32 +9,76 @@ import { useFirebase } from '../providers/FirebaseProvider';
 const ChatSidebar = dynamic(() => import('./ChatSidebar'), { ssr: false });
 
 const EXPANDED_WIDTH = 300;
-const PEEK_WIDTH = 200;
+const PEEK_WIDTH = 220;
 
 const SidePanel: React.FC = () => {
   const { user, signOutUser } = useFirebase();
   const [peek, setPeek] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const width = peek ? PEEK_WIDTH : EXPANDED_WIDTH;
 
-  // Keep layout in sync with navbar/main content
+  // Track viewport for mobile behavior
+  useEffect(() => {
+    const update = () => setIsMobile(window.innerWidth < 640);
+    update();
+    window.addEventListener('resize', update);
+    const openHandler = () => setMobileOpen(true);
+    const closeHandler = () => setMobileOpen(false);
+    window.addEventListener('open-sidebar', openHandler as EventListener);
+    window.addEventListener('close-sidebar', closeHandler as EventListener);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  // Keep layout in sync with navbar/main content (desktop only pushes content)
   useEffect(() => {
     if (typeof document !== 'undefined') {
-      document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
+      document.documentElement.style.setProperty('--sidebar-width', isMobile ? '0px' : `${width}px`);
     }
-  }, [width]);
+  }, [width, isMobile]);
+
+  // Lock background scroll when mobile sidebar is open; close on Escape
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const original = document.body.style.overflow;
+    if (isMobile && mobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = original || '';
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobile && mobileOpen) setMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = original || '';
+    };
+  }, [isMobile, mobileOpen]);
 
   // Hide sidebar entirely on landing (logged-out) state
   if (!user) {
     return null;
   }
 
+  const visible = isMobile ? mobileOpen : true;
+
   return (
-    <aside
-      className="fixed left-0 top-0 bottom-0 z-40 bg-gray-900/90 text-white border-r border-white/10 shadow-sm"
-      style={{ width }}
-      aria-label="Side panel"
-    >
+    <>
+      {/* Mobile backdrop */}
+      {isMobile && mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm sm:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`fixed top-0 bottom-0 z-50 text-white shadow-lg transition-transform duration-200 ease-out ${isMobile ? 'sm:hidden' : ''} ${isMobile ? 'bg-gray-900/95' : 'bg-gray-900/90 border-r border-white/10'} ${visible ? 'translate-x-0 left-0' : '-translate-x-full left-0'}`}
+        style={{ width: isMobile ? '85vw' : width }}
+        aria-label="Side panel"
+      >
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between">
@@ -61,6 +105,16 @@ const SidePanel: React.FC = () => {
             >
               {peek ? <ChevronRight className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} /> : <ChevronLeft className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />}
             </button>
+            {isMobile && (
+              <button
+                onClick={() => setMobileOpen(false)}
+                className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent focus:outline-none focus:ring-1 focus:ring-white/30`}
+                title="Close"
+                aria-label="Close sidebar"
+              >
+                <ChevronLeft className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -103,6 +157,7 @@ const SidePanel: React.FC = () => {
         )}
       </div>
     </aside>
+    </>
   );
 };
 
