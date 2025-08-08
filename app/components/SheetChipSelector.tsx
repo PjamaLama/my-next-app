@@ -97,70 +97,9 @@ const SheetChipSelector: React.FC = () => {
 
   return (
     <div className="space-y-3">
-      {/* Header with selection count */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Select Sheets to Edit
-        </h3>
-        {selectedSheetNames.length > 0 && (
-          <button
-            type="button"
-            className="text-xs px-2 py-1 rounded border bg-white dark:bg-gray-800 hover:bg-gray-50"
-            onClick={async () => {
-              // Offer convert action for the first selected unstructured sheet
-              const first = selectedSheetNames.find(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
-              if (!first) return;
-              const spreadsheetId = defaultSpreadsheetId;
-              try {
-                const resp = await fetch('/api/genkit-tool-execute', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    toolCall: { function: { name: 'convert_unstructured_sheet', arguments: JSON.stringify({ spreadsheetId, sheetName: first }) } }
-                  })
-                });
-                if (!resp.ok) {
-                  const t = await resp.text();
-                  console.error('Convert failed:', t);
-                  await notify({
-                    title: 'Conversion failed',
-                    description: 'Could not convert the sheet. Please try again later.',
-                    tone: 'danger',
-                    okText: 'Close'
-                  });
-                } else {
-                  const j = await resp.json();
-                  await notify({
-                    title: 'Structured sheet created',
-                    description: `New sheet: ${j.newSheetName}`,
-                    tone: 'success',
-                    okText: 'Great'
-                  });
-                }
-              } catch (e) {
-                console.error(e);
-                await notify({
-                  title: 'Conversion error',
-                  description: 'An error occurred during conversion.',
-                  tone: 'danger',
-                  okText: 'Close'
-                });
-              }
-            }}
-            title="Convert selected unstructured sheet into a new structured sheet"
-          >
-            Convert to structured
-          </button>
-        )}
-        {selectedSheetNames.length > 0 && (
-          <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full">
-            {selectedSheetNames.length} selected
-          </span>
-        )}
-      </div>
-      
-      {/* Sheet chips */}
-      <div className="flex flex-wrap gap-2">
+      {/* Sheet chips with compact control overlay */}
+      <div className="relative">
+        <div className="flex flex-wrap gap-2 pr-36 pb-12">
         {sheetNames.map(name => {
           const isSelected = selectedSheetNames.includes(name);
           const structure = sheetStructureCache[name];
@@ -197,6 +136,65 @@ const SheetChipSelector: React.FC = () => {
             </button>
           );
         })}
+        </div>
+        {/* Compact controls anchored bottom-right */}
+        <div className="absolute bottom-2 right-2 flex items-center gap-2">
+          <span className="text-[11px] text-gray-600 dark:text-gray-300 whitespace-nowrap">Select sheets to edit</span>
+          {selectedSheetNames.length > 0 && (
+            <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+              {selectedSheetNames.length} selected
+            </span>
+          )}
+          {selectedSheetNames.length > 0 && (
+            <button
+              type="button"
+              className="text-[11px] px-2 py-1 rounded border bg-white dark:bg-gray-800 hover:bg-gray-50"
+              onClick={async () => {
+                const first = selectedSheetNames.find(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
+                if (!first) return;
+                const spreadsheetId = defaultSpreadsheetId;
+                try {
+                  const resp = await fetch('/api/genkit-tool-execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      toolCall: { function: { name: 'convert_unstructured_sheet', arguments: JSON.stringify({ spreadsheetId, sheetName: first }) } }
+                    })
+                  });
+                  if (!resp.ok) {
+                    const t = await resp.text();
+                    console.error('Convert failed:', t);
+                    await notify({
+                      title: 'Conversion failed',
+                      description: 'Could not convert the sheet. Please try again later.',
+                      tone: 'danger',
+                      okText: 'Close'
+                    });
+                  } else {
+                    const j = await resp.json();
+                    await notify({
+                      title: 'Structured sheet created',
+                      description: `New sheet: ${j.newSheetName}`,
+                      tone: 'success',
+                      okText: 'Great'
+                    });
+                  }
+                } catch (e) {
+                  console.error(e);
+                  await notify({
+                    title: 'Conversion error',
+                    description: 'An error occurred during conversion.',
+                    tone: 'danger',
+                    okText: 'Close'
+                  });
+                }
+              }}
+              title="Convert selected unstructured sheet into a new structured sheet"
+            >
+              Convert to structured
+            </button>
+          )}
+        </div>
       </div>
       
       {/* Help text */}
