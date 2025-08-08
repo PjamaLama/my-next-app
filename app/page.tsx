@@ -862,6 +862,62 @@ export default function Home() {
     await handleFiles(files);
   };
 
+  // Quick add helper (extract + insert/update into selected sheet)
+  const performQuickAdd = async () => {
+    if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+      setSendResult('Select a spreadsheet and sheet first.');
+      return;
+    }
+    if (uploadedImages.length === 0) {
+      setSendResult('Attach a file first.');
+      return;
+    }
+    setQuickAddLoading(true);
+    try {
+      const filesPayload: Array<{ data: string; mimeType: string }> = [];
+      for (const img of uploadedImages) {
+        const reader = new FileReader();
+        // eslint-disable-next-line no-await-in-loop
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(img.file);
+        });
+        filesPayload.push({ data: base64Data, mimeType: img.file.type });
+      }
+
+      const toolCall = {
+        id: `tool_${Date.now()}_quick_add`,
+        type: 'function' as const,
+        function: { name: 'extract_data_from_files', arguments: JSON.stringify({ transcript: 'Add data from these files to the selected sheet' }) }
+      };
+      const resp = await fetch('/api/genkit-tool-execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toolCall,
+          context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
+          images: filesPayload
+        })
+      });
+      const data = await resp.json();
+      if (resp.ok && data?.success) {
+        setSendResult(data.result || 'Added extracted data to sheet');
+        uploadedImages.forEach(img => URL.revokeObjectURL(img.preview));
+        setUploadedImages([]);
+      } else {
+        setSendResult(data?.error || 'Quick add failed');
+      }
+    } catch (e) {
+      setSendResult('Quick add failed');
+    } finally {
+      setQuickAddLoading(false);
+    }
+  };
+
 
 
 
@@ -2200,59 +2256,7 @@ export default function Home() {
                         <div className="text-white/70">{uploadedImages.length} file{uploadedImages.length !== 1 ? 's' : ''} ready</div>
                         <button
                           disabled={quickAddLoading || !defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0}
-                          onClick={async () => {
-                            if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
-                              setSendResult('Select a spreadsheet and sheet first.');
-                              return;
-                            }
-                            setQuickAddLoading(true);
-                            try {
-                              // Build files payload as base64
-                              const filesPayload: Array<{ data: string; mimeType: string }> = [];
-                              for (const img of uploadedImages) {
-                                const reader = new FileReader();
-                                // eslint-disable-next-line no-await-in-loop
-                                const base64Data = await new Promise<string>((resolve, reject) => {
-                                  reader.onload = () => {
-                                    const result = reader.result as string;
-                                    resolve(result.split(',')[1]);
-                                  };
-                                  reader.onerror = reject;
-                                  reader.readAsDataURL(img.file);
-                                });
-                                filesPayload.push({ data: base64Data, mimeType: img.file.type });
-                              }
-
-                              // Use extract_data_from_files (end-to-end) when possible; fallback to analyze+update
-                              const toolCall = {
-                                id: `tool_${Date.now()}_quick_add`,
-                                type: 'function' as const,
-                                function: { name: 'extract_data_from_files', arguments: JSON.stringify({ transcript: 'Add data from these files to the selected sheet' }) }
-                              };
-                              const resp = await fetch('/api/genkit-tool-execute', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  toolCall,
-                                  context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
-                                  images: filesPayload
-                                })
-                              });
-                              const data = await resp.json();
-                              if (resp.ok && data?.success) {
-                                setSendResult(data.result || 'Added extracted data to sheet');
-                                // Clear uploaded previews
-                                uploadedImages.forEach(img => URL.revokeObjectURL(img.preview));
-                                setUploadedImages([]);
-                              } else {
-                                setSendResult(data?.error || 'Quick add failed');
-                              }
-                            } catch (e) {
-                              setSendResult('Quick add failed');
-                            } finally {
-                              setQuickAddLoading(false);
-                            }
-                          }}
+                          onClick={performQuickAdd}
                           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border ${quickAddLoading ? 'bg-white/10 text-white/60' : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400/40'}`}
                           title="Extract and add data from these files to the selected sheet"
                         >
