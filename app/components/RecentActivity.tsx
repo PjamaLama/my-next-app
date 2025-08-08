@@ -105,7 +105,7 @@ export default function RecentActivity({ activity, activityError }: RecentActivi
                         {/* Show sheet and row info for webhook add */}
                         {item.type === 'add' && item.entity === 'webhook' && (
                           <div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
-                            {item.sheetName && <span>Sheet: <span className="font-semibold text-blue-700 dark:text-blue-300">{item.sheetName}</span></span>}
+                            {item.sheetName && <span>Sheet: <span className="font-semibold text-emerald-700 dark:text-emerald-300">{item.sheetName}</span></span>}
                             {item.rowNumber && <span className="ml-2">Row: <span className="font-semibold text-green-700 dark:text-green-300">{item.rowNumber}</span></span>}
                           </div>
                         )}

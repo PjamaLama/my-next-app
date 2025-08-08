@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, setDoc, addDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query, addDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "./FirebaseProvider";
 import { useFirebase } from "./FirebaseProvider";
 
@@ -193,7 +193,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const last = messages[messages.length - 1];
     const lastMessageSnippet = last ? (last.content || '').slice(0, 120) : '';
     const payload = cleanForFirestore({ messages: safeMessages, updatedAt, lastMessageSnippet });
-    await setDoc(chatDocRef, payload as Record<string, unknown>, { merge: true });
+    try {
+      await updateDoc(chatDocRef, payload as any);
+    } catch (e) {
+      // If the chat was deleted, do not recreate it implicitly
+      return;
+    }
 
     // Try to auto-generate a title after the first meaningful message
     try {

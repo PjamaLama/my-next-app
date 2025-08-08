@@ -90,7 +90,7 @@ const SheetChipSelector: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-4">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
         <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading sheets...</span>
       </div>
     );
@@ -158,7 +158,7 @@ const SheetChipSelector: React.FC = () => {
         {/* Right-aligned compact controls */}
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {selectedSheetNames.length > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800/50 whitespace-nowrap">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/50 whitespace-nowrap">
               {selectedSheetNames.length} selected
             </span>
           )}

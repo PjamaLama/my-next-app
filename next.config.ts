@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Use a custom dist directory to avoid Windows file locks on .next/trace
+  distDir: '.next-build',
   images: {
     remotePatterns: [
       {

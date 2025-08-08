@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 
@@ -13,11 +13,11 @@ type Section = {
   insights?: string[];
 };
 
-export default function ReportPage() {
+function ReportContent() {
   const searchParams = useSearchParams();
   const [report, setReport] = useState<any>(null);
   useEffect(() => {
-    const key = searchParams.get('key');
+    const key = searchParams?.get('key') ?? null;
     if (!key) { setReport(null); return; }
     try {
       const raw = sessionStorage.getItem(key);
@@ -40,18 +40,18 @@ export default function ReportPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-extrabold tracking-tight">Report</h1>
-          <div className="text-sm text-white/70 mt-1">
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">Report</h1>
+          <div className="text-xs sm:text-sm text-white/70 mt-1">
             Spreadsheet: {report.spreadsheetId} · {Array.isArray(report.sheetNames) ? report.sheetNames.join(', ') : ''}
           </div>
         </div>
 
         <div className="space-y-6">
           {sections.map((sec, idx) => (
-            <div key={idx} className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <div className="text-lg font-semibold mb-2">{sec.title}</div>
+            <div key={idx} className="rounded-xl border border-white/10 bg-white/5 p-3 sm:p-4">
+              <div className="text-base sm:text-lg font-semibold mb-2">{sec.title}</div>
 
               {Array.isArray(sec.insights) && sec.insights.length > 0 && (
                 <ul className="mb-3 list-disc pl-5 text-sm text-white/90">
@@ -60,7 +60,7 @@ export default function ReportPage() {
               )}
 
               {Array.isArray(sec.charts) && sec.charts.length > 0 && (
-                <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                   {sec.charts.map((spec, i) => (
                     <div key={i} className="rounded-lg border border-white/10 bg-black/20 p-2">
                       <ChartRenderer spec={spec as any} />
@@ -74,26 +74,26 @@ export default function ReportPage() {
                   {sec.tables.map((t, ti) => (
                     <div key={ti} className="overflow-x-auto rounded-lg border border-white/10">
                       {t.title && (
-                        <div className="px-3 py-2 border-b border-white/10 text-[12px] font-semibold text-white/90">{t.title}</div>
+                        <div className="px-3 py-2 border-b border-white/10 text-[11px] sm:text-[12px] font-semibold text-white/90">{t.title}</div>
                       )}
                       {t.summary && (
-                        <div className="px-3 pt-2 text-[12px] text-white/80">{t.summary}</div>
+                        <div className="px-3 pt-2 text-[11px] sm:text-[12px] text-white/80">{t.summary}</div>
                       )}
-                      <table className="min-w-full text-[12px]">
+                      <table className="min-w-full text-[11px] sm:text-[12px]">
                         <thead className="bg-sky-500/10">
-                          <tr>{t.headers.map((h, hi) => (<th key={hi} className="px-3 py-2 text-left font-semibold text-sky-200 whitespace-nowrap border-b border-white/10">{h}</th>))}</tr>
+                          <tr>{t.headers.map((h, hi) => (<th key={hi} className="px-2 sm:px-3 py-1.5 sm:py-2 text-left font-semibold text-sky-200 whitespace-nowrap border-b border-white/10">{h}</th>))}</tr>
                         </thead>
                         <tbody>
                           {t.rows.map((row, ri) => (
                             <tr key={ri} className={ri % 2 === 0 ? 'bg-white/0' : 'bg-white/[0.03]'}>
-                              {row.map((cell, ci) => (<td key={ci} className="px-3 py-2 text-white/90 whitespace-nowrap border-b border-white/10">{String(cell)}</td>))}
+                              {row.map((cell, ci) => (<td key={ci} className="px-2 sm:px-3 py-1.5 sm:py-2 text-white/90 whitespace-nowrap border-b border-white/10">{String(cell)}</td>))}
                             </tr>
                           ))}
                         </tbody>
                         {Array.isArray(t.footer) && t.footer.length > 0 && (
                           <tfoot>
                             <tr className="bg-white/[0.04]">
-                              {t.footer.map((cell, fi) => (<td key={fi} className="px-3 py-2 text-white/95 font-semibold border-t border-white/10">{String(cell)}</td>))}
+                              {t.footer.map((cell, fi) => (<td key={fi} className="px-2 sm:px-3 py-1.5 sm:py-2 text-white/95 font-semibold border-t border-white/10">{String(cell)}</td>))}
                             </tr>
                           </tfoot>
                         )}
@@ -107,6 +107,14 @@ export default function ReportPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ReportPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen text-white flex items-center justify-center">Loading report…</div>}>
+      <ReportContent />
+    </Suspense>
   );
 }
 

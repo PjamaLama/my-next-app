@@ -92,7 +92,7 @@ export default function PWAInstaller() {
 
   return (
     <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:max-w-sm">
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl shadow-lg p-4 text-white">
+      <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-xl shadow-lg p-4 text-white">
         <div className="flex items-start gap-3">
           <div className="bg-white/20 rounded-lg p-2 flex-shrink-0">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,7 +107,7 @@ export default function PWAInstaller() {
             <div className="flex gap-2">
               <button
                 onClick={handleInstallClick}
-                className="bg-white text-blue-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-white/90 transition-colors"
+                className="bg-white text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-white/90 transition-colors"
               >
                 Install
               </button>

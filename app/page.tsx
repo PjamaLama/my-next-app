@@ -1494,7 +1494,7 @@ export default function Home() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400">Loading...</p>
         </div>
       </div>
@@ -1524,10 +1524,10 @@ export default function Home() {
               <span className={`inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border ${betaFull ? 'border-red-400/40 text-red-200 bg-red-500/10' : 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10'}`}>
                 {betaFull ? 'Beta full' : `${spotsLeft} spots left`}
               </span>
-              <span className="text-xs text-white/60">{betaCount}/{BETA_LIMIT}</span>
+              <span className="text-xs text-white/60">{betaCount}/{betaLimit}</span>
             </div>
             <p className="text-sm text-white/80 mb-6 leading-relaxed">
-              Thanks for joining! Our first {BETA_LIMIT} seats are full. You’re on the waitlist and will get access as soon as we open more spots. We’ll notify you via email.
+              Thanks for joining! Our first {betaLimit} seats are full. You’re on the waitlist and will get access as soon as we open more spots. We’ll notify you via email.
             </p>
           </div>
         </div>
@@ -1572,34 +1572,31 @@ export default function Home() {
                 <p className="mt-4 text-white/90 leading-relaxed text-[15px]">
                   Turn voice or text into structured, validated spreadsheet updates. Fast, accurate, and built for mobile.
                 </p>
-                <div className="mt-6 flex flex-col sm:flex-row gap-3">
-                  <button
-                    onClick={signInWithGoogle}
-                    disabled={false}
-                    className={`inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] tilt-hover`}
-                    aria-disabled={false}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
-                    {betaFull ? 'Join waitlist' : 'Join the beta'}
-                  </button>
+                <div className="mt-6 flex flex-col items-center sm:flex-row sm:items-center justify-center sm:justify-center gap-3">
                   {/* Continue with Google (login hint) if seen before */}
                   {lastGoogle?.email && (
                     <button
                       onClick={() => continueWithGoogle?.(lastGoogle.email)}
-                      className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20"
+                      className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98]"
                     >
+                      {lastGoogle?.photo ? (
+                        <img
+                          src={lastGoogle.photo}
+                          alt={lastGoogle.name || lastGoogle.email || 'User'}
+                          className="w-6 h-6 rounded-full border border-black/10"
+                        />
+                      ) : (
+                        <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-7 3.134-7 7h2a5 5 0 0 1 10 0h2c0-3.866-3.134-7-7-7z"/></svg>
+                      )}
                       Continue as {lastGoogle.name || lastGoogle.email}
                     </button>
                   )}
-                  <a href="#how-it-works" className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10">
-                    See how it works
-                  </a>
                 </div>
                 {/* Compact feature hints removed to reduce redundancy */}
               </div>
               {/* Login card (kept) */}
               <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover">
-                <div className="card-gradient">
+                  <div className="card-gradient">
                   <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="bg-white/10 rounded-xl p-2">
@@ -1613,13 +1610,7 @@ export default function Home() {
                   <p className="text-sm text-white/80 mb-6 leading-relaxed">
                     Sign in with Google to secure your spot. If we’re full, you’ll be added to the waitlist automatically.
                   </p>
-                  <button
-                    onClick={signInWithGoogle}
-                    className="w-full flex items-center justify-center gap-3 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] transition-all px-4 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
-                    {betaFull ? 'Join waitlist' : 'Join the beta'}
-                  </button>
+                  {/* Removed duplicate Join Beta button to avoid repetition with hero */}
                   <div className="mt-3 text-center">
                     <button onClick={signInWithGoogle} className="text-xs text-white/80 hover:text-white underline">Already joined? Log in</button>
                   </div>
@@ -1844,28 +1835,32 @@ export default function Home() {
                                 </tfoot>
                               )}
                             </table>
-                            {/* Inline quick action (overlay at top-right) */}
-                            <div className="absolute top-1.5 right-2 z-10">
-                              <button
-                                onClick={() => addExtractedTableToSheet(message.id, tIdx, { headers: t.headers, rows: t.rows, title: t.title })}
-                                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
-                                title={`Map and add this extracted data${selectedSheetNames?.length ? ` to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}` : ''}`}
-                              >
-                                {tableActionState[`${message.id}_${tIdx}`] === 'loading' ? (
-                                  <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
-                                ) : tableActionState[`${message.id}_${tIdx}`] === 'done' ? (
-                                  <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                                ) : (
-                                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12"/></svg>
-                                )}
-                                <span>
-                                  {tableActionState[`${message.id}_${tIdx}`] === 'done' ? 'Added' : (
-                                    selectedSheetNames && selectedSheetNames.length > 0
-                                      ? `Add extracted data to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}`
-                                      : 'Add extracted data'
-                                  )}
-                                </span>
-                              </button>
+                            {/* Sticky quick action bar (always visible while scrolling) */}
+                            <div className="sticky bottom-0 right-0 w-full">
+                              <div className="pointer-events-none bg-gradient-to-t from-black/40 to-transparent px-2 pt-6 pb-2">
+                                <div className="pointer-events-auto flex items-center justify-end">
+                                  <button
+                                    onClick={() => addExtractedTableToSheet(message.id, tIdx, { headers: t.headers, rows: t.rows, title: t.title })}
+                                    className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
+                                    title={`Map and add this extracted data${selectedSheetNames?.length ? ` to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}` : ''}`}
+                                  >
+                                    {tableActionState[`${message.id}_${tIdx}`] === 'loading' ? (
+                                      <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
+                                    ) : tableActionState[`${message.id}_${tIdx}`] === 'done' ? (
+                                      <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                                    ) : (
+                                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12"/></svg>
+                                    )}
+                                    <span>
+                                      {tableActionState[`${message.id}_${tIdx}`] === 'done' ? 'Added' : (
+                                        selectedSheetNames && selectedSheetNames.length > 0
+                                          ? `Add extracted data to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}`
+                                          : 'Add extracted data'
+                                      )}
+                                    </span>
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1888,7 +1883,6 @@ export default function Home() {
                                   <div className="px-2 pb-1 text-[12px] font-semibold text-white/90">{spec.title}</div>
                                 )}
                                 <div className="bg-black/10 p-2 rounded-lg">
-                                  {/* @ts-expect-error dynamic component typing */}
                                   <ChartRenderer spec={spec as any} />
                                 </div>
                               </div>
@@ -2466,12 +2460,12 @@ const getMessageTypeIcon = (messageType?: string): string => {
 
 const getMessageTypeColor = (messageType?: string): string => {
   switch (messageType) {
-    case 'voice': return 'text-blue-600';
-    case 'text': return 'text-blue-600';
+    case 'voice': return 'text-emerald-700';
+    case 'text': return 'text-emerald-700';
     case 'sheet_update': return 'text-green-600';
     case 'tool_execution': return 'text-orange-600';
     case 'ai_response': return 'text-gray-600';
-    default: return 'text-blue-600';
+    default: return 'text-emerald-700';
   }
 };
 

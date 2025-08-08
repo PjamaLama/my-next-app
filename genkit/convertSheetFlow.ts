@@ -1,4 +1,5 @@
 import { genkit } from 'genkit';
+import { z } from 'zod';
 import { gemini15Flash, gemini15Pro, googleAI } from '@genkit-ai/googleai';
 import { analyzeSheetStructure } from '../lib/sheetStructure';
 
@@ -26,16 +27,14 @@ export interface ConvertOutput {
 export const convertSheetFlow = aiConfigs[0].config.defineFlow(
   {
     name: 'convertSheetFlow',
-    inputSchema: (z) =>
-      z.object({
-        sheetName: z.string(),
-        sheetCsv: z.string()
-      }),
-    outputSchema: (z) =>
-      z.object({
-        headers: z.array(z.string()),
-        rows: z.array(z.array(z.union([z.string(), z.number()])))
-      })
+    inputSchema: z.object({
+      sheetName: z.string(),
+      sheetCsv: z.string()
+    }),
+    outputSchema: z.object({
+      headers: z.array(z.string()),
+      rows: z.array(z.array(z.union([z.string(), z.number()])))
+    })
   },
   async ({ sheetName, sheetCsv }: ConvertInput): Promise<ConvertOutput> => {
     // Basic CSV parsing (non-quoted values). If quoted CSV is present, the downstream
@@ -135,7 +134,7 @@ Rules:
     let lastError: unknown = null;
     for (const m of models) {
       try {
-        const { text } = await m.generateText(prompt);
+        const { text } = await m.generate(prompt);
         const cleaned = text.replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(cleaned);
         if (

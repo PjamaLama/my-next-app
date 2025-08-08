@@ -550,7 +550,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
           actions: allUpdates,
           preview: true,
           // pass through any flow-generated preview for confidence display
-          flowPreview: (typeof (result as any) === 'object' && (result as any).preview) ? (result as any).preview : undefined
+          flowPreview: undefined
         });
       } else {
         // Actually update the sheets
@@ -1053,8 +1053,9 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         }));
 
       // Optional dedupe: if we have headers cached, try to filter out duplicates based on key fields
-      const cached = getCachedHeaders(spreadsheetId, targetSheetName);
-      if (cached && cached.headers && cached.headers.length > 0) {
+      if (targetSheetName) {
+        const cached = getCachedHeaders(spreadsheetId, targetSheetName);
+        if (cached && cached.headers && cached.headers.length > 0) {
         // Choose key columns you care about for dedupe
         const keyHeaders = ['Date', 'Reg#', 'TOWN VISITED', 'Fuel in liters', 'Fuel Cost in Rands']
           .filter(h => cached.headers.includes(h));
@@ -1104,6 +1105,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
           } catch (e) {
             console.warn('Dedupe phase skipped due to error:', e);
           }
+        }
         }
       }
 

@@ -118,10 +118,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   };
 
   const sortedSessions = useMemo(() => sessions, [sessions]);
-  const visibleSessions = useMemo(
-    () => sortedSessions.filter(s => (s.title || '').trim().length > 0),
-    [sortedSessions]
-  );
+  // Show all sessions, even if untitled, to avoid hiding active chats before AI title generation
+  const visibleSessions = useMemo(() => sortedSessions, [sortedSessions]);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -261,7 +259,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                 <button
                   onClick={handleAddSpreadsheet}
                   disabled={addingSheet}
-                  className="px-2 py-1 rounded-md text-xs bg-blue-600 hover:bg-blue-700"
+                  className="px-2 py-1 rounded-md text-xs bg-emerald-600 hover:bg-emerald-700"
                 >
                   Add
                 </button>
@@ -352,7 +350,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         <div className="shrink-0">
           <button
             onClick={handleCreate}
-            className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-400/50`}
+            className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/40`}
             disabled={creating}
             title="New Chat"
             aria-label="New chat"
@@ -404,7 +402,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               <button
                 onClick={handleAddSpreadsheet}
                 disabled={addingSheet}
-                className="px-2 py-1 rounded-md text-xs bg-blue-600 hover:bg-blue-700"
+                className="px-2 py-1 rounded-md text-xs bg-emerald-600 hover:bg-emerald-700"
               >
                 Add
               </button>

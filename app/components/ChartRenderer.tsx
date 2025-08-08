@@ -22,13 +22,18 @@ export default function ChartRenderer({ spec }: { spec: ChartSpec }) {
   const data = { labels: spec.labels, datasets: spec.datasets } as any;
   const options = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: { title: { display: !!spec.title, text: spec.title } },
     ...(spec.options || {})
   } as any;
 
-  if (spec.kind === 'bar') return <DynamicBar data={data} options={options} />;
-  if (spec.kind === 'line') return <DynamicLine data={data} options={options} />;
-  return <DynamicPie data={data} options={options} />;
+  const ChartComp = spec.kind === 'bar' ? DynamicBar : spec.kind === 'line' ? DynamicLine : DynamicPie;
+
+  return (
+    <div className="relative h-56 sm:h-72">
+      <ChartComp data={data} options={options} />
+    </div>
+  );
 }
 
 
