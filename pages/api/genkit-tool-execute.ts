@@ -3,6 +3,7 @@ import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import { ensureSheetCapacity } from '@/lib/sheetUtils';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
 import { buildExistingKeySet, filterNewRows } from '@/lib/dedupe';
 import { insertRow } from '../../genkit/tools';
@@ -227,12 +228,68 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
       return res.status(500).json({ success: false, error: 'Conversion failed' });
     }
 
-    const targetName = typeof newSheetName === 'string' && newSheetName.trim() ? newSheetName.trim() : `${sheetName} (Structured)`;
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests: [{ addSheet: { properties: { title: targetName } } }] }
-    });
+    // Helper to generate a unique sheet name avoiding collisions
+    const baseName = (typeof newSheetName === 'string' && newSheetName.trim()) ? newSheetName.trim() : `${sheetName} (Structured)`;
+    const meta = await sheets.spreadsheets.get({ spreadsheetId, includeGridData: false });
+    const existingNames = new Set((meta.data.sheets || []).map(s => s.properties?.title).filter(Boolean) as string[]);
 
+    const chooseUniqueName = (): string => {
+      if (!existingNames.has(baseName)) return baseName;
+      // Try numbered suffixes up to a reasonable bound
+      // If baseName already ends with (Structured) or similar, append a counter
+      let i = 2;
+      while (i < 1000) {
+        const candidate = `${baseName} ${i}`;
+        if (!existingNames.has(candidate)) return candidate;
+        i++;
+      }
+      // Fallback to timestamp
+      return `${baseName} ${Date.now()}`;
+    };
+
+    const createSheetWithUniqueName = async (): Promise<string> => {
+      let targetName = chooseUniqueName();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: { requests: [{ addSheet: { properties: { title: targetName } } }] }
+          });
+          return targetName;
+        } catch (e: any) {
+          const msg = (e?.message || '').toString();
+          // If the error indicates duplicate name, pick a new one and retry
+          if (msg.includes('already exists') || msg.includes('Duplicate') || msg.includes('409')) {
+            existingNames.add(targetName);
+            targetName = chooseUniqueName();
+            continue;
+          }
+          throw e;
+        }
+      }
+      // If repeated duplicate errors, append timestamp and try once
+      const finalName = `${baseName} ${Date.now()}`;
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: { requests: [{ addSheet: { properties: { title: finalName } } }] }
+      });
+      return finalName;
+    };
+
+    const targetName = await createSheetWithUniqueName();
+
+    // Ensure the new sheet has enough capacity for the data
+    const totalRows = (converted.rows?.length || 0) + 1; // +1 for headers
+    const totalCols = Math.max(1, converted.headers.length);
+    const toColumnLetter = (num: number): string => {
+      let n = num, s = '';
+      while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+      return s || 'A';
+    };
+    const endCol = toColumnLetter(totalCols);
+    await ensureSheetCapacity(spreadsheetId, targetName, Math.max(1, totalRows), endCol);
+
+    // Write structured values starting at A1
     const values = [converted.headers, ...converted.rows];
     await sheets.spreadsheets.values.update({
       spreadsheetId,

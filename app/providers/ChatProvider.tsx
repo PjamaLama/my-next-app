@@ -38,6 +38,7 @@ export type ChatMessage = {
   sheetsUsed?: string[];
   tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
   charts?: Array<{ kind: 'bar' | 'line' | 'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: unknown }>;
+  insights?: string[];
 };
 
 export type ChatSession = {
@@ -118,7 +119,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       const data = snap.data() as {
-        messages?: Array<(Omit<ChatMessage, 'timestamp'> & { timestamp?: string }) & { tablesJson?: string; chartsJson?: string }>
+        messages?: Array<(Omit<ChatMessage, 'timestamp'> & { timestamp?: string }) & { tablesJson?: string; chartsJson?: string; insightsJson?: string }>
       };
       const messages = (data.messages ?? []).map((m) => {
         const out: any = { ...m, timestamp: m.timestamp ? new Date(m.timestamp) : new Date() };
@@ -127,6 +128,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         if ((m as any).chartsJson && !out.charts) {
           try { out.charts = JSON.parse((m as any).chartsJson); } catch {}
+        }
+        if ((m as any).insightsJson && !out.insights) {
+          try { out.insights = JSON.parse((m as any).insightsJson); } catch {}
         }
         return out as ChatMessage;
       }) as ChatMessage[];
@@ -154,6 +158,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if ('charts' in copy && Array.isArray((copy as any).charts)) {
         try { (copy as any).chartsJson = JSON.stringify((copy as any).charts); } catch {}
         delete (copy as any).charts;
+      }
+      if ('insights' in copy && Array.isArray((copy as any).insights)) {
+        try { (copy as any).insightsJson = JSON.stringify((copy as any).insights); } catch {}
+        delete (copy as any).insights;
       }
       // Defensive: strip any top-level field that is an array of arrays
       for (const key of Object.keys(copy)) {

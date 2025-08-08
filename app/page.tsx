@@ -99,6 +99,7 @@ type ChatMessage = {
     sheetsUsed?: string[];
     tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
     charts?: Array<{ kind: 'bar'|'line'|'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: unknown }>;
+    insights?: string[];
   };
 
 
@@ -168,6 +169,7 @@ export default function Home() {
   }>>([]);
   const [chatProcessing, setChatProcessing] = useState(false);
   const [showCharts, setShowCharts] = useState<boolean>(false);
+  const [showStats, setShowStats] = useState<boolean>(false);
 
   const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
   
@@ -1015,7 +1017,8 @@ export default function Home() {
           // Attach tables for rendering
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined,
-          charts: Array.isArray((data as any).charts) ? (data as any).charts : undefined
+          charts: Array.isArray((data as any).charts) ? (data as any).charts : undefined,
+          insights: Array.isArray((data as any).insights) ? (data as any).insights : undefined
         };
         setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
       }
@@ -1689,6 +1692,24 @@ export default function Home() {
                               </div>
                             ))}
                           </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Insights toggle and render */}
+                    {message.role === 'assistant' && Array.isArray(message.insights) && message.insights.length > 0 && (
+                      <div className="mt-2">
+                        <button
+                          className="ml-2 text-[11px] px-2 py-1 rounded border border-white/10 bg-white/5 hover:bg-white/10"
+                          onClick={() => setShowStats(prev => !prev)}
+                        >
+                          {showStats ? 'Hide stats' : 'Show stats'}
+                        </button>
+                        {showStats && (
+                          <ul className="mt-2 text-[12px] text-white/90 list-disc pl-5 space-y-1">
+                            {message.insights.map((it, i) => (
+                              <li key={`${message.id}_ins_${i}`}>{it}</li>
+                            ))}
+                          </ul>
                         )}
                       </div>
                     )}

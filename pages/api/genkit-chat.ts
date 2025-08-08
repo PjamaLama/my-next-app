@@ -478,9 +478,18 @@ function buildChartSpecs(
   const headers = table[0];
   const rows = table.slice(1);
 
+  // Explicit chart kind override (e.g., "bar chart", "line chart", "pie chart")
+  const explicitKind: 'bar' | 'line' | 'pie' | null = /\bbar\s+chart\b/i.test(message)
+    ? 'bar'
+    : /\bline\s+chart\b/i.test(message) || /\btrend\b/i.test(message)
+    ? 'line'
+    : /\bpie\s+chart\b/i.test(message) || /\bdistribution|breakdown\b/i.test(message)
+    ? 'pie'
+    : null;
+
   // 1) Aggregated/group-by ask → Bar chart using smart table aggregation when possible
   const looksGrouped = /\b(by|per)\b/i.test(message) || /(total|sum|aggregate|group)/i.test(message);
-  if (looksGrouped) {
+  if (explicitKind === 'bar' || looksGrouped) {
     try {
       const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
       const agg = smart.find(t => t.headers.length >= 2 && /sum\(|count\)/i.test(t.headers.slice(1).join(' ')));
@@ -491,7 +500,12 @@ function buildChartSpecs(
           kind: 'bar',
           title: agg.title || `${sheetName} · Aggregated`,
           labels,
-          datasets: [{ label: agg.headers[1] || 'Value', data }]
+          datasets: [{ label: agg.headers[1] || 'Value', data }],
+          meta: {
+            sheetName,
+            metricHeader: agg.headers[1] || undefined,
+            groupByHeader: agg.headers[0] || undefined
+          }
         });
       }
     } catch {}
@@ -500,7 +514,7 @@ function buildChartSpecs(
   // 2) Date trend ask → Line chart over time
   const looksTrend = /(trend|over\s+time|last\s+\d+\s+days|past\s+(week|month|\d+\s+days)|today)/i.test(message);
   const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
-  if (dateIdx >= 0 && looksTrend) {
+  if (dateIdx >= 0 && (explicitKind === 'line' || looksTrend)) {
     const metricIdx = pickMetricIndex(headers, rows);
     // Build simple chronological series; try to parse dates
     const series = rows
@@ -517,14 +531,15 @@ function buildChartSpecs(
         title: `${sheetName} · ${headers[metricIdx]} trend`,
         labels: lastN.map(p => p.d),
         datasets: [{ label: headers[metricIdx], data: lastN.map(p => p.n as number) }],
-        options: { tension: 0.3 }
+        options: { tension: 0.3 },
+        meta: { sheetName, metricHeader: headers[metricIdx], dateHeader: headers[dateIdx] }
       });
     }
   }
 
   // 3) Distribution ask → Pie chart of a categorical column
   const looksDistribution = /(distribution|breakdown|share|proportion)/i.test(message);
-  if (looksDistribution) {
+  if (explicitKind === 'pie' || looksDistribution) {
     // Pick a likely categorical column: prefer driver/vehicle-like
     const catHints = ['driver', 'vehicle', 'category', 'type', 'name'];
     let catIdx = -1;
@@ -544,7 +559,8 @@ function buildChartSpecs(
         kind: 'pie',
         title: `${sheetName} · ${headers[catIdx]} distribution`,
         labels: sorted.map(e => e[0]),
-        datasets: [{ label: 'Count', data: sorted.map(e => e[1]) }]
+        datasets: [{ label: 'Count', data: sorted.map(e => e[1]) }],
+        meta: { sheetName, groupByHeader: headers[catIdx] }
       });
     }
   }
@@ -1287,6 +1303,48 @@ async function processMessage(
       }
     }
 
+    // Build charts after tables so we can reuse selections; include as part of the response
+    const charts = hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : [];
+
+    // Add lightweight insights over chart data (trend direction, top category, etc.)
+    const insights: string[] = [];
+    try {
+      if (charts.length > 0) {
+        for (const ch of charts.slice(0, 2)) {
+          if (ch.kind === 'line' && ch.labels.length >= 3 && ch.datasets[0]?.data?.length === ch.labels.length) {
+            const y = ch.datasets[0].data;
+            const n = y.length;
+            const xs = Array.from({ length: n }, (_, i) => i + 1);
+            const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+            const xBar = mean(xs);
+            const yBar = mean(y);
+            const num = xs.reduce((acc, xi, i) => acc + (xi - xBar) * (y[i] - yBar), 0);
+            const den = xs.reduce((acc, xi) => acc + (xi - xBar) ** 2, 0) || 1;
+            const slope = num / den;
+            if (Math.abs(slope) > 0.01) {
+              insights.push(`${ch.datasets[0].label || 'Series'} is ${slope > 0 ? 'increasing' : 'decreasing'} over time`);
+            }
+          }
+          if (ch.kind === 'bar' && ch.labels.length > 0 && ch.datasets[0]?.data?.length === ch.labels.length) {
+            const data = ch.datasets[0].data;
+            let bestIdx = 0;
+            for (let i = 1; i < data.length; i++) if (data[i] > data[bestIdx]) bestIdx = i;
+            insights.push(`Top ${ch.meta?.groupByHeader || 'category'}: ${ch.labels[bestIdx]} (${data[bestIdx]})`);
+          }
+          if (ch.kind === 'pie' && ch.labels.length > 0 && ch.datasets[0]?.data?.length === ch.labels.length) {
+            const data = ch.datasets[0].data;
+            const total = data.reduce((a, b) => a + b, 0) || 1;
+            let bestIdx = 0;
+            for (let i = 1; i < data.length; i++) if (data[i] > data[bestIdx]) bestIdx = i;
+            const pct = Math.round((data[bestIdx] / total) * 100);
+            insights.push(`${ch.labels[bestIdx]} makes up ~${pct}%`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Insights generation failed', e);
+    }
+
     // If we have pre-hydrated sheet data in context and relevant intent, add a tiny, low-token overview
     const shouldSummarize = hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles);
     const looksLikeDataRequest = intent === 'get_data' || /\b(about|overview|summary|summar(y|ise)|show|what's in|tell me)/i.test(message);
@@ -1490,7 +1548,8 @@ async function processMessage(
       sheetsUsed: selectedSheetNames,
       quickReplies,
       dataTables,
-      charts: hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : []
+      charts,
+      insights
     };
 
   } catch (error) {
