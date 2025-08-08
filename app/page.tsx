@@ -391,96 +391,32 @@ export default function Home() {
 
 
 
-  // Fetch sheet data when spreadsheet and sheet are selected
+  // Fetch selected sheet if not cached (avoid duplicate with prefetch)
   useEffect(() => {
     if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) return;
-    
-    console.log(`🔍 Validating sheet data fetch: spreadsheet="${defaultSpreadsheetId}", sheets="${selectedSheetNames.join(', ')}"`);
-    
-    // Add a small delay to prevent race conditions during rapid selection changes
+    const focus = selectedSheetNames[0];
+    // Skip if already cached, or if prefetch is handling it
+    if (sheetDataCache[focus] && sheetDataCache[focus].length > 0) return;
+    if (!sheetsPrefetched && allSheetNames.includes(focus)) return;
+
     const timeoutId = setTimeout(async () => {
       try {
-        // Double-check that the selection is still valid
-        if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
-          console.log('⚠️ Selection cleared during timeout, skipping fetch');
-          return;
-        }
-        
-        console.log(`📡 Fetching data for sheet "${selectedSheetNames[0]}" in spreadsheet ${defaultSpreadsheetId}`);
-        
         const res = await fetch('/api/get-sheet-data/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: selectedSheetNames[0] }),
+          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: focus }),
         });
-        
         if (res.ok) {
           const { data } = await res.json();
-          console.log(`✅ Successfully fetched ${data?.length || 0} rows from "${selectedSheetNames[0]}"`);
-        } else {
-          // Parse the enhanced error response
-          console.log(`📍 Response status: ${res.status}, Content-Type: ${res.headers.get('content-type')}`);
-          console.log(`📍 Response headers:`, Object.fromEntries(res.headers.entries()));
-          
-          try {
-            // Clone the response to avoid "body already read" error
-            const responseClone = res.clone();
-            const responseText = await responseClone.text();
-            console.log(`📄 Raw response body: "${responseText}"`);
-            console.log(`📄 Response body length: ${responseText.length}`);
-            console.log(`📄 Response body type: ${typeof responseText}`);
-            
-            if (!responseText.trim()) {
-              console.error(`❌ Empty response body for ${res.status} error`);
-              console.error(`❌ This suggests the API returned an empty response`);
-              return;
-            }
-            
-            let errorData;
-            try {
-              errorData = JSON.parse(responseText);
-              console.log(`📋 Parsed error data:`, errorData);
-              console.log(`📋 Error data type: ${typeof errorData}`);
-              console.log(`📋 Error data keys:`, Object.keys(errorData || {}));
-            } catch (jsonError) {
-              console.error(`❌ JSON parse failed:`, jsonError);
-              console.error(`❌ Attempting to parse: "${responseText}"`);
-              return;
-            }
-            
-            console.error(`❌ Failed to fetch sheet data: ${res.status} -`, errorData);
-            
-            // Handle specific sheet not found errors with helpful feedback
-            if (res.status === 404 && errorData && errorData.availableSheets) {
-              console.warn(`🔧 Sheet "${errorData.requestedSheet}" not found.`);
-              console.warn(`📋 Available sheets: [${errorData.availableSheets.join(', ')}]`);
-              
-              if (errorData.availableSheets.length > 0) {
-                console.log(`💡 Auto-correcting to first available sheet: "${errorData.availableSheets[0]}"`);
-                // Auto-correct to the first available sheet
-                setSelectedSheetNames([errorData.availableSheets[0]]);
-              } else {
-                console.error(`❌ No sheets available in this spreadsheet`);
-              }
-            } else if (res.status === 404) {
-              // Handle 404 errors without available sheets (might be old format)
-              console.warn(`🔧 404 error without enhanced response structure`);
-              console.warn(`🔄 This might be from cached/stale data. The system should auto-correct soon.`);
-              console.warn(`🔄 Error data received:`, errorData);
-            }
-          } catch (parseError) {
-            console.error(`❌ Failed to parse error response: ${parseError}`);
-            console.error(`❌ Parse error details:`, parseError);
-            console.error(`❌ Original error: ${res.status} - Unable to parse response`);
-          }
+          setSheetDataCache(prev => ({ ...prev, [focus]: data || [] }));
+          console.log(`✅ Cached ${data?.length || 0} rows for "${focus}"`);
         }
       } catch (error) {
         console.error('❌ Error fetching sheet data:', error);
       }
-    }, 300); // 300ms delay to allow selection to stabilize
-    
+    }, 250);
     return () => clearTimeout(timeoutId);
-  }, [defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames]);
+  }, [defaultSpreadsheetId, selectedSheetNames, allSheetNames, sheetsPrefetched, sheetDataCache]);
 
 
 
@@ -895,9 +831,14 @@ export default function Home() {
           userIntent: userIntent,
           context: {
             spreadsheetId: defaultSpreadsheetId,
-            sheetNames: selectedSheetNames,
+            sheetNames: selectedSheetNames, // allow multiple focused sheets
             // hydrate chat with prefetched sheet info so server can avoid refetches
-            sheetData: sheetDataCache,
+            sheetData: Object.fromEntries(
+              (selectedSheetNames && selectedSheetNames.length > 0
+                ? selectedSheetNames
+                : Object.keys(sheetDataCache)
+              ).map(name => [name, sheetDataCache[name]]).filter(([, v]) => Array.isArray(v))
+            ),
             allSheetNames,
             availableTools: ['update_sheet_cells', 'insert_sheet_row', 'analyze_sheet_data', 'bulk_update_cells'],
           },
@@ -1459,7 +1400,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Upfront spreadsheet selection nudges */}
+            {/* Upfront spreadsheet selection nudges and sheet selector */}
             {chatMessages.length === 0 && !defaultSpreadsheetId && (
               <div className="mb-4 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
                 <p className="text-sm mb-2">No spreadsheet selected.</p>
@@ -1474,6 +1415,41 @@ export default function Home() {
               <div className="mb-4 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
                 <p className="text-sm">Preparing your sheets…</p>
                 <p className="text-xs opacity-80">Fetching sheet names and data so chat can answer quickly.</p>
+              </div>
+            )}
+
+            {defaultSpreadsheetId && allSheetNames.length > 0 && (
+              <div className="mb-3">
+                <div className="flex flex-wrap gap-2">
+                  {allSheetNames.map(name => {
+                    const active = selectedSheetNames?.includes(name);
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => {
+                          const set = new Set(selectedSheetNames || []);
+                          if (set.has(name)) set.delete(name); else set.add(name);
+                          setSelectedSheetNames(Array.from(set));
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-xs border transition-all duration-200 ${
+                          active
+                            ? 'bg-gradient-to-r from-sky-600 to-fuchsia-600 text-white border-transparent shadow-sm ring-2 ring-sky-400/40'
+                            : 'bg-white/5 text-white/90 border-white/15 hover:bg-white/10'
+                        }`}
+                        aria-pressed={active}
+                        aria-label={`Select sheet ${name}`}
+                        title={name}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {active && (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                          )}
+                          {name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
