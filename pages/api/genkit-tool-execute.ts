@@ -122,6 +122,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'get_sheet_data':
         return await handleGetSheetData(args, res);
 
+    case 'update_single_cell': {
+      try {
+        const { spreadsheetId, sheetName, cell, value } = args as any;
+        if (!spreadsheetId || !sheetName || !cell) {
+          return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName and cell are required' });
+        }
+        const sheets = await getGoogleSheetsClient();
+        const range = `${sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName}!${cell}`;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [[value ?? '']] }
+        });
+        return res.status(200).json({ success: true, result: `Updated ${cell} in ${sheetName}` });
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'Failed to update cell', details: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
       case 'analyze_voice_input':
         return await handleAnalyzeVoiceInput(args, res);
 

@@ -296,6 +296,25 @@ async function processMessage(
             arguments: JSON.stringify({ transcript: message })
           }
         });
+      } else if (/\b[A-Z]{1,3}\d+\b/.test(message) && (lowerMessage.includes('set') || lowerMessage.includes('change') || lowerMessage.includes('update'))) {
+        // Detect direct cell update like "set B12 to 123"
+        const cellMatch = message.match(/\b([A-Z]{1,3}\d+)\b/);
+        const valueMatch = message.match(/to\s+(.+)$/i);
+        if (cellMatch && context?.spreadsheetId && context?.sheetNames?.length) {
+          suggestedTools.push({
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: {
+              name: 'update_single_cell',
+              arguments: JSON.stringify({
+                spreadsheetId: context.spreadsheetId,
+                sheetName: context.sheetNames[0],
+                cell: cellMatch[1],
+                value: valueMatch ? valueMatch[1].trim() : ''
+              })
+            }
+          });
+        }
       } else if (lowerMessage.includes('update') || lowerMessage.includes('change') || lowerMessage.includes('edit')) {
         intent = 'update_data';
         suggestedTools.push({
