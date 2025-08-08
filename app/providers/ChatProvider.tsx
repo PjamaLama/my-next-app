@@ -34,6 +34,7 @@ export type ChatMessage = {
     details?: unknown;
   }>;
   messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
+  quickReplies?: string[];
 };
 
 export type ChatSession = {

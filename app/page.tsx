@@ -63,41 +63,7 @@ interface ActivityItem {
   rowsAffected?: number; // For multi-row operations
 }
 
-<<<<<<< Current (Your changes)
-// Define ChatMessage type for use throughout the file
-type ChatMessage = {
-    id: string;
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-    timestamp: Date;
-    isVoice?: boolean;
-    hasImages?: boolean;
-    imageCount?: number;
-    attachments?: Array<{
-      id: string;
-      name: string;
-      type: string;
-      fileType: 'image' | 'pdf';
-      preview?: string;
-    }>;
-    isProcessing?: boolean;
-    toolCalls?: Array<{
-      id: string;
-      type: 'function';
-      function: { name: string; arguments: string };
-    }>;
-    toolResults?: Array<{
-      id: string;
-      result: string;
-      success: boolean;
-      details?: unknown;
-    }>;
-    messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
-    quickReplies?: string[];
-  };
-=======
 // ChatMessage type is imported from ChatProvider
->>>>>>> Incoming (Background Agent changes)
 
 
 
