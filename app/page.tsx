@@ -92,6 +92,7 @@ type ChatMessage = {
     }>;
     messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
     quickReplies?: string[];
+    sheetsUsed?: string[];
   };
 
 
@@ -914,7 +915,8 @@ export default function Home() {
           messageType: 'ai_response' as const,
           toolCalls: data.toolCalls || [],
           toolResults: data.toolResults || [],
-          quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies.slice(0, 3) : undefined
+          quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies.slice(0, 3) : undefined,
+          sheetsUsed: Array.isArray(data.sheetsUsed) ? (data.sheetsUsed as string[]) : (selectedSheetNames || [])
         };
         setChatMessages(prev => [...prev, aiMessage]);
       }
@@ -1336,6 +1338,19 @@ export default function Home() {
                           )}
                         </div>
                         <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                        {/* Context chips showing which sheets were used for this AI message */}
+                        {message.role === 'assistant' && message.sheetsUsed && message.sheetsUsed.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {message.sheetsUsed.slice(0, 3).map((s) => (
+                              <span key={`${message.id}_${s}`} className="px-2 py-0.5 rounded-full text-[10px] bg-white/8 border border-white/15 text-white/80">
+                                {s}
+                              </span>
+                            ))}
+                            {message.sheetsUsed.length > 3 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/8 border border-white/15 text-white/80">+{message.sheetsUsed.length - 3} more</span>
+                            )}
+                          </div>
+                        )}
                         {/* Quick reply chips (assistant messages only) */}
                         {message.role === 'assistant' && message.quickReplies && message.quickReplies.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-2">

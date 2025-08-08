@@ -9,9 +9,10 @@ dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
   embedded?: boolean;
+  peek?: boolean; // compact mode that still shows titles
 }
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false }) => {
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false }) => {
   const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, renameSession, ensureSession } = useChat();
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>("");
@@ -55,11 +56,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false }) => {
       >
         <button
           onClick={() => handleSelect(s.id)}
-          className="w-full text-left p-3 flex items-start gap-3 pr-16"
+          className={`w-full text-left ${peek ? 'p-2' : 'p-3'} flex items-start gap-3 ${peek ? 'pr-10' : 'pr-16'}`}
         >
           <div
-            className={`shrink-0 mt-0.5 rounded-md p-1.5 ${
-              currentSessionId === s.id ? 'bg-white/15 text-white' : 'bg-white/10 text-white/80'
+            className={`shrink-0 mt-0.5 rounded-md p-1.5 border ${
+              currentSessionId === s.id ? 'border-white/50 text-white' : 'border-white/20 text-white/80'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
@@ -82,28 +83,34 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false }) => {
                 <div className="truncate font-medium text-sm">{s.title || 'Untitled'}</div>
               </div>
             )}
-            <div className="text-xs text-white/60 truncate mt-0.5">{s.lastMessageSnippet || ' '}</div>
+            {!peek && (
+              <div className="text-xs text-white/60 truncate mt-0.5">{s.lastMessageSnippet || ' '}</div>
+            )}
           </div>
-          <div className="ml-2 text-[10px] text-white/50 whitespace-nowrap mt-0.5">{dayjs(s.updatedAt).fromNow()}</div>
+          {!peek && (
+            <div className="ml-2 text-[10px] text-white/50 whitespace-nowrap mt-0.5">{dayjs(s.updatedAt).fromNow()}</div>
+          )}
         </button>
-        <div className="absolute top-1.5 right-1.5 hidden group-hover:flex items-center gap-1">
-          <button
-            onClick={() => startRename(s.id, s.title)}
-            className="p-1.5 rounded-md hover:bg-white/10 text-white"
-            title="Rename"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              if (confirm('Delete this chat?')) deleteSession(s.id);
-            }}
-            className="p-1.5 rounded-md hover:bg-red-500/10 text-red-400"
-            title="Delete"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        {!peek && (
+          <div className="absolute top-1.5 right-1.5 hidden group-hover:flex items-center gap-1">
+            <button
+              onClick={() => startRename(s.id, s.title)}
+              className="p-1.5 rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50"
+              title="Rename"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('Delete this chat?')) deleteSession(s.id);
+              }}
+              className="p-1.5 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
+              title="Delete"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
     </li>
   );
@@ -115,12 +122,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false }) => {
         <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
           <div className="flex items-center gap-2 text-sm font-semibold text-white">
             <MessageSquare className="w-4 h-4" />
-            Chats
-            <span className="text-xs text-white/60">({sortedSessions.length})</span>
+            {!peek && 'Chats'}
+            <span className="text-xs text-white/60">{!peek && `(${sortedSessions.length})`}</span>
           </div>
           <button
             onClick={handleCreate}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-600 text-white text-xs hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent text-xs"
             disabled={creating}
             title="New Chat"
           >
@@ -132,7 +139,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false }) => {
             <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
           ) : (
             <ul className="space-y-1">
-              {sortedSessions.map((s) => renderSessionRow(s))}
+            {sortedSessions.map((s) => renderSessionRow(s))}
             </ul>
           )}
         </div>
@@ -146,8 +153,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false }) => {
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
         <div className="flex items-center gap-2 text-sm font-semibold text-white">
           <MessageSquare className="w-4 h-4" />
-          Chats
-          <span className="text-xs text-white/60">({sortedSessions.length})</span>
+          {!peek && 'Chats'}
+          <span className="text-xs text-white/60">{!peek && `(${sortedSessions.length})`}</span>
         </div>
         <button
           onClick={handleCreate}

@@ -98,7 +98,7 @@ export default function RootLayout({
                 <FirestoreSyncProvider>
                   <ChatProvider>
                     <SidePanel />
-                    <div className="ml-[280px] max-md:ml-[20px] transition-all">
+                    <div className="transition-all" style={{ marginLeft: 'var(--sidebar-width, 300px)' }}>
                       <NavBar />
                       {children}
                     </div>

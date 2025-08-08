@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import dayjs from 'dayjs';
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
@@ -662,6 +663,120 @@ async function processMessage(
       }
     }
 
+    // If we have pre-hydrated sheet data in context and relevant intent, add a tiny, low-token overview
+    const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
+    const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
+    const shouldSummarize = hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles);
+    const looksLikeDataRequest = intent === 'get_data' || /\b(about|overview|summary|summar(y|ise)|show|what's in|tell me)/i.test(message);
+    if (shouldSummarize && (looksLikeDataRequest || intent === 'chat')) {
+      const sheetsToDescribe = selectedSheetNames.length > 0
+        ? selectedSheetNames.filter(n => hydratedSheetData[n])
+        : Object.keys(hydratedSheetData);
+      if (sheetsToDescribe.length > 0) {
+        let overview = '\n\n📋 Selected sheets overview:';
+        sheetsToDescribe.slice(0, 3).forEach((name) => {
+          const table = hydratedSheetData[name] || [];
+          const headers = (table[0] || []).slice(0, 3);
+          const dataRows = Math.max(0, table.length - 1);
+          const last = table.length > 1 ? table[table.length - 1].slice(0, 3) : [];
+          const headersPreview = headers.join(', ');
+          const lastPreview = last.join(', ');
+          overview += `\n- ${name}: ${dataRows} rows. Headers: ${headersPreview || 'n/a'}${last.length ? `; Last: ${lastPreview}` : ''}`;
+        });
+        response += overview;
+      }
+    }
+
+    // Provide a concise data preview for common requests using hydrated data only (no extra API calls)
+    if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles)) {
+      const wantToday = /\b(today|today'?s\s*entry)\b/i.test(message);
+      const wantAll = /\b(all|everything|full|entire)\b/i.test(message);
+      const wantRecent = /\b(recent|latest|last\s+few)\b/i.test(message) || (!wantToday && !wantAll && looksLikeDataRequest);
+      const mDays = message.match(/\b(past|last)\s+(\d+)\s+days?\b/i);
+      const wantPastNDays = mDays ? parseInt(mDays[2], 10) : null;
+      const wantLastWeek = /\b(past|last)\s+(week|7\s*days)\b/i.test(message) ? 7 : null;
+      const mRange = message.match(/\bfrom\s+([0-9\-\/\.\s]+)\s+(to|until|through)\s+([0-9\-\/\.\s]+)\b/i);
+      const sheetsToShow = selectedSheetNames.length > 0 ? selectedSheetNames.filter(n => hydratedSheetData[n]) : Object.keys(hydratedSheetData);
+
+      const formatTable = (name: string, table: string[][], rows: number, columnsLimit = 5): string => {
+        if (!table || table.length === 0) return `\n- ${name}: empty`;
+        const headers = (table[0] || []).slice(0, columnsLimit);
+        const body = table.slice(1, 1 + rows).map(r => r.slice(0, columnsLimit));
+        let out = `\n\n▶ ${name}`;
+        out += `\n| ${headers.join(' | ')} |`;
+        out += `\n| ${headers.map(() => '---').join(' | ')} |`;
+        body.forEach(r => { out += `\n| ${r.join(' | ')} |`; });
+        const remaining = Math.max(0, table.length - 1 - rows);
+        if (remaining > 0) out += `\n… ${remaining} more row(s)`;
+        return out;
+      };
+
+      const normalizeDate = (value: string): string => {
+        const d = dayjs(value);
+        if (d.isValid()) return d.format('YYYY-MM-DD');
+        // try DD/MM/YY
+        const d2 = dayjs(value.replace(/(\d{2})\/(\d{2})\/(\d{2,4})/, '$3-$2-$1'));
+        return d2.isValid() ? d2.format('YYYY-MM-DD') : value;
+      };
+
+      const todayKey = dayjs().format('YYYY-MM-DD');
+      let dataPreview = '';
+      let matchedAny = false;
+      for (const name of sheetsToShow.slice(0, 3)) {
+        const table = hydratedSheetData[name] || [];
+        if (table.length <= 1) {
+          dataPreview += `\n\n▶ ${name}\n(no data)`;
+          continue;
+        }
+        const headers = table[0];
+        const dateColIdx = headers.findIndex(h => /date/i.test(h));
+        if (wantToday && dateColIdx >= 0) {
+          const todays = table.slice(1).filter(r => normalizeDate(r[dateColIdx] || '') === todayKey);
+          const take = todays.length > 0 ? todays : [table[table.length - 1]]; // fallback to latest
+          dataPreview += formatTable(name, [headers, ...take], take.length);
+          matchedAny = matchedAny || todays.length > 0;
+          continue;
+        }
+        if ((wantPastNDays || wantLastWeek || mRange) && dateColIdx >= 0) {
+          const end = mRange ? dayjs(normalizeDate(mRange[3].trim())).endOf('day') : dayjs().endOf('day');
+          const start = mRange
+            ? dayjs(normalizeDate(mRange[1].trim())).startOf('day')
+            : dayjs().subtract(wantPastNDays || wantLastWeek || 0, 'day').startOf('day');
+          const inRange = table.slice(1).filter(r => {
+            const key = normalizeDate(r[dateColIdx] || '');
+            const d = dayjs(key);
+            return d.isValid() && (d.isAfter(start) || d.isSame(start)) && (d.isBefore(end) || d.isSame(end));
+          });
+          if (inRange.length > 0) {
+            const rows = Math.min(10, inRange.length);
+            dataPreview += formatTable(name, [headers, ...inRange.slice(0, rows)], rows);
+            matchedAny = true;
+          }
+          continue;
+        }
+        if (wantAll) {
+          const rows = Math.min(10, table.length - 1);
+          dataPreview += formatTable(name, table, rows);
+          matchedAny = matchedAny || rows > 0;
+          continue;
+        }
+        if (wantRecent) {
+          const rows = Math.min(3, table.length - 1);
+          const recent = [headers, ...table.slice(-rows)];
+          dataPreview += formatTable(name, recent, rows);
+          matchedAny = matchedAny || rows > 0;
+          continue;
+        }
+      }
+      if (dataPreview) {
+        // If existing response is generic, replace it with a more helpful lead-in
+        const generic = 'How can I help? You can ask me to update your sheet, fetch data, or extract info from files.';
+        const lead = matchedAny ? 'Here’s the data you asked for:' : 'No rows matched that request; showing the latest available:';
+        response = response && !response.includes(generic) ? response : lead;
+        response += `\n\n📄 Data preview:${dataPreview}`;
+      }
+    }
+
     // Add enhanced response with tool results
     if (enhancedResponse) {
       response += enhancedResponse;
@@ -684,6 +799,7 @@ async function processMessage(
       pendingToolCalls: [], // No pending tools - all executed automatically
       toolResults: toolResults, // Include the results of auto-executed tools
       context: context, // Return updated context with analysis results
+      sheetsUsed: selectedSheetNames,
       quickReplies
     };
 
