@@ -940,13 +940,16 @@ export default function Home() {
     const key = `${messageId}_${tableIndex}`;
     setTableActionState(prev => ({ ...prev, [key]: 'loading' }));
     try {
-      // Build a transcript from the table content (join lines)
-      const text = table.rows.map(r => r.join(' ')).join('\n');
-      const transcript = `Add the following extracted data to my selected sheet(s). Create one row per logical entry.\n\n${text}`;
+      // Convert the displayed table back into structured rows keyed by headers
+      const structuredRows = table.rows.map(r => {
+        const obj: Record<string, string> = {};
+        table.headers.forEach((h, i) => { obj[String(h || '').trim()] = String(r[i] ?? ''); });
+        return obj;
+      });
       const toolCall = {
         id: `tool_${Date.now()}_add_extracted_${tableIndex}`,
         type: 'function' as const,
-        function: { name: 'update_sheet', arguments: JSON.stringify({ transcript, preview: false }) }
+        function: { name: 'apply_structured_rows', arguments: JSON.stringify({ rows: structuredRows }) }
       };
       const resp = await fetch('/api/genkit-tool-execute', {
         method: 'POST',

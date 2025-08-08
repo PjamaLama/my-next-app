@@ -166,6 +166,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'generate_report':
         return await handleGenerateReport(args, context, res);
 
+      case 'apply_structured_rows':
+        return await handleApplyStructuredRows(args, context, res);
+
       default:
         return res.status(400).json({
           success: false,
@@ -1294,6 +1297,138 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       error: 'Failed to extract text from files',
       details: error instanceof Error ? error.message : String(error)
     });
+  }
+}
+
+// Apply structured rows (from chat preview) into selected sheet(s) using synonym-aware mapping and dedupe
+async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetNames } = context;
+    const { rows } = (args || {}) as { rows?: Array<Record<string, unknown>> };
+    if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
+      return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ success: false, error: 'No structured rows provided' });
+    }
+
+    const sheets = await getGoogleSheetsClient();
+    const selectedNames = sheetNames;
+    const sheetMeta: Record<string, { headers: string[]; values: string[][]; nextRow: number }> = {};
+    const colLetters = (idx: number) => { let n = idx + 1, s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+
+    // Hydrate metadata
+    for (const sn of selectedNames) {
+      const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sn}!A1:T1000` });
+      const values = (meta.data.values || []) as string[][];
+      const headers = (values[0] || []) as string[];
+      const cached = getCachedHeaders(spreadsheetId, sn);
+      const lastDataRow = Math.max(1, (cached?.lastDataRow || (values.length > 1 ? values.length - 1 : 1)));
+      sheetMeta[sn] = { headers, values, nextRow: lastDataRow + 1 };
+    }
+
+    // Build actions with best-fit sheet selection per row using synonyms
+    const actions: any[] = [];
+    for (const rowObjRaw of rows) {
+      const incomingKeys = Object.keys(rowObjRaw);
+      let bestSheet = selectedNames[0];
+      let bestScore = -1;
+      let bestMapped: Record<string, string> = {};
+
+      for (const sn of selectedNames) {
+        const { headers } = sheetMeta[sn];
+        const suggestions = suggestHeaderMapping(incomingKeys, headers);
+        const keyToHeader: Record<string, string> = {};
+        let score = 0;
+        suggestions.forEach(s => { if (s.targetHeader && s.confidence >= 0.5) { keyToHeader[s.incomingKey] = s.targetHeader; score += s.confidence; } });
+        const mapped: Record<string, string> = {};
+        headers.forEach(h => {
+          let val: unknown = undefined;
+          if (Object.prototype.hasOwnProperty.call(rowObjRaw, h)) val = (rowObjRaw as any)[h];
+          else {
+            const fromKey = Object.entries(keyToHeader).find(([, t]) => t === h)?.[0];
+            if (fromKey) val = (rowObjRaw as any)[fromKey];
+          }
+          if (val != null && String(val).trim() !== '') mapped[h] = String(val);
+        });
+        const mappedCount = Object.keys(mapped).length;
+        const finalScore = mappedCount >= 2 ? score + mappedCount * 0.1 : score * 0.5;
+        if (finalScore > bestScore) { bestScore = finalScore; bestSheet = sn; bestMapped = mapped; }
+      }
+
+      // Insert/update on bestSheet with identity matching
+      const { headers, values } = sheetMeta[bestSheet];
+      const existingRows = values;
+      const matchIdx = matchRowIdentity(headers, existingRows, {
+        Date: bestMapped['Date'] || (bestMapped as any)['date'] || '',
+        'Reg#': bestMapped['Reg#'] || (bestMapped as any)['Registration'] || (bestMapped as any)['Vehicle Reg'] || '',
+        Vehicle: bestMapped['Vehicle'] || '',
+        'Fuel Cost in Rands': bestMapped['Fuel Cost in Rands'] || (bestMapped as any)['Amount'] || (bestMapped as any)['Total'] || ''
+      });
+
+      if (matchIdx >= 0) {
+        const targetRow = matchIdx + 1;
+        headers.forEach((h, idx) => {
+          const val = bestMapped[h];
+          if (val != null && String(val).trim() !== '') {
+            actions.push({ type: 'updateCell', sheet: bestSheet, row: targetRow, column: colLetters(idx), value: String(val) });
+          }
+        });
+      } else {
+        const rowIndex = sheetMeta[bestSheet].nextRow++;
+        actions.push({ type: 'insertRow', sheet: bestSheet, row: rowIndex });
+        headers.forEach((h, idx) => {
+          const val = bestMapped[h];
+          if (val != null && String(val).trim() !== '') {
+            actions.push({ type: 'updateCell', sheet: bestSheet, row: rowIndex, column: colLetters(idx), value: String(val) });
+          }
+        });
+      }
+    }
+
+    // Execute inserts first (batch per sheet)
+    const insertsBySheet: Record<string, Array<{ row: number }>> = {};
+    actions.filter(a => a.type === 'insertRow').forEach(a => {
+      (insertsBySheet[a.sheet] ||= []).push({ row: a.row });
+    });
+    try {
+      const sheetMetadata = await sheets.spreadsheets.get({ spreadsheetId, includeGridData: false });
+      for (const [sn, rowsToInsert] of Object.entries(insertsBySheet)) {
+        const target = sheetMetadata.data.sheets?.find(s => s.properties?.title === sn);
+        if (target?.properties?.sheetId == null) continue;
+        const internalSheetId = target.properties.sheetId;
+        const sorted = [...rowsToInsert].sort((a, b) => a.row - b.row);
+        const requests = sorted.map(a => ({
+          insertRange: {
+            range: { sheetId: internalSheetId, startRowIndex: a.row - 1, endRowIndex: a.row, startColumnIndex: 0, endColumnIndex: 0 },
+            shiftDimension: 'ROWS'
+          }
+        }));
+        if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
+      }
+    } catch (e) {
+      console.warn('Batch insert rows failed:', e);
+    }
+
+    // Execute cell updates via internal batch API
+    const updates = actions
+      .filter(a => a.type === 'updateCell')
+      .map(a => ({ sheetName: a.sheet, cell: `${a.column}${a.row}`, value: a.value ?? '' }));
+
+    if (updates.length > 0) {
+      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, updates })
+      });
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(`Batch update failed: ${updateResponse.status} - ${errorText}`);
+      }
+    }
+
+    return res.status(200).json({ success: true, result: `Applied ${updates.length} updates across ${Object.keys(insertsBySheet).length} sheet(s).` });
+  } catch (error) {
+    console.error('apply_structured_rows error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });
   }
 }
 
