@@ -53,6 +53,13 @@ type ChartSpec = {
   labels: string[];
   datasets: Array<{ label: string; data: number[] }>;
   options?: Record<string, unknown>;
+  // Metadata to enable client-side drill-down previews
+  meta?: {
+    sheetName?: string;
+    metricHeader?: string;
+    groupByHeader?: string;
+    dateHeader?: string;
+  };
 };
 
 function normalizeToken(s: string): string {
@@ -350,17 +357,14 @@ function answerQuestionFromSheets(
       })
     : rows;
 
-  // Determine metric column
-  const metricHints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
-  let metricIdx = -1;
-  for (const hint of metricHints) {
-    const idx = bestHeaderIndex(headers, hint);
-    if (idx >= 0) { metricIdx = idx; break; }
-  }
-  if (metricIdx < 0) {
-    const candidateIdx = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
-    metricIdx = candidateIdx >= 0 ? candidateIdx : 0;
-  }
+  // Resolve metric column with synonyms
+  const metricIdx = (() => {
+    const hints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
+    const direct = resolveColumnIndex(headers, message, hints);
+    if (direct >= 0) return direct;
+    const fallback = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
+    return fallback >= 0 ? fallback : 0;
+  })();
 
   const vals = filtered.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
   if (vals.length === 0 && !wantsCount) return null;
@@ -368,12 +372,26 @@ function answerQuestionFromSheets(
   const aggTitle = (t: string) => `${t}(${headers[metricIdx]})${range?.label ? ` · ${range.label}` : ''}`;
   const baseTitle = `${sheetName}${range?.label ? ` · ${range.label}` : ''}`;
 
+  // Apply simple filter if present
+  const filterSpec = parseSimpleFilter(message);
+  let rowsForAgg = filtered;
+  if (filterSpec) {
+    const idx = resolveColumnIndex(headers, filterSpec.columnQuery);
+    if (idx >= 0) {
+      rowsForAgg = filtered.filter((r) => {
+        const v = String(r[idx] ?? '').toLowerCase();
+        const q = filterSpec.value.toLowerCase();
+        return filterSpec.op === 'contains' ? v.includes(q) : v === q;
+      });
+    }
+  }
+
   // Grouped aggregates if requested
   if (groupMatch) {
     const groupIdx = bestHeaderIndex(headers, groupMatch[1].trim());
     if (groupIdx >= 0) {
       const map = new Map<string, { sum: number; count: number; min: number; max: number }>();
-      for (const r of filtered) {
+      for (const r of rowsForAgg) {
         const key = String(r[groupIdx] ?? 'Unknown');
         const n = parseNumber(r[metricIdx]);
         if (!map.has(key)) map.set(key, { sum: 0, count: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY });
@@ -411,17 +429,18 @@ function answerQuestionFromSheets(
 
   // Ungrouped aggregates
   if (wantsCount) {
-    const answer = `Count${range?.label ? ` ${range.label}` : ''}: ${filtered.length} row(s) in ${baseTitle}.`;
+    const answer = `Count${range?.label ? ` ${range.label}` : ''}: ${rowsForAgg.length} row(s) in ${baseTitle}.`;
     return { answer };
   }
   if (wantsSum || wantsAvg || wantsMin || wantsMax) {
-    const total = vals.reduce((a, b) => a + b, 0);
-    const avg = vals.length ? total / vals.length : 0;
-    const min = vals.length ? Math.min(...vals) : 0;
-    const max = vals.length ? Math.max(...vals) : 0;
+    const vals2 = rowsForAgg.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
+    const total = vals2.reduce((a, b) => a + b, 0);
+    const avg = vals2.length ? total / vals2.length : 0;
+    const min = vals2.length ? Math.min(...vals2) : 0;
+    const max = vals2.length ? Math.max(...vals2) : 0;
     let answer = '';
-    if (wantsSum) answer = `${aggTitle('Sum')}: ${Number(total.toFixed(2))} across ${vals.length} row(s) in ${baseTitle}.`;
-    else if (wantsAvg) answer = `${aggTitle('Average')}: ${Number(avg.toFixed(2))} over ${vals.length} row(s) in ${baseTitle}.`;
+    if (wantsSum) answer = `${aggTitle('Sum')}: ${Number(total.toFixed(2))} across ${vals2.length} row(s) in ${baseTitle}.`;
+    else if (wantsAvg) answer = `${aggTitle('Average')}: ${Number(avg.toFixed(2))} over ${vals2.length} row(s) in ${baseTitle}.`;
     else if (wantsMin) answer = `${aggTitle('Min')}: ${Number(min.toFixed(2))} in ${baseTitle}.`;
     else if (wantsMax) answer = `${aggTitle('Max')}: ${Number(max.toFixed(2))} in ${baseTitle}.`;
     return { answer };
@@ -1106,9 +1125,13 @@ async function processMessage(
 
     // Auto-hydrate sheet data for Q&A if missing but context has selection
     try {
-      const hasHydrated = (context as any).sheetData && Object.keys((context as any).sheetData).length > 0;
-      const sheetNamesList = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
-      const canHydrate = !hasHydrated && !!context?.spreadsheetId && sheetNamesList.length > 0 && !hasFiles;
+      const now = Date.now();
+      const ctxAny = context as any;
+      const hasHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
+      const lastHydration = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
+      const isStale = now - lastHydration > 60_000; // 60s cache
+      const sheetNamesList = Array.isArray(ctxAny.sheetNames) ? (ctxAny.sheetNames as string[]) : [];
+      const canHydrate = (!hasHydrated || isStale) && !!context?.spreadsheetId && sheetNamesList.length > 0 && !hasFiles;
       if (canHydrate) {
         const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
         const take = sheetNamesList.slice(0, 3);
@@ -1131,7 +1154,8 @@ async function processMessage(
           }
         }
         if (Object.keys(map).length > 0) {
-          (context as any).sheetData = map;
+          ctxAny.sheetData = map;
+          ctxAny._sheetHydratedAt = now;
         }
       }
     } catch (e) {
@@ -1288,6 +1312,7 @@ async function processMessage(
       const wantToday = /\b(today|today'?s\s*entry)\b/i.test(message);
       const wantAll = /\b(all|everything|full|entire)\b/i.test(message);
       const wantRecent = /\b(recent|latest|last\s+few)\b/i.test(message) || (!wantToday && !wantAll && looksLikeDataRequest);
+      const wantDistinct = /\b(distinct|unique)\b/i.test(message);
       const mDays = message.match(/\b(past|last)\s+(\d+)\s+days?\b/i);
       const wantPastNDays = mDays ? parseInt(mDays[2], 10) : null;
       const wantLastWeek = /\b(past|last)\s+(week|7\s*days)\b/i.test(message) ? 7 : null;
@@ -1330,7 +1355,23 @@ async function processMessage(
           continue;
         }
         const headers = table[0];
-        const dateColIdx = headers.findIndex(h => /date/i.test(h));
+        const dateColIdx = headers.findIndex(h => /date|timestamp|time/i.test(h));
+        
+        // Distinct/unique values for a referenced column
+        if (wantDistinct) {
+          const filter = parseSimpleFilter(message);
+          // Try to resolve the column explicitly mentioned after 'distinct'
+          const mCol = message.match(/\b(?:distinct|unique)\s+([a-z][a-z0-9_\s]{2,})/i);
+          const colQuery = mCol ? mCol[1].trim() : (filter?.columnQuery || '');
+          const idx = resolveColumnIndex(headers, colQuery || message);
+          if (idx >= 0) {
+            const values = table.slice(1).map(r => String(r[idx] ?? '')).filter(v => v.trim() !== '');
+            const unique = Array.from(new Set(values)).slice(0, 20);
+            dataTables.push({ title: `${name} · Unique ${headers[idx]}`, headers: [headers[idx]], rows: unique.map(v => [v]) });
+            matchedAny = true;
+            continue;
+          }
+        }
         // Column-specific Q&A: if user references a column (e.g., "Show me Driver_Name")
         const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
         const looksLikeColumnAsk = /\b(show|list|what\s+is|who\s+is|display|get)\b/i.test(message);
