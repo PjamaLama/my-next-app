@@ -1498,212 +1498,210 @@ export default function Home() {
               </div>
             )}
 
-            {/* AI Chat Input Section - Mobile optimized */}
-            <div
-              className="fixed bottom-0 right-0 z-50 w-auto overflow-visible px-0"
-              style={{ left: 'var(--sidebar-width, 300px)', paddingBottom: 'env(safe-area-inset-bottom)' }}
-            >
-              <div className="relative w-full">
-                <div className="w-full mb-4">
-                  <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
-                    {uploadedImages.length > 0 && (
-                      <div className="p-3 border-b border-white/10">
-                        <div className="flex flex-wrap gap-2">
-                          {(() => {
-                            const progress = getFileSizeProgress();
-                            return uploadedImages.map((image, index) => {
-                              const fileInfo = progress.fileSizes[index];
-                              const isLarge = fileInfo.percentage > 80;
-                              const isOverLimit = fileInfo.percentage > 100;
-                              return (
-                                <div key={image.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
-                                  isOverLimit ? 'bg-red-500/10 border-red-400/30 text-red-300' :
-                                  isLarge ? 'bg-yellow-500/10 border-yellow-400/30 text-yellow-200' :
-                                  'bg-sky-500/10 border-sky-400/30 text-sky-200'
-                                }`}>
-                                  {image.fileType === 'image' ? (
-                                    <svg className="w-4 h-4 text-sky-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                  ) : (
-                                    <svg className="w-4 h-4 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                  )}
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="font-medium truncate max-w-[120px]">
-                                      {image.file.name}
-                                    </span>
-                                    <span className="text-xs">
-                                      {fileInfo.sizeMB}MB ({fileInfo.percentage.toFixed(0)}% of limit)
-                                    </span>
-                                  </div>
-                                  <button
-                                    onClick={() => { URL.revokeObjectURL(image.preview); setUploadedImages(prev => prev.filter(img => img.id !== image.id)); }}
-                                    className="ml-1 text-white/40 hover:text-white/80"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <line x1="4" y1="4" x2="16" y2="16" />
-                                      <line x1="16" y1="4" x2="4" y2="16" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
+            {/* AI Chat Input Section moved outside to avoid transformed ancestor affecting fixed positioning */}
+          </section>
+
+          {/* Docked input bar pinned to bottom of viewport */}
+          <div
+            className="fixed bottom-0 right-0 z-50 w-auto overflow-visible px-3 sm:px-4"
+            style={{ left: 'var(--sidebar-width, 300px)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div className="relative w-full">
+              <div className="w-full mb-2">
+                <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
+                  {uploadedImages.length > 0 && (
+                    <div className="p-3 border-b border-white/10">
+                      <div className="flex flex-wrap gap-2">
                         {(() => {
                           const progress = getFileSizeProgress();
-                          const maxFileSizeMB = (progress.maxFileSize / 1024 / 1024).toFixed(0);
-                          const totalSizeMB = progress.totalSizeMB;
-                          const fileCount = uploadedImages.length;
-                          return (
-                            <div className="mt-2 px-3 py-2 rounded-lg text-xs bg-black/20 border border-white/10">
-                              <div className="flex items-center justify-between">
-                                <span className="text-white/80 font-medium">
-                                  📦 Total: {totalSizeMB}MB ({fileCount} file{fileCount !== 1 ? 's' : ''})
-                                </span>
-                                <span className="text-white/60">
-                                  Max: {maxFileSizeMB}MB each
-                                </span>
+                          return uploadedImages.map((image, index) => {
+                            const fileInfo = progress.fileSizes[index];
+                            const isLarge = fileInfo.percentage > 80;
+                            const isOverLimit = fileInfo.percentage > 100;
+                            return (
+                              <div key={image.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
+                                isOverLimit ? 'bg-red-500/10 border-red-400/30 text-red-300' :
+                                isLarge ? 'bg-yellow-500/10 border-yellow-400/30 text-yellow-200' :
+                                'bg-sky-500/10 border-sky-400/30 text-sky-200'
+                              }`}>
+                                {image.fileType === 'image' ? (
+                                  <svg className="w-4 h-4 text-sky-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-4 h-4 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                )}
+                                <div className="flex flex-col min-w-0">
+                                  <span className="font-medium truncate max-w-[120px]">
+                                    {image.file.name}
+                                  </span>
+                                  <span className="text-xs">
+                                    {fileInfo.sizeMB}MB ({fileInfo.percentage.toFixed(0)}% of limit)
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => { URL.revokeObjectURL(image.preview); setUploadedImages(prev => prev.filter(img => img.id !== image.id)); }}
+                                  className="ml-1 text-white/40 hover:text-white/80"
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <line x1="4" y1="4" x2="16" y2="16" />
+                                    <line x1="16" y1="4" x2="4" y2="16" />
+                                  </svg>
+                                </button>
                               </div>
-                            </div>
-                          );
+                            );
+                          });
                         })()}
                       </div>
-                    )}
+                      {(() => {
+                        const progress = getFileSizeProgress();
+                        const maxFileSizeMB = (progress.maxFileSize / 1024 / 1024).toFixed(0);
+                        const totalSizeMB = progress.totalSizeMB;
+                        const fileCount = uploadedImages.length;
+                        return (
+                          <div className="mt-2 px-3 py-2 rounded-lg text-xs bg-black/20 border border-white/10">
+                            <div className="flex items-center justify-between">
+                              <span className="text-white/80 font-medium">
+                                📦 Total: {totalSizeMB}MB ({fileCount} file{fileCount !== 1 ? 's' : ''})
+                              </span>
+                              <span className="text-white/60">
+                                Max: {maxFileSizeMB}MB each
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
 
-                    <div className="relative">
-                      {/* Clean input: no recording badges or debug overlays */}
-                      <textarea
-                        value={displayText}
-                        onChange={(e) => setEditingText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            if (editingText.trim() || uploadedImages.length > 0) {
-                              processWithAIChat(editingText.trim() || 'Analyze these files');
-                              setEditingText('');
+                  <div className="relative">
+                    <textarea
+                      value={displayText}
+                      onChange={(e) => setEditingText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (editingText.trim() || uploadedImages.length > 0) {
+                            processWithAIChat(editingText.trim() || 'Analyze these files');
+                            setEditingText('');
+                          }
+                        }
+                      }}
+                      placeholder={uploadedImages.length > 0 
+                        ? `Add context about your ${uploadedImages.length} attached file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
+                        : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : null)
+                      }
+                      rows={3}
+                      className={`w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-white/50 text-white ${
+                        listening ? 'border-l-4 border-l-sky-500' : ''
+                      }`}
+                      style={{
+                        color: listening && (transcript || interimText) ? '#e5e7eb' : 'inherit',
+                        backgroundColor: listening ? 'rgba(56, 189, 248, 0.06)' : 'transparent'
+                      }}
+                    />
+
+                    <div className="absolute right-2 bottom-2 flex items-center gap-2">
+                      {listening && (transcript || interimText) && (
+                        <button
+                          onClick={() => { setTranscript(""); setInterimText(""); }}
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition"
+                          title="Clear voice input"
+                          aria-label="Clear voice input"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                          </svg>
+                        </button>
+                      )}
+
+                      <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={handleImageUpload} className="hidden" id="text-area-upload" />
+                      <label
+                        htmlFor="text-area-upload"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
+                          uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                        }`}
+                        title="Add images or PDFs"
+                        aria-label="Add images or PDFs"
+                      >
+                        {uploadingImages ? (
+                          <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05L12 20.49a5.5 5.5 0 11-7.78-7.78l10-10a3.5 3.5 0 114.95 4.95l-10 10a1.5 1.5 0 11-2.12-2.12l9-9" />
+                          </svg>
+                        )}
+                      </label>
+
+                      <button
+                        onClick={() => {
+                          if (listening) {
+                            const currentTranscript = transcript.trim();
+                            const currentInterimText = interimText.trim();
+                            const finalTranscript = currentTranscript + (currentInterimText ? ` ${currentInterimText}` : '');
+                            setListening(false);
+                            if (finalTranscript) {
+                              const newEditingText = editingText.trim() ? `${editingText} ${finalTranscript}` : finalTranscript;
+                              setEditingText(newEditingText);
                             }
+                            setTimeout(() => { setTranscript(""); setInterimText(""); }, 50);
+                          } else {
+                            setTranscript("");
+                            setInterimText("");
+                            setListening(true);
                           }
                         }}
-                        placeholder={uploadedImages.length > 0 
-                          ? `Add context about your ${uploadedImages.length} attached file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
-                          : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : null)
-                        }
-                        rows={3}
-                        className={`w-full p-4 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-white/50 text-white ${
-                          listening ? 'border-l-4 border-l-sky-500' : ''
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
+                          listening ? 'bg-red-600 text-white shadow ring-2 ring-red-400/30 animate-pulse' : 'bg-sky-600 hover:bg-sky-700 text-white shadow'
                         }`}
-                        style={{
-                          color: listening && (transcript || interimText) ? '#e5e7eb' : 'inherit',
-                          backgroundColor: listening ? 'rgba(56, 189, 248, 0.06)' : 'transparent'
-                        }}
-                      />
-
-                      <div className="absolute right-2 bottom-2 flex items-center gap-2">
-                        {listening && (transcript || interimText) && (
-                          <button
-                            onClick={() => { setTranscript(""); setInterimText(""); }}
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition"
-                            title="Clear voice input"
-                            aria-label="Clear voice input"
-                          >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <line x1="6" y1="6" x2="18" y2="18" />
-                              <line x1="18" y1="6" x2="6" y2="18" />
-                            </svg>
-                          </button>
+                        title={listening ? "Stop recording" : "Start voice recording"}
+                        aria-label={listening ? "Stop recording" : "Start voice recording"}
+                      >
+                        {listening ? (
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <rect x="9" y="9" width="6" height="6" rx="1" />
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V7a3 3 0 10-6 0v5a3 3 0 003 3z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v3m0 0H9m3 0h3" />
+                          </svg>
                         )}
-                        {/* Removed dev-only test button for cleaner UI */}
+                      </button>
 
-                        <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={handleImageUpload} className="hidden" id="text-area-upload" />
-                        <label
-                          htmlFor="text-area-upload"
-                          className={`w-10 h-10 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
-                            uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/70 hover:bg-white/10 hover:text-white'
-                          }`}
-                          title="Add images or PDFs"
-                          aria-label="Add images or PDFs"
-                        >
-                          {uploadingImages ? (
-                            <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05L12 20.49a5.5 5.5 0 11-7.78-7.78l10-10a3.5 3.5 0 114.95 4.95l-10 10a1.5 1.5 0 11-2.12-2.12l9-9" />
-                            </svg>
-                          )}
-                        </label>
-
+                      {(editingText.trim() || uploadedImages.length > 0) && (
                         <button
-                          onClick={() => {
-                            if (listening) {
-                              const currentTranscript = transcript.trim();
-                              const currentInterimText = interimText.trim();
-                              const finalTranscript = currentTranscript + (currentInterimText ? ` ${currentInterimText}` : '');
-                              setListening(false);
-                              if (finalTranscript) {
-                                const newEditingText = editingText.trim() ? `${editingText} ${finalTranscript}` : finalTranscript;
-                                setEditingText(newEditingText);
-                              }
-                              setTimeout(() => { setTranscript(""); setInterimText(""); }, 50);
-                            } else {
-                              setTranscript("");
-                              setInterimText("");
-                              setListening(true);
-                            }
-                          }}
-                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
-                            listening ? 'bg-red-600 text-white shadow ring-2 ring-red-400/30 animate-pulse' : 'bg-sky-600 hover:bg-sky-700 text-white shadow'
-                          }`}
-                          title={listening ? "Stop recording" : "Start voice recording"}
-                          aria-label={listening ? "Stop recording" : "Start voice recording"}
+                          onClick={() => { processWithAIChat(editingText.trim() || 'Analyze these files'); setEditingText(''); }}
+                          className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
+                          title="Send"
+                          aria-label="Send"
                         >
-                          {listening ? (
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <circle cx="12" cy="12" r="10" />
-                              <rect x="9" y="9" width="6" height="6" rx="1" />
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V7a3 3 0 10-6 0v5a3 3 0 003 3z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v3m0 0H9m3 0h3" />
-                            </svg>
-                          )}
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5l16.5 7.5-16.5 7.5 3.75-7.5-3.75-7.5z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 12h9.75" />
+                          </svg>
                         </button>
-
-                        {(editingText.trim() || uploadedImages.length > 0) && (
-                          <button
-                            onClick={() => { processWithAIChat(editingText.trim() || 'Analyze these files'); setEditingText(''); }}
-                            className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
-                            title="Send"
-                            aria-label="Send"
-                          >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5l16.5 7.5-16.5 7.5 3.75-7.5-3.75-7.5z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 12h9.75" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
-
-                <div className="w-full text-center" />
-
-                {sendResult && (
-                  <div className="text-xs sm:text-sm text-center text-white/80 px-4">
-                    {sendResult}
-                  </div>
-                )}
               </div>
+
+              {sendResult && (
+                <div className="text-xs sm:text-sm text-center text-white/80 px-4">
+                  {sendResult}
+                </div>
+              )}
             </div>
-          </section>
+          </div>
 
           {/* Stepper modal remains unchanged */}
         </div>
