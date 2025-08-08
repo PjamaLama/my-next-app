@@ -2202,32 +2202,7 @@ export default function Home() {
                           )}
                         </label>
 
-                        {uploadedImages.length > 0 && (
-                          <button
-                            onClick={performQuickAdd}
-                            disabled={quickAddLoading || !defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0}
-                            className={`h-9 px-3 rounded-full inline-flex items-center gap-2 transition border ${
-                              quickAddLoading
-                                ? 'bg-white/10 text-white/60 border-white/15'
-                                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400/40'
-                            }`}
-                            title={`Extract and add data to ${selectedSheetNames && selectedSheetNames.length > 0 ? (selectedSheetNames.length === 1 ? selectedSheetNames[0] : `${selectedSheetNames[0]} +${selectedSheetNames.length - 1}`) : 'selected sheet'}`}
-                            aria-label="Add extracted data to selected sheet"
-                          >
-                            {quickAddLoading ? (
-                              <span className="inline-block w-3 h-3 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-                            ) : (
-                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12" />
-                              </svg>
-                            )}
-                            <span className="hidden sm:inline">
-                              {selectedSheetNames && selectedSheetNames.length > 0
-                                ? `Add to ${selectedSheetNames.length === 1 ? `"${selectedSheetNames[0]}"` : `"${selectedSheetNames[0]}" +${selectedSheetNames.length - 1}`}`
-                                : 'Add to selected'}
-                            </span>
-                          </button>
-                        )}
+                        {/* Quick add button removed from input area; use per-table action in chat */}
                       </div>
 
                       <button

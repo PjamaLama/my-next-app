@@ -514,6 +514,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
     }
 
     const allUpdates: SheetAction[] = [];
+    let totalExecuted = 0;
     for (const sheetName of sheetNames) {
       console.log(`Processing updates for sheet: ${sheetName}`);
       const result = await updateSheetFlow({
@@ -523,8 +524,11 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         commit: !preview // Only commit if not in preview mode
       });
 
-      if (result && result.actions && result.actions.length > 0) {
-        const updatesForSheet = result.actions.map((action: SheetAction) => {
+      if (result && Array.isArray((result as any).actions) && (result as any).actions.length > 0) {
+        // Only convert concrete cell updates here; row inserts are already handled inside the flow when commit=true
+        const updatesForSheet = (result as any).actions
+          .filter((a: any) => a.type === 'updateCell')
+          .map((action: any) => {
           // Validate that the AI is using the correct sheet name
           if (action.sheet && action.sheet !== sheetName) {
             console.warn(`AI returned sheet name "${action.sheet}" but expected "${sheetName}". Using expected sheet name.`);
@@ -536,8 +540,13 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
             row: action.row,
             column: action.column
           };
-        });
+          });
         allUpdates.push(...updatesForSheet);
+      }
+
+      // Track how many actions the flow executed when commit=true
+      if (!preview && typeof (result as any)?.executedActions === 'number') {
+        totalExecuted += (result as any).executedActions;
       }
     }
 
@@ -553,35 +562,15 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
           flowPreview: undefined
         });
       } else {
-        // Actually update the sheets
-        console.log(`Formatted ${allUpdates.length} total updates for save-sheet-data-multi API:`, allUpdates);
-
-        const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            spreadsheetId,
-            updates: allUpdates
-          })
+        // The flow already executed updates (commit=true). Avoid double-applying.
+        const message = totalExecuted > 0
+          ? `Successfully executed ${totalExecuted} action(s) across ${sheetNames.length} sheet(s).`
+          : `Successfully applied updates across ${sheetNames.length} sheet(s).`;
+        return res.status(200).json({
+          success: true,
+          result: message,
+          actions: allUpdates
         });
-
-        if (updateResponse.ok) {
-          const updateResult = await updateResponse.json();
-          return res.status(200).json({
-            success: true,
-            result: `Successfully updated ${allUpdates.length} cells across ${sheetNames.length} sheet(s).`,
-            details: updateResult,
-            actions: allUpdates
-          });
-        } else {
-          const errorText = await updateResponse.text();
-          console.error('Update API error:', errorText);
-          return res.status(500).json({
-            success: false,
-            error: 'Failed to execute sheet updates',
-            details: errorText
-          });
-        }
       }
     } else {
       return res.status(200).json({

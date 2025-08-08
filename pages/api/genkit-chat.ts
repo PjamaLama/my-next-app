@@ -1314,10 +1314,11 @@ async function processMessage(
       }
     }
 
-    // Smart table builder: create views based on user request (filters, group-by, totals) or extracted text from files
+    // Smart table builder: only when explicitly requested (filters, group-by, totals)
     const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
     const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
-    if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0) {
+    const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
+    if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView)) {
       try {
         const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
         if (smart.length > 0) {
@@ -1401,10 +1402,10 @@ async function processMessage(
       console.warn('Insights generation failed', e);
     }
 
-    // If we have pre-hydrated sheet data in context and relevant intent, add a tiny, low-token overview
+    // If we have pre-hydrated sheet data in context and the user explicitly asked, add a tiny, low-token overview
     const shouldSummarize = hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles);
-    const looksLikeDataRequest = intent === 'get_data' || /\b(about|overview|summary|summar(y|ise)|show|what's in|tell me)/i.test(message);
-    if (shouldSummarize && (looksLikeDataRequest || intent === 'chat')) {
+    const looksLikeDataRequest = intent === 'get_data' || /\b(about|overview|summary|summar(y|ise)|show|what's in|tell me)\b/i.test(message);
+    if (shouldSummarize && looksLikeDataRequest) {
       const sheetsToDescribe = selectedSheetNames.length > 0
         ? selectedSheetNames.filter(n => hydratedSheetData[n])
         : Object.keys(hydratedSheetData);
@@ -1421,8 +1422,8 @@ async function processMessage(
       }
     }
 
-    // Provide a concise data preview for common requests using hydrated data only (no extra API calls)
-    if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles)) {
+    // Provide a concise data preview ONLY when explicitly requested
+    if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (!hasFiles) && (looksLikeDataRequest || intent === 'get_data' || wantsExplicitDataView)) {
       const wantToday = /\b(today|today'?s\s*entry)\b/i.test(message);
       const wantAll = /\b(all|everything|full|entire)\b/i.test(message);
       const wantRecent = /\b(recent|latest|last\s+few)\b/i.test(message) || (!wantToday && !wantAll && looksLikeDataRequest);
