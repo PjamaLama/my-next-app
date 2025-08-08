@@ -1314,136 +1314,7 @@ export default function Home() {
         <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-48 sm:pb-56 pt-0">
           {/* Main Voice/Text Input Section - Mobile optimized */}
           <section className="glass rounded-2xl p-4 sm:p-6 space-y-4 border border-white/10 animate-fade-in-up">
-            {/* Chat Messages Display */}
-            {chatMessages.length > 0 && (
-              <div className="mb-6">
-                <div className="space-y-3 max-h-80 overflow-y-auto bg-black/20 rounded-lg p-4 border border-white/10">
-                  {chatMessages.map((message) => (
-                    <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
-                      <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow ${
-                         message.role === 'user'
-                           ? 'bg-sky-500/80 text-white'
-                           : message.role === 'system'
-                           ? 'bg-white/10 text-white/80 border border-white/10'
-                           : 'bg-white/5 text-white/90 border border-white/10'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-1 opacity-80">
-                          <span className={`text-xs ${getMessageTypeColor(message.messageType)}`}>
-                            {getMessageTypeIcon(message.messageType)}
-                          </span>
-                          <span className="text-xs">
-                            {message.timestamp.toLocaleTimeString()}
-                          </span>
-                          {message.messageType === 'voice' && (
-                            <span className="text-xs bg-sky-500/20 px-2 py-0.5 rounded text-sky-200 border border-sky-400/30">
-                              Voice
-                            </span>
-                          )}
-                        </div>
-                          <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                          {message.role === 'assistant' && (message as any).tables && (message as any).tables.length > 0 && (
-                            <div className="mt-3 space-y-3">
-                              {((message as any).tables as Array<{ title?: string; headers: string[]; rows: string[][] }>).map((tbl, idx) => (
-                                <div key={`tbl_${message.id}_${idx}`} className="overflow-x-auto rounded-lg border border-white/10 bg-white/5">
-                                  {tbl.title && <div className="px-3 py-2 text-xs text-white/80 border-b border-white/10">{tbl.title}</div>}
-                                  <table className="min-w-full text-xs text-white/90">
-                                    <thead>
-                                      <tr className="bg-white/10">
-                                        {tbl.headers.map((h, i) => (
-                                          <th key={`h_${i}`} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {tbl.rows.map((r, ri) => (
-                                        <tr key={`r_${ri}`} className={ri % 2 === 0 ? 'bg-white/0' : 'bg-white/5'}>
-                                          {r.map((c, ci) => (
-                                            <td key={`c_${ri}_${ci}`} className="px-3 py-2 whitespace-nowrap">{c}</td>
-                                          ))}
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        {/* Context chips showing which sheets were used for this AI message */}
-                        {message.role === 'assistant' && message.sheetsUsed && message.sheetsUsed.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {message.sheetsUsed.slice(0, 3).map((s) => (
-                              <span key={`${message.id}_${s}`} className="px-2 py-0.5 rounded-full text-[10px] bg-white/8 border border-white/15 text-white/80">
-                                {s}
-                              </span>
-                            ))}
-                            {message.sheetsUsed.length > 3 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/8 border border-white/15 text-white/80">+{message.sheetsUsed.length - 3} more</span>
-                            )}
-                          </div>
-                        )}
-                        {/* Quick reply chips (assistant messages only) */}
-                        {message.role === 'assistant' && message.quickReplies && message.quickReplies.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {message.quickReplies.map((qr, idx) => (
-                              <button
-                                key={`${message.id}_qr_${idx}`}
-                                onClick={() => processWithAIChat(qr)}
-                                className="px-2.5 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20 border border-white/15 text-white/90"
-                                aria-label={`Quick reply: ${qr}`}
-                              >
-                                {qr}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {message.attachments && message.attachments.length > 0 && (
-                          <div className="mt-2 space-y-2">
-                            {message.attachments.map((attachment) => (
-                              <div key={attachment.id} className="flex items-center gap-2 p-2 bg-white/5 rounded-lg border border-white/10">
-                                <div className="flex-shrink-0">
-                                  {attachment.fileType === 'image' ? (
-                                    <Image src={attachment.preview || ''} alt={attachment.name} width={32} height={32} className="w-8 h-8 object-cover rounded border" />
-                                  ) : (
-                                    <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium truncate text-white/90">{attachment.name}</p>
-                                  <p className="text-xs opacity-75">{attachment.fileType === 'image' ? 'Image' : 'PDF Document'}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {message.toolResults && message.toolResults.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {message.toolResults.map((result, index) => (
-                              <div key={`${result.id}-${index}`} className={`text-xs p-2 rounded border ${
-                                result.success ? 'bg-green-500/10 text-green-300 border-green-400/30' : 'bg-red-500/10 text-red-300 border-red-400/30'
-                              }`}>
-                                <p>{result.result}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {chatProcessing && (
-                    <div className="flex justify-start">
-                      <div className="bg-white/10 text-white/80 p-3 rounded-2xl border border-white/10">
-                        <div className="flex items-center gap-2">
-                          <div className="animate-spin h-4 w-4 border-2 border-sky-400 border-t-transparent rounded-full"></div>
-                          <span className="text-sm">AI is thinking...</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Chat messages moved next to the composer so everything stays together */}
 
             {/* Upfront spreadsheet selection nudges and sheet selector */}
             {chatMessages.length === 0 && !defaultSpreadsheetId && (
@@ -1468,7 +1339,7 @@ export default function Home() {
             {/* AI Chat Input Section moved outside to avoid transformed ancestor affecting fixed positioning */}
           </section>
 
-          {/* Docked input bar pinned to bottom of viewport */}
+          {/* Docked input bar pinned to bottom of viewport with stacked chat list above chips/input */}
           <div
             className="fixed bottom-0 right-0 z-50 w-auto overflow-visible px-3 sm:px-4"
             style={{ left: 'var(--sidebar-width, 300px)', paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -1476,6 +1347,35 @@ export default function Home() {
             <div className="relative w-full">
               <div className="w-full mb-2">
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
+                  {/* Compact chat list directly above chips/input */}
+                  {chatMessages.length > 0 && (
+                    <div className="max-h-72 overflow-y-auto p-3 border-b border-white/10 bg-black/10 rounded-t-2xl">
+                      <div className="space-y-2">
+                        {chatMessages.map((message) => (
+                          <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[85%] p-2 rounded-xl text-xs shadow ${
+                              message.role === 'user'
+                                ? 'bg-sky-500/80 text-white'
+                                : message.role === 'system'
+                                ? 'bg-white/10 text-white/80 border border-white/10'
+                                : 'bg-white/5 text-white/90 border border-white/10'
+                            }`}>
+                              <div className="flex items-center gap-1 mb-0.5 opacity-80">
+                                <span className={`text-[10px] ${getMessageTypeColor(message.messageType)}`}>{getMessageTypeIcon(message.messageType)}</span>
+                                <span className="text-[10px]">{message.timestamp.toLocaleTimeString()}</span>
+                              </div>
+                              <p className="whitespace-pre-wrap leading-relaxed text-[12px]">{message.content}</p>
+                            </div>
+                          </div>
+                        ))}
+                        {chatProcessing && (
+                          <div className="flex justify-start">
+                            <div className="bg-white/10 text-white/80 px-3 py-2 rounded-xl border border-white/10 text-xs">AI is thinking...</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {defaultSpreadsheetId && allSheetNames.length > 0 && (
                     <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
                       <div className="flex flex-wrap gap-1.5">

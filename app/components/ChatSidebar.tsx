@@ -79,20 +79,22 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             )}
           </div>
           {/* Right-side actions */}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1 shrink-0">
             <button
               onClick={(e) => { e.stopPropagation(); startRename(s.id, s.title); }}
-              className="hidden sm:inline p-1 rounded-md border border-white/15 text-white/70 hover:text-white hover:border-white/40"
+              className={`hidden sm:inline inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/15 text-white/70 hover:text-white hover:border-white/40 focus:outline-none focus:ring-1 focus:ring-white/30`}
               title="Rename"
+              aria-label="Rename chat"
             >
-              <Pencil className="w-3.5 h-3.5" />
+              <Pencil className={`${peek ? 'w-3 h-3' : 'w-3 h-3'}`} />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); if (confirm('Delete this chat?')) deleteSession(s.id); }}
-              className="p-1 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
+              className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-300/30`}
               title="Delete"
+              aria-label="Delete chat"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className={`${peek ? 'w-3 h-3' : 'w-3 h-3'}`} />
             </button>
           </div>
         </div>
@@ -105,20 +107,23 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     // Render the same UI in embedded mode
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
           <div className="flex items-center gap-2 text-sm font-semibold text-white">
             <MessageSquare className="w-4 h-4" />
             {!peek && 'Chats'}
             <span className="text-xs text-white/60">{!peek && `(${sortedSessions.length})`}</span>
           </div>
+        <div className="shrink-0">
           <button
             onClick={handleCreate}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent text-xs"
+            className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent`}
             disabled={creating}
             title="New Chat"
+            aria-label="New chat"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
           </button>
+        </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {sortedSessions.length === 0 ? (
@@ -142,14 +147,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           {!peek && 'Chats'}
           <span className="text-xs text-white/60">{!peek && `(${sortedSessions.length})`}</span>
         </div>
-        <button
-          onClick={handleCreate}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-600 text-white text-xs hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
-          disabled={creating}
-          title="New Chat"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+        <div className="shrink-0">
+          <button
+            onClick={handleCreate}
+            className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-400/50`}
+            disabled={creating}
+            title="New Chat"
+            aria-label="New chat"
+          >
+            <Plus className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {sortedSessions.length === 0 ? (

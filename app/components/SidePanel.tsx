@@ -33,13 +33,13 @@ const SidePanel: React.FC = () => {
         {/* Header */}
         <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between">
           <div className="text-xs text-white/60">Workspace</div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => setPeek((p) => !p)}
-              className="p-1.5 rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent"
+              className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent focus:outline-none focus:ring-1 focus:ring-white/30`}
               title={peek ? 'Expand sidebar' : 'Peek sidebar'}
             >
-              {peek ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              {peek ? <ChevronRight className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} /> : <ChevronLeft className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />}
             </button>
           </div>
         </div>
