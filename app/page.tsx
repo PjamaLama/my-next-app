@@ -1312,27 +1312,16 @@ export default function Home() {
       <PWAInstaller />
       <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-0 overflow-x-hidden">
         <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-48 sm:pb-56 pt-0">
-          {/* Main Voice/Text Input Section - Mobile optimized */}
-          <section className="glass rounded-2xl p-4 sm:p-6 space-y-4 border border-white/10 animate-fade-in-up">
-            {/* Chat messages moved next to the composer so everything stays together */}
-
-            {/* Upfront spreadsheet selection nudges and sheet selector */}
-            {chatMessages.length === 0 && !defaultSpreadsheetId && (
-              <div className="mb-4 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
-                <p className="text-sm mb-2">No spreadsheet selected.</p>
-                <p className="text-xs opacity-80 mb-3">Please add or select a spreadsheet to enable smart updates.</p>
-                <div className="flex gap-2">
-                  <a href={process.env.NEXT_PUBLIC_SHEETS_LINK || '#'} target="_blank" className="px-3 py-1.5 text-xs rounded-lg bg-sky-600 hover:bg-sky-700 text-white">Open Google Sheets</a>
-                </div>
+          {/* Only show a lightweight nudge if no spreadsheet is selected */}
+          {chatMessages.length === 0 && !defaultSpreadsheetId && (
+            <div className="mx-3 sm:mx-4 mt-4 mb-2 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
+              <p className="text-sm mb-2">No spreadsheet selected.</p>
+              <p className="text-xs opacity-80 mb-3">Please add or select a spreadsheet to enable smart updates.</p>
+              <div className="flex gap-2">
+                <a href={process.env.NEXT_PUBLIC_SHEETS_LINK || '#'} target="_blank" className="px-3 py-1.5 text-xs rounded-lg bg-sky-600 hover:bg-sky-700 text-white">Open Google Sheets</a>
               </div>
-            )}
-
-            {/* Removed top 'Preparing your sheets…' bubble; a centered loader now appears in the composer */}
-
-            {/* Sheet chips moved to compact bar above the input */}
-
-            {/* AI Chat Input Section moved outside to avoid transformed ancestor affecting fixed positioning */}
-          </section>
+            </div>
+          )}
 
           {/* Docked input bar pinned to bottom of viewport with stacked chat list above chips/input */}
           <div

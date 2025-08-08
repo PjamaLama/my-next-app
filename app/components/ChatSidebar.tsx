@@ -56,7 +56,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           tabIndex={0}
           onClick={() => handleSelect(s.id)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelect(s.id); }}
-          className={`w-full text-left ${peek ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center gap-2 cursor-pointer select-none`}
+          className={`w-full text-left ${peek ? 'py-1.5' : 'py-2'} flex items-center gap-2 cursor-pointer select-none`}
           style={{ background: 'transparent' }}
         >
           <div className="min-w-0 flex-1">
@@ -79,7 +79,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             )}
           </div>
           {/* Right-side actions */}
-          <div className="ml-auto flex items-center gap-1 shrink-0 pr-3">
+          <div className="ml-auto flex items-center gap-1 shrink-0 mr-3">
             <button
               onClick={(e) => { e.stopPropagation(); startRename(s.id, s.title); }}
               className={`hidden sm:inline grid place-items-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/15 text-white/70 hover:text-white hover:border-white/40 focus:outline-none focus:ring-1 focus:ring-white/30 leading-none`}
@@ -125,7 +125,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </button>
         </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto px-0 py-2">
           {sortedSessions.length === 0 ? (
             <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
           ) : (
@@ -159,7 +159,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto px-0 py-2">
         {sortedSessions.length === 0 ? (
           <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
         ) : (
