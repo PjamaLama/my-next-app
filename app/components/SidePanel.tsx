@@ -32,7 +32,10 @@ const SidePanel: React.FC = () => {
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between">
-          <div className="text-xs text-white/60">Workspace</div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-4 h-4" aria-hidden="true" />
+            <div className="text-xs text-white/60">Workspace</div>
+          </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => setPeek((p) => !p)}

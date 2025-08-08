@@ -56,10 +56,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           tabIndex={0}
           onClick={() => handleSelect(s.id)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelect(s.id); }}
-          className={`w-full text-left ${peek ? 'py-1.5' : 'py-2'} flex items-center gap-2 cursor-pointer select-none`}
+          className={`w-full text-left ${peek ? 'py-1.5' : 'py-2'} pl-3 flex items-center gap-2 cursor-pointer select-none`}
           style={{ background: 'transparent' }}
         >
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 pl-6">
             {renamingId === s.id ? (
               <input
                 value={renameValue}
@@ -125,7 +125,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </button>
         </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-0 py-2">
+        <div className="flex-1 overflow-y-auto py-2">
           {sortedSessions.length === 0 ? (
             <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
           ) : (
