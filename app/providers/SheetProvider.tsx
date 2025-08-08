@@ -15,6 +15,9 @@ interface SheetContextType {
   sheetDataCache: Record<string, string[][]>;
   sheetsPrefetched: boolean;
   setSheetDataCache: React.Dispatch<React.SetStateAction<Record<string, string[][]>>>;
+  sheetStructureCache: Record<string, { isStructured: boolean; confidence: number; issues: string[] }>;
+  unstructuredOverrides: Record<string, boolean>;
+  setUnstructuredOverride: (sheetName: string, value: boolean) => void;
 }
 
 const SheetContext = createContext<SheetContextType | null>(null);
@@ -34,6 +37,8 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [allSheetNames, setAllSheetNames] = useState<string[]>([]);
   const [sheetDataCache, setSheetDataCache] = useState<Record<string, string[][]>>({});
   const [sheetsPrefetched, setSheetsPrefetched] = useState<boolean>(false);
+  const [sheetStructureCache, setSheetStructureCache] = useState<Record<string, { isStructured: boolean; confidence: number; issues: string[] }>>({});
+  const [unstructuredOverrides, setUnstructuredOverrides] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -84,6 +89,10 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const dataJson = await dataRes.json();
             if (cancelled) return;
             setSheetDataCache(prev => ({ ...prev, [name]: dataJson.data || [] }));
+            if (dataJson.structure) {
+              const { isStructured, confidence, issues } = dataJson.structure;
+              setSheetStructureCache(prev => ({ ...prev, [name]: { isStructured, confidence, issues } }));
+            }
           } catch (e) {
             console.warn('Prefetch sheet data failed for', name, e);
           }
@@ -122,6 +131,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       saveDefaultSelections(defaultSpreadsheetId, names);
     }
   };
+  const setUnstructuredOverride = (sheetName: string, value: boolean) => {
+    setUnstructuredOverrides(prev => ({ ...prev, [sheetName]: value }));
+  };
   
   return (
     <SheetContext.Provider
@@ -133,7 +145,10 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         allSheetNames,
         sheetDataCache,
         sheetsPrefetched,
-        setSheetDataCache
+        setSheetDataCache,
+        sheetStructureCache,
+        unstructuredOverrides,
+        setUnstructuredOverride
       }}
     >
       {children}

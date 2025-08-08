@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSheet } from '../providers/SheetProvider';
 
 const SheetChipSelector: React.FC = () => {
-  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides, setUnstructuredOverride } = useSheet();
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +111,8 @@ const SheetChipSelector: React.FC = () => {
       <div className="flex flex-wrap gap-2">
         {sheetNames.map(name => {
           const isSelected = selectedSheetNames.includes(name);
+          const structure = sheetStructureCache[name];
+          const isUnstructured = unstructuredOverrides[name] ?? (structure ? !structure.isStructured : false);
           return (
             <button
               key={name}
@@ -133,6 +135,12 @@ const SheetChipSelector: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <span>{name}</span>
+                {isUnstructured && (
+                  <span title="Unstructured format" className="ml-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-300/60">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5a.75.75 0 00-1.5 0v7a.75.75 0 001.5 0V7zm-1 10a1 1 0 102 0 1 1 0 00-2 0z"/></svg>
+                    Unstructured
+                  </span>
+                )}
               </div>
             </button>
           );
@@ -157,8 +165,33 @@ const SheetChipSelector: React.FC = () => {
               Ready to edit {selectedSheetNames.length} sheet{selectedSheetNames.length !== 1 ? 's' : ''}
             </span>
           </div>
-          <div className="text-xs text-blue-700 dark:text-blue-300">
-            Selected: {selectedSheetNames.join(', ')}
+          <div className="text-xs text-blue-700 dark:text-blue-300 space-y-2">
+            <div>Selected: {selectedSheetNames.join(', ')}</div>
+            <div className="flex flex-wrap gap-2">
+              {selectedSheetNames.map(name => {
+                const structure = sheetStructureCache[name];
+                const isUnstructured = unstructuredOverrides[name] ?? (structure ? !structure.isStructured : false);
+                return (
+                  <label key={`ovr-${name}`} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border bg-white dark:bg-gray-800">
+                    <input
+                      type="checkbox"
+                      className="accent-amber-600"
+                      checked={isUnstructured}
+                      onChange={e => setUnstructuredOverride(name, e.target.checked)}
+                    />
+                    Treat {name} as unstructured
+                    {structure && (
+                      <span className="ml-1 text-[10px] text-gray-500">(detected {Math.round(structure.confidence*100)}% structured)</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            {selectedSheetNames.some(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false))) && (
+              <div className="text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
+                Updates on unstructured sheets will attempt cell-level writes and may be less accurate.
+              </div>
+            )}
           </div>
         </div>
       )}

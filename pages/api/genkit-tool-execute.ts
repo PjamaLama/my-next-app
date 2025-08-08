@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
+import { convertSheetFlow } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
@@ -118,6 +119,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     switch (name) {
       case 'update_sheet':
         return await handleUpdateSheet(args, context, res);
+      case 'convert_unstructured_sheet':
+        return await handleConvertSheet(args, res);
 
       case 'get_sheet_data':
         return await handleGetSheetData(args, res);
@@ -200,6 +203,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       error: errorMessage,
       details: errorDetails
     });
+  }
+}
+async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
+  const { spreadsheetId, sheetName, newSheetName } = args as any;
+  if (!spreadsheetId || !sheetName) {
+    return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required' });
+  }
+  try {
+    const sheets = await getGoogleSheetsClient();
+    const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
+    const resp = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${escaped}!A1:Z1000`,
+      valueRenderOption: 'FORMATTED_VALUE',
+      dateTimeRenderOption: 'FORMATTED_STRING'
+    });
+    const data = resp.data.values || [];
+    const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
+    const converted = await convertSheetFlow.run({ sheetName, sheetCsv: csv });
+    if (!converted.headers?.length) {
+      return res.status(500).json({ success: false, error: 'Conversion failed' });
+    }
+
+    const targetName = typeof newSheetName === 'string' && newSheetName.trim() ? newSheetName.trim() : `${sheetName} (Structured)`;
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title: targetName } } }] }
+    });
+
+    const values = [converted.headers, ...converted.rows];
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${targetName.replace(/'/g, "''")}'!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values }
+    });
+    return res.status(200).json({ success: true, newSheetName: targetName, rows: converted.rows.length });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e instanceof Error ? e.message : String(e) });
   }
 }
 

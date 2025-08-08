@@ -1,6 +1,7 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { findLastDataRow } from '@/lib/sheetUtils';
 import { getCachedHeaders, setCachedHeaders } from '@/lib/sheetHeaderCache';
+import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -259,7 +260,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       console.log(`✅ [${requestId}] Final success: ${finalRange}, rows: ${response.data.values?.length || 0}`);
-      res.status(200).json({ data: response.data.values });
+      const data = response.data.values || [];
+      let structure = null;
+      try {
+        structure = analyzeSheetStructure(data);
+      } catch (e) {
+        console.warn(`⚠️ [${requestId}] Structure analysis failed:`, e);
+      }
+      res.status(200).json({ data, structure });
     } catch (finalError: unknown) {
       const finalErrorMsg = finalError instanceof Error ? finalError.message : String(finalError);
       
