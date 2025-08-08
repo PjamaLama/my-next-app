@@ -3,7 +3,7 @@ import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
-import { ensureSheetCapacity } from '@/lib/sheetUtils';
+import { ensureSheetCapacity, findLastDataRow } from '@/lib/sheetUtils';
 import { suggestHeaderMapping, matchRowIdentity } from '@/lib/mapping';
 import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
@@ -128,6 +128,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'get_sheet_data':
         return await handleGetSheetData(args, res);
+
+      case 'get_sheet_stats':
+        return await handleGetSheetStats(args, res);
+
+      case 'get_column_stats':
+        return await handleGetColumnStats(args, res);
 
     case 'update_single_cell': {
       try {
@@ -401,6 +407,105 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
     return res.status(200).json({ success: true, newSheetName: targetName, rows: normalizedRows.length, warning: sourceReadWarning });
   } catch (e) {
     return res.status(500).json({ success: false, error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Helper to pick a header index by fuzzy match
+function pickHeaderIndex(headers: string[], query: string): number {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) return -1;
+  let best = -1;
+  let bestScore = 0;
+  headers.forEach((h, i) => {
+    const hn = (h || '').toLowerCase();
+    let score = 0;
+    if (hn === q) score += 4;
+    if (hn.includes(q)) score += Math.min(q.length, 3);
+    // token overlap
+    const qParts = q.split(/\s+/).filter(Boolean);
+    qParts.forEach(p => { if (p.length >= 3 && hn.includes(p)) score += 1; });
+    if (score > bestScore) { bestScore = score; best = i; }
+  });
+  return best;
+}
+
+async function handleGetSheetStats(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName } = args as any;
+    if (!spreadsheetId || !sheetName) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required' });
+    }
+
+    const sheets = await getGoogleSheetsClient();
+    const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
+
+    // Read a generous range; rely on Sheets API to cap
+    const strategies = [
+      `${escaped}!A1:T2000`,
+      `${escaped}!A:T`,
+      `${escaped}!A1:T200`,
+      `${escaped}!A1:H100`
+    ];
+    let values: string[][] = [];
+    for (const r of strategies) {
+      try {
+        const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: r, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+        values = (resp.data.values || []) as string[][];
+        if (values.length > 0) break;
+      } catch { /* try next */ }
+    }
+
+    const headers = (values[0] || []) as string[];
+    const lastRow = findLastDataRow(values);
+    const dataRowCount = Math.max(0, lastRow - 1);
+    const columnCount = headers.length;
+
+    return res.status(200).json({
+      success: true,
+      result: `Sheet "${sheetName}": ${dataRowCount} data row(s), ${columnCount} column(s).`,
+      details: { headers, lastDataRow: lastRow, dataRowCount, columnCount }
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to get sheet stats', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function handleGetColumnStats(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, column } = args as any;
+    if (!spreadsheetId || !sheetName || (!column && column !== 0)) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName and column are required' });
+    }
+
+    const sheets = await getGoogleSheetsClient();
+    const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
+    const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!A1:T2000`, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+    const values = (resp.data.values || []) as string[][];
+    const headers = (values[0] || []) as string[];
+    let colIdx: number;
+    if (typeof column === 'number') colIdx = column;
+    else colIdx = pickHeaderIndex(headers, String(column));
+    if (colIdx < 0) {
+      return res.status(404).json({ success: false, error: `Column not found: ${column}` });
+    }
+    const rows = values.slice(1);
+    const rawVals = rows.map(r => (r[colIdx] ?? '')).map(v => String(v));
+    const nonEmpty = rawVals.filter(v => v.trim() !== '');
+    const numVals = nonEmpty.map(v => parseFloat(v.replace(/[\s,]/g, ''))).filter(n => Number.isFinite(n));
+    const sum = numVals.reduce((a, b) => a + b, 0);
+    const avg = numVals.length ? sum / numVals.length : 0;
+    const min = numVals.length ? Math.min(...numVals) : 0;
+    const max = numVals.length ? Math.max(...numVals) : 0;
+    const uniqueCount = new Set(nonEmpty.map(v => v.toLowerCase())).size;
+
+    const label = headers[colIdx] || `Column ${colIdx + 1}`;
+    return res.status(200).json({
+      success: true,
+      result: `${label}: ${nonEmpty.length} value(s), ${uniqueCount} unique. Sum=${Number(sum.toFixed(2))}, Avg=${Number(avg.toFixed(2))}${numVals.length ? `, Min=${Number(min.toFixed(2))}, Max=${Number(max.toFixed(2))}` : ''}`,
+      details: { header: label, count: nonEmpty.length, uniqueCount, sum, avg, min, max }
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to get column stats', details: e instanceof Error ? e.message : String(e) });
   }
 }
 

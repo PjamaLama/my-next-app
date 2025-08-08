@@ -369,7 +369,7 @@ function answerQuestionFromSheets(
   if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return null;
 
   const lower = message.toLowerCase();
-  const wantsSum = /(total|sum)/i.test(message);
+  const wantsSum = /(total|sum)\b/i.test(message);
   const wantsAvg = /(average|avg|mean)\b/i.test(message);
   const wantsMin = /\b(min|minimum|lowest|least)\b/i.test(message);
   const wantsMax = /\b(max|maximum|highest|most)\b/i.test(message);
@@ -466,6 +466,21 @@ function answerQuestionFromSheets(
 
   // Ungrouped aggregates
   if (wantsCount) {
+    // Try to detect if the question targets a specific column (e.g., "how many products", "unique drivers")
+    const uniqueHint = /(unique|distinct)\b/i.test(message);
+    const columnMatch = message.match(/\b(?:of|in|for)?\s*([a-z][a-z0-9_\s]{2,})\b(?:\s+column)?/i);
+    let direct = '';
+    if (columnMatch) direct = columnMatch[1].trim();
+    const idx = resolveColumnIndex(headers, direct || message);
+    if (idx >= 0 && (uniqueHint || /\b(products?|drivers?|vehicles?|items?)\b/i.test(message))) {
+      const values = rowsForAgg.map(r => String(r[idx] ?? '')).filter(v => v.trim() !== '');
+      const unique = new Set(values.map(v => v.toLowerCase())).size;
+      const label = headers[idx];
+      const answer = uniqueHint
+        ? `Distinct ${label}${range?.label ? ` ${range.label}` : ''}: ${unique}.`
+        : `Count of ${label}${range?.label ? ` ${range.label}` : ''}: ${values.length}.`;
+      return { answer };
+    }
     const answer = `Count${range?.label ? ` ${range.label}` : ''}: ${rowsForAgg.length} row(s) in ${baseTitle}.`;
     return { answer };
   }
@@ -1037,6 +1052,39 @@ async function processMessage(
           });
           }
         }
+      } else if (/(how\s+many|count|number\s+of|unique|distinct)\b/i.test(message)) {
+        intent = 'get_data';
+        const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
+        const targetSheet = (context?.sheetName as string) || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
+        if (context?.spreadsheetId && targetSheet) {
+          // Always get overall sheet stats
+          if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('get_sheet_stats')) {
+            suggestedTools.push({
+              id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              type: 'function',
+              function: {
+                name: 'get_sheet_stats',
+                arguments: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: targetSheet })
+              }
+            });
+          }
+          // If the question mentions a column/entity, try column stats
+          const mDistinct = message.match(/\b(?:distinct|unique)\s+([a-z][a-z0-9_\s-]{2,})/i);
+          const mHowMany = message.match(/\bhow\s+many\s+([a-z][a-z0-9_\s-]{2,})/i);
+          const columnQuery = (mDistinct?.[1] || mHowMany?.[1] || '').trim();
+          if (columnQuery) {
+            if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('get_column_stats')) {
+              suggestedTools.push({
+                id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: 'function',
+                function: {
+                  name: 'get_column_stats',
+                  arguments: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: targetSheet, column: columnQuery })
+                }
+              });
+            }
+          }
+        }
       }
     }
 
@@ -1152,6 +1200,10 @@ async function processMessage(
           enhancedResponse += `\n\n✅ **Spreadsheet Updated:**\n${result.result}`;
         } else if (toolCall.function.name === 'get_sheet_data') {
           enhancedResponse += `\n\n📋 **Sheet Data Retrieved:**\n${result.result}`;
+        } else if (toolCall.function.name === 'get_sheet_stats') {
+          enhancedResponse += `\n\n🔢 **Sheet Stats:**\n${result.result}`;
+        } else if (toolCall.function.name === 'get_column_stats') {
+          enhancedResponse += `\n\n🔎 **Column Stats:**\n${result.result}`;
         } else if (toolCall.function.name === 'extract_data_from_files') {
           enhancedResponse += `\n\n✅ **Data Extracted and Sheet Updated:**\n${result.result}`;
         }
