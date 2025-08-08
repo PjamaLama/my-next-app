@@ -1391,36 +1391,24 @@ async function processMessage(
       }
     }
 
-    // If we extracted plain text or structured rows from PDFs/images, present a compact table preview
+    // If files were analyzed, present a compact per-file preview table for each file (prefer structured rows; fall back to text)
     try {
+      const filePreviews: StructuredTable[] = [];
+
+      // 1) Build from lightweight extractions (extract_text_only)
       const extractions = toolResults
         .map(r => (r as any).extractions)
         .filter(Boolean)
         .flat();
-      const analysesFromTools = toolResults
-        .map(r => (r as any).analyses)
-        .filter(Boolean)
-        .flat();
-
-      if ((Array.isArray(extractions) && extractions.length > 0) || (Array.isArray(analysesFromTools) && analysesFromTools.length > 0)) {
-        const filePreviews: StructuredTable[] = [];
-        // Prefer structured previews from extractions
-        for (let i = 0; i < Math.min(Array.isArray(extractions) ? extractions.length : 0, 5); i++) {
+      if (Array.isArray(extractions) && extractions.length > 0) {
+        for (let i = 0; i < Math.min(extractions.length, 10); i++) {
           const ex = (extractions as any[])[i];
           if (!ex || !ex.success) continue;
-          // Prefer structured rows from extraction if present
           if (Array.isArray(ex.structured) && ex.structured.length > 0) {
-            const allKeys = Array.from(new Set(ex.structured.flatMap((r: any) => Object.keys(r))));
-            const rows = ex.structured.slice(0, 50).map((r: any) => allKeys.map(k => String(r[k] ?? '')));
-            filePreviews.push({
-              title: `Structured Extracted Data (File ${i + 1})`,
-              headers: allKeys,
-              rows
-            });
-            continue;
-          }
-          // Fallback to plain text preview
-          if (typeof ex.extractedText === 'string') {
+            const allKeys: string[] = Array.from(new Set<string>(ex.structured.flatMap((r: any) => Object.keys(r))));
+            const rows: string[][] = ex.structured.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
+            filePreviews.push({ title: `Structured Extracted Data (File ${i + 1})`, headers: allKeys, rows });
+          } else if (typeof ex.extractedText === 'string') {
             const text = (ex.extractedText as string).trim();
             if (text) {
               const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
@@ -1429,8 +1417,15 @@ async function processMessage(
             }
           }
         }
-        // Also render structured tables from analyses (analyze_files/analyze_images)
-        for (let i = 0; i < Math.min(Array.isArray(analysesFromTools) ? analysesFromTools.length : 0, 5); i++) {
+      }
+
+      // 2) Always try to build from structured analyses (analyze_files/analyze_images)
+      const analysesFromTools = toolResults
+        .map(r => (r as any).analyses)
+        .filter(Boolean)
+        .flat();
+      if (Array.isArray(analysesFromTools) && analysesFromTools.length > 0) {
+        for (let i = 0; i < Math.min(analysesFromTools.length, 10); i++) {
           const a = (analysesFromTools as any[])[i];
           if (!a || a.success === false) continue;
           const data = a.extractedData;
@@ -1440,18 +1435,15 @@ async function processMessage(
             else if ((data as any).result && Array.isArray((data as any).result.extracted_rows)) rowsArr = (data as any).result.extracted_rows as any[];
           }
           if (Array.isArray(rowsArr) && rowsArr.length > 0) {
-            const allKeys = Array.from(new Set(rowsArr.flatMap((r: any) => Object.keys(r))));
-            const rows = rowsArr.slice(0, 50).map((r: any) => allKeys.map(k => String(r[k] ?? '')));
-            filePreviews.push({
-              title: `Structured Extracted Data (File ${i + 1})`,
-              headers: allKeys,
-              rows
-            });
+            const allKeys: string[] = Array.from(new Set<string>(rowsArr.flatMap((r: any) => Object.keys(r))));
+            const rows: string[][] = rowsArr.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
+            filePreviews.push({ title: `Structured Extracted Data (File ${i + 1})`, headers: allKeys, rows });
           }
         }
-        if (filePreviews.length > 0) {
-          dataTables.push(...filePreviews);
-        }
+      }
+
+      if (filePreviews.length > 0) {
+        dataTables.push(...filePreviews);
       }
     } catch {}
 
@@ -1579,7 +1571,7 @@ async function processMessage(
           const colQuery = mCol ? mCol[1].trim() : (filter?.columnQuery || '');
           const idx = resolveColumnIndex(headers, colQuery || message);
           if (idx >= 0) {
-            const values = table.slice(1).map(r => String(r[idx] ?? '')).filter(v => v.trim() !== '');
+            const values = shaped.rows.map((r: string[]) => String(r[idx] ?? '')).filter((v: string) => v.trim() !== '');
             const unique = Array.from(new Set(values)).slice(0, 20);
             dataTables.push({ title: `${name} · Unique ${headers[idx]}`, headers: [headers[idx]], rows: unique.map(v => [v]) });
             matchedAny = true;
@@ -1603,7 +1595,7 @@ async function processMessage(
           });
           const bestIdx = headerScores.reduce((bi, s, i, arr) => (s > arr[bi] ? i : bi), 0);
           if (headerScores[bestIdx] > 0) {
-            const colValues = table.slice(1).map(r => r[bestIdx]).filter(v => v != null && String(v).trim() !== '');
+            const colValues = shaped.rows.map((r: string[]) => r[bestIdx]).filter((v: string | undefined) => v != null && String(v).trim() !== '');
             const latest = colValues[colValues.length - 1];
             const unique = Array.from(new Set(colValues)).slice(-10);
             // Structured single-column table for unique values
