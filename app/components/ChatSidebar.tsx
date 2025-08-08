@@ -68,12 +68,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     await addDoc(optionsRef, { spreadsheetId, title: meta?.spreadsheetTitle || undefined });
   };
 
-  const removeSpreadsheetOption = async (id: string) => {
+  const removeSpreadsheetOption = async (id: string, spreadsheetId?: string) => {
     if (!user || !id) return;
     const { doc, deleteDoc } = await import('firebase/firestore');
     const { db } = await import('../providers/FirebaseProvider');
     await deleteDoc(doc(db, 'users', user.uid, 'options', id));
-    if (spreadsheets.length === 1 && defaultSpreadsheetId) {
+    if ((spreadsheetId && defaultSpreadsheetId === spreadsheetId) || (spreadsheets.length === 1 && defaultSpreadsheetId)) {
       setDefaultSpreadsheetId("");
       setSelectedSheetNames([]);
     }
@@ -84,6 +84,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     setAddingSheet(true);
     try {
       await saveSpreadsheetOption(newSheetId.trim());
+      setDefaultSpreadsheetId(newSheetId.trim());
       setNewSheetId("");
     } finally {
       setAddingSheet(false);
@@ -288,7 +289,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                   <button
-                    onClick={() => removeSpreadsheetOption(s.id)}
+                    onClick={() => removeSpreadsheetOption(s.id, s.spreadsheetId)}
                     className="grid place-items-center h-6 w-6 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
                     title="Remove"
                     aria-label="Remove spreadsheet"
