@@ -9,6 +9,7 @@ import { FirestoreSyncProvider } from "./providers/FirestoreSyncProvider";
 import { ChatProvider } from "./providers/ChatProvider";
 import NavBar from "./NavBar";
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
+import SidePanel from './components/SidePanel';
 
 // Enable Firebase telemetry for Genkit monitoring
 enableFirebaseTelemetry();
@@ -35,12 +36,12 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: "Sheety AI - Your AI for Google Sheets",
+  title: "Report AI - Your Automated Report Assistant",
   description: "AI-powered voice-to-spreadsheet reporting tool. Convert speech to structured data in Google Sheets effortlessly.",
   keywords: ["AI", "voice", "reporting", "spreadsheets", "automation", "speech recognition"],
-  authors: [{ name: "Sheety AI Team" }],
-  creator: "Sheety AI",
-  publisher: "Sheety AI",
+  authors: [{ name: "Report AI Team" }],
+  creator: "Report AI",
+  publisher: "Report AI",
   formatDetection: {
     email: false,
     address: false,
@@ -49,7 +50,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Sheety AI",
+    title: "Report AI",
   },
   manifest: "/manifest.json",
   icons: {
@@ -59,21 +60,21 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "Sheety AI",
-    title: "Sheety AI - Your AI for Google Sheets",
+    siteName: "Report AI",
+    title: "Report AI - Your Automated Report Assistant",
     description: "AI-powered voice-to-spreadsheet reporting tool",
     images: [
       {
         url: "/icon-512x512.png",
         width: 512,
         height: 512,
-        alt: "Sheety AI Logo",
+        alt: "Report AI Logo",
       },
     ],
   },
   twitter: {
     card: "summary",
-    title: "Sheety AI",
+    title: "Report AI",
     description: "AI-powered voice-to-spreadsheet reporting tool",
     images: ["/icon-512x512.png"],
   },
@@ -96,8 +97,11 @@ export default function RootLayout({
               <SettingsProvider> {/* Wrap with SettingsProvider */}
                 <FirestoreSyncProvider>
                   <ChatProvider>
-                    <NavBar />
-                    {children}
+                    <SidePanel />
+                    <div className="ml-[280px] max-md:ml-[20px] transition-all">
+                      <NavBar />
+                      {children}
+                    </div>
                   </ChatProvider>
                 </FirestoreSyncProvider>
               </SettingsProvider>
