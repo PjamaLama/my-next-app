@@ -1748,7 +1748,7 @@ export default function Home() {
           >
             <div className="relative w-full">
               <div className="w-full mb-2">
-                <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">
+                <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200 overflow-visible">
                   {defaultSpreadsheetId && (
                     <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
                       <SheetChipSelector />
@@ -1822,7 +1822,7 @@ export default function Home() {
                   )}
 
                   <div className="relative">
-                    <div className="absolute right-2 -top-9">
+                    <div className="absolute right-2 -top-11">
                       <Toolbelt selected={enabledTools} onChange={setEnabledTools} />
                     </div>
                     <textarea

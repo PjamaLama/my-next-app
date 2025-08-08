@@ -4,6 +4,7 @@ import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetF
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { ensureSheetCapacity } from '@/lib/sheetUtils';
+import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
 import { buildExistingKeySet, filterNewRows } from '@/lib/dedupe';
 import { insertRow } from '../../genkit/tools';
@@ -264,9 +265,45 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
 
     // Build CSV for AI conversion
     const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
-    const converted = (await convertSheetFlow.run({ sheetName, sheetCsv: csv })) as unknown as ConvertOutput;
-    if (!converted.headers?.length) {
-      return res.status(500).json({ success: false, error: 'Conversion failed' });
+    let converted = (await convertSheetFlow.run({ sheetName, sheetCsv: csv })) as unknown as ConvertOutput;
+
+    // Fallback: if AI conversion failed or returned empty, derive a structured table heuristically
+    if (!converted || !Array.isArray(converted.headers) || converted.headers.length === 0) {
+      try {
+        const metaAnalysis = analyzeSheetStructure(data);
+        let headers: string[] = [];
+        let rows: string[][] = [];
+        if (metaAnalysis.detectedHeaders && metaAnalysis.columnCount > 0) {
+          headers = metaAnalysis.detectedHeaders.map(h => String(h ?? '').trim());
+          const width = headers.length;
+          for (let r = 1; r < data.length; r++) {
+            const row = (data[r] || []).map(v => String(v ?? ''));
+            const hasAny = row.some(v => v.trim() !== '');
+            if (!hasAny) continue;
+            const shaped = row.slice(0, width);
+            while (shaped.length < width) shaped.push('');
+            rows.push(shaped);
+          }
+        } else {
+          // Use first non-empty row as headers or synthesize generic headers based on max width
+          const firstNonEmpty = data.find(r => (r || []).some(v => String(v ?? '').trim() !== '')) || [];
+          const width = Math.max(1, firstNonEmpty.length);
+          const toLetters = (n: number) => { let s = '', x = n; while (x > 0) { const m = (x - 1) % 26; s = String.fromCharCode(65 + m) + s; x = Math.floor((x - 1) / 26); } return s || 'A'; };
+          headers = Array.from({ length: width }, (_, i) => String(firstNonEmpty[i] ?? '').trim() || `Column ${toLetters(i + 1)}`);
+          for (let r = 1; r < data.length; r++) {
+            const row = (data[r] || []).map(v => String(v ?? ''));
+            const hasAny = row.some(v => v.trim() !== '');
+            if (!hasAny) continue;
+            const shaped = row.slice(0, width);
+            while (shaped.length < width) shaped.push('');
+            rows.push(shaped);
+          }
+        }
+        converted = { headers, rows };
+      } catch {
+        // As a last resort, create a minimal sheet with a single generic header
+        converted = { headers: ['Column A'], rows: [] };
+      }
     }
 
     // Helper to generate a unique sheet name avoiding collisions
@@ -330,7 +367,27 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
     await ensureSheetCapacity(spreadsheetId, targetName, Math.max(1, totalRows), endCol);
 
     // Write structured values starting at A1
-    const values = [converted.headers, ...converted.rows];
+    // Normalize and sanitize headers: ensure non-empty and unique
+    const seen = new Set<string>();
+    const safeHeader = (h: string, idx: number) => {
+      const base = (h || '').toString().trim() || `Column ${idx + 1}`;
+      let name = base;
+      let i = 2;
+      while (seen.has(name)) { name = `${base} ${i++}`; }
+      seen.add(name);
+      return name;
+    };
+
+    const normalizedHeaders = converted.headers.map((h, i) => safeHeader(String(h ?? ''), i));
+    const width = normalizedHeaders.length;
+    const normalizedRows = (converted.rows || []).map(r => {
+      const row = Array.isArray(r) ? r.map(v => (v == null ? '' : String(v))) : [];
+      const shaped = row.slice(0, width);
+      while (shaped.length < width) shaped.push('');
+      return shaped;
+    });
+
+    const values = [normalizedHeaders, ...normalizedRows];
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `'${targetName.replace(/'/g, "''")}'!A1`,
