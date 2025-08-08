@@ -89,7 +89,7 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ minHeight: '100vh', background: 'var(--background)' }}
+        style={{ minHeight: '100vh', background: 'var(--background)', overflow: 'hidden' }}
       >
         <FirebaseProvider>
           <SheetProvider>

@@ -1310,8 +1310,8 @@ export default function Home() {
   return (
     <>
       <PWAInstaller />
-      <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-0 overflow-x-hidden">
-        <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-48 sm:pb-56 pt-0">
+      <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-0 overflow-hidden">
+        <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-0 sm:pb-0 pt-0">
           {/* Only show a lightweight nudge if no spreadsheet is selected */}
           {chatMessages.length === 0 && !defaultSpreadsheetId && (
             <div className="mx-3 sm:mx-4 mt-4 mb-2 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
