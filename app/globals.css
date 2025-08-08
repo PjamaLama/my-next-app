@@ -309,3 +309,55 @@ button:active {
     animation: none !important;
   }
 }
+
+/* Button utilities (plain CSS) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  padding: 8px 16px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  outline: none;
+}
+.btn:focus {
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.5);
+}
+.btn-primary {
+  background: #0284c7; /* sky-600 */
+  color: #ffffff;
+}
+.btn-primary:hover { background: #0369a1; }
+
+.btn-secondary {
+  background: rgba(255,255,255,0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.btn-secondary:hover { background: rgba(255,255,255,0.2); }
+
+.btn-danger { background: #dc2626; color: #ffffff; }
+.btn-danger:hover { background: #b91c1c; }
+
+.btn-ghost { color: rgba(255,255,255,0.8); border: 1px solid transparent; }
+.btn-ghost:hover { color: #ffffff; background: rgba(255,255,255,0.1); }
+
+.btn-icon { display: inline-flex; align-items: center; justify-content: center; padding: 8px; border-radius: 10px; }
+.icon-16 { width: 16px; height: 16px; }
+.icon-20 { width: 20px; height: 20px; }
+
+/* Modal utilities (plain CSS) */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); }
+.modal-panel { border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 60px rgba(0,0,0,0.5); background: var(--glass-bg); backdrop-filter: saturate(140%) blur(10px); -webkit-backdrop-filter: saturate(140%) blur(10px); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.modal-body { padding: 16px 20px; }
+.modal-footer { padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+
+/* Light mode overrides for glass look */
+@media (prefers-color-scheme: light) {
+  .glass { background: rgba(255,255,255,0.65); border-color: rgba(0,0,0,0.08); }
+  .glass-soft { background: rgba(255,255,255,0.5); border-color: rgba(0,0,0,0.08); }
+  .modal-overlay { background: rgba(0,0,0,0.4); }
+}
