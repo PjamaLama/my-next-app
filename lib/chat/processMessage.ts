@@ -267,53 +267,51 @@ export async function processMessage(
     const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
     const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
     const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
-    if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView)) {
+    if (!hasFiles && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView)) {
       try {
         const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
         if (smart.length > 0) dataTables.push(...smart);
       } catch {}
     }
 
-    // per-file preview tables
+    // per-file preview tables built strictly one table per file
     try {
       const filePreviews: StructuredTable[] = [];
-      const extractions = toolResults.map(r => (r as any).extractions).filter(Boolean).flat();
-      if (Array.isArray(extractions) && extractions.length > 0) {
-        for (let i = 0; i < Math.min(extractions.length, 10); i++) {
-          const ex = (extractions as any[])[i];
-          if (!ex || !ex.success) continue;
-          if (Array.isArray(ex.structured) && ex.structured.length > 0) {
-            const allKeys: string[] = Array.from(new Set<string>(ex.structured.flatMap((r: any) => Object.keys(r))));
-            const rows: string[][] = ex.structured.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
-            const fileName = images?.[i]?.name;
-            filePreviews.push({
-              title: `Structured Extracted Data${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
-              headers: allKeys,
-              rows,
-              meta: { fileIndex: i + 1, fileName }
-            });
-          } else if (typeof ex.extractedText === 'string') {
-            const text = (ex.extractedText as string).trim();
-            if (text) {
-              const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
-              const rows = lines.map((l: string) => [l.slice(0, 120)]);
-              const fileName = images?.[i]?.name;
-              filePreviews.push({
-                title: `Extracted Text Preview${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
-                headers: ['Line'],
-                rows,
-                meta: { fileIndex: i + 1, fileName }
-              });
-            }
-          }
+
+      // Gather extractions by file index
+      const allExtractions: any[] = toolResults.map(r => (r as any).extractions).filter(Boolean).flat();
+      const extractionsByIndex = new Map<number, any>();
+      for (const ex of allExtractions) {
+        if (!ex || ex.success === false) continue;
+        const idx = typeof ex.index === 'number' ? Math.max(0, ex.index - 1) : undefined;
+        if (idx != null && !extractionsByIndex.has(idx)) {
+          extractionsByIndex.set(idx, ex);
         }
       }
-      const analysesFromTools = toolResults.map(r => (r as any).analyses).filter(Boolean).flat();
-      if (Array.isArray(analysesFromTools) && analysesFromTools.length > 0) {
-        for (let i = 0; i < Math.min(analysesFromTools.length, 10); i++) {
-          const a = (analysesFromTools as any[])[i];
-          if (!a || a.success === false) continue;
-          const data = a.extractedData;
+
+      // Gather analyses by file index
+      let analysesFromTools: any[] = toolResults.map(r => (r as any).analyses).filter(Boolean).flat();
+      if (!analysesFromTools || analysesFromTools.length === 0) {
+        const fallback = toolResults.map(r => (r as any).details?.analysisResults).filter(Boolean).flat();
+        if (fallback && fallback.length > 0) analysesFromTools = fallback as any[];
+      }
+      const analysesByIndex = new Map<number, any>();
+      for (const a of analysesFromTools || []) {
+        if (!a || a.success === false) continue;
+        const idx = typeof a.index === 'number' ? Math.max(0, a.index - 1) : undefined;
+        if (idx != null && !analysesByIndex.has(idx)) {
+          analysesByIndex.set(idx, a);
+        }
+      }
+
+      // Build exactly one table per uploaded file (when available)
+      for (let i = 0; i < (images?.length || 0); i++) {
+        const fileName = images?.[i]?.name;
+
+        // Prefer structured rows from analyses
+        const a = analysesByIndex.get(i);
+        if (a) {
+          const data = a.extractedData ?? a.analysis;
           let rowsArr: any[] | null = null;
           if (data && typeof data === 'object') {
             if (Array.isArray((data as any).extracted_rows)) rowsArr = (data as any).extracted_rows as any[];
@@ -322,16 +320,47 @@ export async function processMessage(
           if (Array.isArray(rowsArr) && rowsArr.length > 0) {
             const allKeys: string[] = Array.from(new Set<string>(rowsArr.flatMap((r: any) => Object.keys(r))));
             const rows: string[][] = rowsArr.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
-            const fileName = images?.[i]?.name;
             filePreviews.push({
               title: `Structured Extracted Data${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
               headers: allKeys,
               rows,
               meta: { fileIndex: i + 1, fileName }
             });
+            continue; // exactly one table per file
+          }
+        }
+
+        // Fallback: use extraction structured/text
+        const ex = extractionsByIndex.get(i);
+        if (ex) {
+          if (Array.isArray(ex.structured) && ex.structured.length > 0) {
+            const allKeys: string[] = Array.from(new Set<string>(ex.structured.flatMap((r: any) => Object.keys(r))));
+            const rows: string[][] = ex.structured.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
+            filePreviews.push({
+              title: `Structured Extracted Data${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
+              headers: allKeys,
+              rows,
+              meta: { fileIndex: i + 1, fileName }
+            });
+            continue;
+          }
+          if (typeof ex.extractedText === 'string') {
+            const text = (ex.extractedText as string).trim();
+            if (text) {
+              const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
+              const rows = lines.map((l: string) => [l.slice(0, 120)]);
+              filePreviews.push({
+                title: `Extracted Text Preview${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
+                headers: ['Line'],
+                rows,
+                meta: { fileIndex: i + 1, fileName }
+              });
+              continue;
+            }
           }
         }
       }
+
       if (filePreviews.length > 0) dataTables.push(...filePreviews);
     } catch {}
 

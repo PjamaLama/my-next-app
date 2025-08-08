@@ -21,6 +21,7 @@
     "chart.js": "^4.5.0",
     "dayjs": "^1.11.13",
     "firebase": "^12.0.0",
+    "firebase-admin": "^13.0.2",
     "formidable": "^3.5.2",
     "framer-motion": "^12.23.6",
     "genkit": "^1.15.5",

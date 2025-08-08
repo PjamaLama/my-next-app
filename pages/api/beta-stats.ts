@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '../../lib/firebaseAdmin';
 import { FieldPath } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 
 type BetaStats = {
   capacity: number;
@@ -19,13 +20,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const metaSnap = await metaRef.get();
     const capacity = (metaSnap.exists && typeof metaSnap.get('capacity') === 'number') ? metaSnap.get('capacity') as number : 100;
 
-    // Count users where users/{uid}/private/profile.betaTester == true
-    const testerSnap = await db
-      .collectionGroup('private')
-      .where('betaTester', '==', true)
-      .where(FieldPath.documentId(), '==', 'profile')
-      .get();
-    const testerCount = testerSnap.size;
+    // Robust: count registered users via Firebase Authentication
+    const auth = getAuth();
+    let nextPageToken: string | undefined = undefined;
+    let testerCount = 0;
+    do {
+      const result = await auth.listUsers(1000, nextPageToken);
+      testerCount += result.users.length;
+      nextPageToken = result.pageToken;
+    } while (nextPageToken);
 
     // Persist latest testerCount on meta/beta so clients can listen live without client perms to user data
     await metaRef.set({ testerCount, capacity, updatedAt: new Date() }, { merge: true });
