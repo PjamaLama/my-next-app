@@ -91,6 +91,7 @@ type ChatMessage = {
       details?: unknown;
     }>;
     messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
+    quickReplies?: string[];
   };
 
 
@@ -956,7 +957,7 @@ export default function Home() {
       }
       
       {
-        // Regular AI response
+        // Regular AI response with optional quick replies
         const aiMessage = {
           id: `msg_${Date.now()}_ai`,
           role: 'assistant' as const,
@@ -964,7 +965,8 @@ export default function Home() {
           timestamp: new Date(),
           messageType: 'ai_response' as const,
           toolCalls: data.toolCalls || [],
-          toolResults: data.toolResults || []
+          toolResults: data.toolResults || [],
+          quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies.slice(0, 3) : undefined
         };
         setChatMessages(prev => [...prev, aiMessage]);
       }
@@ -1340,6 +1342,21 @@ export default function Home() {
                           )}
                         </div>
                         <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                        {/* Quick reply chips (assistant messages only) */}
+                        {message.role === 'assistant' && message.quickReplies && message.quickReplies.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {message.quickReplies.map((qr, idx) => (
+                              <button
+                                key={`${message.id}_qr_${idx}`}
+                                onClick={() => processWithAIChat(qr)}
+                                className="px-2.5 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20 border border-white/15 text-white/90"
+                                aria-label={`Quick reply: ${qr}`}
+                              >
+                                {qr}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {message.attachments && message.attachments.length > 0 && (
                           <div className="mt-2 space-y-2">
                             {message.attachments.map((attachment) => (
@@ -1462,17 +1479,7 @@ export default function Home() {
                     )}
 
                     <div className="relative">
-                      {listening && (
-                        <div className="absolute top-2 left-2 z-10 flex items-center gap-2 px-2 py-1 bg-sky-500/20 rounded-full text-xs text-sky-200 border border-sky-400/30">
-                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                          <span>Recording...</span>
-                        </div>
-                      )}
-                      {process.env.NODE_ENV === 'development' && listening && (
-                        <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-yellow-500/20 rounded text-xs text-yellow-200 border border-yellow-400/30">
-                          T: "{transcript}" | I: "{interimText}"
-                        </div>
-                      )}
+                      {/* Streamlined: remove large recording badges for a cleaner look */}
                       <textarea
                         value={displayText}
                         onChange={(e) => setEditingText(e.target.value)}
@@ -1499,44 +1506,39 @@ export default function Home() {
                         }}
                       />
 
-                      <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                      <div className="absolute right-2 bottom-2 flex items-center gap-2">
                         {listening && (transcript || interimText) && (
                           <button
                             onClick={() => { setTranscript(""); setInterimText(""); }}
-                            className="p-1 rounded text-white/50 hover:text-white/90 hover:bg-white/10 transition-all"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition"
                             title="Clear voice input"
+                            aria-label="Clear voice input"
                           >
-                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                              <line x1="4" y1="4" x2="16" y2="16" />
-                              <line x1="16" y1="4" x2="4" y2="16" />
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="6" y1="6" x2="18" y2="18" />
+                              <line x1="18" y1="6" x2="6" y2="18" />
                             </svg>
                           </button>
                         )}
-
-                        {listening && (
-                          <button
-                            onClick={() => { setTranscript("Test transcript "); setInterimText("interim test"); }}
-                            className="p-1 rounded text-sky-300 hover:text-sky-200 hover:bg-sky-500/10 transition-all"
-                            title="Test transcript"
-                          >
-                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M10 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L10 17.77l-8.18 3.25L3 14.14 8 9.27l8.91-1.01L10 2z" />
-                            </svg>
-                          </button>
-                        )}
+                        {/* Removed dev-only test button for cleaner UI */}
 
                         <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={handleImageUpload} className="hidden" id="text-area-upload" />
-                        <label htmlFor="text-area-upload" className={`p-2 rounded-lg transition-all duration-200 cursor-pointer ${
-                            uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/60 hover:bg-white/10 hover:text-white'
-                          }`} title="Add images or PDFs">
+                        <label
+                          htmlFor="text-area-upload"
+                          className={`w-10 h-10 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
+                            uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                          }`}
+                          title="Add images or PDFs"
+                          aria-label="Add images or PDFs"
+                        >
                           {uploadingImages ? (
-                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                            <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
                           ) : (
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m7-7H5" />
                             </svg>
                           )}
                         </label>
@@ -1559,19 +1561,22 @@ export default function Home() {
                               setListening(true);
                             }
                           }}
-                          className={`p-2 rounded-lg transition-all duration-200 ${
-                            listening ? 'bg-red-500 text-white animate-pulse' : (editingText.trim() ? 'text-white/70 hover:text-white hover:bg-white/10' : 'bg-sky-600 hover:bg-sky-700 text-white shadow')
+                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
+                            listening ? 'bg-red-600 text-white shadow ring-2 ring-red-400/30 animate-pulse' : 'bg-sky-600 hover:bg-sky-700 text-white shadow'
                           }`}
-                          title={listening ? "Stop recording" : "Voice input"}
+                          title={listening ? "Stop recording" : "Start voice recording"}
+                          aria-label={listening ? "Stop recording" : "Start voice recording"}
                         >
                           {listening ? (
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10" />
+                              <rect x="9" y="9" width="6" height="6" rx="1" />
                             </svg>
                           ) : (
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V7a3 3 0 10-6 0v5a3 3 0 003 3z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v3m0 0H9m3 0h3" />
                             </svg>
                           )}
                         </button>
@@ -1579,10 +1584,12 @@ export default function Home() {
                         {(editingText.trim() || uploadedImages.length > 0) && (
                           <button
                             onClick={() => { processWithAIChat(editingText.trim() || 'Analyze these files'); setEditingText(''); }}
-                            className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all duration-200 shadow"
+                            className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
+                            title="Send"
+                            aria-label="Send"
                           >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5l18-7.5-7.5 18-2.5-6-6-2.5z" />
                             </svg>
                           </button>
                         )}

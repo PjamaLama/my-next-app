@@ -1,4 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { genkit } from 'genkit';
+import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
 // Configure API to handle larger file uploads
 export const config = {
@@ -36,6 +38,91 @@ interface ConversationHistoryItem {
 interface ImageData {
   data: string;
   mimeType: string;
+}
+
+// Generate lightweight quick replies using AI (fallback to heuristics if unavailable)
+async function generateQuickReplies(
+  message: string,
+  conversationHistory: ConversationHistoryItem[],
+  context: Context,
+  intent: string,
+  hasFiles: boolean
+): Promise<string[]> {
+  // Heuristic fallback used if AI not configured or errors occur
+  const buildHeuristic = (): string[] => {
+    const suggestions: string[] = [];
+    const hasSpreadsheet = !!(context?.spreadsheetId && (context?.sheetName || context?.sheetNames?.length));
+
+    if (hasFiles) {
+      suggestions.push('Extract text from files');
+      if (hasSpreadsheet) suggestions.push('Add extracted data to sheet');
+      suggestions.push('Summarize the files');
+      return suggestions.slice(0, 3);
+    }
+
+    if (intent === 'add_data' || intent === 'update_data') {
+      suggestions.push('Preview updates');
+      suggestions.push('Apply changes');
+      if (hasSpreadsheet) suggestions.push('Show current sheet data');
+      return suggestions.slice(0, 3);
+    }
+
+    if (intent === 'get_data') {
+      suggestions.push('Show latest rows');
+      suggestions.push('Summarize this sheet');
+      suggestions.push('Filter by date');
+      return suggestions.slice(0, 3);
+    }
+
+    // General
+    suggestions.push('Add a new row');
+    if (hasSpreadsheet) suggestions.push('Show current sheet');
+    suggestions.push('Help me get started');
+    return suggestions.slice(0, 3);
+  };
+
+  try {
+    // Avoid token-heavy context: keep only the last 3 messages and truncate
+    const recent = [...(conversationHistory || [])].slice(-3).map((m) => ({
+      role: m.role,
+      content: (m.content || '').slice(0, 200)
+    }));
+    recent.push({ role: 'user', content: (message || '').slice(0, 200) });
+
+    // If no API key, return heuristic suggestions
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    if (!apiKey) return buildHeuristic();
+
+    const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+    const historyText = recent
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n');
+
+    const prompt = `You generate at most 3 short, tap-friendly quick replies to help the user continue.
+Rules:
+- Each reply <= 6 words
+- Be context-aware and helpful
+- Return ONLY a JSON array of strings
+
+Conversation:
+${historyText}
+
+JSON only:`;
+
+    const { text } = await ai.generate(prompt);
+    if (!text) return buildHeuristic();
+
+    let cleaned = text.trim();
+    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
+
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((s) => typeof s === 'string').slice(0, 3);
+    }
+    return buildHeuristic();
+  } catch {
+    return buildHeuristic();
+  }
 }
 
 // Function to execute a tool call
@@ -208,17 +295,19 @@ async function processMessage(
     const isGreeting = /^(hi|hello|hey|yo|howdy|good\s+(morning|afternoon|evening))\b/i.test(message.trim());
     if (isGreeting) {
       const greetingResponse = `Hi! I'm here to help. You can:
-- Add or update rows in your Google Sheet
-- Fetch and summarize current sheet data
-- Extract data from images/PDFs and insert into the sheet
-
-What would you like to do?`;
+ - Add or update rows in your Google Sheet
+ - Fetch and summarize current sheet data
+ - Extract data from images/PDFs and insert into the sheet
+ 
+ What would you like to do?`;
+      const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, false);
       return {
         response: greetingResponse,
         toolCalls: [],
         pendingToolCalls: [],
         toolResults: [],
-        context
+        context,
+        quickReplies
       };
     }
 
@@ -582,12 +671,16 @@ What would you like to do?`;
       response += `\n\nCurrently connected to: ${context.sheetName}`;
     }
 
+    // Build quick replies (lightweight, history-aware)
+    const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
+
     return {
       response,
       toolCalls: [], // No manual tool calls needed
       pendingToolCalls: [], // No pending tools - all executed automatically
       toolResults: toolResults, // Include the results of auto-executed tools
-      context: context // Return updated context with analysis results
+      context: context, // Return updated context with analysis results
+      quickReplies
     };
 
   } catch (error) {
