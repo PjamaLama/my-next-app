@@ -172,6 +172,7 @@ export default function Home() {
   const [showCharts, setShowCharts] = useState<boolean>(false);
   const [showStats, setShowStats] = useState<boolean>(false);
   const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
+  const [previewModal, setPreviewModal] = useState<{ open: boolean; rows: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }> | null; summary?: string }>({ open: false, rows: null });
 
   const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
   

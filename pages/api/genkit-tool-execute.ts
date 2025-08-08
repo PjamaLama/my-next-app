@@ -4,7 +4,7 @@ import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetF
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { ensureSheetCapacity } from '@/lib/sheetUtils';
-import { suggestHeaderMapping } from '@/lib/mapping';
+import { suggestHeaderMapping, matchRowIdentity } from '@/lib/mapping';
 import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
 import { buildExistingKeySet, filterNewRows } from '@/lib/dedupe';
@@ -927,8 +927,9 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         // Build actions directly from rows mapped to headers using synonym-aware mapping
         const sheets = await getGoogleSheetsClient();
         // Fetch headers to map object keys to columns
-        const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${targetSheetName}!A1:T1` });
-        const headers = (meta.data.values?.[0] || []) as string[];
+        const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${targetSheetName}!A1:T1000` });
+        const allValues = (meta.data.values || []) as string[][];
+        const headers = (allValues[0] || []) as string[];
         const colLetters = (idx: number) => {
           let n = idx + 1, s = '';
           while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
@@ -936,11 +937,11 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         };
         // Determine insertion start using cached last row if available
         const cached = getCachedHeaders(spreadsheetId, targetSheetName);
-        const startRow = (cached?.lastDataRow || 1) + 1;
+        const lastDataRow = Math.max(1, (cached?.lastDataRow || (allValues.length > 1 ? allValues.length - 1 : 1)));
+        let nextInsertRow = lastDataRow + 1;
+        const existingRows = allValues; // includes header
         const actions: any[] = [];
         for (let i = 0; i < extractedRows.length; i++) {
-          const rowIndex = startRow + i;
-          actions.push({ type: 'insertRow', sheet: targetSheetName, row: rowIndex });
           const rowObj = extractedRows[i] as Record<string, unknown>;
           const incomingKeys = Object.keys(rowObj);
           // Compute mapping suggestions once per row
@@ -948,8 +949,9 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
           // Build a map from incoming key -> target header when confidence is reasonable
           const keyToHeader: Record<string, string> = {};
           suggestions.forEach(s => { if (s.targetHeader && s.confidence >= 0.5) keyToHeader[s.incomingKey] = s.targetHeader; });
-          headers.forEach((h, idx) => {
-            // Prefer exact header match; otherwise check mapped keys
+          // Build an object keyed by actual headers with chosen values
+          const mappedByHeader: Record<string, string> = {};
+          headers.forEach((h) => {
             let val: unknown = undefined;
             if (Object.prototype.hasOwnProperty.call(rowObj, h)) {
               val = (rowObj as any)[h];
@@ -958,9 +960,38 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
               if (fromKey) val = (rowObj as any)[fromKey];
             }
             if (val != null && String(val).trim() !== '') {
-              actions.push({ type: 'updateCell', sheet: targetSheetName, row: rowIndex, column: colLetters(idx), value: String(val) });
+              mappedByHeader[h] = String(val);
             }
           });
+
+          // Try to match an existing row to avoid duplicates and perform updates
+          const matchIdx = matchRowIdentity(headers, existingRows, {
+            Date: mappedByHeader['Date'] || mappedByHeader['date'] || '',
+            'Reg#': mappedByHeader['Reg#'] || mappedByHeader['Registration'] || mappedByHeader['Vehicle Reg'] || '',
+            Vehicle: mappedByHeader['Vehicle'] || '',
+            'Fuel Cost in Rands': mappedByHeader['Fuel Cost in Rands'] || mappedByHeader['Amount'] || mappedByHeader['Total'] || ''
+          });
+
+          if (matchIdx >= 0) {
+            // Update existing row (matchIdx is 1-based including header row in our helper; ensure it aligns)
+            const targetRow = matchIdx + 1; // existingRows includes header at index 0
+            headers.forEach((h, idx) => {
+              const val = mappedByHeader[h];
+              if (val != null && String(val).trim() !== '') {
+                actions.push({ type: 'updateCell', sheet: targetSheetName, row: targetRow, column: colLetters(idx), value: String(val) });
+              }
+            });
+          } else {
+            // Insert a new row at the next insertion point
+            const rowIndex = nextInsertRow++;
+            actions.push({ type: 'insertRow', sheet: targetSheetName, row: rowIndex });
+            headers.forEach((h, idx) => {
+              const val = mappedByHeader[h];
+              if (val != null && String(val).trim() !== '') {
+                actions.push({ type: 'updateCell', sheet: targetSheetName, row: rowIndex, column: colLetters(idx), value: String(val) });
+              }
+            });
+          }
         }
         updateResult = { actions };
       } else {

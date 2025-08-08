@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 
 const ChartRenderer = dynamic(() => import('../components/ChartRenderer'), { ssr: false });
 
@@ -12,12 +13,17 @@ type Section = {
   insights?: string[];
 };
 
-export default function ReportPage({ searchParams }: { searchParams: { key?: string } }) {
-  const report = useMemo(() => {
-    const key = searchParams?.key;
-    if (!key) return null;
-    try { return JSON.parse(sessionStorage.getItem(key) || 'null'); } catch { return null; }
-  }, [searchParams?.key]);
+export default function ReportPage() {
+  const searchParams = useSearchParams();
+  const [report, setReport] = useState<any>(null);
+  useEffect(() => {
+    const key = searchParams.get('key');
+    if (!key) { setReport(null); return; }
+    try {
+      const raw = sessionStorage.getItem(key);
+      setReport(raw ? JSON.parse(raw) : null);
+    } catch { setReport(null); }
+  }, [searchParams]);
 
   if (!report) {
     return (

@@ -4,11 +4,15 @@ import React, { useState } from 'react';
 export default function Toolbelt({
   responsePrefs,
   onChangeResponsePrefs,
-  onGenerateReport
+  onGenerateReport,
+  onPreviewUpdates,
+  onApplyUpdates
 }: {
   responsePrefs: { charts: boolean; stats: boolean };
   onChangeResponsePrefs: (next: { charts: boolean; stats: boolean }) => void;
   onGenerateReport: () => void;
+  onPreviewUpdates?: () => void;
+  onApplyUpdates?: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -62,6 +66,31 @@ export default function Toolbelt({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 15l3-3 2 2 5-5" />
               </svg>
               Generate report
+            </button>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onPreviewUpdates && onPreviewUpdates(); }}
+              className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-[12px] bg-white/5 hover:bg-white/10 text-white border border-white/15"
+              title="Preview spreadsheet updates without applying"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              Preview updates
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onApplyUpdates && onApplyUpdates(); }}
+              className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-[12px] bg-sky-600 hover:bg-sky-700 text-white border border-sky-400/40"
+              title="Apply updates to the spreadsheet"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l5 5L20 7" />
+              </svg>
+              Apply changes
             </button>
           </div>
         </div>
