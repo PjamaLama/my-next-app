@@ -1489,9 +1489,13 @@ export default function Home() {
   if (!user) {
     return (
       <div className="relative min-h-screen overflow-y-auto bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-        <div className="absolute inset-0 pointer-events-none opacity-[0.12]" aria-hidden>
-          <div className="absolute -top-24 -left-24 w-80 h-80 bg-sky-500/30 blur-3xl rounded-full" />
-          <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-fuchsia-500/20 blur-3xl rounded-full" />
+        <div className="absolute inset-0 pointer-events-none" aria-hidden>
+          <div className="aurora">
+            <span className="a1" />
+            <span className="a2" />
+            <span className="a3" />
+          </div>
+          <div className="absolute inset-0 bg-grid opacity-[0.06]" />
         </div>
 
         {/* Top centered beta status */}
@@ -1513,7 +1517,7 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
               {/* Hero copy */}
               <div>
-                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300">
+                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300 sheen">
                   Speak data. Sheety AI writes it to your Sheets.
                 </h1>
                 <p className="mt-4 text-white/80 leading-relaxed text-base">
@@ -1523,7 +1527,7 @@ export default function Home() {
                   <button
                     onClick={signInWithGoogle}
                     disabled={false}
-                    className={`inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98]`}
+                    className={`inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] tilt-hover`}
                     aria-disabled={false}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
@@ -1531,7 +1535,7 @@ export default function Home() {
                   </button>
                   <button
                     onClick={signInWithGoogle}
-                    className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10"
+                    className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 tilt-hover"
                   >
                     Already joined? Log in
                   </button>
@@ -1546,8 +1550,9 @@ export default function Home() {
                 </div>
               </div>
               {/* Login card (kept) */}
-              <div className="w-full max-w-md mx-auto md:mx-0">
-                <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up">
+              <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover">
+                <div className="card-gradient">
+                  <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="bg-white/10 rounded-xl p-2">
                       <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="dark:invert" />
@@ -1582,6 +1587,7 @@ export default function Home() {
                     <div className="glass-soft rounded-lg p-2 text-center">Write to Sheets</div>
                   </div>
                 </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1591,20 +1597,44 @@ export default function Home() {
         <section id="how-it-works" className="relative">
           <div className="mx-auto max-w-6xl px-6 pb-16">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="glass-soft rounded-2xl p-5 border border-white/10">
-                <div className="text-lg">🎤</div>
+              <div className="glass-soft card-gradient rounded-2xl p-5 border border-white/10 tilt-hover">
+                <div className="text-lg float-slow">🎤</div>
                 <h3 className="mt-2 font-semibold">Speak or type</h3>
                 <p className="mt-1 text-sm text-white/70">Capture updates quickly with voice or text on any device.</p>
               </div>
-              <div className="glass-soft rounded-2xl p-5 border border-white/10">
-                <div className="text-lg">🤖</div>
+              <div className="glass-soft card-gradient rounded-2xl p-5 border border-white/10 tilt-hover">
+                <div className="text-lg float-slow">🤖</div>
                 <h3 className="mt-2 font-semibold">AI structures it</h3>
                 <p className="mt-1 text-sm text-white/70">We validate, map fields, and prepare the right cells automatically.</p>
               </div>
-              <div className="glass-soft rounded-2xl p-5 border border-white/10">
-                <div className="text-lg">📊</div>
+              <div className="glass-soft card-gradient rounded-2xl p-5 border border-white/10 tilt-hover">
+                <div className="text-lg float-slow">📊</div>
                 <h3 className="mt-2 font-semibold">Written to Sheets</h3>
                 <p className="mt-1 text-sm text-white/70">Approve and commit updates to your Google Sheets in seconds.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Why Sheety AI */}
+        <section className="relative">
+          <div className="mx-auto max-w-6xl px-6 pb-14">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="glass-soft card-gradient rounded-2xl p-5 border border-white/10">
+                <div className="text-sm text-white/70">Accuracy</div>
+                <p className="mt-2 text-[13px] text-white/80">Field-aware mapping reduces mistakes and rework.</p>
+              </div>
+              <div className="glass-soft card-gradient rounded-2xl p-5 border border-white/10">
+                <div className="text-sm text-white/70">Speed</div>
+                <p className="mt-2 text-[13px] text-white/80">From idea to committed rows in seconds.</p>
+              </div>
+              <div className="glass-soft card-gradient rounded-2xl p-5 border border-white/10">
+                <div className="text-sm text-white/70">Mobile-first</div>
+                <p className="mt-2 text-[13px] text-white/80">Optimized for on-the-go updates and quick approvals.</p>
+              </div>
+              <div className="glass-soft card-gradient rounded-2xl p-5 border border-white/10">
+                <div className="text-sm text-white/70">Private</div>
+                <p className="mt-2 text-[13px] text-white/80">Google sign-in and explicit approvals before writes.</p>
               </div>
             </div>
           </div>
@@ -2089,26 +2119,55 @@ export default function Home() {
                         </button>
                       )}
 
-                      <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={handleImageUpload} className="hidden" id="text-area-upload" />
-                      <label
-                        htmlFor="text-area-upload"
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
-                          uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/70 hover:bg-white/10 hover:text-white'
-                        }`}
-                        title="Add images or PDFs"
-                        aria-label="Add images or PDFs"
-                      >
-                        {uploadingImages ? (
-                          <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05L12 20.49a5.5 5.5 0 11-7.78-7.78l10-10a3.5 3.5 0 114.95 4.95l-10 10a1.5 1.5 0 11-2.12-2.12l9-9" />
-                          </svg>
+                      <div className="flex items-center gap-1">
+                        <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={handleImageUpload} className="hidden" id="text-area-upload" />
+                        <label
+                          htmlFor="text-area-upload"
+                          className={`w-9 h-9 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
+                            uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                          }`}
+                          title="Add images or PDFs"
+                          aria-label="Add images or PDFs"
+                        >
+                          {uploadingImages ? (
+                            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05L12 20.49a5.5 5.5 0 11-7.78-7.78l10-10a3.5 3.5 0 114.95 4.95l-10 10a1.5 1.5 0 11-2.12-2.12l9-9" />
+                            </svg>
+                          )}
+                        </label>
+
+                        {uploadedImages.length > 0 && (
+                          <button
+                            onClick={performQuickAdd}
+                            disabled={quickAddLoading || !defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0}
+                            className={`h-9 px-3 rounded-full inline-flex items-center gap-2 transition border ${
+                              quickAddLoading
+                                ? 'bg-white/10 text-white/60 border-white/15'
+                                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400/40'
+                            }`}
+                            title={`Extract and add data to ${selectedSheetNames && selectedSheetNames.length > 0 ? (selectedSheetNames.length === 1 ? selectedSheetNames[0] : `${selectedSheetNames[0]} +${selectedSheetNames.length - 1}`) : 'selected sheet'}`}
+                            aria-label="Add extracted data to selected sheet"
+                          >
+                            {quickAddLoading ? (
+                              <span className="inline-block w-3 h-3 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
+                            ) : (
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12" />
+                              </svg>
+                            )}
+                            <span className="hidden sm:inline">
+                              {selectedSheetNames && selectedSheetNames.length > 0
+                                ? `Add to ${selectedSheetNames.length === 1 ? `"${selectedSheetNames[0]}"` : `"${selectedSheetNames[0]}" +${selectedSheetNames.length - 1}`}`
+                                : 'Add to selected'}
+                            </span>
+                          </button>
                         )}
-                      </label>
+                      </div>
 
                       <button
                         onClick={() => {

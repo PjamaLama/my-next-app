@@ -29,6 +29,7 @@ interface IFirebaseContext {
   authError: string | null;
   betaTester: boolean;
   betaWaitlist: boolean;
+  continueWithGoogle?: (loginHint?: string) => Promise<void>;
 }
 
 const FirebaseContext = createContext<IFirebaseContext>({
@@ -41,7 +42,8 @@ const FirebaseContext = createContext<IFirebaseContext>({
   saveGeminiApiKey: async () => {},
   authError: null,
   betaTester: false,
-  betaWaitlist: false
+  betaWaitlist: false,
+  continueWithGoogle: async () => {}
 });
 
 export const FirebaseProvider = ({ children }: { children: React.ReactNode }) => {
@@ -56,6 +58,16 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
       setUser(user);
       setLoading(false);
+      // Persist last used Google identity for "Continue with Google" UX
+      if (typeof window !== 'undefined' && user) {
+        try {
+          if (user.email) localStorage.setItem('lastGoogleEmail', user.email);
+          if (user.displayName) localStorage.setItem('lastGoogleName', user.displayName);
+          if (user.photoURL) localStorage.setItem('lastGooglePhoto', user.photoURL);
+        } catch (_) {
+          // ignore storage failures
+        }
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -140,6 +152,22 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
+  // Continue with Google using a login hint when we know the last email
+  const continueWithGoogle = async (loginHint?: string) => {
+    try {
+      setAuthError(null);
+      const provider = new GoogleAuthProvider();
+      if (loginHint) {
+        provider.setCustomParameters({ login_hint: loginHint });
+      }
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Firebase continue auth error:', error);
+      const message = (error && typeof error === 'object' && 'message' in error) ? (error as any).message : 'Authentication failed. Please try again.';
+      setAuthError(message as string);
+    }
+  };
+
   const signOutUser = async () => {
     try {
       await signOut(auth);
@@ -175,7 +203,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       saveGeminiApiKey,
       authError,
       betaTester,
-      betaWaitlist
+      betaWaitlist,
+      continueWithGoogle
     }}>
       {children}
     </FirebaseContext.Provider>
