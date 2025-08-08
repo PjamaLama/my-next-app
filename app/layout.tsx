@@ -36,6 +36,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
   title: "Report AI - Your Automated Report Assistant",
   description: "AI-powered voice-to-spreadsheet reporting tool. Convert speech to structured data in Google Sheets effortlessly.",
   keywords: ["AI", "voice", "reporting", "spreadsheets", "automation", "speech recognition"],

@@ -35,8 +35,14 @@ export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta
     issues.push('Duplicate-like values found in first row.');
   }
 
-  // Check row width consistency against first non-empty row width
-  const expectedCols = nonEmptyFirstRow.length || Math.max(...sheetData.map(r => r.length));
+  // Determine expected column count by the mode of non-empty row lengths (more robust than first row)
+  const nonEmptyRows = sheetData.filter(r => (r || []).some(c => String(c ?? '').trim() !== ''));
+  const lengthCounts = new Map<number, number>();
+  for (const r of nonEmptyRows) {
+    const len = r.length;
+    lengthCounts.set(len, (lengthCounts.get(len) || 0) + 1);
+  }
+  const expectedCols = (Array.from(lengthCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]) || (nonEmptyFirstRow.length || Math.max(...sheetData.map(r => r.length)) || 0);
   let consistentRows = 0;
   let dataRows = 0;
   for (let i = 1; i < sheetData.length; i++) {
@@ -56,11 +62,15 @@ export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta
     issues.push('No data rows found.');
   }
 
-  const headerScore = headerCandidates.length >= 2 ? 0.5 : headerCandidates.length === 1 ? 0.25 : 0;
+  // How much of the expected columns are covered by header-like values
+  const headerCoverage = expectedCols > 0 ? Math.min(1, headerCandidates.length / expectedCols) : 0;
+  const headerScore = headerCandidates.length >= 3 ? 0.6 : headerCandidates.length === 2 ? 0.45 : headerCandidates.length === 1 ? 0.2 : 0;
   const consistencyScore = dataRows > 0 ? consistentRows / dataRows : 0;
-  const confidence = Math.max(0, Math.min(1, 0.5 * headerScore + 0.5 * consistencyScore));
+  // Favor precision: default to unstructured unless we are reasonably sure
+  const confidence = Math.max(0, Math.min(1, 0.4 * headerScore + 0.6 * consistencyScore));
 
-  const isStructured = confidence >= 0.55 && issues.length <= 1;
+  // Stricter criteria: require enough header-like cells and decent consistency
+  const isStructured = headerCoverage >= 0.6 && consistencyScore >= 0.7 && confidence >= 0.6 && issues.length <= 1;
 
   return {
     isStructured,
