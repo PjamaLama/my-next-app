@@ -1,38 +1,16 @@
-'use client';
-import React, { useEffect, useState } from 'react';
-
-type Tool = { name: string; label: string; description?: string };
+"use client";
+import React, { useState } from 'react';
 
 export default function Toolbelt({
-  selected,
-  onChange
+  responsePrefs,
+  onChangeResponsePrefs,
+  onGenerateReport
 }: {
-  selected: string[];
-  onChange: (next: string[]) => void;
+  responsePrefs: { charts: boolean; stats: boolean };
+  onChangeResponsePrefs: (next: { charts: boolean; stats: boolean }) => void;
+  onGenerateReport: () => void;
 }) {
-  const [tools, setTools] = useState<Tool[]>([]);
   const [open, setOpen] = useState(false);
-  const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const resp = await fetch('/api/tools');
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (!alive) return;
-        setTools(Array.isArray(data.tools) ? data.tools : []);
-      } catch {}
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  const toggle = (name: string) => {
-    const set = new Set(selected);
-    if (set.has(name)) set.delete(name); else set.add(name);
-    onChange(Array.from(set));
-  };
 
   return (
     <div className="relative">
@@ -41,58 +19,54 @@ export default function Toolbelt({
         className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 border border-white/10"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
-        title="Tools"
-        aria-label="Tools"
+        title="Report settings"
+        aria-label="Report settings"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6A4.5 4.5 0 1120 9.5l-5.586 5.586a2 2 0 01-2.828 0L8 11.5 3.5 16 2 14.5 6.5 10l3.586 3.586a2 2 0 002.828 0L18 8.5" />
         </svg>
       </button>
       {open && (
-        <div className="absolute bottom-full mb-2 right-0 z-[100] w-[300px] max-h-[70vh] overflow-auto rounded-xl border border-white/10 bg-black/90 backdrop-blur p-2 shadow-xl">
-          <div className="px-1 pb-2 border-b border-white/10">
+        <div className="absolute bottom-full mb-2 right-0 z-[100] w-[300px] max-h-[70vh] overflow-auto rounded-xl border border-white/10 bg-black/90 backdrop-blur p-3 shadow-xl">
+          <div className="pb-2 border-b border-white/10">
             <div className="text-[11px] text-white/80">Response preferences</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setResponsePrefs(p => ({ ...p, charts: !p.charts }))}
-                className={`text-[11px] px-2 py-1 rounded border ${responsePrefs.charts ? 'border-sky-400/60 bg-sky-500/10 text-sky-200' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'}`}
+                onClick={() => onChangeResponsePrefs({ ...responsePrefs, charts: !responsePrefs.charts })}
+                className={`${responsePrefs.charts ? 'border-sky-400/60 bg-sky-500/10 text-sky-200' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'} text-[11px] px-2 py-1 rounded border`}
                 title="Prefer responses with charts when applicable"
               >
                 Charts
               </button>
               <button
                 type="button"
-                onClick={() => setResponsePrefs(p => ({ ...p, stats: !p.stats }))}
-                className={`text-[11px] px-2 py-1 rounded border ${responsePrefs.stats ? 'border-emerald-400/60 bg-emerald-500/10 text-emerald-200' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'}`}
+                onClick={() => onChangeResponsePrefs({ ...responsePrefs, stats: !responsePrefs.stats })}
+                className={`${responsePrefs.stats ? 'border-emerald-400/60 bg-emerald-500/10 text-emerald-200' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'} text-[11px] px-2 py-1 rounded border`}
                 title="Prefer responses with stats/insights when applicable"
               >
                 Stats
               </button>
             </div>
           </div>
-          <div className="text-[11px] text-white/80 px-1 py-2">Available tools</div>
-          <ul className="space-y-1">
-            {tools.map(t => (
-              <li key={t.name} className="flex items-start gap-2 px-2 py-1 rounded hover:bg-white/5">
-                <input
-                  id={`tool_${t.name}`}
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={selected.includes(t.name)}
-                  onChange={() => toggle(t.name)}
-                />
-                <label htmlFor={`tool_${t.name}`} className="flex-1 cursor-pointer">
-                  <div className="text-[12px] text-white/90 font-medium">{t.label || t.name}</div>
-                  {t.description && <div className="text-[11px] text-white/60">{t.description}</div>}
-                </label>
-              </li>
-            ))}
-          </ul>
+          <div className="pt-2 flex items-center justify-between gap-2">
+            <div className="text-[11px] text-white/70">Actions</div>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onGenerateReport(); }}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-[12px] bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-400/40"
+              title="Generate a report with charts and statistics"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 15l3-3 2 2 5-5" />
+              </svg>
+              Generate report
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
-
 

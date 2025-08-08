@@ -77,7 +77,9 @@ export const analyzeFileFlow = (apiKey: string) => {
           mimeType: z.string(),
         })),
       }),
-      outputSchema: z.any(),
+      outputSchema: z.object({
+        extracted_rows: z.array(z.record(z.string(), z.string().or(z.number()).or(z.boolean()))).default([])
+      }).or(z.any()),
     },
     async ({ prompt, files }) => {
       console.log(`🔍 [ANALYZE_FILE_FLOW] Processing ${files.length} files`);
@@ -122,7 +124,7 @@ ${extractedContents.map((content, index) => `File ${index + 1} (${content.mimeTy
 ${content.extractedText}
 ---`).join('\n\n')}
 
-Your task is to analyze the extracted text content and return a STRICT JSON with an array of normalized row objects. Normalize values:
+Your task is to analyze the extracted text content and return a STRICT JSON with an array of normalized row objects in a top-level field named "extracted_rows". Normalize values:
 - Dates: DD/MM/YY or ISO YYYY-MM-DD
 - Amounts and numbers: plain decimals without currency symbols
 Return ONLY JSON, no markdown.
@@ -131,7 +133,7 @@ IMPORTANT INSTRUCTIONS:
 1. Parse each file and identify entries relevant for spreadsheet rows.
 2. Normalize keys to common spreadsheet headers if present: ["Date","Driver","Reg#","Vehicle","KM Start","KM End","Business Km","Prvt Km","Leave Km","Total Km","TOWN VISITED","CLIENT SEEN","CLIENT CALLED","PHONE NUMBER","DETAILS OF VISIT","KM at Filling","Fuel in liters","Fuel Cost in Rands","SALES MADE"]
 3. Return ONLY raw JSON without markdown or explanations.
-4. If nothing can be extracted, return { "extracted_rows": [] }.
+ 4. If nothing can be extracted, return { "extracted_rows": [] }.
 
 Example output format (RETURN EXACTLY JSON, no code fences):
 {
@@ -193,7 +195,11 @@ Analyze the extracted text content and extract relevant data in JSON format.`;
           const rowsCount = Array.isArray((parsedResult as any).extracted_rows) ? (parsedResult as any).extracted_rows.length : 0;
           console.log('🔍 [ANALYZE_FILE_FLOW] Extracted rows count:', rowsCount);
           
-          return parsedResult;
+          // Enforce schema shape gently: ensure top-level extracted_rows exists
+          if (!parsedResult || typeof parsedResult !== 'object' || !Array.isArray((parsedResult as any).extracted_rows)) {
+            return { extracted_rows: [] };
+          }
+          return parsedResult as { extracted_rows: unknown[] };
         } catch (parseError) {
           console.error('🔍 [ANALYZE_FILE_FLOW] Failed to parse model output as JSON:', parseError);
           console.error('🔍 [ANALYZE_FILE_FLOW] Raw output:', output);

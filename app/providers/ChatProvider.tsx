@@ -143,6 +143,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user || !currentSessionId) return;
     const chatDocRef = doc(db, "users", user.uid, "chats", currentSessionId);
     const updatedAt = new Date().toISOString();
+
+    // Recursively remove undefined values from any object/array to satisfy Firestore
+    const cleanForFirestore = (value: unknown): unknown => {
+      if (Array.isArray(value)) {
+        return value.map((v) => cleanForFirestore(v)).filter((v) => v !== undefined);
+      }
+      if (value && typeof value === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          if (v === undefined) continue;
+          const cleaned = cleanForFirestore(v as unknown);
+          if (cleaned !== undefined) out[k] = cleaned;
+        }
+        return out;
+      }
+      return value === undefined ? null : value;
+    };
     const safeMessages = messages.map((m) => {
       const copy: Record<string, unknown> = { ...m } as Record<string, unknown>;
       // Convert timestamp to ISO
@@ -170,17 +187,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           delete (copy as any)[key];
         }
       }
-      // Firestore requires no undefined values; replace undefined with null
-      for (const key of Object.keys(copy)) {
-        if (copy[key] === undefined) {
-          (copy as any)[key] = null;
-        }
-      }
-      return copy as ChatMessage;
+      // Deep clean undefined values from the message payload
+      return cleanForFirestore(copy) as ChatMessage;
     });
     const last = messages[messages.length - 1];
-    const lastMessageSnippet = last ? (last.content || '').slice(0, 120) : undefined;
-    await setDoc(chatDocRef, { messages: safeMessages, updatedAt, lastMessageSnippet }, { merge: true });
+    const lastMessageSnippet = last ? (last.content || '').slice(0, 120) : '';
+    const payload = cleanForFirestore({ messages: safeMessages, updatedAt, lastMessageSnippet });
+    await setDoc(chatDocRef, payload as Record<string, unknown>, { merge: true });
 
     // Try to auto-generate a title after the first meaningful message
     try {

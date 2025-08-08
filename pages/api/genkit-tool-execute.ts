@@ -162,6 +162,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'extract_text_only':
         return await handleExtractTextOnly(args, images, res);
 
+      case 'generate_report':
+        return await handleGenerateReport(args, context, res);
+
       default:
         return res.status(400).json({
           success: false,
@@ -394,6 +397,83 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
     return res.status(200).json({ success: true, newSheetName: targetName, rows: normalizedRows.length, warning: sourceReadWarning });
   } catch (e) {
     return res.status(500).json({ success: false, error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+type ReportSection = {
+  title: string;
+  charts?: Array<{ kind: 'bar'|'line'|'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }> }>;
+  tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
+  insights?: string[];
+};
+
+async function handleGenerateReport(args: ToolArgs, context: Context, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetNames = [] } = context;
+    const { responsePrefs } = (args || {}) as any;
+    if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
+      return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
+    }
+
+    const sheets = await getGoogleSheetsClient();
+    const fetchOne = async (name: string): Promise<string[][]> => {
+      const escaped = name.includes(' ')? `'${name.replace(/'/g, "''")}'`: name;
+      // Try to read a generous range; rely on Sheets to cap
+      const range = `${escaped}!A1:T2000`;
+      const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+      return (resp.data.values || []) as string[][];
+    };
+
+    const dataMap: Record<string, string[][]> = {};
+    for (const n of sheetNames) {
+      try { dataMap[n] = await fetchOne(n); } catch { dataMap[n] = []; }
+    }
+
+    // Build sections: per-sheet summary + combined summary
+    const sections: ReportSection[] = [];
+    let combinedRows: Array<{ sheet: string; row: string[] }> = [];
+    for (const [name, table] of Object.entries(dataMap)) {
+      if (!table || table.length <= 1) {
+        sections.push({ title: `${name}`, tables: [{ headers: ['Info'], rows: [["No data"]] }] });
+        continue;
+      }
+      const headers = table[0];
+      const rows = table.slice(1);
+      combinedRows.push(...rows.map(r => ({ sheet: name, row: r })));
+
+      // Simple stats: count, numeric sum of first numeric column
+      const numericIdx = headers.findIndex((_, i) => rows.some(r => !isNaN(parseFloat(String(r[i]).replace(/[,\s]/g, '')))));
+      let sum = 0; let cnt = 0;
+      if (numericIdx >= 0) {
+        rows.forEach(r => { const n = parseFloat(String(r[numericIdx]).replace(/[,\s]/g, '')); if (!isNaN(n)) { sum += n; cnt++; } });
+      }
+
+      const tables = [
+        { title: `${name} · Overview`, headers, rows: rows.slice(-5) }
+      ];
+      const insights: string[] = [];
+      if (numericIdx >= 0 && cnt > 0) insights.push(`Sum(${headers[numericIdx]}): ${Number(sum.toFixed(2))} over ${cnt} numeric row(s)`);
+
+      // Optional tiny chart from last 10 numeric points
+      const charts = (responsePrefs?.charts && numericIdx >= 0)
+        ? [{ kind: 'line' as const, title: `${name} · ${headers[numericIdx]} (last 10)`, labels: rows.slice(-10).map((_, i) => String(i + 1)), datasets: [{ label: headers[numericIdx], data: rows.slice(-10).map(r => parseFloat(String(r[numericIdx]).replace(/[,\s]/g, '')) || 0) }] }]
+        : undefined;
+
+      sections.push({ title: name, tables, insights, charts });
+    }
+
+    // Combined section (best-effort)
+    if (combinedRows.length > 0) {
+      const firstTable = dataMap[sheetNames[0]] || [];
+      const headers = firstTable[0] || [];
+      const rowsOut = combinedRows.slice(-10).map(x => x.row.slice(0, Math.max(1, headers.length)));
+      sections.unshift({ title: 'Combined overview', tables: [{ headers, rows: rowsOut, summary: `Merged last ${rowsOut.length} rows across ${sheetNames.length} sheet(s)` }] });
+    }
+
+    // Return a structured payload suitable for a dedicated page
+    return res.status(200).json({ success: true, report: { spreadsheetId, sheetNames, sections } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to generate report', details: e instanceof Error ? e.message : String(e) });
   }
 }
 

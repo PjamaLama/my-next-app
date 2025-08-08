@@ -1080,7 +1080,8 @@ async function processMessage(
             console.log(`🔍 [CONTEXT] Stored extracted text for ${images.length} files, total files in context: ${context.fileAnalysis.files.length}`);
           }
           
-          enhancedResponse += `\n\n📄 **Text Extraction Complete:**\n${result.result}`;
+          // Keep the chat clean: avoid dumping markdown. Provide a short note; rely on structured tables added later.
+          enhancedResponse += `\n\nText extraction complete. See previews below.`;
         } else if (executedToolName === 'analyze_files' || executedToolName === 'analyze_images') {
           // Store file analysis results (keeping this for backward compatibility)
           if (!context.fileAnalysis) {
@@ -1301,7 +1302,7 @@ async function processMessage(
       }
     }
 
-    // Smart table builder: create views based on user request (filters, group-by, totals)
+    // Smart table builder: create views based on user request (filters, group-by, totals) or extracted text from files
     const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
     const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
     if (hydratedSheetData && Object.keys(hydratedSheetData).length > 0) {
@@ -1314,6 +1315,35 @@ async function processMessage(
         console.warn('Smart table build failed', e);
       }
     }
+
+    // If we extracted plain text from PDFs/images, present a compact table preview
+    try {
+      const extractions = toolResults
+        .map(r => (r as any).extractions)
+        .filter(Boolean)
+        .flat();
+      if (Array.isArray(extractions) && extractions.length > 0) {
+        const filePreviews: StructuredTable[] = [];
+        for (let i = 0; i < Math.min(extractions.length, 5); i++) {
+          const ex = (extractions as any[])[i];
+          if (ex && ex.success && typeof ex.extractedText === 'string') {
+            const text = (ex.extractedText as string).trim();
+            if (text) {
+              const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
+              const rows = lines.map((l: string) => [l.slice(0, 120)]);
+              filePreviews.push({
+                title: `Extracted Text Preview (File ${i + 1})`,
+                headers: ['Line'],
+                rows
+              });
+            }
+          }
+        }
+        if (filePreviews.length > 0) {
+          dataTables.push(...filePreviews);
+        }
+      }
+    } catch {}
 
     // Build charts after tables so we can reuse selections; include as part of the response
     const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot)\b/i.test(message);
@@ -1588,7 +1618,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const { message, context, conversationHistory, images } = req.body;
 
-    if (!message) {
+    // Allow empty message when files are attached (e.g., user uploads PDFs without text)
+    if ((message == null || message === '') && (!images || images.length === 0)) {
       return res.status(400).json({ error: 'Message is required' });
     }
 

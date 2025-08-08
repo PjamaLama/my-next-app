@@ -66,7 +66,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     const { db } = await import('../providers/FirebaseProvider');
     const optionsRef = collection(db, 'users', user.uid, 'options');
     const meta = await fetch(`/api/get-sheet-names?spreadsheetId=${encodeURIComponent(spreadsheetId)}`).then(r => r.json()).catch(() => ({}));
-    await addDoc(optionsRef, { spreadsheetId, title: meta?.spreadsheetTitle || undefined });
+    const payload: any = { spreadsheetId };
+    if (meta && typeof meta.spreadsheetTitle === 'string' && meta.spreadsheetTitle.trim()) {
+      payload.title = meta.spreadsheetTitle.trim();
+    }
+    await addDoc(optionsRef, payload);
   };
 
   const removeSpreadsheetOption = async (id: string, spreadsheetId?: string) => {

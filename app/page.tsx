@@ -171,7 +171,7 @@ export default function Home() {
   const [chatProcessing, setChatProcessing] = useState(false);
   const [showCharts, setShowCharts] = useState<boolean>(false);
   const [showStats, setShowStats] = useState<boolean>(false);
-  const [enabledTools, setEnabledTools] = useState<string[]>(['update_sheet','get_sheet_data','update_single_cell','analyze_images','analyze_files','extract_text_only','extract_data_from_files','convert_unstructured_sheet']);
+  const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
 
   const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
   
@@ -877,6 +877,10 @@ export default function Home() {
         }))
       };
       setProviderChatMessages(prev => [...prev, userMessage as unknown as ProviderChatMessage]);
+      // Clear the upload area immediately after sending so files aren't pinned there
+      if (uploadedImages.length > 0) {
+        setUploadedImages([]);
+      }
       
       // Clear transcript
       setTranscript("");
@@ -946,7 +950,7 @@ export default function Home() {
               ).map(name => [name, sheetDataCache[name]]).filter(([, v]) => Array.isArray(v))
             ),
             allSheetNames,
-            availableTools: enabledTools,
+            responsePrefs,
           },
           conversationHistory: chatMessages.slice(-5),
           images: imageData // Include processed images
@@ -1060,14 +1064,7 @@ export default function Home() {
 
       console.log(`🔍 [CHAT] Final state - uploadedImages: ${uploadedImages.length}, pendingToolCalls: ${pendingToolCalls.length}`);
       
-      // Clear uploaded images after successful processing
-      if (uploadedImages.length > 0) {
-        console.log(`🧹 [CHAT] Clearing ${uploadedImages.length} uploaded images after automatic tool execution`);
-        uploadedImages.forEach(img => {
-          URL.revokeObjectURL(img.preview);
-        });
-        setUploadedImages([]);
-      }
+      // Uploaded files already cleared from the input area upon send
       
       setSendResult("AI response added to chat above.");
       
@@ -1631,7 +1628,7 @@ export default function Home() {
                     {message.role === 'assistant' && Array.isArray(message.tables) && message.tables.length > 0 && (
                       <div className="mt-2 space-y-3">
                         {message.tables.map((t, tIdx) => (
-                          <div key={`${message.id}_table_${tIdx}`} className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                          <div key={`${message.id}_table_${tIdx}`} className="overflow-x-auto max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-white/5">
                             {t.title && (
                               <div className="px-3 py-2 border-b border-white/10 text-[12px] font-semibold text-white/90">
                                 {t.title}
@@ -1654,7 +1651,7 @@ export default function Home() {
                                 {t.rows.map((row, rIdx) => (
                                   <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-white/0' : 'bg-white/[0.03]'}>
                                     {row.map((cell, cIdx) => (
-                                      <td key={cIdx} className="px-3 py-2 text-white/90 whitespace-nowrap border-b border-white/10">
+                                      <td key={cIdx} className={`px-3 py-2 text-white/90 ${t.headers.length === 1 ? 'whitespace-pre-wrap break-words' : 'whitespace-nowrap'} border-b border-white/10`}>
                                         {String(cell)}
                                       </td>
                                     ))}
@@ -1855,8 +1852,17 @@ export default function Home() {
                     />
 
                     <div className="absolute right-2 bottom-2 flex items-center gap-2">
-                      {/* Toolbelt icon inside the action row to avoid overlapping top controls */}
-                      <Toolbelt selected={enabledTools} onChange={setEnabledTools} />
+                      {/* Report tool: response prefs + single action */}
+                      <Toolbelt
+                        responsePrefs={responsePrefs}
+                        onChangeResponsePrefs={setResponsePrefs}
+                        onGenerateReport={() => {
+                          // If there is typed text, keep it; otherwise use a default command
+                          const input = (editingText && editingText.trim()) ? editingText.trim() : 'Generate a report';
+                          processWithAIChat(input);
+                          setEditingText('');
+                        }}
+                      />
                       {listening && (transcript || interimText) && (
                         <button
                           onClick={() => { setTranscript(""); setInterimText(""); }}
