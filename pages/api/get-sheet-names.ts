@@ -2,16 +2,19 @@ import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { spreadsheetId } = req.query;
+  // Support both GET (?spreadsheetId=) and POST ({ spreadsheetId })
+  const spreadsheetIdParam =
+    (req.method === 'GET' ? req.query.spreadsheetId : (req.body?.spreadsheetId as string | undefined)) ||
+    (req.query.spreadsheetId as string | undefined);
 
-  if (!spreadsheetId || typeof spreadsheetId !== 'string') {
+  if (!spreadsheetIdParam || typeof spreadsheetIdParam !== 'string') {
     return res.status(400).json({ error: 'Spreadsheet ID is required' });
   }
 
   try {
     const sheets = await getGoogleSheetsClient();
     const response = await sheets.spreadsheets.get({
-      spreadsheetId,
+      spreadsheetId: spreadsheetIdParam,
     });
 
     const sheetNames = response.data.sheets?.map(sheet => sheet.properties?.title || '').filter(Boolean) || [];
