@@ -716,17 +716,15 @@ async function processMessage(
         ? selectedSheetNames.filter(n => hydratedSheetData[n])
         : Object.keys(hydratedSheetData);
       if (sheetsToDescribe.length > 0) {
-        let overview = '\n\n📋 Selected sheets overview:';
+        // Provide a short lead-in and push structured tables for UI rendering
+        response += '\n\n📋 Selected sheets overview:';
         sheetsToDescribe.slice(0, 3).forEach((name) => {
           const table = hydratedSheetData[name] || [];
-          const headers = (table[0] || []).slice(0, 3);
-          const dataRows = Math.max(0, table.length - 1);
-          const last = table.length > 1 ? table[table.length - 1].slice(0, 3) : [];
-          const headersPreview = headers.join(', ');
-          const lastPreview = last.join(', ');
-          overview += `\n- ${name}: ${dataRows} rows. Headers: ${headersPreview || 'n/a'}${last.length ? `; Last: ${lastPreview}` : ''}`;
+          const headers = (table[0] || []).slice(0, 5);
+          // Show the latest row (tiny table preview)
+          const body = table.length > 1 ? [table[table.length - 1].slice(0, 5)] : [];
+          dataTables.push({ title: name, headers, rows: body });
         });
-        response += overview;
       }
     }
 
@@ -877,14 +875,8 @@ async function processMessage(
     }
 
     // Prefer hydrated data indication over plain "select a sheet" messaging
-    if (!hasImages) {
-      const hydrated = (context as any).sheetData as Record<string, string[][]> | undefined;
-      const selected = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
-      const connectedName = context?.sheetName || (hydrated ? (selected.find(n => hydrated[n]) || Object.keys(hydrated)[0]) : undefined);
-      if (connectedName) {
-        response += `\n\nCurrently connected to: ${connectedName}`;
-      }
-    }
+    // Do not append a plain text "Currently connected to" line here.
+    // The client renders rich chips using the sheetsUsed array.
 
     // If client sent pre-cached sheet names/data in context, keep them for the model/tooling layer
     // Note: We do not auto-fetch here; the client should hydrate context once per spreadsheet

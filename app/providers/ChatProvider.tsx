@@ -86,7 +86,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         return {
           id: d.id,
-          title: data.title ?? 'New Chat',
+          title: (data.title ?? '').trim(),
           createdAt: data.createdAt ?? new Date().toISOString(),
           updatedAt: data.updatedAt ?? new Date().toISOString(),
           lastMessageSnippet: data.lastMessageSnippet ?? '',
@@ -130,11 +130,55 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user || !currentSessionId) return;
     const chatDocRef = doc(db, "users", user.uid, "chats", currentSessionId);
     const updatedAt = new Date().toISOString();
-    const safeMessages = messages.map((m) => ({ ...m, timestamp: m.timestamp.toISOString() }));
+    const safeMessages = messages.map((m) => {
+      const copy: Record<string, unknown> = { ...m } as Record<string, unknown>;
+      // Convert timestamp to ISO
+      if (copy.timestamp instanceof Date) {
+        copy.timestamp = (copy.timestamp as Date).toISOString();
+      }
+      // Remove UI-only fields that may contain nested arrays (not supported by Firestore)
+      // e.g., tables: { headers: string[], rows: string[][] }[]
+      if ('tables' in copy) {
+        delete (copy as any).tables;
+      }
+      // Defensive: strip any top-level field that is an array of arrays
+      for (const key of Object.keys(copy)) {
+        const value = copy[key];
+        if (Array.isArray(value) && (value as unknown[]).some((el) => Array.isArray(el))) {
+          delete (copy as any)[key];
+        }
+      }
+      return copy as ChatMessage;
+    });
     const last = messages[messages.length - 1];
     const lastMessageSnippet = last ? (last.content || '').slice(0, 120) : undefined;
     await setDoc(chatDocRef, { messages: safeMessages, updatedAt, lastMessageSnippet }, { merge: true });
-  }, [user, currentSessionId]);
+
+    // Try to auto-generate a title after the first meaningful message
+    try {
+      const current = sessions.find(s => s.id === currentSessionId);
+      const existingTitle = (current?.title || '').trim();
+      const hasUserContent = messages.some(m => m.role === 'user' && (m.content || '').trim().length > 0);
+      if (!existingTitle && hasUserContent) {
+        const messagesForTitle = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+        const resp = await fetch('/api/generate-chat-title', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: messagesForTitle })
+        });
+        if (resp.ok) {
+          const { title: aiTitle } = await resp.json();
+          const finalTitle = (aiTitle || '').trim();
+          if (finalTitle && finalTitle.toLowerCase() !== 'new chat') {
+            await updateDoc(chatDocRef, { title: finalTitle });
+          }
+        }
+      }
+    } catch (e) {
+      // Best effort only; ignore failures silently
+      console.warn('AI title generation (post-message) failed:', e);
+    }
+  }, [user, currentSessionId, sessions]);
 
   // Expose a state-like setter that also persists
   const setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>> = useCallback((updater) => {
@@ -161,7 +205,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return null;
     const chatsRef = collection(db, "users", user.uid, "chats");
     const now = new Date().toISOString();
-    const initialTitle = title || "New Chat";
+    const initialTitle = (title ?? '').trim();
     const docRef = await addDoc(chatsRef, {
       title: initialTitle,
       createdAt: now,
@@ -170,27 +214,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       messages: [],
     });
     setCurrentSessionId(docRef.id);
-    // Fire-and-forget: try to generate a smarter title from recent messages
-    (async () => {
-      try {
-        const messagesForTitle = chatMessages.slice(-6).map(m => ({ role: m.role, content: m.content }));
-        const resp = await fetch('/api/generate-chat-title', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: messagesForTitle })
-        });
-        if (resp.ok) {
-          const { title: aiTitle } = await resp.json();
-          const finalTitle = (aiTitle || '').trim() || initialTitle;
-          if (finalTitle && finalTitle !== initialTitle) {
-            await updateDoc(doc(db, "users", user.uid, "chats", docRef.id), { title: finalTitle });
-          }
-        }
-      } catch (e) {
-        // Non-blocking; ignore errors
-        console.warn('AI title generation failed:', e);
-      }
-    })();
     return docRef.id;
   }, [user]);
 

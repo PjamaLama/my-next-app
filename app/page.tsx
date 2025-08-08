@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
+import { useChat, ChatMessage as ProviderChatMessage } from './providers/ChatProvider';
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
 import { useServiceAccount } from './providers/ServiceAccountProvider';
@@ -131,6 +132,8 @@ export default function Home() {
   
 
   
+  // Chat provider hooks to ensure session and persist messages for AI title generation
+  const { ensureSession, setChatMessages: setProviderChatMessages } = useChat();
   // Add state for available spreadsheet options
   // const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
 
@@ -753,6 +756,9 @@ export default function Home() {
     setChatProcessing(true);
     
     try {
+      // Ensure there is an active chat session before adding messages
+      await ensureSession();
+
       // Add user message to chat
       const userIntent = detectIntent(textToProcess);
       const userMessage = {
@@ -772,6 +778,7 @@ export default function Home() {
         }))
       };
       setChatMessages(prev => [...prev, userMessage]);
+      setProviderChatMessages(prev => [...prev, userMessage as unknown as ProviderChatMessage]);
       
       // Clear transcript
       setTranscript("");
@@ -922,6 +929,7 @@ export default function Home() {
           tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined
         };
         setChatMessages(prev => [...prev, aiMessage]);
+        setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
       }
 
       // Check for missed sheet update intent
@@ -949,6 +957,7 @@ export default function Home() {
           }))
         };
         setChatMessages(prev => [...prev, toolResultMessage]);
+        setProviderChatMessages(prev => [...prev, toolResultMessage as unknown as ProviderChatMessage]);
       }
 
       console.log(`🔍 [CHAT] Final state - uploadedImages: ${uploadedImages.length}, pendingToolCalls: ${pendingToolCalls.length}`);
@@ -980,6 +989,7 @@ export default function Home() {
         timestamp: new Date()
       };
       setChatMessages(prev => [...prev, errorMessageObj]);
+      setProviderChatMessages(prev => [...prev, errorMessageObj as unknown as ProviderChatMessage]);
     } finally {
       setChatProcessing(false);
     }
@@ -1349,6 +1359,20 @@ export default function Home() {
                                 <span className="text-[10px]">{message.timestamp.toLocaleTimeString()}</span>
                               </div>
                               <p className="whitespace-pre-wrap leading-relaxed text-[12px]">{message.content}</p>
+                                  {message.role === 'assistant' && Array.isArray(message.sheetsUsed) && message.sheetsUsed.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {message.sheetsUsed.map((name) => (
+                                        <span
+                                          key={name}
+                                          className="px-2 py-0.5 rounded-full text-[10px] border border-sky-400/40 text-sky-200 bg-sky-500/10 inline-flex items-center gap-1"
+                                          title={name}
+                                        >
+                                          <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                                          <span className="truncate max-w-[120px]">{name}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                             </div>
                           </div>
                         ))}
@@ -1381,8 +1405,8 @@ export default function Home() {
                                 }}
                                 className={`px-2 py-0.5 rounded-full text-[11px] border transition-all duration-200 max-w-[160px] truncate ${
                                   active
-                                    ? 'bg-sky-600 text-white border-transparent shadow-sm'
-                                    : 'bg-white/5 text-white/90 border-white/15 hover:bg-white/10'
+                                    ? 'border-2 border-green-500/80 bg-green-600/10 text-green-200 shadow-sm'
+                                    : 'border-transparent bg-white/5 text-white/90 hover:bg-white/10'
                                 }`}
                                 aria-pressed={active}
                                 aria-label={`Select sheet ${name}`}
@@ -1390,7 +1414,7 @@ export default function Home() {
                               >
                                 <span className="inline-flex items-center gap-1">
                                   {active && (
-                                    <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                                    <svg className="w-3 h-3 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
                                   )}
                                   <span className="truncate">{name}</span>
                                 </span>
