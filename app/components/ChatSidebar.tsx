@@ -51,9 +51,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     <li key={s.id}>
       <div className={`group relative`}
            style={{ background: 'transparent' }}>
-        <button
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => handleSelect(s.id)}
-          className={`w-full text-left ${peek ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center gap-2 ${peek ? 'pr-10' : 'pr-12'}`}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelect(s.id); }}
+          className={`w-full text-left ${peek ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center gap-2 ${peek ? 'pr-10' : 'pr-12'} cursor-pointer select-none`}
           style={{ background: 'transparent' }}
         >
           <div className="min-w-0 flex-1">
@@ -75,28 +78,25 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               </div>
             )}
           </div>
-          {/* Simple list: no timestamp/snippet in either mode */}
-        </button>
-        {!peek && (
-          <div className="absolute top-1.5 right-1.5 hidden group-hover:flex items-center gap-1">
+          {/* Right-side actions */}
+          <div className="ml-auto flex items-center gap-1">
             <button
-              onClick={() => startRename(s.id, s.title)}
-              className="p-1.5 rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50"
+              onClick={(e) => { e.stopPropagation(); startRename(s.id, s.title); }}
+              className="hidden sm:inline p-1 rounded-md border border-white/15 text-white/70 hover:text-white hover:border-white/40"
               title="Rename"
             >
-              <Pencil className="w-4 h-4" />
+              <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => {
-                if (confirm('Delete this chat?')) deleteSession(s.id);
-              }}
-              className="p-1.5 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
+              onClick={(e) => { e.stopPropagation(); if (confirm('Delete this chat?')) deleteSession(s.id); }}
+              className="p-1 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
               title="Delete"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
-        )}
+        </div>
+        {/* no floating hover actions in simple list mode */}
       </div>
     </li>
   );

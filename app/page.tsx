@@ -906,7 +906,7 @@ export default function Home() {
       }
       
       {
-        // Regular AI response with optional quick replies
+        // Regular AI response with optional quick replies and structured tables
         const aiMessage = {
           id: `msg_${Date.now()}_ai`,
           role: 'assistant' as const,
@@ -916,7 +916,10 @@ export default function Home() {
           toolCalls: data.toolCalls || [],
           toolResults: data.toolResults || [],
           quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies.slice(0, 3) : undefined,
-          sheetsUsed: Array.isArray(data.sheetsUsed) ? (data.sheetsUsed as string[]) : (selectedSheetNames || [])
+          sheetsUsed: Array.isArray(data.sheetsUsed) ? (data.sheetsUsed as string[]) : (selectedSheetNames || []),
+          // Attach tables for rendering
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined
         };
         setChatMessages(prev => [...prev, aiMessage]);
       }
@@ -1307,8 +1310,8 @@ export default function Home() {
   return (
     <>
       <PWAInstaller />
-      <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-3 sm:p-4 overflow-x-hidden">
-        <div className="w-full max-w-2xl mx-auto space-y-6 sm:space-y-8 pb-32 sm:pb-40 pt-2">
+      <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-0 overflow-x-hidden">
+        <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-32 sm:pb-40 pt-0">
           {/* Main Voice/Text Input Section - Mobile optimized */}
           <section className="glass rounded-2xl p-4 sm:p-6 space-y-4 border border-white/10 animate-fade-in-up">
             {/* Chat Messages Display */}
@@ -1337,7 +1340,34 @@ export default function Home() {
                             </span>
                           )}
                         </div>
-                        <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                          <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                          {message.role === 'assistant' && (message as any).tables && (message as any).tables.length > 0 && (
+                            <div className="mt-3 space-y-3">
+                              {((message as any).tables as Array<{ title?: string; headers: string[]; rows: string[][] }>).map((tbl, idx) => (
+                                <div key={`tbl_${message.id}_${idx}`} className="overflow-x-auto rounded-lg border border-white/10 bg-white/5">
+                                  {tbl.title && <div className="px-3 py-2 text-xs text-white/80 border-b border-white/10">{tbl.title}</div>}
+                                  <table className="min-w-full text-xs text-white/90">
+                                    <thead>
+                                      <tr className="bg-white/10">
+                                        {tbl.headers.map((h, i) => (
+                                          <th key={`h_${i}`} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {tbl.rows.map((r, ri) => (
+                                        <tr key={`r_${ri}`} className={ri % 2 === 0 ? 'bg-white/0' : 'bg-white/5'}>
+                                          {r.map((c, ci) => (
+                                            <td key={`c_${ri}_${ci}`} className="px-3 py-2 whitespace-nowrap">{c}</td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         {/* Context chips showing which sheets were used for this AI message */}
                         {message.role === 'assistant' && message.sheetsUsed && message.sheetsUsed.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1469,7 +1499,10 @@ export default function Home() {
             )}
 
             {/* AI Chat Input Section - Mobile optimized */}
-            <div className="relative w-full overflow-visible px-4">
+            <div
+              className="fixed bottom-0 right-0 z-50 w-auto overflow-visible px-0"
+              style={{ left: 'var(--sidebar-width, 300px)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
               <div className="relative w-full">
                 <div className="w-full mb-4">
                   <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200">

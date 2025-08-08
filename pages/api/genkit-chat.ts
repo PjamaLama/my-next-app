@@ -53,6 +53,15 @@ async function generateQuickReplies(
   const buildHeuristic = (): string[] => {
     const suggestions: string[] = [];
     const hasSpreadsheet = !!(context?.spreadsheetId && (context?.sheetName || context?.sheetNames?.length));
+    const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
+    const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
+    const primarySheet = hydratedSheetData
+      ? (selectedSheetNames.find(n => hydratedSheetData[n]) || Object.keys(hydratedSheetData)[0])
+      : undefined;
+    const table = primarySheet ? hydratedSheetData?.[primarySheet] : undefined;
+    const headers: string[] = table?.[0] || [];
+    const lastRow: string[] | undefined = table && table.length > 1 ? table[table.length - 1] : undefined;
+    const hasDate = headers.some(h => /date/i.test(h));
 
     if (hasFiles) {
       suggestions.push('Extract text from files');
@@ -69,15 +78,33 @@ async function generateQuickReplies(
     }
 
     if (intent === 'get_data') {
-      suggestions.push('Show latest rows');
-      suggestions.push('Summarize this sheet');
-      suggestions.push('Filter by date');
+      if (hydratedSheetData && primarySheet) {
+        if (hasDate) suggestions.push("Today’s entries");
+        if (hasDate) suggestions.push('Past 7 days');
+        suggestions.push('Last 3 rows');
+        // Propose a column-specific quick filter if we can find a likely column and a value
+        const driverLikeIdx = headers.findIndex(h => /driver/i.test(h));
+        if (driverLikeIdx >= 0 && lastRow && lastRow[driverLikeIdx]) {
+          const name = String(lastRow[driverLikeIdx]).trim().slice(0, 18);
+          suggestions.unshift(`Filter driver ${name}`);
+        }
+      } else {
+        suggestions.push('Show latest rows');
+        suggestions.push('Summarize this sheet');
+        suggestions.push('Filter by date');
+      }
       return suggestions.slice(0, 3);
     }
 
     // General
-    suggestions.push('Add a new row');
-    if (hasSpreadsheet) suggestions.push('Show current sheet');
+    if (hydratedSheetData && primarySheet) {
+      suggestions.push('Show this sheet');
+      if (hasDate) suggestions.push('Today’s entries');
+      suggestions.push('Unique values');
+    } else {
+      suggestions.push('Add a new row');
+      if (hasSpreadsheet) suggestions.push('Show current sheet');
+    }
     suggestions.push('Help me get started');
     return suggestions.slice(0, 3);
   };
@@ -99,6 +126,17 @@ async function generateQuickReplies(
       .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n');
 
+    // Provide a minimal sheet context to help generation stay specific but cheap
+    const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
+    const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
+    const primarySheet = hydratedSheetData
+      ? (selectedSheetNames.find(n => hydratedSheetData[n]) || Object.keys(hydratedSheetData)[0])
+      : undefined;
+    const table = primarySheet ? hydratedSheetData?.[primarySheet] : undefined;
+    const headers = table?.[0]?.slice(0, 6) || [];
+    const last = table && table.length > 1 ? table[table.length - 1]?.slice(0, 6) : undefined;
+    const sheetContext = primarySheet ? `Sheet: ${primarySheet}\nHeaders: ${headers.join(', ')}${last ? `\nLatest: ${last.join(' | ')}` : ''}` : '';
+
     const prompt = `You generate at most 3 short, tap-friendly quick replies to help the user continue.
 Rules:
 - Each reply <= 6 words
@@ -107,6 +145,9 @@ Rules:
 
 Conversation:
 ${historyText}
+
+Data context (if any):
+${sheetContext}
 
 JSON only:`;
 
@@ -566,6 +607,8 @@ async function processMessage(
     // Generate intelligent conversational response based on analysis results
     let response = '';
     const fileInfo = hasFiles ? ` along with ${images.length} ${images.length === 1 ? 'file' : 'files'}` : '';
+    // Will carry structured tables for the client to render nicely
+    const dataTables: Array<{ title?: string; headers: string[]; rows: string[][] }> = [];
 
     // Check if we have recent analysis results to provide intelligent suggestions
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
@@ -702,6 +745,8 @@ async function processMessage(
         if (!table || table.length === 0) return `\n- ${name}: empty`;
         const headers = (table[0] || []).slice(0, columnsLimit);
         const body = table.slice(1, 1 + rows).map(r => r.slice(0, columnsLimit));
+        // Add to structured tables for UI rendering
+        dataTables.push({ title: name, headers, rows: body });
         let out = `\n\n▶ ${name}`;
         out += `\n| ${headers.join(' | ')} |`;
         out += `\n| ${headers.map(() => '---').join(' | ')} |`;
@@ -722,6 +767,9 @@ async function processMessage(
       const todayKey = dayjs().format('YYYY-MM-DD');
       let dataPreview = '';
       let matchedAny = false;
+      let columnAskAnswered = false;
+      let columnAskAnswerText = '';
+      let columnAskSourceSheet: string | null = null;
       for (const name of sheetsToShow.slice(0, 3)) {
         const table = hydratedSheetData[name] || [];
         if (table.length <= 1) {
@@ -730,6 +778,43 @@ async function processMessage(
         }
         const headers = table[0];
         const dateColIdx = headers.findIndex(h => /date/i.test(h));
+        // Column-specific Q&A: if user references a column (e.g., "Show me Driver_Name")
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const looksLikeColumnAsk = /\b(show|list|what\s+is|who\s+is|display|get)\b/i.test(message);
+        if (looksLikeColumnAsk) {
+          const headerScores = headers.map((h) => {
+            const hNorm = normalize(h);
+            const msgNorm = normalize(message);
+            let score = 0;
+            if (msgNorm.includes(hNorm)) score += 3;
+            if (hNorm.includes('driver') && /driver/i.test(message)) score += 2;
+            if (hNorm.includes('registration') && /reg|registration|vehicle\s*reg/i.test(message)) score += 2;
+            if (hNorm.includes('vehicle') && /vehicle/i.test(message)) score += 1;
+            if (hNorm.includes('name') && /name/i.test(message)) score += 1;
+            return score;
+          });
+          const bestIdx = headerScores.reduce((bi, s, i, arr) => (s > arr[bi] ? i : bi), 0);
+          if (headerScores[bestIdx] > 0) {
+            const colValues = table.slice(1).map(r => r[bestIdx]).filter(v => v != null && String(v).trim() !== '');
+            const latest = colValues[colValues.length - 1];
+            const unique = Array.from(new Set(colValues)).slice(-10);
+            // Structured single-column table for unique values
+            dataTables.push({ title: `${name} · ${headers[bestIdx]} (latest + unique)`, headers: [headers[bestIdx]], rows: [[String(latest ?? 'n/a')], ...unique.map(v => [String(v)])] });
+            // Build a direct answer sentence when the question targets this column
+            const headerLower = headers[bestIdx].toLowerCase();
+            const valueText = String(latest ?? 'n/a');
+            if (/driver/.test(headerLower) || /\bwho\b/i.test(message)) {
+              columnAskAnswerText = `${valueText} drove it.`;
+            } else {
+              columnAskAnswerText = `${headers[bestIdx]}: ${valueText}`;
+            }
+            columnAskSourceSheet = name;
+            columnAskAnswered = true;
+            // Do not add markdown preview for this; rely on structured tables
+            matchedAny = true;
+            continue;
+          }
+        }
         if (wantToday && dateColIdx >= 0) {
           const todays = table.slice(1).filter(r => normalizeDate(r[dateColIdx] || '') === todayKey);
           const take = todays.length > 0 ? todays : [table[table.length - 1]]; // fallback to latest
@@ -751,6 +836,10 @@ async function processMessage(
             const rows = Math.min(10, inRange.length);
             dataPreview += formatTable(name, [headers, ...inRange.slice(0, rows)], rows);
             matchedAny = true;
+          } else {
+            // Fallback to latest row if no matches
+            const latest = [headers, table[table.length - 1]];
+            dataPreview += formatTable(name, latest, 1);
           }
           continue;
         }
@@ -768,12 +857,17 @@ async function processMessage(
           continue;
         }
       }
-      if (dataPreview) {
+      if (dataPreview && dataTables.length === 0) {
         // If existing response is generic, replace it with a more helpful lead-in
         const generic = 'How can I help? You can ask me to update your sheet, fetch data, or extract info from files.';
         const lead = matchedAny ? 'Here’s the data you asked for:' : 'No rows matched that request; showing the latest available:';
         response = response && !response.includes(generic) ? response : lead;
         response += `\n\n📄 Data preview:${dataPreview}`;
+      }
+
+      // Prefer a direct answer if we detected a column ask
+      if (columnAskAnswered && columnAskAnswerText) {
+        response = columnAskAnswerText + (columnAskSourceSheet ? `\n\nSource: ${columnAskSourceSheet}` : '');
       }
     }
 
@@ -782,8 +876,14 @@ async function processMessage(
       response += enhancedResponse;
     }
 
-    if (context?.sheetName && !hasImages) {
-      response += `\n\nCurrently connected to: ${context.sheetName}`;
+    // Prefer hydrated data indication over plain "select a sheet" messaging
+    if (!hasImages) {
+      const hydrated = (context as any).sheetData as Record<string, string[][]> | undefined;
+      const selected = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
+      const connectedName = context?.sheetName || (hydrated ? (selected.find(n => hydrated[n]) || Object.keys(hydrated)[0]) : undefined);
+      if (connectedName) {
+        response += `\n\nCurrently connected to: ${connectedName}`;
+      }
     }
 
     // If client sent pre-cached sheet names/data in context, keep them for the model/tooling layer
@@ -800,7 +900,8 @@ async function processMessage(
       toolResults: toolResults, // Include the results of auto-executed tools
       context: context, // Return updated context with analysis results
       sheetsUsed: selectedSheetNames,
-      quickReplies
+      quickReplies,
+      dataTables
     };
 
   } catch (error) {

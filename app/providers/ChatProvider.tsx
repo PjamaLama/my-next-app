@@ -161,14 +161,36 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return null;
     const chatsRef = collection(db, "users", user.uid, "chats");
     const now = new Date().toISOString();
+    const initialTitle = title || "New Chat";
     const docRef = await addDoc(chatsRef, {
-      title: title || "New Chat",
+      title: initialTitle,
       createdAt: now,
       updatedAt: now,
       lastMessageSnippet: "",
       messages: [],
     });
     setCurrentSessionId(docRef.id);
+    // Fire-and-forget: try to generate a smarter title from recent messages
+    (async () => {
+      try {
+        const messagesForTitle = chatMessages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+        const resp = await fetch('/api/generate-chat-title', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: messagesForTitle })
+        });
+        if (resp.ok) {
+          const { title: aiTitle } = await resp.json();
+          const finalTitle = (aiTitle || '').trim() || initialTitle;
+          if (finalTitle && finalTitle !== initialTitle) {
+            await updateDoc(doc(db, "users", user.uid, "chats", docRef.id), { title: finalTitle });
+          }
+        }
+      } catch (e) {
+        // Non-blocking; ignore errors
+        console.warn('AI title generation failed:', e);
+      }
+    })();
     return docRef.id;
   }, [user]);
 
