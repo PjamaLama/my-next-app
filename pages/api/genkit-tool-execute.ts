@@ -42,6 +42,7 @@ interface ToolArgs {
 interface ImageData {
   data: string;
   mimeType: string;
+  name?: string;
 }
 
 // Define interface SheetAction

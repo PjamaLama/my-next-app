@@ -32,6 +32,7 @@ export interface ConversationHistoryItem {
 export interface ImageData {
   data: string;
   mimeType: string;
+  name?: string;
 }
 
 export type StructuredTable = {
@@ -40,6 +41,10 @@ export type StructuredTable = {
   rows: string[][];
   footer?: string[];
   summary?: string;
+  meta?: {
+    fileIndex?: number;
+    fileName?: string;
+  };
 };
 
 export type ChartSpec = {

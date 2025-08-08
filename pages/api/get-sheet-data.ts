@@ -3,26 +3,42 @@ import { findLastDataRow } from '@/lib/sheetUtils';
 import { getCachedHeaders, setCachedHeaders } from '@/lib/sheetHeaderCache';
 import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { createLogger } from '@/lib/logger';
+
+// Lightweight in-memory response cache to reduce duplicate fetches
+const RESPONSE_TTL_MS = 30 * 1000; // 30s cache to coalesce rapid requests
+type CacheEntry = { at: number; payload: { data: unknown; structure: unknown } };
+const responseCache = new Map<string, CacheEntry>();
+const cacheKey = (spreadsheetId: string, sheetName: string, range?: string) => `${spreadsheetId}::${sheetName}::${range || 'auto'}`;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requestId = Math.random().toString(36).substr(2, 9);
-  console.log(`🎯 [${requestId}] GET-SHEET-DATA: Starting request processing`);
-  console.log(`🎯 [${requestId}] Method: ${req.method}, Headers: ${JSON.stringify(req.headers)}`);
-  console.log(`🎯 [${requestId}] Body: ${JSON.stringify(req.body)}`);
+  const log = createLogger(`api/get-sheet-data:${requestId}`);
+  log.debug('Start');
+  log.debug('Headers', req.method, req.headers);
+  log.debug('Body', req.body);
   
   try {
     const sheets = await getGoogleSheetsClient();
     const { spreadsheetId, sheetName, range } = req.body;
 
-    console.log(`🔍 [${requestId}] API Request: spreadsheet="${spreadsheetId}", sheet="${sheetName}", range="${range || 'auto'}"`);
+    // Serve from cache if fresh
+    const key = cacheKey(spreadsheetId, sheetName, range);
+    const cached = responseCache.get(key);
+    if (cached && Date.now() - cached.at < RESPONSE_TTL_MS) {
+      log.debug('Cache hit', key);
+      return res.status(200).json(cached.payload);
+    }
+
+    log.debug('Params', { spreadsheetId, sheetName, range: range || 'auto' });
 
     if (!spreadsheetId) {
-      console.error(`❌ [${requestId}] Missing spreadsheetId in request`);
+      log.warn('Missing spreadsheetId');
       return res.status(400).json({ error: 'Missing spreadsheetId', requestId });
     }
 
     if (!sheetName) {
-      console.error(`❌ [${requestId}] Missing sheetName in request`);
+      log.warn('Missing sheetName');
       return res.status(400).json({ error: 'Missing sheetName', requestId });
     }
 
@@ -35,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
         return sheetMetadata.data.sheets?.map(s => s.properties?.title).filter(Boolean) || [];
       } catch (error) {
-        console.warn(`⚠️ [${requestId}] Could not fetch available sheet names:`, error);
+        log.warn('Could not fetch available sheet names', error);
         return [];
       }
     };
@@ -55,25 +71,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (range) {
       // If a specific range is provided, use it
       finalRange = `${escapeSheetName(sheetName)}!${range}`;
-      console.log(`🎯 [${requestId}] Using provided range: ${finalRange}`);
+      log.debug('Using provided range', finalRange);
     } else {
       // Get the actual sheet dimensions first
       try {
-        console.log(`📐 [${requestId}] Getting sheet dimensions for: ${sheetName}`);
+        log.debug('Getting sheet dimensions for', sheetName);
         
         const sheetMetadata = await sheets.spreadsheets.get({
           spreadsheetId,
           includeGridData: false
         });
         
-        console.log(`📋 [${requestId}] Available sheets in spreadsheet:`, 
-          sheetMetadata.data.sheets?.map(s => s.properties?.title) || []);
+        log.debug('Available sheets', sheetMetadata.data.sheets?.map(s => s.properties?.title) || []);
         
         const sheet = sheetMetadata.data.sheets?.find(s => s.properties?.title === sheetName);
         if (!sheet?.properties?.gridProperties) {
           const availableSheets = sheetMetadata.data.sheets?.map(s => s.properties?.title).filter(Boolean) || [];
           const errorMsg = `Sheet "${sheetName}" not found. Available sheets: ${availableSheets.join(', ')}`;
-          console.error(`❌ [${requestId}] ${errorMsg}`);
+          log.warn(errorMsg);
           
                       // Return detailed error information to help the frontend handle this
             return res.status(404).json({ 
@@ -88,7 +103,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const gridProps = sheet.properties.gridProperties;
         const rowCount = gridProps.rowCount || 1000;
         const columnCount = gridProps.columnCount || 26;
-        console.log(`📊 [${requestId}] Sheet dimensions: ${rowCount} rows × ${columnCount} columns`);
+        log.debug('Sheet dimensions', { rowCount, columnCount });
         
         // Convert column count to letter (A, B, C, ... Z, AA, AB, etc.)
         const getColumnLetter = (num: number) => {
@@ -119,11 +134,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           `${escapedSheetName}!A1:T50`
         ];
         
-        console.log(`🔄 [${requestId}] Trying ${strategies.length} range strategies...`);
+        log.debug('Trying strategies', strategies.length);
         
         for (const strategy of strategies) {
           try {
-            console.log(`🔍 [${requestId}] Trying strategy: ${strategy}`);
+            log.debug('Try strategy', strategy);
             
             const response = await sheets.spreadsheets.values.get({
               spreadsheetId,
@@ -132,7 +147,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               dateTimeRenderOption: 'FORMATTED_STRING',
             });
             
-            console.log(`✅ [${requestId}] Success with: ${strategy}, rows: ${response.data.values?.length || 0}`);
+            log.debug('Strategy success', strategy, 'rows', response.data.values?.length || 0);
 
             // Cache headers and last data row (TTL handled by cache consumer)
             const values = response.data.values || [];
@@ -147,14 +162,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             try {
               structure = analyzeSheetStructure(values as string[][]);
             } catch (e) {
-              console.warn(`⚠️ [${requestId}] Structure analysis failed:`, e);
+              log.warn('Structure analysis failed', e);
             }
 
-            return res.status(200).json({ data: values, structure });
+            const payload = { data: values, structure };
+            responseCache.set(key, { at: Date.now(), payload });
+            return res.status(200).json(payload);
             
           } catch (strategyError: unknown) {
             const errorMsg = strategyError instanceof Error ? strategyError.message : String(strategyError);
-            console.log(`❌ [${requestId}] Failed strategy: ${strategy} - ${errorMsg}`);
+            log.debug('Strategy failed', strategy, errorMsg);
             
             // Check if this is a "sheet not found" error and provide better feedback
             if (errorMsg.includes('Unable to parse range') || errorMsg.includes('not found')) {
@@ -172,9 +189,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
         
-        const availableSheets = await getAvailableSheetNames(spreadsheetId);
-        const errorMsg = `All range strategies failed for sheet "${sheetName}"`;
-        console.error(`❌ [${requestId}] ${errorMsg}`);
+         const availableSheets = await getAvailableSheetNames(spreadsheetId);
+         const errorMsg = `All range strategies failed for sheet "${sheetName}"`;
+         log.error(errorMsg);
         return res.status(500).json({ 
           error: errorMsg,
           availableSheets: availableSheets,
@@ -184,7 +201,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
       } catch (metadataError: unknown) {
         const metaErrorMsg = metadataError instanceof Error ? metadataError.message : String(metadataError);
-        console.warn(`⚠️ [${requestId}] Could not get sheet metadata: ${metaErrorMsg}`);
+        log.warn('Could not get sheet metadata', metaErrorMsg);
         
         // Check if this is a sheet not found error
         if (metaErrorMsg.includes('Unable to parse range') || metaErrorMsg.includes('not found')) {
@@ -208,11 +225,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           `${sheetName}!A1:T50` // Try without escaping as last resort
         ];
         
-        console.log(`🔄 [${requestId}] Trying ${fallbackRanges.length} fallback ranges...`);
+        log.debug('Trying fallback ranges', fallbackRanges.length);
         
         for (const fallback of fallbackRanges) {
           try {
-            console.log(`🔄 [${requestId}] Fallback attempt: ${fallback}`);
+            log.debug('Fallback attempt', fallback);
             
             const response = await sheets.spreadsheets.values.get({
               spreadsheetId,
@@ -221,19 +238,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               dateTimeRenderOption: 'FORMATTED_STRING',
             });
             
-            console.log(`✅ [${requestId}] Fallback success: ${fallback}, rows: ${response.data.values?.length || 0}`);
+            log.debug('Fallback success', fallback, 'rows', response.data.values?.length || 0);
             const values = response.data.values || [];
             let structure = null;
             try {
               structure = analyzeSheetStructure(values as string[][]);
             } catch (e) {
-              console.warn(`⚠️ [${requestId}] Structure analysis failed:`, e);
+              log.warn('Structure analysis failed', e);
             }
-            return res.status(200).json({ data: values, structure });
+            const payload = { data: values, structure };
+            responseCache.set(key, { at: Date.now(), payload });
+            return res.status(200).json(payload);
             
           } catch (fallbackError: unknown) {
             const fbErrorMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-            console.log(`❌ [${requestId}] Fallback failed: ${fallback} - ${fbErrorMsg}`);
+            log.debug('Fallback failed', fallback, fbErrorMsg);
             
             // Check if this is a sheet not found error
             if (fbErrorMsg.includes('Unable to parse range') || fbErrorMsg.includes('not found')) {
@@ -253,7 +272,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         const availableSheets = await getAvailableSheetNames(spreadsheetId);
         const errorMsg = `All fallback ranges failed for sheet "${sheetName}". Metadata error: ${metaErrorMsg}`;
-        console.error(`❌ [${requestId}] ${errorMsg}`);
+        log.error(errorMsg);
         return res.status(500).json({ 
           error: errorMsg,
           availableSheets: availableSheets,
@@ -264,7 +283,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // This should not be reached due to early returns above, but kept for explicit range case
-    console.log(`🎯 [${requestId}] Final attempt with explicit range: ${finalRange}`);
+    log.debug('Final explicit range', finalRange);
     
     try {
       const response = await sheets.spreadsheets.values.get({
@@ -274,15 +293,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         dateTimeRenderOption: 'FORMATTED_STRING',
       });
 
-      console.log(`✅ [${requestId}] Final success: ${finalRange}, rows: ${response.data.values?.length || 0}`);
+      log.debug('Final success', finalRange, 'rows', response.data.values?.length || 0);
       const data = response.data.values || [];
       let structure = null;
       try {
         structure = analyzeSheetStructure(data);
       } catch (e) {
-        console.warn(`⚠️ [${requestId}] Structure analysis failed:`, e);
+        log.warn('Structure analysis failed', e);
       }
-      res.status(200).json({ data, structure });
+      const payload = { data, structure };
+      responseCache.set(key, { at: Date.now(), payload });
+      res.status(200).json(payload);
     } catch (finalError: unknown) {
       const finalErrorMsg = finalError instanceof Error ? finalError.message : String(finalError);
       
@@ -304,13 +325,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
-    
-    console.error(`❌ [${requestId}] Sheet fetch error:`, {
+    log.error('Sheet fetch error', {
       message: errorMsg,
       stack: errorStack,
       spreadsheetId: req.body?.spreadsheetId,
       sheetName: req.body?.sheetName,
-      range: req.body?.range
+      range: req.body?.range,
     });
     
     // Return more specific error information

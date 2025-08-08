@@ -452,6 +452,11 @@ export default function Home() {
     return () => unsub();
   }, []);
 
+  // Trigger a secure server refresh of testerCount on first load
+  useEffect(() => {
+    fetch('/api/beta-stats').catch(() => {});
+  }, []);
+
   // Load service account email once for add-sheet helper
   useEffect(() => {
     if (serviceAccountChecked) return;
@@ -1021,7 +1026,7 @@ export default function Home() {
       setTranscript("");
 
       // Prepare images for the API call
-      const imageData: Array<{ data: string; mimeType: string; }> = [];
+      const imageData: Array<{ data: string; mimeType: string; name?: string; }> = [];
       
       if (uploadedImages.length > 0) {
         try {
@@ -1031,7 +1036,7 @@ export default function Home() {
               try {
                 const { compressImageFile } = await import('../lib/imageCompression');
                 const compressed = await compressImageFile(img.file, 1600, 0.7);
-                imageData.push({ data: compressed.base64, mimeType: compressed.mimeType });
+                imageData.push({ data: compressed.base64, mimeType: compressed.mimeType, name: img.file.name });
               } catch {
                 const reader = new FileReader();
                 const base64Data = await new Promise<string>((resolve, reject) => {
@@ -1043,7 +1048,7 @@ export default function Home() {
                   reader.onerror = reject;
                   reader.readAsDataURL(img.file);
                 });
-                imageData.push({ data: base64Data, mimeType: img.file.type });
+                imageData.push({ data: base64Data, mimeType: img.file.type, name: img.file.name });
               }
             } else {
               const reader = new FileReader();
@@ -1056,7 +1061,7 @@ export default function Home() {
                 reader.onerror = reject;
                 reader.readAsDataURL(img.file);
               });
-              imageData.push({ data: base64Data, mimeType: img.file.type });
+              imageData.push({ data: base64Data, mimeType: img.file.type, name: img.file.name });
             }
           }
         } catch (error) {

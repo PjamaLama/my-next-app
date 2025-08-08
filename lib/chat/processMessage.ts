@@ -285,13 +285,25 @@ export async function processMessage(
           if (Array.isArray(ex.structured) && ex.structured.length > 0) {
             const allKeys: string[] = Array.from(new Set<string>(ex.structured.flatMap((r: any) => Object.keys(r))));
             const rows: string[][] = ex.structured.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
-            filePreviews.push({ title: `Structured Extracted Data (File ${i + 1})`, headers: allKeys, rows });
+            const fileName = images?.[i]?.name;
+            filePreviews.push({
+              title: `Structured Extracted Data${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
+              headers: allKeys,
+              rows,
+              meta: { fileIndex: i + 1, fileName }
+            });
           } else if (typeof ex.extractedText === 'string') {
             const text = (ex.extractedText as string).trim();
             if (text) {
               const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
               const rows = lines.map((l: string) => [l.slice(0, 120)]);
-              filePreviews.push({ title: `Extracted Text Preview (File ${i + 1})`, headers: ['Line'], rows });
+              const fileName = images?.[i]?.name;
+              filePreviews.push({
+                title: `Extracted Text Preview${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
+                headers: ['Line'],
+                rows,
+                meta: { fileIndex: i + 1, fileName }
+              });
             }
           }
         }
@@ -310,7 +322,13 @@ export async function processMessage(
           if (Array.isArray(rowsArr) && rowsArr.length > 0) {
             const allKeys: string[] = Array.from(new Set<string>(rowsArr.flatMap((r: any) => Object.keys(r))));
             const rows: string[][] = rowsArr.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
-            filePreviews.push({ title: `Structured Extracted Data (File ${i + 1})`, headers: allKeys, rows });
+            const fileName = images?.[i]?.name;
+            filePreviews.push({
+              title: `Structured Extracted Data${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
+              headers: allKeys,
+              rows,
+              meta: { fileIndex: i + 1, fileName }
+            });
           }
         }
       }

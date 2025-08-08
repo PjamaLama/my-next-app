@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { JWT } from 'google-auth-library';
+import { createLogger } from '@/lib/logger';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
@@ -8,6 +9,7 @@ let cachedAt = 0;
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 export const getGoogleSheetsClient = async (retries = 3) => {
+  const log = createLogger('lib/googleSheets');
   // Return cached client if still fresh
   if (cachedSheets && Date.now() - cachedAt < CACHE_TTL_MS) {
     return cachedSheets;
@@ -15,7 +17,7 @@ export const getGoogleSheetsClient = async (retries = 3) => {
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      console.log(`🔐 Attempting Google Sheets authentication (attempt ${attempt}/${retries})`);
+      log.debug(`Attempting Google Sheets authentication (${attempt}/${retries})`);
       
       const client = new JWT({
         email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -30,7 +32,7 @@ export const getGoogleSheetsClient = async (retries = 3) => {
       );
 
       await Promise.race([authPromise, timeoutPromise]);
-      console.log(`✅ Google Sheets authentication successful on attempt ${attempt}`);
+      log.debug(`Google Sheets authentication successful on attempt ${attempt}`);
 
       const sheets = google.sheets({ version: 'v4', auth: client });
       cachedSheets = sheets;
@@ -38,16 +40,16 @@ export const getGoogleSheetsClient = async (retries = 3) => {
       return cachedSheets;
       
     } catch (error) {
-      console.error(`❌ Authentication attempt ${attempt} failed:`, error);
+      log.warn(`Authentication attempt ${attempt} failed`, error);
       
       if (attempt === retries) {
-        console.error(`🚫 All ${retries} authentication attempts failed`);
+        log.error(`All ${retries} authentication attempts failed`);
         throw new Error(`Google Sheets authentication failed after ${retries} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
       
       // Wait before retrying (exponential backoff)
       const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
-      console.log(`⏳ Waiting ${waitTime/1000}s before retry...`);
+      log.debug(`Waiting ${waitTime/1000}s before retry...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
