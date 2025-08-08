@@ -21,6 +21,7 @@ interface Context {
   spreadsheetId?: string;
   sheetName?: string;
   sheetNames?: string[];
+  unstructuredSheets?: string[];
   [key: string]: unknown;
 }
 

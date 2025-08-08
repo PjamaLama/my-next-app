@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from "firebase/auth";
-import { getFirestore, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB42SldA3_l6LZ6l2axTIdrMhvSrmcIMEU",
@@ -27,6 +27,8 @@ interface IFirebaseContext {
   setGeminiApiKey: (key: string) => void;
   saveGeminiApiKey: (key: string) => Promise<void>;
   authError: string | null;
+  betaTester: boolean;
+  betaWaitlist: boolean;
 }
 
 const FirebaseContext = createContext<IFirebaseContext>({
@@ -37,7 +39,9 @@ const FirebaseContext = createContext<IFirebaseContext>({
   geminiApiKey: "",
   setGeminiApiKey: () => {},
   saveGeminiApiKey: async () => {},
-  authError: null
+  authError: null,
+  betaTester: false,
+  betaWaitlist: false
 });
 
 export const FirebaseProvider = ({ children }: { children: React.ReactNode }) => {
@@ -45,6 +49,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const [loading, setLoading] = useState(true);
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
   const [authError, setAuthError] = useState<string | null>(null);
+  const [betaTester, setBetaTester] = useState(false);
+  const [betaWaitlist, setBetaWaitlist] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
@@ -53,6 +59,43 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     });
     return () => unsubscribe();
   }, []);
+
+  // Ensure a user document exists on sign-in so we can reliably count beta testers
+  useEffect(() => {
+    if (!user) return;
+    const ensureUserDoc = async () => {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        const existing = await getDoc(userDocRef);
+        const baseData: Record<string, unknown> = {
+          email: user.email || null,
+          displayName: user.displayName || null,
+          photoURL: user.photoURL || null,
+          lastLoginAt: serverTimestamp(),
+        };
+        // Only set createdAt/betaTester on first creation
+        if (!existing.exists()) {
+          baseData.createdAt = serverTimestamp();
+          // Check current beta count and set tester or waitlist accordingly
+          const { getDocs, collection, query, where } = await import("firebase/firestore");
+          const q = query(collection(db, "users"), where("betaTester", "==", true));
+          const snap = await getDocs(q);
+          if (snap.size < 100) {
+            baseData.betaTester = true;
+            setBetaTester(true);
+          } else {
+            baseData.betaWaitlist = true;
+            setBetaTester(false);
+            setBetaWaitlist(true);
+          }
+        }
+        await setDoc(userDocRef, baseData, { merge: true });
+      } catch (e) {
+        console.error("Error ensuring user document:", e);
+      }
+    };
+    void ensureUserDoc();
+  }, [user]);
 
   // Load Gemini API key from Firestore when user changes
   useEffect(() => {
@@ -64,6 +107,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
         if (data.geminiApiKey) {
           setGeminiApiKey(data.geminiApiKey);
         }
+        setBetaTester(!!data.betaTester);
+        setBetaWaitlist(!!data.betaWaitlist);
       }
     });
     return () => unsubUserDoc();
@@ -97,6 +142,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     try {
       await signOut(auth);
       setGeminiApiKey(""); // Clear API key on sign out
+      setBetaTester(false);
+      setBetaWaitlist(false);
     } catch (error) {
       console.error("Error signing out:", error);
     }
@@ -124,7 +171,9 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       geminiApiKey,
       setGeminiApiKey,
       saveGeminiApiKey,
-      authError
+      authError,
+      betaTester,
+      betaWaitlist
     }}>
       {children}
     </FirebaseContext.Provider>

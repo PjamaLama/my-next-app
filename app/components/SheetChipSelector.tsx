@@ -101,6 +101,41 @@ const SheetChipSelector: React.FC = () => {
           Select Sheets to Edit
         </h3>
         {selectedSheetNames.length > 0 && (
+          <button
+            type="button"
+            className="text-xs px-2 py-1 rounded border bg-white dark:bg-gray-800 hover:bg-gray-50"
+            onClick={async () => {
+              // Offer convert action for the first selected unstructured sheet
+              const first = selectedSheetNames.find(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
+              if (!first) return;
+              const spreadsheetId = defaultSpreadsheetId;
+              try {
+                const resp = await fetch('/api/genkit-tool-execute', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    toolCall: { function: { name: 'convert_unstructured_sheet', arguments: JSON.stringify({ spreadsheetId, sheetName: first }) } }
+                  })
+                });
+                if (!resp.ok) {
+                  const t = await resp.text();
+                  console.error('Convert failed:', t);
+                  alert('Conversion failed.');
+                } else {
+                  const j = await resp.json();
+                  alert(`Created new structured sheet: ${j.newSheetName}`);
+                }
+              } catch (e) {
+                console.error(e);
+                alert('Conversion error');
+              }
+            }}
+            title="Convert selected unstructured sheet into a new structured sheet"
+          >
+            Convert to structured
+          </button>
+        )}
+        {selectedSheetNames.length > 0 && (
           <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full">
             {selectedSheetNames.length} selected
           </span>

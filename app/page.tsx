@@ -105,7 +105,7 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user, loading, signInWithGoogle, authError } = useFirebase();
+  const { user, loading, signInWithGoogle, authError, betaTester, betaWaitlist } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
@@ -127,6 +127,12 @@ export default function Home() {
   const [stepperValues, setStepperValues] = useState<{ [cell: string]: string }>({});
   const [stepperComplete, setStepperComplete] = useState(false);
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
+
+  // Beta program live count
+  const BETA_LIMIT = 100;
+  const [betaCount, setBetaCount] = useState<number>(0);
+  const spotsLeft = Math.max(0, BETA_LIMIT - betaCount);
+  const betaFull = spotsLeft <= 0;
 
   
 
@@ -379,6 +385,15 @@ export default function Home() {
     });
     return () => unsubOptions();
   }, [user]);
+
+  // Live subscribe to beta tester count
+  useEffect(() => {
+    const q = query(collection(db, "users"), where("betaTester", "==", true));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setBetaCount(snapshot.size);
+    });
+    return () => unsub();
+  }, []);
 
 
 
@@ -1078,7 +1093,8 @@ export default function Home() {
           toolCall: finalToolCall,
           context: {
             spreadsheetId: defaultSpreadsheetId,
-            sheetNames: selectedSheetNames
+            sheetNames: selectedSheetNames,
+            unstructuredSheets: selectedSheetNames.filter(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)))
           },
           images: imageData
         }),
@@ -1255,48 +1271,153 @@ export default function Home() {
     );
   }
 
-  if (!user) {
+  // If logged in but on waitlist, show gated waitlist page
+  if (user && !betaTester && betaWaitlist) {
     return (
       <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[#0b0b0e] via-[#0c0c10] to-[#0a0a0d]">
         <div className="absolute inset-0 pointer-events-none opacity-[0.12]" aria-hidden>
           <div className="absolute -top-24 -left-24 w-80 h-80 bg-sky-500/30 blur-3xl rounded-full" />
           <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-fuchsia-500/20 blur-3xl rounded-full" />
         </div>
-
-        <div className="w-full max-w-md px-5">
-          <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up">
+        <div className="w-full max-w-2xl px-6">
+          <div className="glass gloss rounded-2xl p-8 border border-white/10 shadow-2xl animate-fade-in-up text-white/90">
             <div className="flex items-center gap-3 mb-4">
               <div className="bg-white/10 rounded-xl p-2">
                 <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="dark:invert" />
               </div>
               <div>
                 <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300">Sheety AI</h1>
-                <p className="text-xs text-white/70">Sheets, automated by AI</p>
+                <p className="text-xs text-white/70">Private Beta</p>
               </div>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border ${betaFull ? 'border-red-400/40 text-red-200 bg-red-500/10' : 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10'}`}>
+                {betaFull ? 'Beta full' : `${spotsLeft} spots left`}
+              </span>
+              <span className="text-xs text-white/60">{betaCount}/{BETA_LIMIT}</span>
             </div>
             <p className="text-sm text-white/80 mb-6 leading-relaxed">
-              Speak or type updates and let AI structure, validate, and write them to your Google Sheets. Built for speed on mobile.
+              Thanks for joining! Our first {BETA_LIMIT} seats are full. You’re on the waitlist and will get access as soon as we open more spots. We’ll notify you via email.
             </p>
-            <button
-              onClick={signInWithGoogle}
-              className="w-full flex items-center justify-center gap-3 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] transition-all px-4 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
-              Sign in with Google
-            </button>
-            {authError && (
-              <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-sm">
-                <p className="font-medium">Authentication Error</p>
-                <p className="mt-1">{authError}</p>
-              </div>
-            )}
-            <div className="mt-6 grid grid-cols-3 gap-2 text-[10px] text-white/60">
-              <div className="glass-soft rounded-lg p-2 text-center">Google Sign-In</div>
-              <div className="glass-soft rounded-lg p-2 text-center">Voice + Text</div>
-              <div className="glass-soft rounded-lg p-2 text-center">Write to Sheets</div>
-            </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="relative min-h-screen overflow-y-auto bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
+        <div className="absolute inset-0 pointer-events-none opacity-[0.12]" aria-hidden>
+          <div className="absolute -top-24 -left-24 w-80 h-80 bg-sky-500/30 blur-3xl rounded-full" />
+          <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-fuchsia-500/20 blur-3xl rounded-full" />
+        </div>
+
+        {/* Hero */}
+        <section className="relative">
+          <div className="mx-auto max-w-6xl px-6 pt-20 pb-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+              {/* Hero copy */}
+              <div>
+                <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-white/20 bg-white/5 mb-4">
+                  <span className="opacity-80">Private Beta</span>
+                  <span className={`ml-2 inline-flex items-center gap-2 text-xs px-2 py-0.5 rounded-full border ${betaFull ? 'border-red-400/40 text-red-200 bg-red-500/10' : 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10'}`}>
+                    {betaFull ? 'Beta full' : `${spotsLeft} spots left`}
+                  </span>
+                  <span className="opacity-60">{betaCount}/{BETA_LIMIT}</span>
+                </div>
+                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300">
+                  Speak data. Sheety AI writes it to your Sheets.
+                </h1>
+                <p className="mt-4 text-white/80 leading-relaxed text-base">
+                  Turn voice or text into structured, validated spreadsheet updates. Fast, accurate, and built for mobile.
+                </p>
+                <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={signInWithGoogle}
+                    disabled={false}
+                    className={`inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98]`}
+                    aria-disabled={false}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+                    {betaFull ? 'Join waitlist' : 'Join the beta'}
+                  </button>
+                  <a href="#how-it-works" className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10">
+                    See how it works
+                  </a>
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-2 text-[10px] text-white/60 max-w-sm">
+                  <div className="glass-soft rounded-lg p-2 text-center">Google Sign-In</div>
+                  <div className="glass-soft rounded-lg p-2 text-center">Voice + Text</div>
+                  <div className="glass-soft rounded-lg p-2 text-center">Write to Sheets</div>
+                </div>
+              </div>
+              {/* Login card (kept) */}
+              <div className="w-full max-w-md mx-auto md:mx-0">
+                <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="bg-white/10 rounded-xl p-2">
+                      <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="dark:invert" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-extrabold tracking-tight">Get started</h2>
+                      <p className="text-xs text-white/70">Private beta access</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-white/80 mb-6 leading-relaxed">
+                    Sign in with Google to secure your spot. If we’re full, you’ll be added to the waitlist automatically.
+                  </p>
+                  <button
+                    onClick={signInWithGoogle}
+                    className="w-full flex items-center justify-center gap-3 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] transition-all px-4 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12 c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C33.042,6.053,28.761,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20 s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657 C33.042,6.053,28.761,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c4.695,0,8.964-1.797,12.207-4.743l-5.641-4.758C28.565,35.091,26.392,36,24,36 c-5.202,0-9.616-3.317-11.277-7.946l-6.563,5.057C9.482,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.997,5.571 c0.001-0.001,0.003-0.002,0.004-0.003l6.571,4.819C36.695,39.644,44,35,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+                    {betaFull ? 'Join waitlist' : 'Join the beta'}
+                  </button>
+                  {authError && (
+                    <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-sm">
+                      <p className="font-medium">Authentication Error</p>
+                      <p className="mt-1">{authError}</p>
+                    </div>
+                  )}
+                  <div className="mt-6 grid grid-cols-3 gap-2 text-[10px] text-white/60">
+                    <div className="glass-soft rounded-lg p-2 text-center">Google Sign-In</div>
+                    <div className="glass-soft rounded-lg p-2 text-center">Voice + Text</div>
+                    <div className="glass-soft rounded-lg p-2 text-center">Write to Sheets</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section id="how-it-works" className="relative">
+          <div className="mx-auto max-w-6xl px-6 pb-16">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="glass-soft rounded-2xl p-5 border border-white/10">
+                <div className="text-lg">🎤</div>
+                <h3 className="mt-2 font-semibold">Speak or type</h3>
+                <p className="mt-1 text-sm text-white/70">Capture updates quickly with voice or text on any device.</p>
+              </div>
+              <div className="glass-soft rounded-2xl p-5 border border-white/10">
+                <div className="text-lg">🤖</div>
+                <h3 className="mt-2 font-semibold">AI structures it</h3>
+                <p className="mt-1 text-sm text-white/70">We validate, map fields, and prepare the right cells automatically.</p>
+              </div>
+              <div className="glass-soft rounded-2xl p-5 border border-white/10">
+                <div className="text-lg">📊</div>
+                <h3 className="mt-2 font-semibold">Written to Sheets</h3>
+                <p className="mt-1 text-sm text-white/70">Approve and commit updates to your Google Sheets in seconds.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="px-6 pb-10 text-center text-xs text-white/50">
+          © {new Date().getFullYear()} Sheety AI — Private beta
+        </footer>
       </div>
     );
   }
