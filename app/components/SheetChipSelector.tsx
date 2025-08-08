@@ -49,6 +49,19 @@ const SheetChipSelector: React.FC = () => {
     }
   }, [defaultSpreadsheetId]); // Only depend on defaultSpreadsheetId
 
+  // Lightweight refresh to pull updated sheet list (e.g., after conversion)
+  const refreshSheetNames = async () => {
+    if (!defaultSpreadsheetId) return;
+    try {
+      const res = await fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`);
+      if (!res.ok) throw new Error('Failed to fetch sheet names');
+      const data = await res.json();
+      setSheetNames(data.sheetNames);
+    } catch (e) {
+      console.warn('Failed to refresh sheet names:', e);
+    }
+  };
+
   const toggleSheetSelection = (sheetName: string) => {
     console.log('=== Toggle Sheet Selection ===');
     console.log('Sheet name:', sheetName);
@@ -164,6 +177,8 @@ const SheetChipSelector: React.FC = () => {
                   }));
                   const okCount = results.filter(r => r.status === 'fulfilled').length;
                   const failCount = results.length - okCount;
+                  // Refresh sheet list so the new structured sheets appear
+                  await refreshSheetNames();
                   await notify({
                     title: failCount === 0 ? 'Conversion complete' : 'Conversion partially complete',
                     description: failCount === 0 ? `Converted ${okCount} sheet${okCount !== 1 ? 's' : ''}.` : `Converted ${okCount}, ${failCount} failed.`,

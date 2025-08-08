@@ -29,6 +29,10 @@ interface Context {
     }>;
     lastUpdated: number;
   };
+  responsePrefs?: {
+    charts?: boolean;
+    stats?: boolean;
+  };
   [key: string]: unknown;
 }
 
@@ -1312,12 +1316,14 @@ async function processMessage(
     }
 
     // Build charts after tables so we can reuse selections; include as part of the response
-    const charts = hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : [];
+    const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot)\b/i.test(message);
+    const charts = wantCharts && hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : [];
 
     // Add lightweight insights over chart data (trend direction, top category, etc.)
+    const wantStats = (context as any)?.responsePrefs?.stats === true || /\b(stat|stats|statistics|summary|insight)\b/i.test(message);
     const insights: string[] = [];
     try {
-      if (charts.length > 0) {
+      if (wantStats && charts.length > 0) {
         for (const ch of charts.slice(0, 2)) {
           if (ch.kind === 'line' && ch.labels.length >= 3 && ch.datasets[0]?.data?.length === ch.labels.length) {
             const y = ch.datasets[0].data;

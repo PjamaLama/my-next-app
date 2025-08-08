@@ -12,6 +12,7 @@ export default function Toolbelt({
 }) {
   const [tools, setTools] = useState<Tool[]>([]);
   const [open, setOpen] = useState(false);
+  const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
 
   useEffect(() => {
     let alive = true;
@@ -48,9 +49,30 @@ export default function Toolbelt({
         </svg>
       </button>
       {open && (
-        <div className="absolute bottom-full mb-2 right-0 z-[100] w-[300px] max-h-80 overflow-auto rounded-xl border border-white/10 bg-black/90 backdrop-blur p-2 shadow-xl">
-          <div className="text-[11px] text-white/80 px-1 pb-2 border-b border-white/10">Available tools</div>
-          <ul className="space-y-1 pt-2">
+        <div className="absolute bottom-full mb-2 right-0 z-[100] w-[300px] max-h-[70vh] overflow-auto rounded-xl border border-white/10 bg-black/90 backdrop-blur p-2 shadow-xl">
+          <div className="px-1 pb-2 border-b border-white/10">
+            <div className="text-[11px] text-white/80">Response preferences</div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setResponsePrefs(p => ({ ...p, charts: !p.charts }))}
+                className={`text-[11px] px-2 py-1 rounded border ${responsePrefs.charts ? 'border-sky-400/60 bg-sky-500/10 text-sky-200' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'}`}
+                title="Prefer responses with charts when applicable"
+              >
+                Charts
+              </button>
+              <button
+                type="button"
+                onClick={() => setResponsePrefs(p => ({ ...p, stats: !p.stats }))}
+                className={`text-[11px] px-2 py-1 rounded border ${responsePrefs.stats ? 'border-emerald-400/60 bg-emerald-500/10 text-emerald-200' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'}`}
+                title="Prefer responses with stats/insights when applicable"
+              >
+                Stats
+              </button>
+            </div>
+          </div>
+          <div className="text-[11px] text-white/80 px-1 py-2">Available tools</div>
+          <ul className="space-y-1">
             {tools.map(t => (
               <li key={t.name} className="flex items-start gap-2 px-2 py-1 rounded hover:bg-white/5">
                 <input

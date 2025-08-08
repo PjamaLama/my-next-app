@@ -836,8 +836,14 @@ export default function Home() {
   // Enhanced function to process with AI Chat (combining old functionality with new chat)
   const processWithAIChat = async (inputText?: string) => {
     const textToProcess = inputText || transcript;
-    if (!textToProcess.trim() || !defaultSpreadsheetId) {
-      setSendResult("Please provide input and select a spreadsheet in the navigation.");
+    const hasFilesToProcess = uploadedImages.length > 0;
+    // Allow sending with only files (no text). Only require spreadsheet when no files are attached.
+    if (!textToProcess.trim() && !hasFilesToProcess) {
+      setSendResult("Please provide input or attach files.");
+      return;
+    }
+    if (!defaultSpreadsheetId && !hasFilesToProcess) {
+      setSendResult("Please select a spreadsheet in the navigation.");
       return;
     }
     
@@ -1829,7 +1835,7 @@ export default function Home() {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           if (editingText.trim() || uploadedImages.length > 0) {
-                            processWithAIChat(editingText.trim() || 'Analyze these files');
+                            processWithAIChat(editingText.trim() || '');
                             setEditingText('');
                           }
                         }
@@ -1926,7 +1932,7 @@ export default function Home() {
 
                       {(editingText.trim() || uploadedImages.length > 0) && (
                         <button
-                          onClick={() => { processWithAIChat(editingText.trim() || 'Analyze these files'); setEditingText(''); }}
+                          onClick={() => { processWithAIChat(editingText.trim() || ''); setEditingText(''); }}
                           className="w-9 h-9 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
                           title="Send"
                           aria-label="Send"

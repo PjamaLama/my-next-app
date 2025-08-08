@@ -76,7 +76,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     await deleteDoc(doc(db, 'users', user.uid, 'options', id));
     if ((spreadsheetId && defaultSpreadsheetId === spreadsheetId) || (spreadsheets.length === 1 && defaultSpreadsheetId)) {
       setDefaultSpreadsheetId("");
-      setSelectedSheetNames([]);
     }
   };
 
@@ -291,7 +290,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               {spreadsheets.map((s) => {
                 const active = defaultSpreadsheetId === s.spreadsheetId;
                 return (
-                  <div key={s.id} className={`group flex items-center gap-2 px-2 h-8 rounded-md ${active ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                  <div key={s.id} className={`group flex items-center gap-1.5 px-2 h-9 rounded-md ${active ? 'bg-white/10' : 'hover:bg-white/5'}`}>
                     <button
                       onClick={() => setDefaultSpreadsheetId(s.spreadsheetId)}
                       className="flex-1 text-left min-w-0"
@@ -305,10 +304,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                       href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(s.spreadsheetId)}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-white/60 hover:text-white"
+                      className="grid place-items-center h-6 w-6 rounded text-white/70 hover:text-white"
                       title="Open in Google Sheets"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <ExternalLink className="w-3 h-3" />
                     </a>
                     <button
                       onClick={async () => {
@@ -321,7 +320,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                         });
                         if (ok) await removeSpreadsheetOption(s.id, s.spreadsheetId);
                       }}
-                      className="grid place-items-center h-6 w-6 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
+                      className="grid place-items-center h-6 w-6 rounded text-red-300 hover:text-red-200"
                       title="Remove"
                       aria-label="Remove spreadsheet"
                     >
@@ -438,7 +437,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           {spreadsheets.map((s) => {
             const active = defaultSpreadsheetId === s.spreadsheetId;
             return (
-              <div key={s.id} className={`group flex items-center gap-2 px-2 py-1 rounded-md ${active ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+              <div key={s.id} className={`group flex items-center gap-1.5 px-2 h-9 rounded-md ${active ? 'bg-white/10' : 'hover:bg-white/5'}`}>
                 <button
                   onClick={() => setDefaultSpreadsheetId(s.spreadsheetId)}
                   className="flex-1 text-left min-w-0"
@@ -452,14 +451,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                   href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(s.spreadsheetId)}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-white/60 hover:text-white"
+                  className="grid place-items-center h-6 w-6 rounded text-white/70 hover:text-white"
                   title="Open in Google Sheets"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink className="w-3 h-3" />
                 </a>
                 <button
                   onClick={() => removeSpreadsheetOption(s.id, s.spreadsheetId)}
-                  className="grid place-items-center h-6 w-6 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
+                  className="grid place-items-center h-6 w-6 rounded text-red-300 hover:text-red-200"
                   title="Remove"
                   aria-label="Remove spreadsheet"
                 >
