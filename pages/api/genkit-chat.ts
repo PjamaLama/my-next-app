@@ -192,34 +192,6 @@ async function processMessage(
   images: ImageData[] = []
 ) {
   try {
-    // Fetch sheet data if we have spreadsheet and sheet information
-    let sheetData = null;
-    if (context?.spreadsheetId && context?.sheetNames && context.sheetNames.length > 0) {
-      try {
-        console.log(`🔍 [PROCESS_MESSAGE] Fetching sheet data for ${context.sheetNames[0]} in ${context.spreadsheetId}`);
-        
-        // Fetch the current sheet data
-        const sheetResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/get-sheet-data`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            spreadsheetId: context.spreadsheetId, 
-            sheetName: context.sheetNames[0] 
-          })
-        });
-
-        if (sheetResponse.ok) {
-          const sheetResult = await sheetResponse.json();
-          sheetData = sheetResult.data;
-          console.log(`✅ [PROCESS_MESSAGE] Successfully fetched ${sheetData?.length || 0} rows of sheet data`);
-        } else {
-          console.warn(`⚠️ [PROCESS_MESSAGE] Failed to fetch sheet data: ${sheetResponse.status}`);
-        }
-      } catch (error) {
-        console.error(`❌ [PROCESS_MESSAGE] Error fetching sheet data:`, error);
-      }
-    }
-
     // Analyze the message for intent
     const lowerMessage = message.toLowerCase();
     let intent = 'chat';
@@ -231,6 +203,24 @@ async function processMessage(
         arguments: string;
       };
     }> = [];
+
+    // Fast-path greeting/small talk: no tools or sheet calls
+    const isGreeting = /^(hi|hello|hey|yo|howdy|good\s+(morning|afternoon|evening))\b/i.test(message.trim());
+    if (isGreeting) {
+      const greetingResponse = `Hi! I'm here to help. You can:
+- Add or update rows in your Google Sheet
+- Fetch and summarize current sheet data
+- Extract data from images/PDFs and insert into the sheet
+
+What would you like to do?`;
+      return {
+        response: greetingResponse,
+        toolCalls: [],
+        pendingToolCalls: [],
+        toolResults: [],
+        context
+      };
+    }
 
     // Enhanced intent detection with file consideration (images and PDFs)
     const hasFiles = images && images.length > 0;
@@ -551,7 +541,7 @@ async function processMessage(
             if (hasFiles) {
               response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
             } else {
-              response = `I've processed your request and completed the necessary actions.`;
+              response = `How can I help? You can ask me to update your sheet, fetch data, or extract info from files.`;
             }
         }
       }
@@ -578,7 +568,7 @@ async function processMessage(
           if (hasFiles) {
             response = `I've processed your ${images.length} ${images.length === 1 ? 'file' : 'files'} and completed the requested analysis.`;
           } else {
-            response = `I've processed your request and completed the necessary actions.`;
+            response = `How can I help? You can ask me to update your sheet, fetch data, or extract info from files.`;
           }
       }
     }
