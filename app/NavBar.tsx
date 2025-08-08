@@ -213,7 +213,7 @@ const NavBar: React.FC = () => {
   // Removed Gemini API key handler
 
   return (
-    <nav className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm overflow-x-hidden">
+    <nav className="sticky top-0 z-50 backdrop-blur-xl bg-black/30 dark:bg-black/30 border-b border-white/10 shadow-[0_1px_0_0_rgba(255,255,255,0.06)] overflow-x-hidden gloss">
       <div className="container mx-auto flex justify-between items-center px-3 sm:px-4 py-2 max-w-full">
           {/* Logo and Title - Properly aligned for mobile */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -222,19 +222,19 @@ const NavBar: React.FC = () => {
                 <Image src="/logo.png" alt="Logo" width={24} height={24} className="dark:invert sm:w-8 sm:h-8" />
               </div>
               <div className="flex flex-col justify-center min-w-0">
-                <span className="text-base sm:text-lg md:text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 drop-shadow-sm truncate block leading-tight">
-                  Report AI
+                                 <span className="text-base sm:text-lg md:text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300 drop-shadow-sm truncate block leading-tight">
+                  Sheety AI
                 </span>
                 <span className="hidden sm:block text-xs font-medium text-white/70 leading-tight">
-                  Your Automated Report Assistant
+                  Sheets, automated by AI
                 </span>
               </div>
-              <span className="absolute left-0 -bottom-1 w-full h-1 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 group-hover:scale-x-100 transition-all duration-300 origin-left" />
+              <span className="absolute left-0 -bottom-1 w-full h-1 bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 group-hover:scale-x-100 transition-all duration-300 origin-left" />
             </Link>
           </div>
 
           {/* Desktop Nav Links - Hidden on mobile */}
-          <div className="hidden md:flex items-center gap-6">
+                     <div className="hidden md:flex items-center gap-6 text-white/80">
             {NAV_LINKS.map(link => (
               <Link
                 key={link.name}

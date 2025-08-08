@@ -34,12 +34,12 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: "Report AI - Your Automated Report Assistant",
+  title: "Sheety AI - Your AI for Google Sheets",
   description: "AI-powered voice-to-spreadsheet reporting tool. Convert speech to structured data in Google Sheets effortlessly.",
   keywords: ["AI", "voice", "reporting", "spreadsheets", "automation", "speech recognition"],
-  authors: [{ name: "Report AI Team" }],
-  creator: "Report AI",
-  publisher: "Report AI",
+  authors: [{ name: "Sheety AI Team" }],
+  creator: "Sheety AI",
+  publisher: "Sheety AI",
   formatDetection: {
     email: false,
     address: false,
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Report AI",
+    title: "Sheety AI",
   },
   manifest: "/manifest.json",
   icons: {
@@ -58,21 +58,21 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "Report AI",
-    title: "Report AI - Your Automated Report Assistant",
+    siteName: "Sheety AI",
+    title: "Sheety AI - Your AI for Google Sheets",
     description: "AI-powered voice-to-spreadsheet reporting tool",
     images: [
       {
         url: "/icon-512x512.png",
         width: 512,
         height: 512,
-        alt: "Report AI Logo",
+        alt: "Sheety AI Logo",
       },
     ],
   },
   twitter: {
     card: "summary",
-    title: "Report AI",
+    title: "Sheety AI",
     description: "AI-powered voice-to-spreadsheet reporting tool",
     images: ["/icon-512x512.png"],
   },

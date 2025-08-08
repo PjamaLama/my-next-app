@@ -1,6 +1,6 @@
-# Report AI - Next.js Application
+# Sheety AI - Next.js Application
 
-A Next.js application for AI-powered report generation and Google Sheets integration.
+A Next.js application for AI-powered Google Sheets automation and chat-driven updates.
 
 ## Features
 

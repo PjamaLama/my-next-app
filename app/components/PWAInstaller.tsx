@@ -100,7 +100,7 @@ export default function PWAInstaller() {
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm mb-1">Install Report AI</h3>
+            <h3 className="font-semibold text-sm mb-1">Install Sheety AI</h3>
             <p className="text-xs text-white/90 mb-3">
               Install the app on your device for a better experience and offline access.
             </p>

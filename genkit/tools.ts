@@ -437,7 +437,7 @@ export const updateSheetViaN8n = async (input: N8nSheetUpdateInput): Promise<str
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'ReportAI-Genkit/1.0.0'
+        'User-Agent': 'SheetyAI-Genkit/1.0.0'
       },
       body: JSON.stringify(payload),
     });

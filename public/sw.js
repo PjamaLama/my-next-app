@@ -75,7 +75,7 @@ self.addEventListener('sync', (event) => {
 // Handle push notifications (for future use)
 self.addEventListener('push', (event) => {
   const options = {
-    body: 'Report AI notification',
+    body: 'Sheety AI notification',
     icon: '/icon-192x192.png',
     badge: '/icon-192x192.png',
     data: {
@@ -92,7 +92,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification('Report AI', options)
+    self.registration.showNotification('Sheety AI', options)
   );
 });
 
