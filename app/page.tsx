@@ -22,7 +22,6 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
-import { useChat, ChatMessage } from './providers/ChatProvider';
 
 
 
@@ -63,7 +62,37 @@ interface ActivityItem {
   rowsAffected?: number; // For multi-row operations
 }
 
-// ChatMessage type is imported from ChatProvider
+// Define ChatMessage type for use throughout the file
+type ChatMessage = {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp: Date;
+    isVoice?: boolean;
+    hasImages?: boolean;
+    imageCount?: number;
+    attachments?: Array<{
+      id: string;
+      name: string;
+      type: string;
+      fileType: 'image' | 'pdf';
+      preview?: string;
+    }>;
+    isProcessing?: boolean;
+    toolCalls?: Array<{
+      id: string;
+      type: 'function';
+      function: { name: string; arguments: string };
+    }>;
+    toolResults?: Array<{
+      id: string;
+      result: string;
+      success: boolean;
+      details?: unknown;
+    }>;
+    messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
+    quickReplies?: string[];
+  };
 
 
 
@@ -75,15 +104,11 @@ export default function Home() {
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, authError } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames } = useSheet();
-  // Prefetched sheet metadata and cache
-  const [allSheetNames, setAllSheetNames] = useState<string[]>([]);
-  const [sheetDataCache, setSheetDataCache] = useState<Record<string, string[][]>>({});
-  const [sheetsPrefetched, setSheetsPrefetched] = useState<boolean>(false);
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
-  // const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(true);
+  const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(true);
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
   const [listening, setListening] = useState(false);
@@ -109,17 +134,14 @@ export default function Home() {
   const [uploadingImages, setUploadingImages] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Chat functionality state (from provider)
-  const { chatMessages, setChatMessages, ensureSession } = useChat();
+  // Chat functionality state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{
     id: string;
     type: 'function';
     function: { name: string; arguments: string };
   }>>([]);
   const [chatProcessing, setChatProcessing] = useState(false);
-
-  // Ensure a session exists when page mounts for logged-in users
-  useEffect(() => { void ensureSession(); }, [ensureSession]);
   
   // Visual feedback state for voice-to-chat transitions
   // const [voiceTransitioning, setVoiceTransitioning] = useState(false);
@@ -336,14 +358,14 @@ export default function Home() {
   useEffect(() => {
     if (!user) {
       setHasSpreadsheets(false);
-      // setSpreadsheetsLoading(false);
+      setSpreadsheetsLoading(false);
       return;
     }
-    // setSpreadsheetsLoading(true);
+    setSpreadsheetsLoading(true);
     const optionsRef = collection(db, "users", user.uid, "options");
     const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
       setHasSpreadsheets(snapshot.docs.length > 0);
-      // setSpreadsheetsLoading(false);
+      setSpreadsheetsLoading(false);
     });
     return () => unsubOptions();
   }, [user]);
@@ -1208,7 +1230,7 @@ export default function Home() {
 
 
 
-  // Function to clear chat (current session)
+  // Function to clear chat
   const clearChat = () => {
     setChatMessages([]);
     setPendingToolCalls([]);

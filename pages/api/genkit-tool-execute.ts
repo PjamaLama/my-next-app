@@ -764,15 +764,13 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
             // Rebuild updates only for unique rows
             const uniqueRowSet = new Set<number>();
             for (const [row, obj] of rowMap.entries()) {
-              const keyObj: Record<string, string> = {};
+              const keyObj: any = {};
               keyHeaders.forEach(h => (keyObj[h] = obj[h] ?? ''));
               const k = keyHeaders.map(h => String(keyObj[h]).trim().toLowerCase()).join('|');
-              // Avoid require; use dynamic import signature-compatible hash if needed
-              const crypto = await import('crypto');
-              const exists = existingKeys.has(crypto.createHash('sha1').update(k).digest('hex'));
+              const exists = existingKeys.has(require('crypto').createHash('sha1').update(k).digest('hex'));
               if (!exists) uniqueRowSet.add(row);
             }
-            updates = updates.filter((up: { cell: string; value: unknown }) => {
+            updates = updates.filter((up: { sheetName: string; cell: string; value: string }) => {
               const m = up.cell.match(/([A-Z]+)(\d+)/);
               if (!m) return true;
               const row = parseInt(m[2], 10);
@@ -866,18 +864,92 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
 
 async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: NextApiResponse) {
   try {
-    const count = images?.length || 0;
-    if (!images || count === 0) {
-      return res.status(400).json({ success: false, error: 'Files are required for text extraction' });
+    console.log(`🔍 [EXTRACT_TEXT_ONLY] Received ${images?.length || 0} images`);
+
+    if (!images || images.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Files are required for text extraction'
+      });
     }
-    // Minimal stub: echo back file types and counts
-    const types = Array.from(new Set(images.map((i) => i.mimeType)));
+
+    console.log(`Extracting text from ${images.length} images/files`);
+
+    const extractionResults: Array<{
+      index: number;
+      type: string;
+      success: boolean;
+      error?: string;
+      extractedText?: string;
+      textLength?: number;
+    }> = [];
+
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i];
+      
+      try {
+        let extractedText = '';
+        
+        if (image.mimeType === 'application/pdf') {
+          console.log(`🔍 [EXTRACT_TEXT_ONLY] Extracting text from PDF...`);
+          // Import pdf-parse dynamically
+          const pdf = (await import('pdf-parse')).default;
+          const buffer = Buffer.from(image.data, 'base64');
+          const pdfData = await pdf(buffer);
+          extractedText = pdfData.text || 'No text could be extracted from the PDF';
+        } else if (image.mimeType.startsWith('image/')) {
+          console.log(`🔍 [EXTRACT_TEXT_ONLY] Extracting text from image using OCR...`);
+          // Import Tesseract dynamically
+          const Tesseract = (await import('tesseract.js')).default;
+          const { data: { text } } = await Tesseract.recognize(
+            `data:image/jpeg;base64,${image.data}`,
+            'eng',
+            { logger: m => console.log(m) }
+          );
+          extractedText = text;
+        } else {
+          extractedText = 'Unknown file type - cannot extract text';
+        }
+
+        extractionResults.push({
+          index: i + 1,
+          type: image.mimeType,
+          success: true,
+          extractedText: extractedText,
+          textLength: extractedText.length
+        });
+
+        console.log(`🔍 [EXTRACT_TEXT_ONLY] Extracted ${extractedText.length} characters from file ${i + 1}`);
+      } catch (error) {
+        console.error(`Error extracting text from file ${i + 1}:`, error);
+        
+        extractionResults.push({
+          index: i + 1,
+          type: image.mimeType,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    const successfulExtractions = extractionResults.filter(result => result.success).length;
+    const summary = `Successfully extracted text from ${successfulExtractions} out of ${images.length} ${images.length === 1 ? 'file' : 'files'}`;
+
     return res.status(200).json({
       success: true,
-      result: `Received ${count} file(s) for text extraction`,
-      summary: { total: count, types }
+      result: summary + "\n\n" + formatExtractionsAsMarkdown(extractionResults),
+      extractions: extractionResults,
+      summary: {
+        total: images.length,
+        successful: successfulExtractions,
+        failed: images.length - successfulExtractions,
+        types: Array.from(new Set(images.map(img => img.mimeType)))
+      }
     });
+
   } catch (error) {
+    console.error('Text extraction error:', error);
+    
     return res.status(500).json({
       success: false,
       error: 'Failed to extract text from files',
@@ -885,3 +957,15 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
     });
   }
 }
+
+function formatExtractionsAsMarkdown(extractions: Array<{ index: number; type: string; success: boolean; error?: string; extractedText?: string; textLength?: number }>): string {
+  let markdown = '| File | Type | Status | Text Length |\n|---|---|---|---|\n';
+  
+  extractions.forEach(extraction => {
+    const status = extraction.success ? '✅ Success' : '❌ Failed';
+    const textLength = extraction.success ? extraction.textLength || 0 : 'N/A';
+    markdown += `| ${extraction.index} | ${extraction.type} | ${status} | ${textLength} |\n`;
+  });
+  
+  return markdown;
+} 
