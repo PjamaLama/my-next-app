@@ -18,8 +18,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     const sheetNames = response.data.sheets?.map(sheet => sheet.properties?.title || '').filter(Boolean) || [];
+    const spreadsheetTitle = response.data.properties?.title || null;
 
-    res.status(200).json({ sheetNames });
+    res.status(200).json({ sheetNames, spreadsheetTitle });
   } catch (error) {
     console.error('Error fetching sheet names:', error);
     res.status(500).json({ error: 'Failed to fetch sheet names' });

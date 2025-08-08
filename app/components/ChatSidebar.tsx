@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useChat } from "../providers/ChatProvider";
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { Plus, Trash2, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { useSheet } from "../providers/SheetProvider";
+import { useFirebase } from "../providers/FirebaseProvider";
+import ServiceAccountInfo from "./ServiceAccountInfo";
 dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
@@ -14,7 +17,78 @@ interface ChatSidebarProps {
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false }) => {
   const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, ensureSession } = useChat();
+  const { user } = useFirebase();
+  const { defaultSpreadsheetId, setDefaultSpreadsheetId, allSheetNames, selectedSheetNames, setSelectedSheetNames } = useSheet();
   const [creating, setCreating] = useState(false);
+  const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; spreadsheetId: string; title?: string }>>([]);
+  const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [newSheetId, setNewSheetId] = useState("");
+  const [addingSheet, setAddingSheet] = useState(false);
+  const [serviceAccountEmail, setServiceAccountEmail] = useState<string>("");
+  const [serviceAccountChecked, setServiceAccountChecked] = useState(false);
+
+  // Load service account email once for configuration tips
+  useEffect(() => {
+    if (serviceAccountChecked) return;
+    fetch('/api/get-service-account')
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => { if (data?.email) setServiceAccountEmail(data.email); })
+      .catch(() => {})
+      .finally(() => setServiceAccountChecked(true));
+  }, [serviceAccountChecked]);
+
+  // Subscribe to user's spreadsheets list in Firestore
+  useEffect(() => {
+    let unsub: undefined | (() => void);
+    (async () => {
+      if (!user) { setSpreadsheets([]); return; }
+      setSpreadsheetsLoading(true);
+      const { collection, onSnapshot } = await import('firebase/firestore');
+      const { db } = await import('../providers/FirebaseProvider');
+      const ref = collection(db, 'users', user.uid, 'options');
+      unsub = onSnapshot(ref, (snap) => {
+        const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
+          .filter(x => typeof x.spreadsheetId === 'string')
+          .map(x => ({ id: x.id, spreadsheetId: x.spreadsheetId as string, title: x.title as string | undefined }));
+        setSpreadsheets(items);
+        setSpreadsheetsLoading(false);
+      });
+    })();
+    return () => { if (unsub) unsub(); };
+  }, [user]);
+
+  const saveSpreadsheetOption = async (spreadsheetId: string) => {
+    if (!user || !spreadsheetId) return;
+    const { collection, addDoc } = await import('firebase/firestore');
+    const { db } = await import('../providers/FirebaseProvider');
+    const optionsRef = collection(db, 'users', user.uid, 'options');
+    const meta = await fetch(`/api/get-sheet-names?spreadsheetId=${encodeURIComponent(spreadsheetId)}`).then(r => r.json()).catch(() => ({}));
+    await addDoc(optionsRef, { spreadsheetId, title: meta?.spreadsheetTitle || undefined });
+  };
+
+  const removeSpreadsheetOption = async (id: string) => {
+    if (!user || !id) return;
+    const { doc, deleteDoc } = await import('firebase/firestore');
+    const { db } = await import('../providers/FirebaseProvider');
+    await deleteDoc(doc(db, 'users', user.uid, 'options', id));
+    if (spreadsheets.length === 1 && defaultSpreadsheetId) {
+      setDefaultSpreadsheetId("");
+      setSelectedSheetNames([]);
+    }
+  };
+
+  const handleAddSpreadsheet = async () => {
+    if (!newSheetId.trim()) return;
+    setAddingSheet(true);
+    try {
+      await saveSpreadsheetOption(newSheetId.trim());
+      setNewSheetId("");
+    } finally {
+      setAddingSheet(false);
+    }
+  };
 
   const sortedSessions = useMemo(() => sessions, [sessions]);
   const visibleSessions = useMemo(
@@ -96,6 +170,135 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         </div>
         </div>
         <div className="flex-1 overflow-y-auto py-2">
+          {/* Spreadsheets manager */}
+          <div className="px-3 py-2 border-b border-white/10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-white/90">
+                <TableIcon className="w-3.5 h-3.5" />
+                {!peek && 'Spreadsheets'}
+                <span className="text-white/60">{!peek && `(${spreadsheets.length})`}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setAddOpen(o => !o)}
+                  className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50`}
+                  title="Add spreadsheet"
+                  aria-label="Add spreadsheet"
+                >
+                  <Plus className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+                </button>
+                <button
+                  onClick={() => setConfigOpen(o => !o)}
+                  className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 ml-1`}
+                  title="Configuration"
+                  aria-label="Configuration"
+                >
+                  {configOpen ? <ChevronUp className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} /> : <ChevronDown className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />}
+                </button>
+              </div>
+            </div>
+            {addOpen && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  value={newSheetId}
+                  onChange={(e) => setNewSheetId(e.target.value)}
+                  placeholder="Paste Google Sheet ID"
+                  className="flex-1 px-2 py-1 text-xs rounded-md bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none"
+                />
+                <button
+                  onClick={handleAddSpreadsheet}
+                  disabled={addingSheet}
+                  className="px-2 py-1 rounded-md text-xs bg-blue-600 hover:bg-blue-700"
+                >
+                  Add
+                </button>
+              </div>
+            )}
+            {configOpen && (
+              <div className="mt-3 space-y-2 text-xs text-white/80">
+                {serviceAccountEmail && (
+                  <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
+                )}
+                {defaultSpreadsheetId && allSheetNames.length > 0 && (
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-2">
+                    <div className="text-[11px] mb-1">Selected sheets</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allSheetNames.map((name) => {
+                        const active = selectedSheetNames?.includes(name);
+                        return (
+                          <button
+                            key={name}
+                            onClick={() => {
+                              const set = new Set(selectedSheetNames || []);
+                              if (set.has(name)) set.delete(name); else set.add(name);
+                              setSelectedSheetNames(Array.from(set));
+                            }}
+                            className={`px-2 py-0.5 rounded-full text-[10px] border transition-all duration-200 max-w-[160px] truncate ${
+                              active
+                                ? 'border-2 border-green-500/80 bg-green-600/10 text-green-200 shadow-sm'
+                                : 'border-transparent bg-white/5 text-white/90 hover:bg-white/10'
+                            }`}
+                            aria-pressed={active}
+                            title={name}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {active && (
+                                <CheckCircle2 className="w-3 h-3 text-green-400" />
+                              )}
+                              <span className="truncate">{name}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Connected spreadsheets list */}
+          <div className="px-2 py-2 space-y-1 border-b border-white/10">
+            {spreadsheetsLoading && (
+              <div className="text-xs text-white/60 px-2">Loading spreadsheets…</div>
+            )}
+            {!spreadsheetsLoading && spreadsheets.length === 0 && (
+              <div className="text-xs text-white/60 px-2">No spreadsheets yet. Add one above.</div>
+            )}
+            {spreadsheets.map((s) => {
+              const active = defaultSpreadsheetId === s.spreadsheetId;
+              return (
+                <div key={s.id} className={`group flex items-center gap-2 px-2 py-1 rounded-md ${active ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                  <button
+                    onClick={() => setDefaultSpreadsheetId(s.spreadsheetId)}
+                    className="flex-1 text-left min-w-0"
+                    title={s.title || s.spreadsheetId}
+                  >
+                    <div className={`truncate text-xs ${active ? 'text-white font-semibold' : 'text-white/80 group-hover:text-white'}`}>
+                      {s.title || s.spreadsheetId}
+                    </div>
+                  </button>
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(s.spreadsheetId)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-white/60 hover:text-white"
+                    title="Open in Google Sheets"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    onClick={() => removeSpreadsheetOption(s.id)}
+                    className="grid place-items-center h-6 w-6 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
+                    title="Remove"
+                    aria-label="Remove spreadsheet"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
           {visibleSessions.length === 0 ? (
             <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
           ) : (
@@ -130,6 +333,136 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-0 py-2">
+        {/* Spreadsheets manager */}
+        <div className="px-3 py-2 border-b border-white/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <TableIcon className="w-4 h-4" />
+              {!peek && 'Spreadsheets'}
+              <span className="text-xs text-white/60">{!peek && `(${spreadsheets.length})`}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setAddOpen(o => !o)}
+                className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50`}
+                title="Add spreadsheet"
+                aria-label="Add spreadsheet"
+              >
+                <Plus className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+              </button>
+              <button
+                onClick={() => setConfigOpen(o => !o)}
+                className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 ml-1`}
+                title="Configuration"
+                aria-label="Configuration"
+              >
+                {configOpen ? <ChevronUp className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} /> : <ChevronDown className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />}
+              </button>
+            </div>
+          </div>
+          {addOpen && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                value={newSheetId}
+                onChange={(e) => setNewSheetId(e.target.value)}
+                placeholder="Paste Google Sheet ID"
+                className="flex-1 px-2 py-1 text-xs rounded-md bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none"
+              />
+              <button
+                onClick={handleAddSpreadsheet}
+                disabled={addingSheet}
+                className="px-2 py-1 rounded-md text-xs bg-blue-600 hover:bg-blue-700"
+              >
+                Add
+              </button>
+            </div>
+          )}
+          {configOpen && (
+            <div className="mt-3 space-y-2 text-xs text-white/80">
+              {serviceAccountEmail && (
+                <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
+              )}
+              {defaultSpreadsheetId && allSheetNames.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-lg p-2">
+                  <div className="text-[11px] mb-1">Selected sheets</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allSheetNames.map((name) => {
+                      const active = selectedSheetNames?.includes(name);
+                      return (
+                        <button
+                          key={name}
+                          onClick={() => {
+                            const set = new Set(selectedSheetNames || []);
+                            if (set.has(name)) set.delete(name); else set.add(name);
+                            setSelectedSheetNames(Array.from(set));
+                          }}
+                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-all duration-200 max-w-[160px] truncate ${
+                            active
+                              ? 'border-2 border-green-500/80 bg-green-600/10 text-green-200 shadow-sm'
+                              : 'border-transparent bg-white/5 text-white/90 hover:bg-white/10'
+                          }`}
+                          aria-pressed={active}
+                          title={name}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {active && (
+                              <CheckCircle2 className="w-3 h-3 text-green-400" />
+                            )}
+                            <span className="truncate">{name}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Connected spreadsheets list */}
+        <div className="px-2 py-2 space-y-1 border-b border-white/10">
+          {spreadsheetsLoading && (
+            <div className="text-xs text-white/60 px-2">Loading spreadsheets…</div>
+          )}
+          {!spreadsheetsLoading && spreadsheets.length === 0 && (
+            <div className="text-xs text-white/60 px-2">No spreadsheets yet. Add one above.</div>
+          )}
+          {spreadsheets.map((s) => {
+            const active = defaultSpreadsheetId === s.spreadsheetId;
+            return (
+              <div key={s.id} className={`group flex items-center gap-2 px-2 py-1 rounded-md ${active ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                <button
+                  onClick={() => setDefaultSpreadsheetId(s.spreadsheetId)}
+                  className="flex-1 text-left min-w-0"
+                  title={s.title || s.spreadsheetId}
+                >
+                  <div className={`truncate text-xs ${active ? 'text-white font-semibold' : 'text-white/80 group-hover:text-white'}`}>
+                    {s.title || s.spreadsheetId}
+                  </div>
+                </button>
+                <a
+                  href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(s.spreadsheetId)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-white/60 hover:text-white"
+                  title="Open in Google Sheets"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+                <button
+                  onClick={() => removeSpreadsheetOption(s.id)}
+                  className="grid place-items-center h-6 w-6 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60"
+                  title="Remove"
+                  aria-label="Remove spreadsheet"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
         {visibleSessions.length === 0 ? (
           <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
         ) : (
