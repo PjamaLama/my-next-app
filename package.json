@@ -18,6 +18,7 @@
     "@genkit-ai/googleai": "^1.15.5",
     "@opentelemetry/exporter-jaeger": "^2.0.1",
     "@opentelemetry/winston-transport": "^0.14.0",
+    "chart.js": "^4.5.0",
     "dayjs": "^1.11.13",
     "firebase": "^12.0.0",
     "formidable": "^3.5.2",
@@ -30,6 +31,7 @@
     "pdf2pic": "^3.2.0",
     "prop-types": "^15.8.1",
     "react": "19.1.0",
+    "react-chartjs-2": "^5.3.0",
     "react-dom": "19.1.0",
     "tesseract.js": "^6.0.1"
   },

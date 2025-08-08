@@ -198,47 +198,7 @@ const SheetChipSelector: React.FC = () => {
         </div>
       )}
       
-      {/* Selected sheets summary */}
-      {selectedSheetNames.length > 0 && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-              Ready to edit {selectedSheetNames.length} sheet{selectedSheetNames.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-          <div className="text-xs text-blue-700 dark:text-blue-300 space-y-2">
-            <div>Selected: {selectedSheetNames.join(', ')}</div>
-            <div className="flex flex-wrap gap-2">
-              {selectedSheetNames.map(name => {
-                const structure = sheetStructureCache[name];
-                const isUnstructured = unstructuredOverrides[name] ?? (structure ? !structure.isStructured : false);
-                return (
-                  <label key={`ovr-${name}`} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border bg-white dark:bg-gray-800">
-                    <input
-                      type="checkbox"
-                      className="accent-amber-600"
-                      checked={isUnstructured}
-                      onChange={e => setUnstructuredOverride(name, e.target.checked)}
-                    />
-                    Treat {name} as unstructured
-                    {structure && (
-                      <span className="ml-1 text-[10px] text-gray-500">(detected {Math.round(structure.confidence*100)}% structured)</span>
-                    )}
-                  </label>
-                );
-              })}
-            </div>
-            {selectedSheetNames.some(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false))) && (
-              <div className="text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
-                Updates on unstructured sheets will attempt cell-level writes and may be less accurate.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Selected sheets summary removed per request */}
     </div>
   );
 };

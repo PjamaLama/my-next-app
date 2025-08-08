@@ -37,6 +37,7 @@ export type ChatMessage = {
   quickReplies?: string[];
   sheetsUsed?: string[];
   tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
+  charts?: Array<{ kind: 'bar' | 'line' | 'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: unknown }>;
 };
 
 export type ChatSession = {
@@ -117,12 +118,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       const data = snap.data() as {
-        messages?: Array<(Omit<ChatMessage, 'timestamp'> & { timestamp?: string }) & { tablesJson?: string }>
+        messages?: Array<(Omit<ChatMessage, 'timestamp'> & { timestamp?: string }) & { tablesJson?: string; chartsJson?: string }>
       };
       const messages = (data.messages ?? []).map((m) => {
         const out: any = { ...m, timestamp: m.timestamp ? new Date(m.timestamp) : new Date() };
         if ((m as any).tablesJson && !out.tables) {
           try { out.tables = JSON.parse((m as any).tablesJson); } catch {}
+        }
+        if ((m as any).chartsJson && !out.charts) {
+          try { out.charts = JSON.parse((m as any).chartsJson); } catch {}
         }
         return out as ChatMessage;
       }) as ChatMessage[];
@@ -145,6 +149,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if ('tables' in copy && Array.isArray((copy as any).tables)) {
         try { (copy as any).tablesJson = JSON.stringify((copy as any).tables); } catch {}
         delete (copy as any).tables;
+      }
+      // Persist charts as JSON string similarly
+      if ('charts' in copy && Array.isArray((copy as any).charts)) {
+        try { (copy as any).chartsJson = JSON.stringify((copy as any).charts); } catch {}
+        delete (copy as any).charts;
       }
       // Defensive: strip any top-level field that is an array of arrays
       for (const key of Object.keys(copy)) {

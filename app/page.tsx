@@ -25,6 +25,7 @@ import PWAInstaller from './components/PWAInstaller';
 import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
 import { useDialog } from './providers/DialogProvider';
+import dynamic from 'next/dynamic';
 
 
 
@@ -97,6 +98,7 @@ type ChatMessage = {
     quickReplies?: string[];
     sheetsUsed?: string[];
     tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
+    charts?: Array<{ kind: 'bar'|'line'|'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: unknown }>;
   };
 
 
@@ -165,6 +167,9 @@ export default function Home() {
     function: { name: string; arguments: string };
   }>>([]);
   const [chatProcessing, setChatProcessing] = useState(false);
+  const [showCharts, setShowCharts] = useState<boolean>(false);
+
+  const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
   
   // Visual feedback state for voice-to-chat transitions
   // const [voiceTransitioning, setVoiceTransitioning] = useState(false);
@@ -1009,7 +1014,8 @@ export default function Home() {
           sheetsUsed: Array.isArray(data.sheetsUsed) ? (data.sheetsUsed as string[]) : (selectedSheetNames || []),
           // Attach tables for rendering
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined
+          tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined,
+          charts: Array.isArray((data as any).charts) ? (data as any).charts : undefined
         };
         setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
       }
@@ -1658,6 +1664,32 @@ export default function Home() {
                             </table>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {/* Charts toggle and render */}
+                    {message.role === 'assistant' && Array.isArray(message.charts) && message.charts.length > 0 && (
+                      <div className="mt-2">
+                        <button
+                          className="text-[11px] px-2 py-1 rounded border border-white/10 bg-white/5 hover:bg-white/10"
+                          onClick={() => setShowCharts(prev => !prev)}
+                        >
+                          {showCharts ? 'Hide charts' : 'Show charts'}
+                        </button>
+                        {showCharts && (
+                          <div className="mt-2 space-y-3">
+                            {message.charts.map((spec, cIdx) => (
+                              <div key={`${message.id}_chart_${cIdx}`} className="rounded-xl border border-white/10 bg-white/5 p-2">
+                                {spec.title && (
+                                  <div className="px-2 pb-1 text-[12px] font-semibold text-white/90">{spec.title}</div>
+                                )}
+                                <div className="bg-black/10 p-2 rounded-lg">
+                                  {/* @ts-expect-error dynamic component typing */}
+                                  <ChartRenderer spec={spec as any} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     {message.role === 'assistant' && Array.isArray(message.sheetsUsed) && message.sheetsUsed.length > 0 && (

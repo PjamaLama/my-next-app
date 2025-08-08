@@ -46,6 +46,15 @@ interface ImageData {
 // ---- Smart table utilities -------------------------------------------------
 type StructuredTable = { title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string };
 
+// Minimal chart spec shared to clients
+type ChartSpec = {
+  kind: 'bar' | 'line' | 'pie';
+  title?: string;
+  labels: string[];
+  datasets: Array<{ label: string; data: number[] }>;
+  options?: Record<string, unknown>;
+};
+
 function normalizeToken(s: string): string {
   return String(s || '')
     .toLowerCase()
@@ -254,6 +263,276 @@ function buildSmartTables(
   return tables;
 }
 
+// ---- Lightweight Q&A over sheet data ---------------------------------------
+type QAResult = { answer: string; tables?: StructuredTable[] } | null;
+
+const COLUMN_SYNONYMS: Record<string, string[]> = {
+  amount: ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel cost', 'rands'],
+  fuel: ['fuel', 'litre', 'liter', 'liters', 'litres'],
+  driver: ['driver', 'driver name', 'operator'],
+  vehicle: ['vehicle', 'vehicle reg', 'reg', 'registration', 'plate', 'license'],
+  town: ['town', 'city', 'location', 'destination'],
+  date: ['date', 'timestamp', 'time']
+};
+
+function resolveColumnIndex(headers: string[], message: string, hints: string[] = []): number {
+  // 1) direct hints
+  for (const h of hints) {
+    const idx = bestHeaderIndex(headers, h);
+    if (idx >= 0) return idx;
+  }
+  // 2) try match using synonyms embedded in message
+  const msg = message.toLowerCase();
+  for (const synonyms of Object.values(COLUMN_SYNONYMS)) {
+    for (const word of synonyms) {
+      if (msg.includes(word)) {
+        const idx = bestHeaderIndex(headers, word);
+        if (idx >= 0) return idx;
+      }
+    }
+  }
+  // 3) try exact header name mentions
+  let best = -1; let bestScore = 0;
+  headers.forEach((h, i) => {
+    const norm = normalizeToken(h);
+    const score = norm && msg.includes(norm) ? norm.length : 0;
+    if (score > bestScore) { bestScore = score; best = i; }
+  });
+  return best;
+}
+
+function parseSimpleFilter(message: string): { columnQuery: string; value: string; op: 'equals' | 'contains' } | null {
+  // where/with/filter <column> (=|is|equals|to|contains|has) <value>
+  const m1 = message.match(/\b(?:where|with|filter|only|for)\s+([a-z][a-z0-9_\s]{2,})\s*(?:=|is|equals|to|contains|has)?\s*"?([\w\-\s\.#/]+)"?/i);
+  if (m1) {
+    const col = m1[1].trim();
+    const val = m1[2].trim();
+    const hasContains = /contains|has/i.test(m1[0]);
+    return { columnQuery: col, value: val, op: hasContains ? 'contains' : 'equals' };
+  }
+  // <column>: <value>
+  const m2 = message.match(/\b([a-z][a-z0-9_\s]{2,})\s*:\s*"?([^\n,;]+)"?/i);
+  if (m2) {
+    return { columnQuery: m2[1].trim(), value: m2[2].trim(), op: 'equals' };
+  }
+  return null;
+}
+
+function answerQuestionFromSheets(
+  message: string,
+  hydratedSheetData: Record<string, string[][]>,
+  selectedSheetNames: string[]
+): QAResult {
+  if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return null;
+
+  const lower = message.toLowerCase();
+  const wantsSum = /(total|sum)/i.test(message);
+  const wantsAvg = /(average|avg|mean)\b/i.test(message);
+  const wantsMin = /\b(min|minimum|lowest|least)\b/i.test(message);
+  const wantsMax = /\b(max|maximum|highest|most)\b/i.test(message);
+  const wantsCount = /\b(count|how\s+many|number\s+of)\b/i.test(message);
+  const groupMatch = message.match(/\b(?:by|per)\s+([a-z][a-z0-9_\s]{2,})/i);
+
+  const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
+  const sheetName = candidateNames.find((n) => lower.includes(normalizeToken(n))) || candidateNames[0];
+  const table = hydratedSheetData[sheetName] || [];
+  if (table.length <= 1) return null;
+
+  const headers = table[0];
+  const rows = table.slice(1);
+
+  const range = detectDateWindow(message);
+  const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
+  const filtered = range && dateIdx >= 0
+    ? rows.filter((r) => {
+        const d = dayjs(String(r[dateIdx] || ''));
+        return d.isValid() && (d.isAfter(range.start) || d.isSame(range.start)) && (d.isBefore(range.end) || d.isSame(range.end));
+      })
+    : rows;
+
+  // Determine metric column
+  const metricHints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
+  let metricIdx = -1;
+  for (const hint of metricHints) {
+    const idx = bestHeaderIndex(headers, hint);
+    if (idx >= 0) { metricIdx = idx; break; }
+  }
+  if (metricIdx < 0) {
+    const candidateIdx = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
+    metricIdx = candidateIdx >= 0 ? candidateIdx : 0;
+  }
+
+  const vals = filtered.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
+  if (vals.length === 0 && !wantsCount) return null;
+
+  const aggTitle = (t: string) => `${t}(${headers[metricIdx]})${range?.label ? ` · ${range.label}` : ''}`;
+  const baseTitle = `${sheetName}${range?.label ? ` · ${range.label}` : ''}`;
+
+  // Grouped aggregates if requested
+  if (groupMatch) {
+    const groupIdx = bestHeaderIndex(headers, groupMatch[1].trim());
+    if (groupIdx >= 0) {
+      const map = new Map<string, { sum: number; count: number; min: number; max: number }>();
+      for (const r of filtered) {
+        const key = String(r[groupIdx] ?? 'Unknown');
+        const n = parseNumber(r[metricIdx]);
+        if (!map.has(key)) map.set(key, { sum: 0, count: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY });
+        const rec = map.get(key)!;
+        if (n != null) {
+          rec.sum += n; rec.count += 1; rec.min = Math.min(rec.min, n); rec.max = Math.max(rec.max, n);
+        }
+      }
+      const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, ...v }));
+      // Choose appropriate sort
+      const sortBy = wantsAvg ? (e: any) => (e.count ? e.sum / e.count : 0)
+                  : wantsMin ? (e: any) => e.min
+                  : wantsMax ? (e: any) => e.max
+                  : (e: any) => e.sum;
+      entries.sort((a, b) => (sortBy(b) as number) - (sortBy(a) as number));
+      const top = entries.slice(0, 10);
+      const rowsOut = top.map(e => [e.key, String(Number(e.sum.toFixed(2))), String(e.count)]);
+      const tables: StructuredTable[] = [{
+        title: `${sheetName} · by ${headers[groupIdx]}${range?.label ? ` · ${range.label}` : ''}`,
+        headers: [headers[groupIdx], `Sum(${headers[metricIdx]})`, 'Count'],
+        rows: rowsOut
+      }];
+      const best = top[0];
+      if (!best) return null;
+      let metricValue: number;
+      if (wantsAvg) metricValue = best.count ? best.sum / best.count : 0;
+      else if (wantsMin) metricValue = best.min;
+      else if (wantsMax) metricValue = best.max;
+      else metricValue = best.sum;
+      const label = wantsAvg ? 'Average' : wantsMin ? 'Min' : wantsMax ? 'Max' : 'Total';
+      const answer = `${label} ${headers[metricIdx]} by ${headers[groupIdx]}: ${Number(metricValue.toFixed(2))} (top: ${best.key}).`;
+      return { answer, tables };
+    }
+  }
+
+  // Ungrouped aggregates
+  if (wantsCount) {
+    const answer = `Count${range?.label ? ` ${range.label}` : ''}: ${filtered.length} row(s) in ${baseTitle}.`;
+    return { answer };
+  }
+  if (wantsSum || wantsAvg || wantsMin || wantsMax) {
+    const total = vals.reduce((a, b) => a + b, 0);
+    const avg = vals.length ? total / vals.length : 0;
+    const min = vals.length ? Math.min(...vals) : 0;
+    const max = vals.length ? Math.max(...vals) : 0;
+    let answer = '';
+    if (wantsSum) answer = `${aggTitle('Sum')}: ${Number(total.toFixed(2))} across ${vals.length} row(s) in ${baseTitle}.`;
+    else if (wantsAvg) answer = `${aggTitle('Average')}: ${Number(avg.toFixed(2))} over ${vals.length} row(s) in ${baseTitle}.`;
+    else if (wantsMin) answer = `${aggTitle('Min')}: ${Number(min.toFixed(2))} in ${baseTitle}.`;
+    else if (wantsMax) answer = `${aggTitle('Max')}: ${Number(max.toFixed(2))} in ${baseTitle}.`;
+    return { answer };
+  }
+
+  return null;
+}
+
+// Build simple chart specs from hydrated data using the same heuristics as tables
+function buildChartSpecs(
+  message: string,
+  hydratedSheetData: Record<string, string[][]>,
+  selectedSheetNames: string[]
+): ChartSpec[] {
+  const charts: ChartSpec[] = [];
+  if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return charts;
+
+  // Helper to find a likely metric column
+  const pickMetricIndex = (headers: string[], rows: string[][]): number => {
+    const metricHints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
+    for (const hint of metricHints) {
+      const idx = bestHeaderIndex(headers, hint);
+      if (idx >= 0) return idx;
+    }
+    const candidateIdx = headers.findIndex((_, i) => rows.some((r) => parseNumber(r[i]) != null));
+    return candidateIdx >= 0 ? candidateIdx : 0;
+  };
+
+  // Prefer the table(s) referenced by selection
+  const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
+  const sheetName = candidateNames.find((n) => message.toLowerCase().includes(normalizeToken(n))) || candidateNames[0];
+  const table = hydratedSheetData[sheetName] || [];
+  if (table.length <= 1) return charts;
+
+  const headers = table[0];
+  const rows = table.slice(1);
+
+  // 1) Aggregated/group-by ask → Bar chart using smart table aggregation when possible
+  const looksGrouped = /\b(by|per)\b/i.test(message) || /(total|sum|aggregate|group)/i.test(message);
+  if (looksGrouped) {
+    try {
+      const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
+      const agg = smart.find(t => t.headers.length >= 2 && /sum\(|count\)/i.test(t.headers.slice(1).join(' ')));
+      if (agg) {
+        const labels = agg.rows.map(r => String(r[0])).slice(0, 12);
+        const data = agg.rows.map(r => parseNumber(r[1]) ?? 0).slice(0, 12);
+        charts.push({
+          kind: 'bar',
+          title: agg.title || `${sheetName} · Aggregated`,
+          labels,
+          datasets: [{ label: agg.headers[1] || 'Value', data }]
+        });
+      }
+    } catch {}
+  }
+
+  // 2) Date trend ask → Line chart over time
+  const looksTrend = /(trend|over\s+time|last\s+\d+\s+days|past\s+(week|month|\d+\s+days)|today)/i.test(message);
+  const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
+  if (dateIdx >= 0 && looksTrend) {
+    const metricIdx = pickMetricIndex(headers, rows);
+    // Build simple chronological series; try to parse dates
+    const series = rows
+      .map(r => ({
+        d: String(r[dateIdx] || ''),
+        n: parseNumber(r[metricIdx]) ?? null
+      }))
+      .filter(p => p.d && p.n != null);
+    // Keep last N points for readability
+    const lastN = series.slice(-24);
+    if (lastN.length >= 2) {
+      charts.push({
+        kind: 'line',
+        title: `${sheetName} · ${headers[metricIdx]} trend`,
+        labels: lastN.map(p => p.d),
+        datasets: [{ label: headers[metricIdx], data: lastN.map(p => p.n as number) }],
+        options: { tension: 0.3 }
+      });
+    }
+  }
+
+  // 3) Distribution ask → Pie chart of a categorical column
+  const looksDistribution = /(distribution|breakdown|share|proportion)/i.test(message);
+  if (looksDistribution) {
+    // Pick a likely categorical column: prefer driver/vehicle-like
+    const catHints = ['driver', 'vehicle', 'category', 'type', 'name'];
+    let catIdx = -1;
+    for (const hint of catHints) {
+      const idx = bestHeaderIndex(headers, hint);
+      if (idx >= 0) { catIdx = idx; break; }
+    }
+    if (catIdx < 0) catIdx = headers.findIndex((_, i) => rows.some(r => String(r[i] || '').trim().length > 0 && parseNumber(r[i]) == null));
+    if (catIdx >= 0) {
+      const counts = new Map<string, number>();
+      rows.forEach(r => {
+        const key = String(r[catIdx] || 'Unknown');
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      charts.push({
+        kind: 'pie',
+        title: `${sheetName} · ${headers[catIdx]} distribution`,
+        labels: sorted.map(e => e[0]),
+        datasets: [{ label: 'Count', data: sorted.map(e => e[1]) }]
+      });
+    }
+  }
+
+  return charts;
+}
+
 // Generate lightweight quick replies using AI (fallback to heuristics if unavailable)
 async function generateQuickReplies(
   message: string,
@@ -396,7 +675,7 @@ async function executeToolCall(
   try {
     console.log(`🔍 [AUTO_EXECUTE] Executing tool: ${toolCall.function.name}`);
     
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/genkit-tool-execute`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/genkit-tool-execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -825,6 +1104,55 @@ async function processMessage(
     // Will carry structured tables for the client to render nicely
     const dataTables: StructuredTable[] = [];
 
+    // Auto-hydrate sheet data for Q&A if missing but context has selection
+    try {
+      const hasHydrated = (context as any).sheetData && Object.keys((context as any).sheetData).length > 0;
+      const sheetNamesList = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
+      const canHydrate = !hasHydrated && !!context?.spreadsheetId && sheetNamesList.length > 0 && !hasFiles;
+      if (canHydrate) {
+        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+        const take = sheetNamesList.slice(0, 3);
+        const results = await Promise.allSettled(
+          take.map(async (name) => {
+            const resp = await fetch(`${baseUrl}/api/get-sheet-data`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: name })
+            });
+            if (!resp.ok) throw new Error(`Failed to hydrate ${name}`);
+            const json = await resp.json();
+            return { name, data: (json?.data as string[][]) || [] };
+          })
+        );
+        const map: Record<string, string[][]> = {};
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value) {
+            map[r.value.name] = r.value.data;
+          }
+        }
+        if (Object.keys(map).length > 0) {
+          (context as any).sheetData = map;
+        }
+      }
+    } catch (e) {
+      console.warn('Sheet auto-hydration skipped due to error', e);
+    }
+
+    // Try to directly answer quantitative questions from hydrated data
+    try {
+      const hydratedForQA = (context as any).sheetData as Record<string, string[][]> | undefined;
+      const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
+      if (hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles) {
+        const qa = answerQuestionFromSheets(message, hydratedForQA, selectedForQA);
+        if (qa) {
+          response = qa.answer;
+          if (qa.tables && qa.tables.length > 0) dataTables.push(...qa.tables);
+        }
+      }
+    } catch (e) {
+      console.warn('QA over sheets failed', e);
+    }
+
     // Check if we have recent analysis results to provide intelligent suggestions
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
       const latestAnalysis = context.fileAnalysis.files[context.fileAnalysis.files.length - 1];
@@ -1120,7 +1448,8 @@ async function processMessage(
       context: context, // Return updated context with analysis results
       sheetsUsed: selectedSheetNames,
       quickReplies,
-      dataTables
+      dataTables,
+      charts: hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : []
     };
 
   } catch (error) {
