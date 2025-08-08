@@ -184,10 +184,7 @@ function generateFollowUpActions(message: string, context: Context): Array<{
   return actions;
 }
 
-// New n8n integration tool
-// Removed duplicate updateSheetViaN8n - use the implementation in genkit/tools.ts via dynamic import
-
-// Update the processMessage function to use n8n for sheet operations
+// Update the processMessage function to perform sheet operations via Genkit tools (no n8n)
 async function processMessage(
   message: string, 
   context: Context, 
@@ -252,24 +249,41 @@ async function processMessage(
     }
     
     if (hasFiles) {
-      // Determine the appropriate tool name based on file types
-      const toolName = hasPDFs ? 'analyze_files' : 'analyze_images';
-      
-      // If files are provided, suggest analysis tools ONLY
-      suggestedTools.push({
-        id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        type: 'function',
-        function: {
-          name: toolName,
-          arguments: JSON.stringify({ 
-            transcript: message,
-            fileCount: images.length,
-            fileTypes: images.map(img => img.mimeType)
-          })
-        }
-      });
-      
-      // REMOVED: extract_data_from_files tool - n8n will handle all sheet operations
+      // If the user's intent is sheet-related, run an end-to-end Genkit flow that extracts and updates the sheet
+      const isSheetRelated = lowerMessage.includes('add') || 
+                             lowerMessage.includes('update') || 
+                             lowerMessage.includes('insert') || 
+                             lowerMessage.includes('sheet') ||
+                             lowerMessage.includes('spreadsheet');
+
+      if (isSheetRelated) {
+        suggestedTools.push({
+          id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'function',
+          function: {
+            name: 'extract_data_from_files',
+            arguments: JSON.stringify({ 
+              transcript: message,
+              fileCount: images.length,
+              fileTypes: images.map(img => img.mimeType)
+            })
+          }
+        });
+      } else {
+        // Otherwise, prefer a fast text-only extraction
+        suggestedTools.push({
+          id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'function',
+          function: {
+            name: hasPDFs ? 'analyze_files' : 'analyze_images',
+            arguments: JSON.stringify({ 
+              transcript: message,
+              fileCount: images.length,
+              fileTypes: images.map(img => img.mimeType)
+            })
+          }
+        });
+      }
     } else {
       // Original intent detection for text-only messages
       if (lowerMessage.includes('add') || lowerMessage.includes('insert') || lowerMessage.includes('new')) {
@@ -310,13 +324,6 @@ async function processMessage(
       }
     }
 
-    // Check if this is a sheet-related operation
-    const isSheetOperation = lowerMessage.includes('add') || 
-                           lowerMessage.includes('update') || 
-                           lowerMessage.includes('insert') || 
-                           lowerMessage.includes('sheet') ||
-                           lowerMessage.includes('spreadsheet');
-
     // Auto-execute all suggested tools FIRST (including file analysis)
     const toolResults = [];
     let enhancedResponse = '';
@@ -326,7 +333,7 @@ async function processMessage(
       
       let result;
       
-      // Use extract_text_only instead of analyze_files for faster processing
+      // Use extract_text_only instead of analyze_files/analyze_images for faster processing when just analyzing
       if (toolCall.function.name === 'analyze_files' || toolCall.function.name === 'analyze_images') {
         // Replace with extract_text_only for faster processing
         const extractToolCall = {
@@ -449,40 +456,12 @@ async function processMessage(
           enhancedResponse += `\n\n✅ **Spreadsheet Updated:**\n${result.result}`;
         } else if (toolCall.function.name === 'get_sheet_data') {
           enhancedResponse += `\n\n📋 **Sheet Data Retrieved:**\n${result.result}`;
+        } else if (toolCall.function.name === 'extract_data_from_files') {
+          enhancedResponse += `\n\n✅ **Data Extracted and Sheet Updated:**\n${result.result}`;
         }
       } else {
         enhancedResponse += `\n\n❌ **Tool Execution Failed:**\n${result.result}`;
       }
-    }
-
-    // NOW check if this is a sheet-related operation (after file analysis is complete)
-    if (isSheetOperation && context?.spreadsheetId && context?.sheetNames) {
-      // Debug logging for file analysis
-      console.log(`🔍 [N8N_CALL] About to call n8n with fileAnalysis:`, context.fileAnalysis);
-      console.log(`🔍 [N8N_CALL] File analysis files count:`, context.fileAnalysis?.files?.length || 0);
-      if (context.fileAnalysis?.files && context.fileAnalysis.files.length > 0) {
-        console.log(`🔍 [N8N_CALL] First file analysis:`, context.fileAnalysis.files[0]);
-      }
-      
-      // Use n8n for sheet operations
-      const n8nResult = await executeN8nTool({
-        message,
-        sheetNames: context.sheetNames,
-        spreadsheetId: context.spreadsheetId,
-        spreadsheetUrl: context.spreadsheetUrl,
-        sheetData: sheetData, // Pass fetched sheet data
-        fileData: [], // ✅ Don't send raw file data - only send analysis
-        fileAnalysis: context.fileAnalysis, // Pass file analysis results (extracted data)
-        context: { ...context, fileAnalysis: undefined } // Pass context but remove fileAnalysis to avoid duplication
-      });
-
-      return {
-        response: n8nResult.message,
-        toolCalls: [],
-        pendingToolCalls: [],
-        toolResults: [n8nResult],
-        context: context
-      };
     }
 
     // Generate intelligent conversational response based on analysis results
@@ -614,56 +593,7 @@ async function processMessage(
   }
 }
 
-// New function to execute n8n tool
-async function executeN8nTool(input: {
-  message: string;
-  sheetNames: string[];
-  spreadsheetId?: string;
-  spreadsheetUrl?: string;
-  sheetData?: any;
-  fileData?: Array<{ // Optional - not sent to n8n anymore, only fileAnalysis is sent
-    data: string;
-    mimeType: string;
-    name?: string;
-  }>;
-  fileAnalysis?: {
-    files: Array<{
-      mimeType: string;
-      extractedData?: unknown;
-      timestamp: number;
-    }>;
-    lastUpdated: number;
-  };
-  context?: any;
-}) {
-  try {
-    const { updateSheetViaN8n } = await import('../../genkit/tools');
-    
-    const result = await updateSheetViaN8n({
-      message: input.message,
-      sheetNames: input.sheetNames,
-      spreadsheetId: input.spreadsheetId,
-      spreadsheetUrl: input.spreadsheetUrl,
-      sheetData: input.sheetData,
-      // fileData: input.fileData, // Removed - not sending raw file data to n8n
-      fileAnalysis: input.fileAnalysis,
-      context: input.context
-    });
-
-    return {
-      success: true,
-      result: result,
-      message: result
-    };
-  } catch (error) {
-    console.error('Error executing n8n tool:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      message: 'Failed to process sheet update via n8n'
-    };
-  }
-}
+// n8n tool removed: sheet updates are handled directly via Genkit flows in /api/genkit-tool-execute
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {

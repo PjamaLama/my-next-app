@@ -29,7 +29,7 @@ interface Option {
 }
 
 const NavBar: React.FC = () => {
-  const { user, signOutUser, geminiApiKey, saveGeminiApiKey } = useFirebase();
+  const { user, signOutUser } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setDefaultSpreadsheetId, setSelectedSheetNames } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   const { settingsOpen, setSettingsOpen } = useSettings(); // Use settingsOpen and setSettingsOpen from the new provider
@@ -39,15 +39,10 @@ const NavBar: React.FC = () => {
   const [addingSheet, setAddingSheet] = useState(false);
   // Removed: Gemini API Key settings modal state
   // const [settingsOpen, setSettingsOpen] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState<string>("");
-  const [geminiApiKeySaved, setGeminiApiKeySaved] = useState<boolean>(false);
+  // Removed Gemini API key UI/state
 
   // Set input value when geminiApiKey changes
-  useEffect(() => {
-    if (geminiApiKey) {
-      setApiKeyInput(geminiApiKey);
-    }
-  }, [geminiApiKey]);
+  // Removed Gemini API key effect
 
   // Subscribe to user's spreadsheet options
   useEffect(() => {
@@ -215,17 +210,7 @@ const NavBar: React.FC = () => {
 
   const currentSpreadsheet = options.find(o => o.spreadsheetId === defaultSpreadsheetId);
 
-  const handleSaveGeminiApiKey = async () => {
-    if (!apiKeyInput.trim()) return;
-    try {
-      await saveGeminiApiKey(apiKeyInput.trim());
-      setGeminiApiKeySaved(true);
-      setTimeout(() => setGeminiApiKeySaved(false), 3000);
-      // Removed: setSettingsOpen(false);
-    } catch (e) {
-      console.error("Error saving Gemini API key:", e);
-    }
-  };
+  // Removed Gemini API key handler
 
   return (
     <nav className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm overflow-x-hidden">
@@ -424,7 +409,7 @@ const NavBar: React.FC = () => {
                     </span>
                   )}
                   
-                  {/* Settings button */}
+                  {/* Settings button (simplified, removed Gemini key UI) */}
                   <button
                     className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 border border-white/20 min-h-[44px] min-w-[44px]"
                     aria-label="Settings"
@@ -442,7 +427,7 @@ const NavBar: React.FC = () => {
         </div>
 
 
-        {/* Settings Modal - Mobile optimized */}
+         {/* Settings Modal - simplified */}
         {settingsOpen && (
           <>
             {/* Backdrop */}
@@ -469,78 +454,13 @@ const NavBar: React.FC = () => {
                     </button>
                   </div>
                   {/* Content */}
-                  <div className="p-6 sm:p-8">
-                    {/* Info Box */}
-                    <div className="mb-6 sm:mb-8 bg-blue-50 dark:bg-blue-900/30 rounded-xl p-4 sm:p-6">
-                      <h3 className="text-base sm:text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3 sm:mb-4">
-                        How to get a Gemini API key
-                      </h3>
-                      <ol className="text-sm sm:text-base text-blue-800 dark:text-blue-200 space-y-2 sm:space-y-3">
-                        <li className="flex items-start">
-                          <span className="font-medium mr-3">1.</span>
-                          Visit <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-300 hover:underline">Google AI Studio</a>
-                        </li>
-                        <li className="flex items-start">
-                          <span className="font-medium mr-3">2.</span>
-                          Sign in with your Google account
-                        </li>
-                        <li className="flex items-start">
-                          <span className="font-medium mr-3">3.</span>
-                          Click &apos;Create API Key&apos; and copy it
-                        </li>
-                        <li className="flex items-start">
-                          <span className="font-medium mr-3">4.</span>
-                          Paste it below and save
-                        </li>
-                      </ol>
-                    </div>
-                    {/* API Key Input */}
-                    <div className="space-y-4 sm:space-y-6">
-                      <label className="block">
-                        <span className="text-sm sm:text-base font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                          Google Gemini API Key
-                        </span>
-                        <input
-                          type="password"
-                          value={apiKeyInput}
-                          onChange={e => setApiKeyInput(e.target.value)}
-                          placeholder="Enter your API key..."
-                          className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 
-                                   bg-white dark:bg-gray-800 px-4 py-3 text-sm sm:text-base
-                                   placeholder-gray-400 dark:placeholder-gray-500
-                                   focus:border-yellow-300 dark:focus:border-yellow-300 
-                                   focus:outline-none focus:ring-2 focus:ring-yellow-300 min-h-[50px]"
-                        />
-                      </label>
-                      <button
-                        onClick={handleSaveGeminiApiKey}
-                        disabled={!apiKeyInput.trim()}
-                        className="w-full flex justify-center py-3 px-6 border border-transparent 
-                                 rounded-lg shadow-sm text-sm sm:text-base font-medium text-white 
-                                 bg-blue-600 hover:bg-blue-700 
-                                 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-                                 disabled:opacity-50 disabled:cursor-not-allowed
-                                 transition-colors duration-200 min-h-[50px]"
-                      >
-                        Save API Key
-                      </button>
-                      {/* Success Message */}
-                      {geminiApiKeySaved && (
-                        <div className="flex items-center justify-center text-sm sm:text-base text-green-600 dark:text-green-400 mt-2">
-                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                          </svg>
-                          API Key saved successfully!
-                        </div>
-                      )}
-                      {/* Logout Button */}
-                      <button
-                        onClick={() => { signOutUser(); setSettingsOpen(false); }}
-                        className="w-full flex justify-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-sm sm:text-base font-medium text-white bg-gradient-to-r from-red-500 to-pink-500 hover:from-pink-500 hover:to-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 mt-6 sm:mt-8 min-h-[50px]"
-                      >
-                        Logout
-                      </button>
-                    </div>
+                  <div className="p-6 sm:p-8 space-y-4">
+                    <button
+                      onClick={() => { signOutUser(); setSettingsOpen(false); }}
+                      className="w-full flex justify-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-sm sm:text-base font-medium text-white bg-gradient-to-r from-red-500 to-pink-500 hover:from-pink-500 hover:to-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 min-h-[50px]"
+                    >
+                      Logout
+                    </button>
                   </div>
                 </div>
               </div>

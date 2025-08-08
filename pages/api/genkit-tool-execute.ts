@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
+import { insertRow } from '../../genkit/tools';
 
 // Configure API to handle larger file uploads
 export const config = {
@@ -637,25 +638,73 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       // Create an enhanced transcript that includes the extracted data
       const enhancedTranscript = `${transcript || 'Add the following data to the spreadsheet'}\n\nIMPORTANT: The extracted data contains multiple entries. Please create a separate row for each entry in the data.\n\nExtracted data:\n${extractedData}`;
       
-      // Call the updateSheetFlow with the enhanced transcript
+      // Call the updateSheetFlow to get actions ONLY (no direct commit for batching)
       const updateResult = await updateSheetFlow({
         transcript: enhancedTranscript,
         sheetId: spreadsheetId,
         sheetName: targetSheetName,
-        commit: true // Actually commit the changes
+        commit: false
       });
-      
-      console.log('UpdateSheetFlow result:', updateResult);
-      
+
+      console.log('UpdateSheetFlow (no-commit) result:', updateResult);
+
+      // Build actions: first perform required insertRow operations, then batch cell updates
+      const actions = Array.isArray(updateResult?.actions) ? updateResult.actions : [];
+
+      // Execute insertRow actions first (sequentially)
+      const insertRowActions = actions.filter((a: any) => a.type === 'insertRow');
+      for (const a of insertRowActions) {
+        try {
+          await insertRow({
+            sheetId: spreadsheetId,
+            sheetName: targetSheetName,
+            row: a.row
+          });
+        } catch (e) {
+          console.warn('insertRow failed:', e);
+        }
+      }
+
+      // Then prepare updateCell actions for batch update
+      const updates = actions
+        .filter((a: any) => a.type === 'updateCell')
+        .map((a: any) => ({
+          sheetName: targetSheetName,
+          cell: `${a.column}${a.row}`,
+          value: a.value ?? ''
+        }));
+
+      // If there are no updates, return early
+      if (updates.length === 0) {
+        return res.status(200).json({
+          success: true,
+          result: `Extracted data from ${successfulAnalyses.length} file(s), but no actionable updates were generated for ${targetSheetName}.`,
+          details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults }
+        });
+      }
+
+      // Execute batch update via internal API
+      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetId, updates })
+      });
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(`Batch update failed: ${updateResponse.status} - ${errorText}`);
+      }
+
+      const updateSummary = await updateResponse.json();
+
       return res.status(200).json({
         success: true,
-        result: `Successfully extracted data from ${successfulAnalyses.length} out of ${images.length} files and updated ${targetSheetName}`,
+        result: `Successfully extracted data from ${successfulAnalyses.length} out of ${images.length} file(s) and applied ${updates.length} updates to ${targetSheetName}.`,
         details: {
           filesProcessed: images.length,
           successfulAnalyses: successfulAnalyses.length,
           analysisResults,
-          updateResult,
-          executedActions: updateResult.executedActions || 0
+          updateSummary
         }
       });
       

@@ -1,4 +1,6 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import { findLastDataRow } from '@/lib/sheetUtils';
+import { getCachedHeaders, setCachedHeaders } from '@/lib/sheetHeaderCache';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -130,7 +132,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
             
             console.log(`✅ [${requestId}] Success with: ${strategy}, rows: ${response.data.values?.length || 0}`);
-            return res.status(200).json({ data: response.data.values });
+
+            // Cache headers and last data row (TTL handled by cache consumer)
+            const values = response.data.values || [];
+            if (values.length > 0) {
+              const headers = values[0] as string[];
+              const lastRow = findLastDataRow(values as string[][]);
+              setCachedHeaders(spreadsheetId, sheetName, headers, lastRow);
+            }
+
+            return res.status(200).json({ data: values });
             
           } catch (strategyError: unknown) {
             const errorMsg = strategyError instanceof Error ? strategyError.message : String(strategyError);

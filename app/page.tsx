@@ -20,7 +20,6 @@ dayjs.extend(relativeTime);
 
 import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
-import GeminiKeyPrompt from './components/GeminiKeyPrompt';
 import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
 
@@ -102,12 +101,13 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user, loading, signInWithGoogle, geminiApiKey, authError } = useFirebase();
+  const { user, loading, signInWithGoogle, authError } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
+  const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(true);
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
   const [listening, setListening] = useState(false);
@@ -151,35 +151,7 @@ export default function Home() {
   // State for message filtering and grouping
   const [messageFilter, setMessageFilter] = useState<'all' | 'conversation' | 'sheet_updates'>('all');
   
-  // Add state for n8n session tracking
-  const [n8nSessions, setN8nSessions] = useState<Map<string, any>>(new Map());
-  
-  // Add function to check n8n session status
-  const checkN8nSessionStatus = async (sessionId: string) => {
-    try {
-      const response = await fetch(`/api/n8n-session-status?sessionId=${sessionId}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.status === 'completed') {
-          // Update UI with final result
-          setChatMessages(prev => prev.map(msg => 
-            msg.id === sessionId 
-              ? { ...msg, content: data.finalResponse, status: 'completed' }
-              : msg
-          ));
-        } else if (data.status === 'processing') {
-          // Update UI with partial response
-          setChatMessages(prev => prev.map(msg => 
-            msg.id === sessionId 
-              ? { ...msg, content: data.partialResponse, status: 'processing' }
-              : msg
-          ));
-        }
-      }
-    } catch (error) {
-      console.error('Error checking n8n session status:', error);
-    }
-  };
+  // Removed n8n session tracking; Genkit flow handles updates synchronously
   
   // User context and preferences system
   // const [userContext, setUserContext] = useState<{
@@ -213,7 +185,7 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const SpeechRecognitionClass = (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition; SpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition || (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition; SpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; // eslint-disable-line @typescript-eslint/no-explicit-any
     if (!SpeechRecognitionClass) {
       console.error('Speech recognition not supported in this browser');
       alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
@@ -386,11 +358,14 @@ export default function Home() {
   useEffect(() => {
     if (!user) {
       setHasSpreadsheets(false);
+      setSpreadsheetsLoading(false);
       return;
     }
+    setSpreadsheetsLoading(true);
     const optionsRef = collection(db, "users", user.uid, "options");
     const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
       setHasSpreadsheets(snapshot.docs.length > 0);
+      setSpreadsheetsLoading(false);
     });
     return () => unsubOptions();
   }, [user]);
@@ -966,108 +941,7 @@ export default function Home() {
         }
       }
       
-      // Check if this is an n8n response (contains session ID)
-      const n8nSessionMatch = data.response?.match(/Session: (session-\d+)/);
-      if (n8nSessionMatch) {
-        const sessionId = n8nSessionMatch[1];
-        
-        // Add n8n processing message
-        const n8nMessage = {
-          id: sessionId,
-          role: 'assistant' as const,
-          content: data.response || 'Processing sheet update via n8n...',
-          timestamp: new Date(),
-          messageType: 'sheet_update' as const,
-          isProcessing: true,
-          toolCalls: data.toolCalls || [],
-          toolResults: data.toolResults || []
-        };
-        setChatMessages(prev => [...prev, n8nMessage]);
-        
-        // Store session for tracking
-        setN8nSessions(prev => new Map(prev).set(sessionId, {
-          status: 'processing',
-          startTime: Date.now(),
-          message: data.response
-        }));
-        
-        // Start polling for session status
-        const pollInterval = setInterval(async () => {
-          try {
-            const statusResponse = await fetch(`/api/n8n-session-status?sessionId=${sessionId}`);
-            if (statusResponse.ok) {
-              const statusData = await statusResponse.json();
-              
-              if (statusData.status === 'completed') {
-                // Update message with final result
-                setChatMessages(prev => prev.map(msg => 
-                  msg.id === sessionId 
-                    ? { 
-                        ...msg, 
-                        content: statusData.finalResponse || 'Sheet update completed successfully',
-                        isProcessing: false,
-                        messageType: 'sheet_update' as const
-                      }
-                    : msg
-                ));
-                
-                // Remove session from tracking
-                setN8nSessions(prev => {
-                  const newMap = new Map(prev);
-                  newMap.delete(sessionId);
-                  return newMap;
-                });
-                
-                clearInterval(pollInterval);
-              } else if (statusData.status === 'processing' && statusData.partialResponse) {
-                // Update message with partial response
-                setChatMessages(prev => prev.map(msg => 
-                  msg.id === sessionId 
-                    ? { 
-                        ...msg, 
-                        content: statusData.partialResponse || msg.content,
-                        isProcessing: true
-                      }
-                    : msg
-                ));
-              } else if (statusData.status === 'error') {
-                // Handle error
-                setChatMessages(prev => prev.map(msg => 
-                  msg.id === sessionId 
-                    ? { 
-                        ...msg, 
-                        content: `Error: ${statusData.error || 'Sheet update failed'}`,
-                        isProcessing: false
-                      }
-                    : msg
-                ));
-                
-                // Remove session from tracking
-                setN8nSessions(prev => {
-                  const newMap = new Map(prev);
-                  newMap.delete(sessionId);
-                  return newMap;
-                });
-                
-                clearInterval(pollInterval);
-              }
-            }
-          } catch (error) {
-            console.error('Error checking n8n session status:', error);
-          }
-        }, 2000); // Poll every 2 seconds
-        
-        // Stop polling after 5 minutes
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          setN8nSessions(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(sessionId);
-            return newMap;
-          });
-        }, 5 * 60 * 1000);
-        
-      } else {
+      {
         // Regular AI response
         const aiMessage = {
           id: `msg_${Date.now()}_ai`,
@@ -1124,16 +998,8 @@ export default function Home() {
     } catch (error) {
       console.error('Chat processing error:', error);
       
-      // Handle n8n-specific errors
-      let errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      
-      if (errorMessage.includes('N8N production workflow not activated')) {
-        errorMessage = `🤖 N8N Production Workflow Issue\n\n${errorMessage}\n\n💡 To fix this:\n1. Go to your n8n dashboard\n2. Find your workflow\n3. Click the toggle in the top-right to activate it\n4. Try your request again\n\nThis is required for production webhooks to work.`;
-      } else if (errorMessage.includes('N8N webhook not activated')) {
-        errorMessage = `🤖 N8N Integration Issue\n\n${errorMessage}\n\n💡 To fix this:\n1. Go to your n8n dashboard\n2. Click the 'Test workflow' button\n3. Try your request again\n\nThis is expected behavior for test mode webhooks.`;
-      } else if (errorMessage.includes('N8N webhook not found')) {
-        errorMessage = `🤖 N8N Configuration Issue\n\n${errorMessage}\n\n💡 Please check your n8n workflow configuration.`;
-      }
+      // Simplified error message (n8n integration removed)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       
       setSendResult(`Error: ${errorMessage}`);
       
@@ -1237,8 +1103,7 @@ export default function Home() {
             spreadsheetId: defaultSpreadsheetId,
             sheetNames: selectedSheetNames
           },
-          images: imageData, // Include images for supported tools
-          geminiApiKey: geminiApiKey // Include Gemini API key for image processing
+          images: imageData
         }),
       });
 
@@ -1383,41 +1248,19 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-[#18181b] px-4">
-        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 sm:p-8 flex flex-col items-center max-w-md w-full">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4">
-            <Image src="/logo.png" alt="Logo" width={48} height={48} className="dark:invert" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2 text-center">Welcome to Report AI</h1>
-          <p className="text-gray-600 dark:text-gray-300 mb-6 text-center text-sm sm:text-base">Sign in with Google to get started and manage your spreadsheets with AI assistance.</p>
+      <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-[#18181b] px-4">
+        <div className="text-center space-y-6">
+          <Image src="/logo.png" alt="Logo" width={48} height={48} className="mx-auto dark:invert" />
           <button
             onClick={signInWithGoogle}
-            className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-purple-500 hover:to-blue-500 text-white px-6 py-3 rounded-lg font-semibold shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 w-full min-h-[50px]"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-300 min-h-[50px]"
           >
             Sign in with Google
           </button>
-          
           {authError && (
-            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
-              <div className="flex items-start gap-2">
-                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="font-medium">Authentication Error</p>
-                  <p className="mt-1">{authError}</p>
-                  {authError.includes('unauthorized-domain') && (
-                    <div className="mt-2 text-xs">
-                      <p className="font-medium">How to fix:</p>
-                      <ol className="list-decimal ml-4 mt-1 space-y-1">
-                        <li>Go to the <a href="https://console.firebase.google.com/project/report-ai-23599/authentication/settings" target="_blank" rel="noopener noreferrer" className="underline">Firebase Console</a></li>
-                        <li>Navigate to Authentication → Settings → Authorized domains</li>
-                        <li>Add &quot;{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&quot; to the list</li>
-                      </ol>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm max-w-md mx-auto">
+              <p className="font-medium">Authentication Error</p>
+              <p className="mt-1">{authError}</p>
             </div>
           )}
         </div>
@@ -1442,18 +1285,11 @@ export default function Home() {
                   </svg>
                 </div>
                 <div className="space-y-3">
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                    Welcome to Report AI! 🎉
-                  </h3>
                   <p className="text-gray-600 dark:text-gray-300 text-sm sm:text-base max-w-md mx-auto">
-                    To get started, you&apos;ll need to add a Google Spreadsheet. Simply paste the share link from your Google Sheet in the navigation bar above.
+                    Add a Google Spreadsheet using the input in the top-right.
                   </p>
                 </div>
-                {!geminiApiKey && (
-                  <div className="max-w-md mx-auto">
-                    <GeminiKeyPrompt />
-                  </div>
-                )}
+                {/* Removed Gemini API key prompt since user keys are no longer used */}
                 {!serviceAccountLoading && serviceAccountEmail && (
                   <div className="max-w-md mx-auto">
                     <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
@@ -1466,17 +1302,8 @@ export default function Home() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                        How to add a spreadsheet:
-                      </p>
-                      <ol className="list-decimal text-xs text-blue-700 dark:text-blue-300 pl-4 space-y-1">
-                        <li>Open your Google Sheet</li>
-                        <li>Click &quot;Share&quot; in the top-right</li>
-                        <li>Share with the service account email above</li>
-                        <li>Copy the share link</li>
-                        <li>Paste it in the dropdown menu above</li>
-                      </ol>
+                    <div className="text-left text-xs text-blue-700 dark:text-blue-300">
+                      Share your sheet with the service account email above, then paste the link into the selector.
                     </div>
                   </div>
                 </div>
@@ -1485,9 +1312,7 @@ export default function Home() {
               /* Has spreadsheets - Show main UI */
               <>
                 <SheetChipSelector />
-                {!geminiApiKey && (
-                  <GeminiKeyPrompt />
-                )}
+                {/* Removed Gemini API key prompt since user keys are no longer used */}
                 <div className="flex items-center justify-between">
                   {defaultSpreadsheetId && selectedSheetNames && selectedSheetNames.length > 0 ? (
                     // Removed "Ready" status as per user request

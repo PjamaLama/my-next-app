@@ -221,21 +221,29 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
             }
           }
           
-          // Then, execute all updateCell actions
-          for (const action of updateCellActions) {
+          // Then, execute updateCell actions in batches (optimize by grouping)
+          if (updateCellActions.length > 0) {
             try {
-              console.log(`Executing updateCell: ${action.sheet}, ${action.column}${action.row} = "${action.value}"`);
-              await updateCell({
-                sheetId: sheetId,
-                sheetName: sheetName,
-                row: action.row,
-                column: action.column,
-                value: action.value || ''
+              const updates = updateCellActions.map((a: any) => ({
+                sheetName,
+                cell: `${a.column}${a.row}`,
+                value: a.value ?? ''
+              }));
+
+              const resp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spreadsheetId: sheetId, updates })
               });
-              executedCount++;
-            } catch (actionError) {
-              console.error(`Error executing updateCell action:`, actionError);
-              // Continue with other actions even if one fails
+
+              if (!resp.ok) {
+                const errText = await resp.text();
+                throw new Error(`Batch update failed: ${resp.status} - ${errText}`);
+              }
+
+              executedCount += updateCellActions.length;
+            } catch (err) {
+              console.error('Batch update for updateCell actions failed:', err);
             }
           }
           
