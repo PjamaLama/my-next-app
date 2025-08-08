@@ -264,7 +264,6 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
 
     // Build CSV for AI conversion
     const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
-    const csv = (data as string[][]).map(r => (r || []).join(',')).join('\n');
     const converted = (await convertSheetFlow.run({ sheetName, sheetCsv: csv })) as unknown as ConvertOutput;
     if (!converted.headers?.length) {
       return res.status(500).json({ success: false, error: 'Conversion failed' });
@@ -272,7 +271,6 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
 
     // Helper to generate a unique sheet name avoiding collisions
     const baseName = (typeof newSheetName === 'string' && newSheetName.trim()) ? newSheetName.trim() : `${sheetName} (Structured)`;
-    const meta = await sheets.spreadsheets.get({ spreadsheetId, includeGridData: false });
     const existingNames = new Set((meta.data.sheets || []).map(s => s.properties?.title).filter(Boolean) as string[]);
 
     const chooseUniqueName = (): string => {
