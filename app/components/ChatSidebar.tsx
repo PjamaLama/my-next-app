@@ -49,23 +49,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
   const renderSessionRow = (s: { id: string; title: string; updatedAt: string; lastMessageSnippet?: string }) => (
     <li key={s.id}>
-      <div
-        className={`group relative rounded-md transition-colors ${
-          currentSessionId === s.id ? 'bg-white/10' : 'hover:bg-white/5'
-        }`}
-      >
+      <div className={`group relative`}>
         <button
           onClick={() => handleSelect(s.id)}
-          className={`w-full text-left ${peek ? 'p-2' : 'p-3'} flex items-start gap-3 ${peek ? 'pr-10' : 'pr-16'}`}
+          className={`w-full text-left ${peek ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center gap-2 ${peek ? 'pr-10' : 'pr-12'}`}
         >
-          <div
-            className={`shrink-0 mt-0.5 rounded-md p-1.5 border ${
-              currentSessionId === s.id ? 'border-white/50 text-white' : 'border-white/20 text-white/80'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4" />
-          </div>
-          <div className="min-w-0 flex-1 text-white">
+          <div className="min-w-0 flex-1">
             {renamingId === s.id ? (
               <input
                 value={renameValue}
@@ -75,21 +64,16 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                   if (e.key === 'Enter') commitRename();
                   if (e.key === 'Escape') setRenamingId(null);
                 }}
-                className="w-full px-2 py-1 rounded-md bg-gray-800 text-white border border-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-2 py-1 rounded-md bg-transparent text-white border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
             ) : (
               <div className="flex items-center gap-2">
-                <div className="truncate font-medium text-sm">{s.title || 'Untitled'}</div>
+                <div className={`truncate text-sm ${currentSessionId === s.id ? 'text-white font-semibold' : 'text-white/80 group-hover:text-white'}`}>{s.title || 'Untitled'}</div>
               </div>
             )}
-            {!peek && (
-              <div className="text-xs text-white/60 truncate mt-0.5">{s.lastMessageSnippet || ' '}</div>
-            )}
           </div>
-          {!peek && (
-            <div className="ml-2 text-[10px] text-white/50 whitespace-nowrap mt-0.5">{dayjs(s.updatedAt).fromNow()}</div>
-          )}
+          {/* Simple list: no timestamp/snippet in either mode */}
         </button>
         {!peek && (
           <div className="absolute top-1.5 right-1.5 hidden group-hover:flex items-center gap-1">
