@@ -81,8 +81,9 @@ input, textarea {
 }
 
 button {
-  background: var(--button-bg);
-  color: var(--button-fg);
+  /* Default buttons should be transparent unless explicitly styled */
+  background: transparent;
+  color: inherit;
   /* Better touch feedback */
   transition: all 0.2s ease;
 }

@@ -49,10 +49,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
   const renderSessionRow = (s: { id: string; title: string; updatedAt: string; lastMessageSnippet?: string }) => (
     <li key={s.id}>
-      <div className={`group relative`}>
+      <div className={`group relative`}
+           style={{ background: 'transparent' }}>
         <button
           onClick={() => handleSelect(s.id)}
           className={`w-full text-left ${peek ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center gap-2 ${peek ? 'pr-10' : 'pr-12'}`}
+          style={{ background: 'transparent' }}
         >
           <div className="min-w-0 flex-1">
             {renamingId === s.id ? (
@@ -64,7 +66,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                   if (e.key === 'Enter') commitRename();
                   if (e.key === 'Escape') setRenamingId(null);
                 }}
-                className="w-full px-2 py-1 rounded-md bg-transparent text-white border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-2 py-1 rounded-md bg-transparent text-white text-sm focus:outline-none focus:ring-0"
                 autoFocus
               />
             ) : (
