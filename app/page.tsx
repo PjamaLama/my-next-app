@@ -210,6 +210,7 @@ export default function Home() {
   };
 
   const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
+  const ChartExplorer = dynamic(() => import('./components/ChartExplorer'), { ssr: false });
   
   // Visual feedback state for voice-to-chat transitions
   // const [voiceTransitioning, setVoiceTransitioning] = useState(false);
@@ -1912,7 +1913,8 @@ export default function Home() {
                                   <div className="px-2 pb-1 text-[12px] font-semibold text-white/90">{spec.title}</div>
                                 )}
                                 <div className="bg-black/10 p-2 rounded-lg">
-                                  <ChartRenderer spec={spec as any} />
+                                  {/* Interactive explorer uses cached data so user can change group/metric/date and sheet */}
+                                  <ChartExplorer spec={spec as any} sheetsUsed={message.sheetsUsed as any} sheetDataCache={sheetDataCache as any} />
                                 </div>
                               </div>
                             ))}
