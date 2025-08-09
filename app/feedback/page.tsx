@@ -22,6 +22,7 @@ export default function FeedbackBoardPage() {
   const [filter, setFilter] = useState<'all' | 'feature' | 'bug' | 'other'>('all');
   const { user } = useFirebase();
   const [voting, setVoting] = useState<Record<string, boolean>>({});
+  const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
 
   const load = async () => {
     setLoading(true);
@@ -51,8 +52,9 @@ export default function FeedbackBoardPage() {
   }, [items, query, filter]);
 
   const upvoteAndFocus = async (id: string) => {
+    setVoteAnim((m) => ({ ...m, [id]: 'up' }));
+    setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
     await vote(id, 1);
-    // Optional: visual feedback could be added here
   };
 
   const vote = async (id: string, value: 1 | -1) => {
@@ -65,6 +67,8 @@ export default function FeedbackBoardPage() {
     const optimistic = prevVote === value ? 0 : value;
     // Apply optimistic update immediately
     setItems((prev) => prev.map((i) => i.id === id ? { ...i, votesCount: (i.votesCount || 0) + (optimistic - prevVote), userVote: optimistic } : i));
+    setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
+    setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
     setVoting((m) => ({ ...m, [id]: true }));
     try {
       const res = await fetch('/api/feedback', {
@@ -161,7 +165,7 @@ export default function FeedbackBoardPage() {
       ) : (
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((item) => (
-            <div key={item.id} className="bg-zinc-900/95 border border-white/10 rounded-2xl p-4 flex flex-col gap-2 hover:bg-zinc-900 transition-colors">
+            <div key={item.id} className="glass gloss card-gradient border border-white/10 rounded-2xl p-4 flex flex-col gap-2 hover:bg-white/5 transition-colors tilt-hover">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-base font-semibold leading-snug truncate" title={item.title}>{item.title}</div>
@@ -177,7 +181,7 @@ export default function FeedbackBoardPage() {
                 <div className="text-xs text-white/50">{item.status || 'open'}</div>
                 <div className="flex items-center gap-1">
                   <button
-                    className={`px-2.5 py-1.5 rounded-md text-xs inline-flex items-center gap-1 transition-all duration-150 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'}`}
+                    className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs inline-flex items-center gap-1 transition-all duration-150 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''}`}
                     onClick={() => upvoteAndFocus(item.id)}
                     title="Upvote"
                     aria-pressed={item.userVote === 1}
@@ -185,9 +189,12 @@ export default function FeedbackBoardPage() {
                   >
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M14 9l-2 2-2-2m2 8V7" /></svg>
                     Upvote
+                    {voteAnim[item.id] === 'up' ? (
+                      <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-emerald-400/50 animate-flash" />
+                    ) : null}
                   </button>
                   <button
-                    className={`px-2.5 py-1.5 rounded-md text-xs inline-flex items-center gap-1 transition-all duration-150 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'}`}
+                    className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs inline-flex items-center gap-1 transition-all duration-150 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''}`}
                     onClick={() => vote(item.id, -1)}
                     title="Downvote"
                     aria-pressed={item.userVote === -1}
@@ -195,8 +202,11 @@ export default function FeedbackBoardPage() {
                   >
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10 15l2-2 2 2m-2-8v10" /></svg>
                     Downvote
+                    {voteAnim[item.id] === 'down' ? (
+                      <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-rose-400/50 animate-flash" />
+                    ) : null}
                   </button>
-                  <span className="ml-1 px-1.5 py-0.5 rounded bg-white/10 text-xs text-white/80 tabular-nums">{(item.votesCount || 0).toLocaleString()}</span>
+                  <span className={`ml-1 px-1.5 py-0.5 rounded bg-white/10 text-xs text-white/90 font-semibold tabular-nums ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{(item.votesCount || 0).toLocaleString()}</span>
                 </div>
               </div>
               {item.duplicateOf ? (

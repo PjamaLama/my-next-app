@@ -28,6 +28,7 @@ export default function FeedbackButton() {
   const [browseQuery, setBrowseQuery] = useState('');
   const { user } = useFirebase();
   const [voting, setVoting] = useState<Record<string, boolean>>({});
+  const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
 
   useEffect(() => {
     const q = title.trim() + ' ' + description.trim();
@@ -120,6 +121,9 @@ export default function FeedbackButton() {
     }
     try {
       if (voting[id]) return;
+      // trigger quick visual feedback
+      setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
+      setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
       setVoting((m) => ({ ...m, [id]: true }));
       const res = await fetch('/api/feedback', {
         method: 'PUT',
@@ -181,8 +185,8 @@ export default function FeedbackButton() {
                 <div>
                   <div className="text-sm text-white/80 mb-2">Is it any of these top requests?</div>
                   <div className="space-y-2 max-h-36 overflow-auto pr-1">
-                    {allItems.slice(0, 5).map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/70 border border-white/10 rounded-lg p-2 hover:bg-zinc-800 transition-colors">
+                      {allItems.slice(0, 5).map((item) => (
+                        <div key={item.id} className="flex items-start justify-between gap-2 glass-soft gloss border border-white/10 rounded-xl p-2.5 hover:bg-white/5 transition-colors tilt-hover">
                         <div>
                           <div className="text-sm font-semibold leading-snug">{item.title}</div>
                           {item.description ? (
@@ -192,24 +196,30 @@ export default function FeedbackButton() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
+                              className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                             <ThumbsUp className="w-3.5 h-3.5" />
+                              {voteAnim[item.id] === 'up' ? (
+                                <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-emerald-400/50 animate-flash" />
+                              ) : null}
                           </button>
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
+                              className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                             <ThumbsDown className="w-3.5 h-3.5" />
+                              {voteAnim[item.id] === 'down' ? (
+                                <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-rose-400/50 animate-flash" />
+                              ) : null}
                           </button>
                           {typeof item.votesCount === 'number' ? (
-                            <span className="text-xs text-white/80 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10">{item.votesCount.toLocaleString()}</span>
+                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{item.votesCount.toLocaleString()}</span>
                           ) : null}
                         </div>
                       </div>
@@ -256,7 +266,7 @@ export default function FeedbackButton() {
                     {loading && <div className="text-xs text-white/50">Searching…</div>}
                     {!loading && similar.length === 0 && <div className="text-xs text-white/50">No similar items found</div>}
                     {similar.map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/70 border border-white/10 rounded-lg p-2 hover:bg-zinc-800 transition-colors">
+                      <div key={item.id} className="flex items-start justify-between gap-2 glass-soft gloss border border-white/10 rounded-xl p-2.5 hover:bg-white/5 transition-colors tilt-hover">
                         <div>
                           <div className="text-sm font-semibold leading-snug">{item.title}</div>
                           {item.description ? (
@@ -266,24 +276,30 @@ export default function FeedbackButton() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
+                            className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                             <ThumbsUp className="w-3.5 h-3.5" />
+                            {voteAnim[item.id] === 'up' ? (
+                              <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-emerald-400/50 animate-flash" />
+                            ) : null}
                           </button>
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
+                            className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                             <ThumbsDown className="w-3.5 h-3.5" />
+                            {voteAnim[item.id] === 'down' ? (
+                              <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-rose-400/50 animate-flash" />
+                            ) : null}
                           </button>
                           {typeof item.votesCount === 'number' ? (
-                            <span className="text-xs text-white/80 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10">{item.votesCount.toLocaleString()}</span>
+                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{item.votesCount.toLocaleString()}</span>
                           ) : null}
                         </div>
                       </div>
@@ -343,7 +359,7 @@ export default function FeedbackButton() {
                       return text.includes(q);
                     })
                     .map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/70 border border-white/10 rounded-lg p-2 hover:bg-zinc-800 transition-colors">
+                      <div key={item.id} className="flex items-start justify-between gap-2 glass-soft gloss border border-white/10 rounded-xl p-2.5 hover:bg-white/5 transition-colors tilt-hover">
                         <div>
                           <div className="text-sm font-semibold leading-snug">{item.title}</div>
                           {item.description ? (
@@ -353,24 +369,30 @@ export default function FeedbackButton() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
+                            className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                             <ThumbsUp className="w-3.5 h-3.5" />
+                            {voteAnim[item.id] === 'up' ? (
+                              <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-emerald-400/50 animate-flash" />
+                            ) : null}
                           </button>
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
+                            className={`relative overflow-hidden px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                             <ThumbsDown className="w-3.5 h-3.5" />
+                            {voteAnim[item.id] === 'down' ? (
+                              <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-rose-400/50 animate-flash" />
+                            ) : null}
                           </button>
                           {typeof (item as any).votesCount === 'number' ? (
-                            <span className="text-xs text-white/80 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10">{(item as any).votesCount.toLocaleString()}</span>
+                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{(item as any).votesCount.toLocaleString()}</span>
                           ) : null}
                         </div>
                       </div>
