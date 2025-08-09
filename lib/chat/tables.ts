@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 import { StructuredTable } from './types';
-import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structureForDisplay } from './utils';
+import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structureForDisplay, normalizeDateColumns } from './utils';
 
 export function buildSmartTables(
   message: string,
@@ -140,7 +140,7 @@ export function buildSmartTables(
   tables.push({
     title: `${sheetName}${range?.label ? ` · ${range.label}` : ''}`,
     headers: [...outHeaders, ...derivedHeaders],
-    rows: body,
+    rows: normalizeDateColumns([...outHeaders, ...derivedHeaders], body),
     summary: `Showing ${body.length} of ${filtered.length} row(s).`
   });
   return tables;

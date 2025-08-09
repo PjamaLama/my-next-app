@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
@@ -26,6 +27,7 @@ export default function FeedbackButton() {
   const [allLoading, setAllLoading] = useState(false);
   const [browseQuery, setBrowseQuery] = useState('');
   const { user } = useFirebase();
+  const [voting, setVoting] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const q = title.trim() + ' ' + description.trim();
@@ -117,6 +119,8 @@ export default function FeedbackButton() {
       return;
     }
     try {
+      if (voting[id]) return;
+      setVoting((m) => ({ ...m, [id]: true }));
       const res = await fetch('/api/feedback', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -136,6 +140,7 @@ export default function FeedbackButton() {
         const delta = newVote - prevVote;
         return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
       }));
+      setVoting((m) => ({ ...m, [id]: false }));
     } catch (_) {}
   };
 
@@ -146,17 +151,17 @@ export default function FeedbackButton() {
       {open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-          <div className="relative bg-zinc-900 border border-white/10 rounded-xl shadow-2xl w-[min(720px,94vw)] p-5">
-            <div className="flex items-center justify-between mb-3">
+          <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(720px,94vw)] p-5">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <button
-                  className={`px-3 py-1.5 rounded-md text-sm ${view === 'submit' ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`}
+                  className={`px-3 py-1.5 rounded-md text-sm transition-colors ${view === 'submit' ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`}
                   onClick={() => setView('submit')}
                 >
                   Submit
                 </button>
                 <button
-                  className={`px-3 py-1.5 rounded-md text-sm ${view === 'browse' ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`}
+                  className={`px-3 py-1.5 rounded-md text-sm transition-colors ${view === 'browse' ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`}
                   onClick={() => setView('browse')}
                 >
                   Browse & vote
@@ -177,34 +182,34 @@ export default function FeedbackButton() {
                   <div className="text-sm text-white/80 mb-2">Is it any of these top requests?</div>
                   <div className="space-y-2 max-h-36 overflow-auto pr-1">
                     {allItems.slice(0, 5).map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/60 border border-white/10 rounded-lg p-2">
+                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/70 border border-white/10 rounded-lg p-2 hover:bg-zinc-800 transition-colors">
                         <div>
-                          <div className="text-sm font-medium">{item.title}</div>
+                          <div className="text-sm font-semibold leading-snug">{item.title}</div>
                           {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2">{item.description}</div>
+                            <div className="text-xs text-white/60 line-clamp-2 mt-0.5">{item.description}</div>
                           ) : null}
                         </div>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className={`px-2 py-1 rounded text-xs ${item.userVote === 1 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'} disabled:opacity-50`}
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
-                            ▲
+                            <ThumbsUp className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
-                            className={`px-2 py-1 rounded text-xs ${item.userVote === -1 ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'} disabled:opacity-50`}
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
-                            ▼
+                            <ThumbsDown className="w-3.5 h-3.5" />
                           </button>
                           {typeof item.votesCount === 'number' ? (
-                            <span className="text-xs text-white/70 ml-1 tabular-nums">{item.votesCount.toLocaleString()}</span>
+                            <span className="text-xs text-white/80 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10">{item.votesCount.toLocaleString()}</span>
                           ) : null}
                         </div>
                       </div>
@@ -251,34 +256,34 @@ export default function FeedbackButton() {
                     {loading && <div className="text-xs text-white/50">Searching…</div>}
                     {!loading && similar.length === 0 && <div className="text-xs text-white/50">No similar items found</div>}
                     {similar.map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/60 border border-white/10 rounded-lg p-2">
+                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/70 border border-white/10 rounded-lg p-2 hover:bg-zinc-800 transition-colors">
                         <div>
-                          <div className="text-sm font-medium">{item.title}</div>
+                          <div className="text-sm font-semibold leading-snug">{item.title}</div>
                           {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2">{item.description}</div>
+                            <div className="text-xs text-white/60 line-clamp-2 mt-0.5">{item.description}</div>
                           ) : null}
                         </div>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-500 disabled:opacity-50"
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
-                            Upvote
+                            <ThumbsUp className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
-                            className="px-2 py-1 rounded bg-zinc-700 text-white text-xs hover:bg-zinc-600 disabled:opacity-50"
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
-                            Downvote
+                            <ThumbsDown className="w-3.5 h-3.5" />
                           </button>
                           {typeof item.votesCount === 'number' ? (
-                            <span className="text-xs text-white/70 ml-1">{item.votesCount}</span>
+                            <span className="text-xs text-white/80 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10">{item.votesCount.toLocaleString()}</span>
                           ) : null}
                         </div>
                       </div>
@@ -338,34 +343,34 @@ export default function FeedbackButton() {
                       return text.includes(q);
                     })
                     .map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/60 border border-white/10 rounded-lg p-2">
+                      <div key={item.id} className="flex items-start justify-between gap-2 bg-zinc-800/70 border border-white/10 rounded-lg p-2 hover:bg-zinc-800 transition-colors">
                         <div>
-                          <div className="text-sm font-medium">{item.title}</div>
+                          <div className="text-sm font-semibold leading-snug">{item.title}</div>
                           {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2">{item.description}</div>
+                            <div className="text-xs text-white/60 line-clamp-2 mt-0.5">{item.description}</div>
                           ) : null}
                         </div>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-500 disabled:opacity-50"
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
-                            Upvote
+                            <ThumbsUp className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
-                            className="px-2 py-1 rounded bg-zinc-700 text-white text-xs hover:bg-zinc-600 disabled:opacity-50"
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
-                            Downvote
+                            <ThumbsDown className="w-3.5 h-3.5" />
                           </button>
                           {typeof (item as any).votesCount === 'number' ? (
-                            <span className="text-xs text-white/70 ml-1">{(item as any).votesCount}</span>
+                            <span className="text-xs text-white/80 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10">{(item as any).votesCount.toLocaleString()}</span>
                           ) : null}
                         </div>
                       </div>

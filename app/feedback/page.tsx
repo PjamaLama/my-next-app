@@ -21,6 +21,7 @@ export default function FeedbackBoardPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'feature' | 'bug' | 'other'>('all');
   const { user } = useFirebase();
+  const [voting, setVoting] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
@@ -59,6 +60,12 @@ export default function FeedbackBoardPage() {
       alert('Please sign in to vote.');
       return;
     }
+    if (voting[id]) return;
+    const prevVote = (items.find(i => i.id === id)?.userVote ?? 0) as 1 | -1 | 0;
+    const optimistic = prevVote === value ? 0 : value;
+    // Apply optimistic update immediately
+    setItems((prev) => prev.map((i) => i.id === id ? { ...i, votesCount: (i.votesCount || 0) + (optimistic - prevVote), userVote: optimistic } : i));
+    setVoting((m) => ({ ...m, [id]: true }));
     try {
       const res = await fetch('/api/feedback', {
         method: 'PUT',
@@ -67,14 +74,19 @@ export default function FeedbackBoardPage() {
       });
       const json = await res.json();
       const newVote = (json?.data?.userVote ?? 0) as 1 | -1 | 0;
-      // Recompute count locally based on previous userVote state
-      setItems((prev) => prev.map((i) => {
-        if (i.id !== id) return i;
-        const prevVote = i.userVote ?? 0;
-        const delta = newVote - prevVote; // switch/toggle logic consolidated
-        return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
-      }));
+      // Reconcile if server differs
+      if (newVote !== optimistic) {
+        setItems((prev) => prev.map((i) => {
+          if (i.id !== id) return i;
+          const current = i.userVote ?? 0;
+          const delta = newVote - current;
+          return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
+        }));
+      }
     } catch (_) {}
+    finally {
+      setVoting((m) => ({ ...m, [id]: false }));
+    }
   };
 
   return (
@@ -149,10 +161,10 @@ export default function FeedbackBoardPage() {
       ) : (
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((item) => (
-            <div key={item.id} className="bg-zinc-900 border border-white/10 rounded-xl p-4 flex flex-col gap-2">
+            <div key={item.id} className="bg-zinc-900/95 border border-white/10 rounded-2xl p-4 flex flex-col gap-2 hover:bg-zinc-900 transition-colors">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold">{item.title}</div>
+                <div className="min-w-0">
+                  <div className="text-base font-semibold leading-snug truncate" title={item.title}>{item.title}</div>
                   {item.description ? (
                     <div className="text-sm text-white/70 mt-1 line-clamp-3">{item.description}</div>
                   ) : null}
@@ -165,22 +177,26 @@ export default function FeedbackBoardPage() {
                 <div className="text-xs text-white/50">{item.status || 'open'}</div>
                 <div className="flex items-center gap-1">
                   <button
-                    className={`px-2 py-1 rounded text-xs ${item.userVote === 1 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'}`}
+                    className={`px-2.5 py-1.5 rounded-md text-xs inline-flex items-center gap-1 transition-all duration-150 ${item.userVote === 1 ? 'bg-emerald-600 text-white ring-1 ring-emerald-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'}`}
                     onClick={() => upvoteAndFocus(item.id)}
                     title="Upvote"
+                    aria-pressed={item.userVote === 1}
+                    disabled={!!voting[item.id]}
                   >
-                    ▲
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M14 9l-2 2-2-2m2 8V7" /></svg>
+                    Upvote
                   </button>
                   <button
-                    className={`px-2 py-1 rounded text-xs ${item.userVote === -1 ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'}`}
+                    className={`px-2.5 py-1.5 rounded-md text-xs inline-flex items-center gap-1 transition-all duration-150 ${item.userVote === -1 ? 'bg-rose-600 text-white ring-1 ring-rose-400/40 shadow' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white active:scale-95'}`}
                     onClick={() => vote(item.id, -1)}
                     title="Downvote"
+                    aria-pressed={item.userVote === -1}
+                    disabled={!!voting[item.id]}
                   >
-                    ▼
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10 15l2-2 2 2m-2-8v10" /></svg>
+                    Downvote
                   </button>
-                  {typeof item.votesCount === 'number' ? (
-                    <span className="text-xs text-white/70 ml-1 tabular-nums">{(item.votesCount).toLocaleString()}</span>
-                  ) : null}
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-white/10 text-xs text-white/80 tabular-nums">{(item.votesCount || 0).toLocaleString()}</span>
                 </div>
               </div>
               {item.duplicateOf ? (

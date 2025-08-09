@@ -1,6 +1,8 @@
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
 dayjs.extend(relativeTime);
+dayjs.extend(customParseFormat);
 import { analyzeSheetStructure } from '@/lib/sheetStructure';
 
 export function normalizeToken(s: string): string {
@@ -84,6 +86,89 @@ export function structureForDisplay(rawTable: string[][]): { headers: string[]; 
     return shaped;
   }).filter(r => r.some(c => String(c).trim() !== ''));
   return { headers, rows };
+}
+
+// Try to parse a variety of common date/time formats and emit a unified format
+const CANDIDATE_DATE_FORMATS: string[] = [
+  'YYYY-MM-DD',
+  'YYYY/MM/DD',
+  'DD/MM/YYYY',
+  'MM/DD/YYYY',
+  'DD-MM-YYYY',
+  'MM-DD-YYYY',
+  'D/M/YYYY',
+  'M/D/YYYY',
+  'DD MMM YYYY',
+  'D MMM YYYY',
+  'MMM D, YYYY',
+  'YYYY-MM-DDTHH:mm:ss[Z]',
+  'YYYY-MM-DDTHH:mm:ssZ',
+  'YYYY-MM-DDTHH:mm:ss.SSS[Z]',
+  'YYYY-MM-DDTHH:mm:ss.SSSZ',
+  'YYYY-MM-DD HH:mm:ss',
+  'YYYY/MM/DD HH:mm',
+  'YYYY-MM-DDTHH:mm',
+];
+
+/**
+ * Format a single value into the unified date string if it looks like a date; otherwise return original string.
+ * When withTime is true and the parsed value contains time, returns YYYY-MM-DD HH:mm; else returns YYYY-MM-DD.
+ */
+export function formatUnifiedDate(value: unknown, withTime = false): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return raw;
+  // Quick ISO/epoch checks
+  let d = dayjs(raw);
+  if (!d.isValid()) {
+    for (const fmt of CANDIDATE_DATE_FORMATS) {
+      d = dayjs(raw, fmt, true);
+      if (d.isValid()) break;
+    }
+  }
+  if (!d.isValid()) return raw;
+  // Decide whether to include time
+  const hasTime = !(d.hour() === 0 && d.minute() === 0 && d.second() === 0 && raw.match(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/));
+  const target = withTime && hasTime ? 'YYYY-MM-DD HH:mm' : 'YYYY-MM-DD';
+  return d.format(target);
+}
+
+/**
+ * Normalize all date-like columns in a table to the unified format.
+ * Heuristics:
+ * - Columns with header matching /(date|timestamp|time)/i are normalized.
+ * - Additionally, any column where >= 60% of non-empty cells parse as dates is normalized.
+ */
+export function normalizeDateColumns(headers: string[], rows: string[][]): string[][] {
+  if (!Array.isArray(headers) || !Array.isArray(rows) || headers.length === 0 || rows.length === 0) return rows;
+  const lowerHeaders = headers.map(h => String(h || '').toLowerCase());
+  const candidateIdxs = new Set<number>();
+  lowerHeaders.forEach((h, i) => {
+    if (/(^|\b)(date|timestamp|time)($|\b)/i.test(h)) candidateIdxs.add(i);
+  });
+  const width = headers.length;
+  for (let c = 0; c < width; c++) {
+    if (candidateIdxs.has(c)) continue;
+    let total = 0;
+    let parsed = 0;
+    for (const r of rows) {
+      const v = String((r || [])[c] ?? '').trim();
+      if (!v) continue;
+      total += 1;
+      let d = dayjs(v);
+      if (!d.isValid()) {
+        for (const fmt of CANDIDATE_DATE_FORMATS) {
+          d = dayjs(v, fmt, true);
+          if (d.isValid()) break;
+        }
+      }
+      if (d.isValid()) parsed += 1;
+    }
+    if (total > 0 && parsed / total >= 0.6) candidateIdxs.add(c);
+  }
+
+  if (candidateIdxs.size === 0) return rows;
+  const includeTime = (idx: number) => /(timestamp|time)/i.test(lowerHeaders[idx] || '');
+  return rows.map(row => row.map((cell, i) => (candidateIdxs.has(i) ? formatUnifiedDate(cell, includeTime(i)) : cell)));
 }
 
 

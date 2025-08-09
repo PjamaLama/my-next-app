@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, addDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query, addDoc, deleteDoc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "./FirebaseProvider";
 import { useFirebase } from "./FirebaseProvider";
 
@@ -202,22 +202,49 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Try to auto-generate a title after the first meaningful message
     try {
-      const current = sessions.find(s => s.id === currentSessionId);
-      const existingTitle = (current?.title || '').trim();
       const hasUserContent = messages.some(m => m.role === 'user' && (m.content || '').trim().length > 0);
-      if (!existingTitle && hasUserContent) {
-        const messagesForTitle = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
-        const resp = await fetch('/api/generate-chat-title', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: messagesForTitle })
-        });
-        if (resp.ok) {
-          const { title: aiTitle } = await resp.json();
-          const finalTitle = (aiTitle || '').trim();
-          if (finalTitle && finalTitle.toLowerCase() !== 'new chat') {
-            await updateDoc(chatDocRef, { title: finalTitle });
-          }
+      if (!hasUserContent) return;
+
+      // Read the latest title state directly to avoid relying on potentially stale session list
+      const snap = await getDoc(chatDocRef);
+      const data = (snap.exists() ? (snap.data() as any) : {}) || {};
+      const existingTitle: string = (data.title || '').trim();
+      const titleIsProvisional: boolean = Boolean(data.titleIsProvisional);
+
+      // Build a quick heuristic title from the FIRST user message
+      const firstUserMessage = messages.find(m => m.role === 'user' && (m.content || '').trim().length > 0);
+      const heuristic = (firstUserMessage?.content || 'New Chat')
+        .replace(/\s+/g, ' ')
+        .slice(0, 48)
+        .trim();
+
+      // If there's no title saved yet, set a provisional one immediately for better UX
+      if (!existingTitle) {
+        const provisional = heuristic || 'New Chat';
+        try {
+          await updateDoc(chatDocRef, { title: provisional, titleIsProvisional: true } as any);
+        } catch {}
+      }
+
+      // If a title already exists but isn't marked provisional, do not override
+      if (existingTitle && !titleIsProvisional) return;
+
+      // Ask AI for a better title based on the last few messages
+      const messagesForTitle = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+      const resp = await fetch('/api/generate-chat-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: messagesForTitle })
+      });
+      if (resp.ok) {
+        const { title: aiTitle } = await resp.json();
+        const finalTitle = String(aiTitle || '').trim();
+        const acceptable = finalTitle && finalTitle.toLowerCase() !== 'new chat';
+        if (acceptable) {
+          await updateDoc(chatDocRef, { title: finalTitle, titleIsProvisional: false } as any);
+        } else if (!existingTitle) {
+          // Ensure at least a decent heuristic is present if AI returned an unusable title
+          await updateDoc(chatDocRef, { title: heuristic, titleIsProvisional: true } as any);
         }
       }
     } catch (e) {

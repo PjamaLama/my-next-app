@@ -3,6 +3,7 @@ import { Context, ConversationHistoryItem, ImageData, StructuredTable } from './
 import { generateQuickReplies } from './quickReplies';
 import { executeToolCall } from './toolExecution';
 import { buildSmartTables } from './tables';
+import { normalizeDateColumns } from './utils';
 import { answerQuestionFromSheets } from './qa';
 import { buildChartSpecs } from './charts';
 
@@ -429,6 +430,12 @@ export async function processMessage(
 
     const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
 
+    // Normalize date formats across all tables before returning
+    const normalizedTables = dataTables.map(t => ({
+      ...t,
+      rows: normalizeDateColumns(t.headers, t.rows)
+    }));
+
     return {
       response: isFileOnly ? '' : (response || ''),
       toolCalls: [],
@@ -437,7 +444,7 @@ export async function processMessage(
       context,
       sheetsUsed: selectedSheetNames,
       quickReplies,
-      dataTables,
+      dataTables: normalizedTables,
       charts,
       insights,
       suppressResponseText: isFileOnly

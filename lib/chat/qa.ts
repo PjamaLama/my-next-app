@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { StructuredTable } from './types';
-import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structureForDisplay } from './utils';
+import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structureForDisplay, normalizeDateColumns } from './utils';
 
 export type QAResult = { answer: string; tables?: StructuredTable[] } | null;
 
@@ -135,7 +135,7 @@ export function answerQuestionFromSheets(
       const tables: StructuredTable[] = [{
         title: `${sheetName} · by ${headers[groupIdx]}${range?.label ? ` · ${range.label}` : ''}`,
         headers: [headers[groupIdx], `Sum(${headers[metricIdx]})`, 'Count'],
-        rows: rowsOut
+        rows: normalizeDateColumns([headers[groupIdx], `Sum(${headers[metricIdx]})`, 'Count'], rowsOut)
       }];
       const best = top[0];
       if (!best) return null;
