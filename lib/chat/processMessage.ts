@@ -230,6 +230,9 @@ export async function processMessage(
     let response = '';
     const dataTables: StructuredTable[] = [];
 
+    // Determine if user is asking for charts/graphs early (used by table suppression later)
+    const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);
+
     // auto-hydrate sheets
     try {
       const now = Date.now();
@@ -265,11 +268,13 @@ export async function processMessage(
       }
     } catch {}
 
-    // QA over sheets
+    // QA over sheets (skip if user is asking specifically for charts/graphs without an explicit data/table request)
     try {
       const hydratedForQA = (context as any).sheetData as Record<string, string[][]> | undefined;
       const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
-      if (hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles) {
+      const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
+      const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
+      if (hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
         const qa = answerQuestionFromSheets(message, hydratedForQA, selectedForQA);
         if (qa) {
           response = qa.answer;
@@ -290,8 +295,9 @@ export async function processMessage(
 
     const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
     const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
-    const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
-    if (!hasFiles && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView)) {
+    const wantsExplicitDataView2 = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
+    const suppressTablesForCharts2 = wantCharts && !wantsExplicitDataView2;
+    if (!hasFiles && !suppressTablesForCharts2 && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView2)) {
       try {
         const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
         if (smart.length > 0) dataTables.push(...smart);
@@ -412,8 +418,6 @@ export async function processMessage(
 
       if (filePreviews.length > 0) dataTables.push(...filePreviews);
     } catch {}
-
-    const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);
     const charts = wantCharts && hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : [];
 
     const wantStats = (context as any)?.responsePrefs?.stats === true || /\b(stat|stats|statistics|summary|insight)\b/i.test(message);
@@ -454,10 +458,23 @@ export async function processMessage(
     const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
 
     // Normalize date formats across all tables before returning
-    const normalizedTables = dataTables.map(t => ({
+    let normalizedTables = dataTables.map(t => ({
       ...t,
       rows: normalizeDateColumns(t.headers, t.rows)
     }));
+
+    // If user wanted charts/graphs and did not explicitly ask for table/data view, suppress tables unless they came from file uploads
+    try {
+      const wantsExplicitDataView3 = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
+      const suppressTablesForCharts3 = wantCharts && !wantsExplicitDataView3;
+      if (!hasFiles && suppressTablesForCharts3) {
+        normalizedTables = [];
+        // Also clear any QA-generated response if charts exist to focus on charts
+        if (charts && charts.length > 0) {
+          response = '';
+        }
+      }
+    } catch {}
 
     return {
       response: isFileOnly ? '' : (response || ''),

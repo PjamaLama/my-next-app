@@ -110,6 +110,35 @@ export function buildChartSpecs(
     }
   }
 
+  // Fallback: if no chart built yet, create a sensible default bar chart
+  try {
+    if (charts.length === 0) {
+      // Choose a categorical column and a numeric metric
+      let catIdx = headers.findIndex((_, i) => rows.some(r => String(r[i] || '').trim().length > 0 && parseNumber(r[i]) == null));
+      if (catIdx < 0) {
+        // fallback to first header
+        catIdx = 0;
+      }
+      const metricIdx = pickMetricIndex(headers, rows);
+      const sums = new Map<string, number>();
+      rows.forEach(r => {
+        const key = String(r[catIdx] || 'Unknown');
+        const n = parseNumber(r[metricIdx]) ?? 0;
+        sums.set(key, (sums.get(key) || 0) + n);
+      });
+      const sorted = Array.from(sums.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12);
+      if (sorted.length > 0) {
+        charts.push({
+          kind: 'bar',
+          title: `${sheetName} · ${headers[metricIdx]} by ${headers[catIdx]}`,
+          labels: sorted.map(e => e[0]),
+          datasets: [{ label: `Sum(${headers[metricIdx]})`, data: sorted.map(e => e[1]) }],
+          meta: { sheetName, metricHeader: headers[metricIdx], groupByHeader: headers[catIdx] }
+        });
+      }
+    }
+  } catch {}
+
   return charts;
 }
 
