@@ -1,28 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --box-bg: #f4f4f4;
-  --box-fg: #171717;
-  --input-bg: #fff;
-  --input-fg: #171717;
-  --button-bg: #171717;
-  --button-fg: #fff;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --box-bg: #18181b;
+  --box-fg: #ededed;
+  --input-bg: #23232a;
+  --input-fg: #ededed;
+  --button-bg: #ededed;
+  --button-fg: #18181b;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --box-bg: #18181b;
-    --box-fg: #ededed;
-    --input-bg: #23232a;
-    --input-fg: #ededed;
-    --button-bg: #ededed;
-    --button-fg: #18181b;
-  }
-}
+/* Force dark color scheme across the app */
 
 /* PWA and mobile-specific styles */
 html {
@@ -30,6 +19,8 @@ html {
   -webkit-text-size-adjust: 100%;
   /* Smooth scrolling */
   scroll-behavior: smooth;
+  /* Ensure browsers render native UI controls in dark mode */
+  color-scheme: dark;
 }
 
 body {
@@ -215,24 +206,16 @@ button:active {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.5);
+  /* Dark mode default */
+  background: rgba(75, 85, 99, 0.5);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.8);
+  background: rgba(75, 85, 99, 0.8);
 }
 
-/* Dark mode scrollbar */
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
-    background: rgba(75, 85, 99, 0.5);
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(75, 85, 99, 0.8);
-  }
-}
+/* Dark mode scrollbar — defaulted above */
 
 /* Matte, slightly grainy emerald background for user chat bubbles */
 .matte-emerald {
@@ -379,12 +362,7 @@ textarea:focus-visible {
 .modal-body { padding: 16px 20px; }
 .modal-footer { padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 
-/* Light mode overrides for glass look */
-@media (prefers-color-scheme: light) {
-  .glass { background: rgba(255,255,255,0.65); border-color: rgba(0,0,0,0.08); }
-  .glass-soft { background: rgba(255,255,255,0.5); border-color: rgba(0,0,0,0.08); }
-  .modal-overlay { background: rgba(0,0,0,0.4); }
-}
+/* Light mode overrides removed: app is always dark */
 
 /* Explicit theme overrides (manual switch) */
 html.theme-light {
@@ -444,13 +422,7 @@ html.theme-dark {
   background-position: -14px -14px;
 }
 
-@media (prefers-color-scheme: light) {
-  .bg-grid {
-    background-image:
-      linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px);
-  }
-}
+/* Light mode grid overrides removed: app is always dark */
 
 /* Aurora background */
 @keyframes auroraShift {

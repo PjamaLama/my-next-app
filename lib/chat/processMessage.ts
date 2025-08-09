@@ -361,6 +361,31 @@ export async function processMessage(
         }
       }
 
+      // Optionally add a combined view across all structured per-file tables
+      try {
+        const structuredOnly = filePreviews.filter(t => t.headers && t.headers.length > 1 && Array.isArray(t.rows) && t.rows.length > 0);
+        if (structuredOnly.length > 1) {
+          const allHeaders = Array.from(new Set<string>(structuredOnly.flatMap(t => t.headers)));
+          const rows = structuredOnly.flatMap(t => {
+            const indexByHeader: Record<string, number> = {};
+            t.headers.forEach((h, i) => { indexByHeader[h] = i; });
+            return t.rows.map(r => allHeaders.map(h => {
+              const idx = indexByHeader[h];
+              return idx != null ? String(r[idx] ?? '') : '';
+            }));
+          });
+
+          // Put combined overview first
+          dataTables.push({
+            title: 'Combined Extracted Data (all files)',
+            headers: allHeaders,
+            rows,
+            summary: `Merged ${rows.length} row(s) from ${structuredOnly.length} file(s).`,
+            meta: { combined: true }
+          });
+        }
+      } catch {}
+
       if (filePreviews.length > 0) dataTables.push(...filePreviews);
     } catch {}
 

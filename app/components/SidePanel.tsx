@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import dynamic from 'next/dynamic';
-import { LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, Megaphone } from 'lucide-react';
 import Image from 'next/image';
 import { useFirebase } from '../providers/FirebaseProvider';
 
@@ -85,7 +85,7 @@ const SidePanel: React.FC = () => {
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex items-center gap-2">
               <div className="bg-white/10 rounded-lg p-1.5">
-                <Image src="/logo.png" alt="Sheety AI" width={20} height={20} className="dark:invert" />
+                <Image src="/logo.png" alt="Sheety AI" width={20} height={20} className="invert" />
               </div>
               {!peek && (
                 <div className="min-w-0">
@@ -126,33 +126,53 @@ const SidePanel: React.FC = () => {
         {/* Footer actions */}
         {user && (
           <div className="border-t border-white/10 p-2 space-y-2">
-            <button
-              onClick={() => signOutUser()}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-white hover:bg-white/10 text-sm"
-              title="Logout"
-              aria-label="Logout"
-            >
-              {/* User avatar */}
-              {user.photoURL ? (
-                <Image
-                  src={user.photoURL}
-                  alt={user.displayName || user.email || 'User'}
-                  width={24}
-                  height={24}
-                  className="rounded-full object-cover"
-                />
-              ) : (
-                <div
-                  className="flex items-center justify-center w-6 h-6 rounded-full bg-white/20 text-[11px] font-medium"
-                  title={user.displayName || user.email || 'User'}
-                >
-                  {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
-                </div>
-              )}
+            <div className="flex items-center gap-2">
+              {/* Feedback buttons: compact on mobile, prominent on desktop */}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('open-feedback'))}
+                className="inline-flex sm:hidden items-center justify-center h-9 w-9 rounded-lg border border-white/15 text-white/80 hover:text-white hover:border-white/40"
+                title="Give feedback"
+                aria-label="Give feedback"
+              >
+                <Megaphone className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('open-feedback'))}
+                className="hidden sm:inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 shadow-md"
+                title="Give feedback"
+                aria-label="Give feedback"
+              >
+                <Megaphone className="w-4 h-4" />
+                <span className="text-sm font-semibold">Feedback</span>
+              </button>
 
-              <span className="truncate">Logout</span>
-              <LogOut className="w-4 h-4 ml-auto opacity-80" />
-            </button>
+              {/* Logout */}
+              <button
+                onClick={() => signOutUser()}
+                className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-white hover:bg-white/10 text-sm"
+                title="Logout"
+                aria-label="Logout"
+              >
+                {user.photoURL ? (
+                  <Image
+                    src={user.photoURL}
+                    alt={user.displayName || user.email || 'User'}
+                    width={24}
+                    height={24}
+                    className="rounded-full object-cover"
+                  />
+                ) : (
+                  <div
+                    className="flex items-center justify-center w-6 h-6 rounded-full bg-white/20 text-[11px] font-medium"
+                    title={user.displayName || user.email || 'User'}
+                  >
+                    {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="truncate">Logout</span>
+                <LogOut className="w-4 h-4 ml-auto opacity-80" />
+              </button>
+            </div>
           </div>
         )}
       </div>

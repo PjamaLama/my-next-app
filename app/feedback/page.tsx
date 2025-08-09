@@ -1,0 +1,197 @@
+"use client";
+
+import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useFirebase } from '../providers/FirebaseProvider';
+
+interface FeedbackItem {
+  id: string;
+  title: string;
+  description?: string;
+  type: 'bug' | 'feature' | 'other';
+  status?: string;
+  votesCount?: number;
+  duplicateOf?: string | null;
+  userVote?: 1 | -1 | 0;
+}
+
+export default function FeedbackBoardPage() {
+  const [items, setItems] = useState<FeedbackItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'feature' | 'bug' | 'other'>('all');
+  const { user } = useFirebase();
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/feedback?sort=top');
+      const json = await res.json();
+      setItems(json.data || []);
+    } catch (_) {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter((i) => {
+      const typeOk = filter === 'all' || i.type === filter;
+      const text = `${i.title} ${i.description || ''}`.toLowerCase();
+      const qOk = !q || text.includes(q);
+      return typeOk && qOk;
+    });
+  }, [items, query, filter]);
+
+  const upvoteAndFocus = async (id: string) => {
+    await vote(id, 1);
+    // Optional: visual feedback could be added here
+  };
+
+  const vote = async (id: string, value: 1 | -1) => {
+    if (!user) {
+      alert('Please sign in to vote.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, userId: user.uid, value }),
+      });
+      const json = await res.json();
+      const newVote = (json?.data?.userVote ?? 0) as 1 | -1 | 0;
+      // Recompute count locally based on previous userVote state
+      setItems((prev) => prev.map((i) => {
+        if (i.id !== id) return i;
+        const prevVote = i.userVote ?? 0;
+        const delta = newVote - prevVote; // switch/toggle logic consolidated
+        return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
+      }));
+    } catch (_) {}
+  };
+
+  return (
+    <div className="p-4 md:p-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Feedback</h1>
+        <Link href="/" className="text-sm text-white/70 hover:text-white">Back</Link>
+      </div>
+
+      <div className="mt-4 flex flex-col md:flex-row gap-3 md:items-center">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search feedback"
+          className="w-full md:w-80 rounded-lg bg-zinc-900 border border-white/10 px-3 py-2"
+        />
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as any)}
+          className="rounded-lg bg-zinc-900 border border-white/10 px-3 py-2 w-full md:w-auto"
+        >
+          <option value="all">All</option>
+          <option value="feature">Feature</option>
+          <option value="bug">Bug</option>
+          <option value="other">Other</option>
+        </select>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => load()}
+            className="rounded-lg bg-white/10 hover:bg-white/20 text-white/80 px-3 py-2 text-sm"
+            title="Refresh"
+          >
+            Refresh
+          </button>
+          <button
+            onClick={async () => {
+              setLoading(true);
+              try {
+                const res = await fetch('/api/feedback?sort=new');
+                const json = await res.json();
+                setItems(json.data || []);
+              } finally {
+                setLoading(false);
+              }
+            }}
+            className="rounded-lg bg-white/10 hover:bg-white/20 text-white/80 px-3 py-2 text-sm"
+            title="Sort by new"
+          >
+            Newest
+          </button>
+          <button
+            onClick={async () => {
+              setLoading(true);
+              try {
+                const res = await fetch('/api/feedback?sort=top');
+                const json = await res.json();
+                setItems(json.data || []);
+              } finally {
+                setLoading(false);
+              }
+            }}
+            className="rounded-lg bg-white/10 hover:bg-white/20 text-white/80 px-3 py-2 text-sm"
+            title="Sort by top"
+          >
+            Top
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-6 text-white/60">Loading…</div>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filtered.map((item) => (
+            <div key={item.id} className="bg-zinc-900 border border-white/10 rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-semibold">{item.title}</div>
+                  {item.description ? (
+                    <div className="text-sm text-white/70 mt-1 line-clamp-3">{item.description}</div>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-xs bg-white/10 capitalize">{item.type}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-white/50">{item.status || 'open'}</div>
+                <div className="flex items-center gap-1">
+                  <button
+                    className={`px-2 py-1 rounded text-xs ${item.userVote === 1 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'}`}
+                    onClick={() => upvoteAndFocus(item.id)}
+                    title="Upvote"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    className={`px-2 py-1 rounded text-xs ${item.userVote === -1 ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'}`}
+                    onClick={() => vote(item.id, -1)}
+                    title="Downvote"
+                  >
+                    ▼
+                  </button>
+                  {typeof item.votesCount === 'number' ? (
+                    <span className="text-xs text-white/70 ml-1 tabular-nums">{(item.votesCount).toLocaleString()}</span>
+                  ) : null}
+                </div>
+              </div>
+              {item.duplicateOf ? (
+                <div className="text-xs text-white/50">Possible duplicate of {item.duplicateOf}</div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+

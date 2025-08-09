@@ -91,19 +91,19 @@ const SheetChipSelector: React.FC = () => {
     return (
       <div className="flex items-center justify-center py-4">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
-        <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading sheets...</span>
+        <span className="ml-2 text-sm text-gray-400">Loading sheets...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+      <div className="bg-red-900/20 border border-red-800 rounded-lg p-3">
         <div className="flex items-center gap-2">
           <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-sm text-red-600 dark:text-red-400">Error: {error}</span>
+          <span className="text-sm text-red-400">Error: {error}</span>
         </div>
       </div>
     );
@@ -131,22 +131,22 @@ const SheetChipSelector: React.FC = () => {
                 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full text-[11px] sm:text-sm font-medium transition-all duration-200
                 focus:outline-none
                 ${isSelected
-                  ? 'text-green-700 dark:text-green-300 border-2 border-green-500/80 bg-green-50 dark:bg-green-900/20 shadow-sm'
-                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
+                  ? 'text-green-300 border-2 border-green-500/80 bg-green-900/20 shadow-sm'
+                  : 'bg-gray-700 text-gray-200'
                 }
               `}
             >
               {/* Sheet icon */}
               <div className="flex items-center gap-2">
                 {isSelected && (
-                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
                 )}
                 <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <span className="truncate max-w-[40vw] sm:max-w-none">{name}</span>
                 {isUnstructured && (
-                  <span title="Unstructured format" className="ml-1 inline-flex items-center gap-1 text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-300/60">
+                  <span title="Unstructured format" className="ml-1 inline-flex items-center gap-1 text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-300/40">
                     <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5a.75.75 0 00-1.5 0v7a.75.75 0 001.5 0V7zm-1 10a1 1 0 102 0 1 1 0 00-2 0z"/></svg>
                     Unstructured
                   </span>
@@ -158,14 +158,14 @@ const SheetChipSelector: React.FC = () => {
         {/* Right-aligned compact controls */}
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {selectedSheetNames.length > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/50 whitespace-nowrap">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-300 border border-emerald-800/50 whitespace-nowrap">
               {selectedSheetNames.length} selected
             </span>
           )}
           {selectedSheetNames.some(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false))) && (
             <button
               type="button"
-              className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 whitespace-nowrap"
+              className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border border-gray-700 bg-gray-800 hover:bg-gray-700 whitespace-nowrap"
               onClick={async () => {
                 const spreadsheetId = defaultSpreadsheetId;
                 const targets = selectedSheetNames.filter(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
@@ -215,7 +215,7 @@ const SheetChipSelector: React.FC = () => {
       
       {/* Help text */}
       {selectedSheetNames.length === 0 && sheetNames.length > 0 && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+        <div className="text-xs text-gray-400 text-center py-2">
           Click on sheets above to select which ones to edit
         </div>
       )}

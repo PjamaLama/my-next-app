@@ -7,29 +7,45 @@ import { useFirebase } from './providers/FirebaseProvider';
 import { useSheet } from './providers/SheetProvider';
 import { useServiceAccount } from './providers/ServiceAccountProvider';
 
-const NAV_LINKS: { name: string; href: string }[] = [];
+const NAV_LINKS: { name: string; href: string }[] = [
+  { name: 'Feedback', href: '/feedback' },
+];
 
 const NavBar: React.FC = () => {
-  const { user } = useFirebase();
+  const { user, continueWithGoogle } = useFirebase();
   const { defaultSpreadsheetId } = useSheet();
   const { isLoading: serviceAccountLoading } = useServiceAccount();
+  const [lastGoogle, setLastGoogle] = useState<{ email?: string; name?: string; photo?: string } | null>(null);
 
   useEffect(() => {
     // no-op left intentionally (kept structure for future needs)
   }, [user, defaultSpreadsheetId, serviceAccountLoading]);
 
+  // Load last used Google identity for a prominent "Continue as" CTA
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const email = localStorage.getItem('lastGoogleEmail') || undefined;
+      const name = localStorage.getItem('lastGoogleName') || undefined;
+      const photo = localStorage.getItem('lastGooglePhoto') || undefined;
+      if (email || name || photo) setLastGoogle({ email, name, photo });
+    } catch (_) {
+      // ignore
+    }
+  }, []);
+
   return (
-    <nav className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm overflow-x-hidden">
+    <nav className="sticky top-0 z-30 bg-gray-900 border-b border-gray-800 shadow-sm overflow-x-hidden">
       <div className="container mx-auto flex justify-between items-center px-3 sm:px-4 py-2 max-w-full">
         {/* Logo and Title */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <Link href="/" className="flex items-center gap-2 sm:gap-3 group select-none min-w-0">
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1.5 sm:p-2 flex-shrink-0">
-              <Image src="/logo.png" alt="Logo" width={24} height={24} className="dark:invert sm:w-8 sm:h-8" />
+              <Image src="/logo.png" alt="Logo" width={24} height={24} className="invert sm:w-8 sm:h-8" />
             </div>
             <div className="flex flex-col justify-center min-w-0">
               <span className="text-base sm:text-lg md:text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 drop-shadow-sm truncate block leading-tight">
-                Report AI
+                Sheety AI
               </span>
               <span className="hidden sm:block text-xs font-medium text-white/70 leading-tight">
                 Your Automated Report Assistant
@@ -41,6 +57,26 @@ const NavBar: React.FC = () => {
 
         {/* Right area */}
         <div className="flex items-center gap-2 sm:gap-4">
+          {/* Prominent Continue-as CTA for returning, logged-out users */}
+          {!user && lastGoogle?.email && (
+            <button
+              onClick={() => continueWithGoogle?.(lastGoogle.email)}
+              className="hidden sm:inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98]"
+              title={`Continue as ${lastGoogle.name || lastGoogle.email}`}
+            >
+              {lastGoogle.photo ? (
+                <img
+                  src={lastGoogle.photo}
+                  alt={lastGoogle.name || lastGoogle.email || 'User'}
+                  className="w-5 h-5 rounded-full border border-black/10"
+                />
+              ) : (
+                <svg className="w-4 h-4 text-gray-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-7 3.134-7 7h2a5 5 0 0 1 10 0h2c0-3.866-3.134-7-7-7z"/></svg>
+              )}
+              <span className="truncate max-w-[160px]">Continue as {lastGoogle.name || lastGoogle.email}</span>
+            </button>
+          )}
+
           {NAV_LINKS.map(link => (
             <Link
               key={link.name}

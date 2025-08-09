@@ -44,6 +44,7 @@ export type StructuredTable = {
   meta?: {
     fileIndex?: number;
     fileName?: string;
+    combined?: boolean;
   };
 };
 

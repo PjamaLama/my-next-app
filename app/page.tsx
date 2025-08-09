@@ -180,6 +180,8 @@ export default function Home() {
   const [chatProcessing, setChatProcessing] = useState(false);
   const [showCharts, setShowCharts] = useState<boolean>(false);
   const [showStats, setShowStats] = useState<boolean>(false);
+  // Toggle per message id whether we show only combined table (if present) or all per-file tables
+  const [combinedTablePref, setCombinedTablePref] = useState<Record<string, boolean>>({});
   const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
   const [previewModal, setPreviewModal] = useState<{ open: boolean; rows: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }> | null; summary?: string }>({ open: false, rows: null });
 
@@ -1497,7 +1499,7 @@ export default function Home() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+          <p className="text-gray-400">Loading...</p>
         </div>
       </div>
     );
@@ -1515,7 +1517,7 @@ export default function Home() {
           <div className="glass gloss rounded-2xl p-8 border border-white/10 shadow-2xl animate-fade-in-up text-white/90">
             <div className="flex items-center gap-3 mb-4">
               <div className="bg-white/10 rounded-xl p-2">
-                <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="dark:invert" />
+               <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="invert" />
               </div>
               <div>
                 <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-fuchsia-300 to-violet-300">Sheety AI</h1>
@@ -1574,26 +1576,7 @@ export default function Home() {
                 <p className="mt-4 text-white/90 leading-relaxed text-[15px]">
                   Turn voice or text into structured, validated spreadsheet updates. Fast, accurate, and built for mobile.
                 </p>
-                <div className="mt-6 flex flex-col items-center sm:flex-row sm:items-center justify-center sm:justify-center gap-3">
-                  {/* Continue with Google (login hint) if seen before */}
-                  {lastGoogle?.email && (
-                    <button
-                      onClick={() => continueWithGoogle?.(lastGoogle.email)}
-                      className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98]"
-                    >
-                      {lastGoogle?.photo ? (
-                        <img
-                          src={lastGoogle.photo}
-                          alt={lastGoogle.name || lastGoogle.email || 'User'}
-                          className="w-6 h-6 rounded-full border border-black/10"
-                        />
-                      ) : (
-                        <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-7 3.134-7 7h2a5 5 0 0 1 10 0h2c0-3.866-3.134-7-7-7z"/></svg>
-                      )}
-                      Continue as {lastGoogle.name || lastGoogle.email}
-                    </button>
-                  )}
-                </div>
+                {/* CTA moved to the Get started card */}
                 {/* Compact feature hints removed to reduce redundancy */}
               </div>
               {/* Login card (kept) */}
@@ -1602,7 +1585,7 @@ export default function Home() {
                   <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="bg-white/10 rounded-xl p-2">
-                      <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="dark:invert" />
+                      <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="invert" />
                     </div>
                     <div>
                       <h2 className="text-xl font-extrabold tracking-tight">Get started</h2>
@@ -1612,10 +1595,33 @@ export default function Home() {
                   <p className="text-sm text-white/80 mb-6 leading-relaxed">
                     Sign in with Google to secure your spot. If we’re full, you’ll be added to the waitlist automatically.
                   </p>
-                  {/* Removed duplicate Join Beta button to avoid repetition with hero */}
-                  <div className="mt-3 text-center">
-                    <button onClick={signInWithGoogle} className="text-xs text-white/80 hover:text-white underline">Already joined? Log in</button>
+                  {/* Primary CTAs */}
+                  <div className="mt-4 flex flex-col items-center sm:flex-row sm:items-center justify-center gap-4 flex-wrap">
+                    {lastGoogle?.email && (
+                      <button
+                        onClick={() => continueWithGoogle?.(lastGoogle.email)}
+                        className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98]"
+                      >
+                        {lastGoogle?.photo ? (
+                          <img
+                            src={lastGoogle.photo}
+                            alt={lastGoogle.name || lastGoogle.email || 'User'}
+                            className="w-6 h-6 rounded-full border border-black/10"
+                          />
+                        ) : (
+                          <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-7 3.134-7 7h2a5 5 0 0 1 10 0h2c0-3.866-3.134-7-7-7z"/></svg>
+                        )}
+                        Continue as {lastGoogle.name || lastGoogle.email}
+                      </button>
+                    )}
+                    <button
+                      onClick={signInWithGoogle}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98]"
+                    >
+                      Join Beta
+                    </button>
                   </div>
+                  
                   {authError && (
                     <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-sm">
                       <p className="font-medium">Authentication Error</p>
@@ -1794,7 +1800,26 @@ export default function Home() {
                     {/* Render assistant data tables as rich tables */}
                     {message.role === 'assistant' && Array.isArray(message.tables) && message.tables.length > 0 && (
                       <div className="mt-2 space-y-3">
-                        {message.tables.map((t, tIdx) => (
+                        {/* Tiny toggle: if a combined table exists, allow switching view */}
+                        {message.tables.some(t => (t as any).meta?.combined) && (
+                          <div className="flex items-center justify-end mb-1">
+                            <button
+                              className="text-[11px] px-2 py-1 rounded border border-white/10 bg-white/5 hover:bg-white/10 inline-flex items-center gap-1"
+                              onClick={() => setCombinedTablePref(prev => ({ ...prev, [message.id]: !prev[message.id] }))}
+                              title={combinedTablePref[message.id] ? 'Show separate tables' : 'Show combined table'}
+                            >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                              </svg>
+                              <span>{combinedTablePref[message.id] ? 'Combined view' : 'Split view'}</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {(combinedTablePref[message.id]
+                          ? message.tables.filter(t => (t as any).meta?.combined)
+                          : message.tables.filter(t => !(t as any).meta?.combined)
+                        ).map((t, tIdx) => (
                           <div key={`${message.id}_table_${tIdx}`} className="relative overflow-x-auto max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-white/5">
                             {t.title && (
                               <div className="px-3 py-2 border-b border-white/10 text-[12px] font-semibold text-white/90">

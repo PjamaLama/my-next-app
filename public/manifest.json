@@ -1,9 +1,9 @@
 {
-  "name": "Report AI",
-  "short_name": "ReportAI",
+  "name": "Sheety AI",
+  "short_name": "SheetyAI",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#18181b",
   "theme_color": "#18181b",
   "icons": [
     { "src": "/icon-72x72.png", "sizes": "72x72", "type": "image/png" },
@@ -17,8 +17,8 @@
   ]
 }
 {
-  "name": "Report AI - Your Automated Report Assistant",
-  "short_name": "Report AI",
+  "name": "Sheety AI - Your Automated Report Assistant",
+  "short_name": "Sheety AI",
   "description": "AI-powered voice-to-spreadsheet reporting tool. Convert speech to structured data in Google Sheets effortlessly.",
   "start_url": "/",
   "display": "standalone",
