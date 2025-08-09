@@ -978,7 +978,9 @@ export default function Home() {
   // Enhanced function to process with AI Chat (combining old functionality with new chat)
   const processWithAIChat = async (inputText?: string) => {
     const textToProcess = inputText || transcript;
-    const hasFilesToProcess = uploadedImages.length > 0;
+    // Snapshot files immediately so we can safely clear UI state without losing them
+    const filesToSend = uploadedImages.slice();
+    const hasFilesToProcess = filesToSend.length > 0;
     // Allow sending with only files (no text). Only require spreadsheet when no files are attached.
     if (!textToProcess.trim() && !hasFilesToProcess) {
       setSendResult("Please provide input or attach files.");
@@ -1007,10 +1009,10 @@ export default function Home() {
         role: 'user' as const,
         content: textToProcess,
         timestamp: new Date(),
-        hasImages: uploadedImages.length > 0,
-        imageCount: uploadedImages.length,
+        hasImages: filesToSend.length > 0,
+        imageCount: filesToSend.length,
         messageType: 'text' as const, // Always text since voice converts to text
-        attachments: uploadedImages.map(img => ({
+        attachments: filesToSend.map(img => ({
           id: img.id,
           name: img.file.name,
           type: img.file.type,
@@ -1020,7 +1022,7 @@ export default function Home() {
       };
       setProviderChatMessages(prev => [...prev, userMessage as unknown as ProviderChatMessage]);
       // Clear the upload area immediately after sending so files aren't pinned there
-      if (uploadedImages.length > 0) {
+      if (filesToSend.length > 0) {
         setUploadedImages([]);
       }
       
@@ -1030,9 +1032,9 @@ export default function Home() {
       // Prepare images for the API call
       const imageData: Array<{ data: string; mimeType: string; name?: string; }> = [];
       
-      if (uploadedImages.length > 0) {
+      if (filesToSend.length > 0) {
         try {
-          for (const img of uploadedImages) {
+          for (const img of filesToSend) {
             // Convert with compression for images
             if (img.fileType === 'image') {
               try {
