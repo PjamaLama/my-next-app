@@ -111,7 +111,7 @@ async function voteFeedback({ id, userId, value }: { id: string; userId: string;
   const docRef = db.collection('feedback').doc(id);
   const voteRef = docRef.collection('votes').doc(userId);
   const existing = await voteRef.get();
-  let delta = value;
+  let delta: number = value;
   let finalUserVote: 1 | -1 | 0 = value;
   if (existing.exists) {
     const prev = existing.data()?.value as 1 | -1;
