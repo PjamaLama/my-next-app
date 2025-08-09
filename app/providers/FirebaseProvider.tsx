@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, setPersistence, browserLocalPersistence, GoogleAuthProvider, signOut, User } from "firebase/auth";
 import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -16,6 +16,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+// Ensure durable session and avoid popup blockers/COOP issues
+if (typeof window !== 'undefined') {
+  // Best-effort; ignore if already set
+  setPersistence(auth, browserLocalPersistence).catch(() => {});
+}
 export const db = getFirestore(app);
 
 interface IFirebaseContext {
@@ -138,7 +143,12 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
         prompt: 'select_account'
       });
       
-      await signInWithPopup(auth, provider);
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (popupError) {
+        // Fallback to redirect in environments where popups are blocked or COOP isolates the opener
+        await signInWithRedirect(auth, provider);
+      }
     } catch (error: unknown) {
       console.error("Firebase auth error:", error);
       
@@ -160,7 +170,11 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       if (loginHint) {
         provider.setCustomParameters({ login_hint: loginHint });
       }
-      await signInWithPopup(auth, provider);
+      try {
+        await signInWithPopup(auth, provider);
+      } catch {
+        await signInWithRedirect(auth, provider);
+      }
     } catch (error) {
       console.error('Firebase continue auth error:', error);
       const message = (error && typeof error === 'object' && 'message' in error) ? (error as any).message : 'Authentication failed. Please try again.';

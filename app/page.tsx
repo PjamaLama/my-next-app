@@ -1582,9 +1582,9 @@ export default function Home() {
                 {/* Compact feature hints removed to reduce redundancy */}
               </div>
               {/* Login card (kept) */}
-              <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover">
+              <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover relative z-10">
                   <div className="card-gradient">
-                  <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up">
+                  <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up relative z-10">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="bg-white/10 rounded-xl p-2">
                       <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="invert" />

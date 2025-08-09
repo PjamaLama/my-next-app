@@ -3,7 +3,7 @@ import { processMessage as processChatMessage } from '@/lib/chat/processMessage'
 
 export const config = {
   api: {
-    bodyParser: { sizeLimit: '10mb' },
+    bodyParser: { sizeLimit: '25mb' },
   },
 };
 

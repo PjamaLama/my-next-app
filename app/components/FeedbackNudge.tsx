@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import { useFirebase } from '../providers/FirebaseProvider';
 
 const STORAGE_KEY = 'feedbackNudge';
 
@@ -42,9 +43,11 @@ function markDismissed() {
 }
 
 export default function FeedbackNudge() {
+  const { user } = useFirebase();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
+    if (!user) return; // do not show nudge on landing (logged-out)
     const t = setTimeout(() => {
       if (shouldShow()) {
         setOpen(true);
@@ -52,9 +55,9 @@ export default function FeedbackNudge() {
       }
     }, 8000); // show gently after 8s on page/app usage
     return () => clearTimeout(t);
-  }, []);
+  }, [user]);
 
-  if (!open) return null;
+  if (!user || !open) return null;
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[min(560px,94vw)]">

@@ -14,7 +14,7 @@ import { insertRow } from '../../genkit/tools';
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb', // Allow up to 10MB for file uploads
+      sizeLimit: '25mb', // Allow up to 25MB for file uploads
     },
   },
 };
