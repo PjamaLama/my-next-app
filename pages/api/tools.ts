@@ -9,7 +9,8 @@ const TOOL_REGISTRY = [
   { name: 'analyze_files', label: 'Analyze Files', description: 'Use AI to analyze PDFs and other files.' },
   { name: 'analyze_images', label: 'Analyze Images', description: 'Use AI to analyze images/photos.' },
   { name: 'extract_data_from_files', label: 'Extract Data from Files', description: 'Extract structured data from files and update the sheet.' },
-  { name: 'extract_text_only', label: 'Extract Text Only', description: 'OCR or PDF text extraction without AI analysis.' }
+  { name: 'extract_text_only', label: 'Extract Text Only', description: 'OCR or PDF text extraction without AI analysis.' },
+  { name: 'bulk_update_column', label: 'Bulk Update Column', description: 'Transform a column across all rows (add, subtract, multiply, divide, or set values).' }
 ];
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

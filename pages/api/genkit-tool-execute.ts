@@ -176,6 +176,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'apply_structured_rows':
         return await handleApplyStructuredRows(args, context, res);
 
+      case 'bulk_update_column':
+        return await handleBulkUpdateColumn(args, context, res);
+
       default:
         return res.status(400).json({
           success: false,
@@ -408,6 +411,110 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
     return res.status(200).json({ success: true, newSheetName: targetName, rows: normalizedRows.length, warning: sourceReadWarning });
   } catch (e) {
     return res.status(500).json({ success: false, error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Bulk update a numeric column across all rows (add/subtract/multiply/divide/set)
+async function handleBulkUpdateColumn(args: ToolArgs, context: Context, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetNames } = context;
+    const { column, operation, amount, value } = (args || {}) as {
+      column?: string;
+      operation?: 'add' | 'subtract' | 'multiply' | 'divide' | 'set';
+      amount?: number;
+      value?: number | string;
+    };
+
+    if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
+      return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
+    }
+    if (!column || !operation || (operation === 'set' ? value == null : typeof amount !== 'number')) {
+      return res.status(400).json({ success: false, error: 'column, operation and amount/value are required' });
+    }
+
+    const sheets = await getGoogleSheetsClient();
+    const updates: Array<{ sheetName: string; cell: string; value: string | number }> = [];
+    const perSheetSummary: Array<{ sheet: string; updatedCells: number; targetHeader: string }> = [];
+
+    const toLetters = (num: number): string => {
+      let n = num, s = '';
+      while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor(n / 26); }
+      return s || 'A';
+    };
+
+    for (const sheetName of sheetNames) {
+      const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
+      const resp = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${escaped}!A1:T2000`,
+        valueRenderOption: 'FORMATTED_VALUE',
+        dateTimeRenderOption: 'FORMATTED_STRING'
+      });
+      const values = (resp.data.values || []) as string[][];
+      if (!values.length) { perSheetSummary.push({ sheet: sheetName, updatedCells: 0, targetHeader: String(column) }); continue; }
+
+      const headers = values[0] || [];
+      // Resolve target column index: accept letter like "C" or fuzzy header name
+      let colIdx = -1;
+      const letterMatch = typeof column === 'string' ? column.trim().match(/^[A-Z]+$/i) : null;
+      if (letterMatch) {
+        colIdx = column.toUpperCase().split('').reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
+      } else {
+        colIdx = pickHeaderIndex(headers, String(column));
+      }
+      if (colIdx < 0 || colIdx >= headers.length) {
+        return res.status(404).json({ success: false, error: `Column not found in "${sheetName}": ${column}` });
+      }
+      const targetHeader = headers[colIdx] || `Column ${colIdx + 1}`;
+
+      let updatedCells = 0;
+      for (let r = 1; r < values.length; r++) {
+        const row = values[r] || [];
+        const raw = row[colIdx];
+        const cell = `${toLetters(colIdx + 1)}${r + 1}`;
+
+        if (operation === 'set') {
+          updates.push({ sheetName, cell, value: value as any });
+          updatedCells++;
+          continue;
+        }
+
+        const num = raw == null ? NaN : parseFloat(String(raw).replace(/[\,\s]/g, ''));
+        if (!Number.isFinite(num)) continue;
+
+        let next: number | null = null;
+        switch (operation) {
+          case 'add': next = num + (amount as number); break;
+          case 'subtract': next = num - (amount as number); break;
+          case 'multiply': next = num * (amount as number); break;
+          case 'divide':
+            if (!amount || amount === 0) next = null; else next = num / amount; break;
+          default: next = null;
+        }
+        if (next == null) continue;
+        updates.push({ sheetName, cell, value: Number(next.toFixed(6)) });
+        updatedCells++;
+      }
+
+      perSheetSummary.push({ sheet: sheetName, updatedCells, targetHeader });
+    }
+
+    if (updates.length === 0) {
+      return res.status(200).json({ success: true, result: 'No numeric cells to update', details: { perSheetSummary } });
+    }
+
+    const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, updates })
+    });
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text();
+      throw new Error(`Batch update failed: ${updateResponse.status} - ${errorText}`);
+    }
+
+    const total = perSheetSummary.reduce((a, b) => a + b.updatedCells, 0);
+    return res.status(200).json({ success: true, result: `Updated ${total} cell(s) across ${perSheetSummary.length} sheet(s).`, details: { perSheetSummary } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to bulk update column', details: e instanceof Error ? e.message : String(e) });
   }
 }
 

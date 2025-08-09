@@ -64,7 +64,30 @@ export async function processMessage(
         });
       }
     } else {
-      if (lowerMessage.includes('add') || lowerMessage.includes('insert') || lowerMessage.includes('new')) {
+      // Detect bulk numeric column operations like: "add 100 to Cost per item", "decrease 5 from Price", "multiply Quantity by 2", "divide Total by 3"
+      const msg = message || '';
+      const addInc = msg.match(/\b(?:add|increase)\s+(-?\d+(?:\.\d+)?)\s+(?:to)\s+(?:all|every|the)\s+(.+?)(?:\s+(?:in|on)\s+(?:this|the)\s+(?:sheet|table))?$/i);
+      const subDec = msg.match(/\b(?:subtract|decrease)\s+(-?\d+(?:\.\d+)?)\s+(?:from)\s+(?:all|every|the)\s+(.+?)(?:\s+(?:in|on)\s+(?:this|the)\s+(?:sheet|table))?$/i);
+      const mul = msg.match(/\b(?:multiply)\s+(?:all|every|the)\s+(.+?)\s+(?:by)\s+(-?\d+(?:\.\d+)?)$/i);
+      const div = msg.match(/\b(?:divide)\s+(?:all|every|the)\s+(.+?)\s+(?:by)\s+(-?\d+(?:\.\d+)?)$/i);
+
+      let op: 'add'|'subtract'|'multiply'|'divide'|null = null;
+      let amount = 0;
+      let columnQuery = '';
+      if (addInc) { op = 'add'; amount = parseFloat(addInc[1]); columnQuery = addInc[2]; }
+      else if (subDec) { op = 'subtract'; amount = parseFloat(subDec[1]); columnQuery = subDec[2]; }
+      else if (mul) { op = 'multiply'; amount = parseFloat(mul[2]); columnQuery = mul[1]; }
+      else if (div) { op = 'divide'; amount = parseFloat(div[2]); columnQuery = div[1]; }
+
+      if (op && columnQuery && context?.spreadsheetId && Array.isArray(context?.sheetNames) && (context.sheetNames as string[]).length) {
+        if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('bulk_update_column')) {
+          suggestedTools.push({
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: { name: 'bulk_update_column', arguments: JSON.stringify({ column: columnQuery.trim(), operation: op, amount }) }
+          });
+        }
+      } else if (lowerMessage.includes('add') || lowerMessage.includes('insert') || lowerMessage.includes('new')) {
         intent = 'add_data';
         if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('update_sheet')) {
           suggestedTools.push({
@@ -390,7 +413,7 @@ export async function processMessage(
       if (filePreviews.length > 0) dataTables.push(...filePreviews);
     } catch {}
 
-    const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot)\b/i.test(message);
+    const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);
     const charts = wantCharts && hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : [];
 
     const wantStats = (context as any)?.responsePrefs?.stats === true || /\b(stat|stats|statistics|summary|insight)\b/i.test(message);
