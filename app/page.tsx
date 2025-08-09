@@ -26,7 +26,6 @@ import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
 import { useDialog } from './providers/DialogProvider';
 import dynamic from 'next/dynamic';
-import Toolbelt from './components/Toolbelt';
 
 
 
@@ -1988,7 +1987,56 @@ export default function Home() {
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200 overflow-visible">
                   {defaultSpreadsheetId && (
                     <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
-                      <SheetChipSelector />
+                      <SheetChipSelector onGenerateChart={async (sheetName?: string) => {
+                        try {
+                          await ensureSession();
+                          const toolCall = {
+                            id: `tool_${Date.now()}_generate_report_charts_only`,
+                            type: 'function' as const,
+                            function: {
+                              name: 'generate_report',
+                              arguments: JSON.stringify({ responsePrefs: { charts: true, stats: false } })
+                            }
+                          };
+                          const response = await fetch('/api/genkit-tool-execute', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              toolCall,
+                              context: {
+                                spreadsheetId: defaultSpreadsheetId,
+                                sheetNames: sheetName ? [sheetName] : selectedSheetNames,
+                              }
+                            })
+                          });
+                          if (!response.ok) {
+                            const text = await response.text();
+                            throw new Error(text || 'Failed to generate chart');
+                          }
+                          const json = await response.json();
+                          // Push a new assistant message with charts to chat
+                          const chartsSections = (json.report?.sections || [])
+                            .map((s: any) => s.charts || [])
+                            .flat();
+                          const aiMessage = {
+                            id: `msg_${Date.now()}_ai_charts`,
+                            role: 'assistant' as const,
+                            content: '',
+                            timestamp: new Date(),
+                            messageType: 'ai_response' as const,
+                            toolCalls: [],
+                            toolResults: [],
+                            quickReplies: undefined,
+                            sheetsUsed: sheetName ? [sheetName] : (selectedSheetNames || []),
+                            charts: chartsSections,
+                            insights: []
+                          };
+                          setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
+                          setShowCharts(true);
+                        } catch (e) {
+                          setSendResult(`Error generating chart: ${e instanceof Error ? e.message : String(e)}`);
+                        }
+                      }} />
                     </div>
                   )}
                   {uploadedImages.length > 0 && (
@@ -2091,20 +2139,21 @@ export default function Home() {
                     />
 
                     <div className="absolute right-2 bottom-2 flex items-center gap-2">
-                      {/* Report tool: response prefs + single action */}
-                      <Toolbelt
-                        responsePrefs={responsePrefs}
-                        onChangeResponsePrefs={setResponsePrefs}
-                        onGenerateReport={async () => {
-                          // Build a tool call for generate_report and navigate to /report with a token
+                      {/* Charts button (replacing Toolbelt) */}
+                      <button
+                        onClick={async () => {
+                          if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+                            setSendResult('Select a sheet to generate charts.');
+                            return;
+                          }
                           try {
                             await ensureSession();
                             const toolCall = {
-                              id: `tool_${Date.now()}_generate_report`,
+                              id: `tool_${Date.now()}_generate_report_charts_only`,
                               type: 'function' as const,
                               function: {
                                 name: 'generate_report',
-                                arguments: JSON.stringify({ responsePrefs })
+                                arguments: JSON.stringify({ responsePrefs: { charts: true, stats: false } })
                               }
                             };
                             const response = await fetch('/api/genkit-tool-execute', {
@@ -2120,88 +2169,39 @@ export default function Home() {
                             });
                             if (!response.ok) {
                               const text = await response.text();
-                              throw new Error(text || 'Failed to generate report');
+                              throw new Error(text || 'Failed to generate charts');
                             }
                             const json = await response.json();
-                            const report = json.report;
-                            if (!report) throw new Error('No report returned');
-                            // Persist in sessionStorage and open report page
-                            const key = `report_${Date.now()}`;
-                            sessionStorage.setItem(key, JSON.stringify(report));
-                            window.open(`/report?key=${encodeURIComponent(key)}`, '_blank');
-                          } catch (e) {
-                            setSendResult(`Error generating report: ${e instanceof Error ? e.message : String(e)}`);
-                          }
-                        }}
-                        onPreviewUpdates={async () => {
-                          if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
-                            setSendResult('Select a spreadsheet and sheet first.');
-                            return;
-                          }
-                          setChatProcessing(true);
-                          try {
-                            const toolCall = {
-                              id: `tool_${Date.now()}_preview`,
-                              type: 'function' as const,
-                              function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: editingText || transcript || 'Preview updates', preview: true }) }
+                            const chartsSections = (json.report?.sections || [])
+                              .map((s: any) => s.charts || [])
+                              .flat();
+                            const aiMessage = {
+                              id: `msg_${Date.now()}_ai_charts`,
+                              role: 'assistant' as const,
+                              content: '',
+                              timestamp: new Date(),
+                              messageType: 'ai_response' as const,
+                              toolCalls: [],
+                              toolResults: [],
+                              quickReplies: undefined,
+                              sheetsUsed: selectedSheetNames || [],
+                              charts: chartsSections,
+                              insights: []
                             };
-                            const resp = await fetch('/api/genkit-tool-execute', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                toolCall,
-                                context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
-                                images: []
-                              })
-                            });
-                            const data = await resp.json();
-                            if (resp.ok && data?.preview) {
-                              const previewRows = (data.flowPreview || []).slice(0, 100);
-                              setPreviewModal({ open: true, rows: previewRows, summary: data.result });
-                            } else {
-                              setSendResult(data?.error || 'Preview failed');
-                            }
+                            setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
+                            setShowCharts(true);
                           } catch (e) {
-                            setSendResult('Preview failed');
-                          } finally {
-                            setChatProcessing(false);
+                            setSendResult(`Error generating charts: ${e instanceof Error ? e.message : String(e)}`);
                           }
                         }}
-                        onApplyUpdates={async () => {
-                          if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
-                            setSendResult('Select a spreadsheet and sheet first.');
-                            return;
-                          }
-                          setChatProcessing(true);
-                          try {
-                            const toolCall = {
-                              id: `tool_${Date.now()}_apply`,
-                              type: 'function' as const,
-                              function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: editingText || transcript || 'Apply updates', preview: false }) }
-                            };
-                            const resp = await fetch('/api/genkit-tool-execute', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                toolCall,
-                                context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
-                                images: []
-                              })
-                            });
-                            const data = await resp.json();
-                            if (resp.ok && data?.success) {
-                              setSendResult(data.result || 'Applied updates');
-                              setPreviewModal({ open: false, rows: null });
-                            } else {
-                              setSendResult(data?.error || 'Apply failed');
-                            }
-                          } catch (e) {
-                            setSendResult('Apply failed');
-                          } finally {
-                            setChatProcessing(false);
-                          }
-                        }}
-                      />
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 border border-white/20"
+                        title="Generate charts for selected sheet(s)"
+                        aria-label="Generate charts"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h16M7 20V10m5 10V4m5 16v-7" />
+                        </svg>
+                      </button>
                       {listening && (transcript || interimText) && (
                         <button
                           onClick={() => { setTranscript(""); setInterimText(""); }}

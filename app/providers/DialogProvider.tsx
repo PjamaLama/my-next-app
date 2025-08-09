@@ -177,7 +177,13 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useDialog = (): DialogContextValue => {
   const ctx = useContext(DialogContext);
-  if (!ctx) throw new Error("useDialog must be used within a DialogProvider");
+  // Graceful fallback for environments/tests or components rendered outside provider
+  if (!ctx) {
+    return {
+      confirm: async () => false,
+      notify: async () => { /* no-op */ },
+    };
+  }
   return ctx;
 };
 
