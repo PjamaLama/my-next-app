@@ -3,6 +3,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 const TOOL_REGISTRY = [
   { name: 'generate_report', label: 'Generate Report', description: 'Build an in-depth report across selected sheets (tables, charts, insights).' },
   { name: 'update_sheet', label: 'Update Sheet', description: 'Add or modify rows and cells using natural language.' },
+  { name: 'upsert_row', label: 'Upsert Row', description: 'Update a row matching a key (e.g., Date) or insert a new row if not found.' },
   { name: 'update_single_cell', label: 'Update Cell', description: 'Directly set a single cell value (e.g., B12 to 123).' },
   { name: 'get_sheet_data', label: 'Get Sheet Data', description: 'Fetch rows from a specific sheet.' },
   { name: 'convert_unstructured_sheet', label: 'Convert Sheet', description: 'Convert unstructured sheet to structured headers + rows.' },
