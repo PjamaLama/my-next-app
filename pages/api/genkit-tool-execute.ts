@@ -179,6 +179,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'bulk_update_column':
         return await handleBulkUpdateColumn(args, context, res);
 
+      case 'get_current_datetime': {
+        try {
+          const now = new Date();
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const yyyy = now.getFullYear();
+          const mm = pad(now.getMonth() + 1);
+          const dd = pad(now.getDate());
+          const HH = pad(now.getHours());
+          const MM = pad(now.getMinutes());
+          const SS = pad(now.getSeconds());
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+          const result = {
+            iso: now.toISOString(),
+            date: `${yyyy}-${mm}-${dd}`,
+            time: `${HH}:${MM}:${SS}`,
+            datetime: `${yyyy}-${mm}-${dd} ${HH}:${MM}`,
+            timezone: tz
+          };
+          return res.status(200).json({ success: true, result: `Now: ${result.datetime} (${tz})`, details: result });
+        } catch (e) {
+          return res.status(500).json({ success: false, error: 'Failed to get current date/time', details: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
       default:
         return res.status(400).json({
           success: false,

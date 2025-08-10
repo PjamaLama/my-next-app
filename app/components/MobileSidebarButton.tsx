@@ -17,9 +17,10 @@ const MobileSidebarButton: React.FC = () => {
     <button
       type="button"
       onClick={openSidebar}
-      className="sm:hidden fixed bottom-24 right-4 z-60 h-12 w-12 rounded-full bg-sky-600 text-white shadow-lg shadow-black/30 grid place-items-center active:scale-95"
+      className="sm:hidden fixed right-4 z-[60] h-12 w-12 rounded-full bg-sky-600 text-white shadow-lg shadow-black/30 grid place-items-center active:scale-95"
       aria-label="Open chats"
       title="Open chats"
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
     >
       <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h8M8 14h5" />

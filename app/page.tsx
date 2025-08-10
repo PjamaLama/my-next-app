@@ -1895,32 +1895,7 @@ export default function Home() {
                         ))}
                       </div>
                     )}
-                    {/* Charts toggle and render */}
-                    {message.role === 'assistant' && Array.isArray(message.charts) && message.charts.length > 0 && (
-                      <div className="mt-2">
-                        <button
-                          className="text-[11px] px-2 py-1 rounded border border-white/10 bg-white/5 hover:bg-white/10"
-                          onClick={() => setShowCharts(prev => !prev)}
-                        >
-                          {showCharts ? 'Hide charts' : 'Show charts'}
-                        </button>
-                        {showCharts && (
-                          <div className="mt-2 space-y-3">
-                            {message.charts.map((spec, cIdx) => (
-                              <div key={`${message.id}_chart_${cIdx}`} className="rounded-xl border border-white/10 bg-white/5 p-2">
-                                {spec.title && (
-                                  <div className="px-2 pb-1 text-[12px] font-semibold text-white/90">{spec.title}</div>
-                                )}
-                                <div className="bg-black/10 p-2 rounded-lg">
-                                  {/* Interactive explorer uses cached data so user can change group/metric/date and sheet */}
-                                  <ChartExplorer spec={spec as any} sheetsUsed={message.sheetsUsed as any} sheetDataCache={sheetDataCache as any} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Charts toggle and render removed from UI; charts still render when AI includes them explicitly */}
                     {/* Insights toggle and render */}
                     {message.role === 'assistant' && Array.isArray(message.insights) && message.insights.length > 0 && (
                       <div className="mt-2">
@@ -1987,56 +1962,7 @@ export default function Home() {
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200 overflow-visible">
                   {defaultSpreadsheetId && (
                     <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
-                      <SheetChipSelector onGenerateChart={async (sheetName?: string) => {
-                        try {
-                          await ensureSession();
-                          const toolCall = {
-                            id: `tool_${Date.now()}_generate_report_charts_only`,
-                            type: 'function' as const,
-                            function: {
-                              name: 'generate_report',
-                              arguments: JSON.stringify({ responsePrefs: { charts: true, stats: false } })
-                            }
-                          };
-                          const response = await fetch('/api/genkit-tool-execute', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              toolCall,
-                              context: {
-                                spreadsheetId: defaultSpreadsheetId,
-                                sheetNames: sheetName ? [sheetName] : selectedSheetNames,
-                              }
-                            })
-                          });
-                          if (!response.ok) {
-                            const text = await response.text();
-                            throw new Error(text || 'Failed to generate chart');
-                          }
-                          const json = await response.json();
-                          // Push a new assistant message with charts to chat
-                          const chartsSections = (json.report?.sections || [])
-                            .map((s: any) => s.charts || [])
-                            .flat();
-                          const aiMessage = {
-                            id: `msg_${Date.now()}_ai_charts`,
-                            role: 'assistant' as const,
-                            content: '',
-                            timestamp: new Date(),
-                            messageType: 'ai_response' as const,
-                            toolCalls: [],
-                            toolResults: [],
-                            quickReplies: undefined,
-                            sheetsUsed: sheetName ? [sheetName] : (selectedSheetNames || []),
-                            charts: chartsSections,
-                            insights: []
-                          };
-                          setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
-                          setShowCharts(true);
-                        } catch (e) {
-                          setSendResult(`Error generating chart: ${e instanceof Error ? e.message : String(e)}`);
-                        }
-                      }} />
+                      <SheetChipSelector />
                     </div>
                   )}
                   {uploadedImages.length > 0 && (
@@ -2138,70 +2064,7 @@ export default function Home() {
                       }}
                     />
 
-                    <div className="absolute right-2 bottom-2 flex items-center gap-2">
-                      {/* Charts button (replacing Toolbelt) */}
-                      <button
-                        onClick={async () => {
-                          if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
-                            setSendResult('Select a sheet to generate charts.');
-                            return;
-                          }
-                          try {
-                            await ensureSession();
-                            const toolCall = {
-                              id: `tool_${Date.now()}_generate_report_charts_only`,
-                              type: 'function' as const,
-                              function: {
-                                name: 'generate_report',
-                                arguments: JSON.stringify({ responsePrefs: { charts: true, stats: false } })
-                              }
-                            };
-                            const response = await fetch('/api/genkit-tool-execute', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                toolCall,
-                                context: {
-                                  spreadsheetId: defaultSpreadsheetId,
-                                  sheetNames: selectedSheetNames,
-                                }
-                              })
-                            });
-                            if (!response.ok) {
-                              const text = await response.text();
-                              throw new Error(text || 'Failed to generate charts');
-                            }
-                            const json = await response.json();
-                            const chartsSections = (json.report?.sections || [])
-                              .map((s: any) => s.charts || [])
-                              .flat();
-                            const aiMessage = {
-                              id: `msg_${Date.now()}_ai_charts`,
-                              role: 'assistant' as const,
-                              content: '',
-                              timestamp: new Date(),
-                              messageType: 'ai_response' as const,
-                              toolCalls: [],
-                              toolResults: [],
-                              quickReplies: undefined,
-                              sheetsUsed: selectedSheetNames || [],
-                              charts: chartsSections,
-                              insights: []
-                            };
-                            setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
-                            setShowCharts(true);
-                          } catch (e) {
-                            setSendResult(`Error generating charts: ${e instanceof Error ? e.message : String(e)}`);
-                          }
-                        }}
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 border border-white/20"
-                        title="Generate charts for selected sheet(s)"
-                        aria-label="Generate charts"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h16M7 20V10m5 10V4m5 16v-7" />
-                        </svg>
-                      </button>
+                    <div className="absolute right-2 bottom-2 flex items-center gap-3">
                       {listening && (transcript || interimText) && (
                         <button
                           onClick={() => { setTranscript(""); setInterimText(""); }}
@@ -2220,19 +2083,19 @@ export default function Home() {
                         <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={handleImageUpload} className="hidden" id="text-area-upload" />
                         <label
                           htmlFor="text-area-upload"
-                          className={`w-9 h-9 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
+                          className={`w-11 h-11 rounded-full flex items-center justify-center transition duration-200 cursor-pointer ${
                             uploadingImages ? 'bg-sky-500/10 text-sky-300 border border-sky-400/30' : 'text-white/70 hover:bg-white/10 hover:text-white'
                           }`}
                           title="Add images or PDFs"
                           aria-label="Add images or PDFs"
                         >
                           {uploadingImages ? (
-                            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                            <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
                           ) : (
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05L12 20.49a5.5 5.5 0 11-7.78-7.78l10-10a3.5 3.5 0 114.95 4.95l-10 10a1.5 1.5 0 11-2.12-2.12l9-9" />
                             </svg>
                           )}
@@ -2259,19 +2122,19 @@ export default function Home() {
                             setListening(true);
                           }
                         }}
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 ${
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
                           listening ? 'bg-red-600 text-white shadow ring-2 ring-red-400/30 animate-pulse' : 'bg-sky-600 hover:bg-sky-700 text-white shadow'
                         }`}
                         title={listening ? "Stop recording" : "Start voice recording"}
                         aria-label={listening ? "Stop recording" : "Start voice recording"}
                       >
                         {listening ? (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <circle cx="12" cy="12" r="10" />
                             <rect x="9" y="9" width="6" height="6" rx="1" />
                           </svg>
                         ) : (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V7a3 3 0 10-6 0v5a3 3 0 003 3z" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v3m0 0H9m3 0h3" />
@@ -2288,17 +2151,22 @@ export default function Home() {
                             setEditingText('');
                             if (voiceSuffix) { setTranscript(""); setInterimText(""); }
                           }}
-                          className="w-9 h-9 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
+                        className="w-11 h-11 rounded-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow"
                           title="Send"
                           aria-label="Send"
                         >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5l16.5 7.5-16.5 7.5 3.75-7.5-3.75-7.5z" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 12h9.75" />
                           </svg>
                         </button>
                       )}
                     </div>
+                    {/* Increase right padding of textarea to make room for bigger controls */}
+                    <style jsx>{`
+                      textarea { padding-right: 5.5rem; }
+                      @media (min-width: 640px) { textarea { padding-right: 6rem; } }
+                    `}</style>
                   </div>
                 </div>
               </div>

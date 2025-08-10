@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSheet } from '../providers/SheetProvider';
 import { useDialog } from '../providers/DialogProvider';
 
-const SheetChipSelector: React.FC<{ onGenerateChart?: (sheetName?: string) => void }> = ({ onGenerateChart }) => {
+const SheetChipSelector: React.FC = () => {
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides } = useSheet();
   const { notify } = useDialog();
   const [sheetNames, setSheetNames] = useState<string[]>([]);
@@ -154,18 +154,7 @@ const SheetChipSelector: React.FC<{ onGenerateChart?: (sheetName?: string) => vo
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <span className="truncate max-w-[40vw] sm:max-w-none">{name}</span>
-                {/* Inline generate chart icon */}
-                <button
-                  type="button"
-                  title="Generate chart for this sheet"
-                  onClick={(e) => { e.stopPropagation(); onGenerateChart && onGenerateChart(name); }}
-                  className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-white/80"
-                >
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 15h3v4H7zM12 11h3v8h-3zM17 7h3v12h-3z" />
-                  </svg>
-                </button>
+                {/* Chart generation removed as per request */}
                 {isUnstructured && (
                   <span title="Unstructured format" className="ml-1 inline-flex items-center gap-1 text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-300/40">
                     <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5a.75.75 0 00-1.5 0v7a.75.75 0 001.5 0V7zm-1 10a1 1 0 102 0 1 1 0 00-2 0z"/></svg>
@@ -231,19 +220,7 @@ const SheetChipSelector: React.FC<{ onGenerateChart?: (sheetName?: string) => vo
               <span className="hidden sm:inline">Convert</span>
             </button>
           )}
-          {/* Generate chart for selected sheets */}
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border border-sky-700 bg-sky-800 hover:bg-sky-700 whitespace-nowrap text-sky-200"
-            onClick={() => onGenerateChart && onGenerateChart(undefined)}
-            title="Generate chart for selected sheets"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7 15h3v4H7zM12 11h3v8h-3zM17 7h3v12h-3z" />
-            </svg>
-            <span className="hidden sm:inline">Chart</span>
-          </button>
+          {/* Chart generation controls removed as per request */}
         </div>
       </div>
       

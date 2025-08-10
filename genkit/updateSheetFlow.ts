@@ -5,6 +5,7 @@ import { suggestHeaderMapping, inferColumnTypes, matchRowIdentity, parseDateFlex
 import { insertRow, updateCell } from './tools';
 import { executeAIWithRetry, executeAIWithModelFallback } from '../lib/aiUtils';
 import { findLastDataRow } from '../lib/sheetUtils';
+import dayjs from 'dayjs';
 
 // Create multiple AI configurations with different models for fallback
 const aiConfigs = [
@@ -162,6 +163,23 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
     const rowsOnly = sheetData.slice(1);
     const columnTypes = inferColumnTypes(headers, rowsOnly);
     
+    // Current date/time context for the prompt
+    const now = dayjs();
+    const currentDate = now.format('YYYY-MM-DD');
+    const currentTime = now.format('HH:mm');
+    const currentDateTime = now.format('YYYY-MM-DD HH:mm');
+    const isoDateTime = now.toDate().toISOString();
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+    // Try to find an existing row for "today" to encourage updates over inserts
+    let matchingRowForToday = -1;
+    try {
+      const candidateForToday: Record<string, string> = { Date: currentDate };
+      matchingRowForToday = matchRowIdentity(headers, sheetData, candidateForToday);
+    } catch (e) {
+      console.warn('Failed to compute matchingRowForToday:', e);
+    }
+
     // Create multiple AI operations for fallback
     const aiOperations = aiConfigs.map(config => 
       () => config.config.prompt('sheetUpdate')({
@@ -171,7 +189,13 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
         lastDataRow,
         insertionRow,
         headers: headers.join(', '),
-        patternAnalysis
+        patternAnalysis,
+        currentDate,
+        currentTime,
+        currentDateTime,
+        isoDateTime,
+        timezone,
+        matchingRowForToday
       })
     );
     
@@ -234,6 +258,27 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
         if (commit) {
           console.log('Commit flag is true, executing actions...');
           let executedCount = 0;
+
+          // Heuristic: if user wants to update today's entry and a matching row exists,
+          // prefer updates over inserts by rewriting actions to target the matched row.
+          try {
+            const wantsToday = /\b(today|now|tonight|todays|today\'s)\b/i.test(cleanedTranscript);
+            const wantsUpdate = /\b(update|fix|change|edit|correct|adjust)\b/i.test(cleanedTranscript);
+            if (wantsToday && matchingRowForToday > 0) {
+              console.log(`Rewriting actions to update existing row ${matchingRowForToday} for today`);
+              (parsed as any).actions = (parsed as any).actions
+                .filter((a: any) => a.type !== 'insertRow')
+                .map((a: any) => a.type === 'updateCell' ? { ...a, row: matchingRowForToday } : a);
+            } else if (wantsUpdate && matchingRowForToday > 0) {
+              // If explicit update intent and match exists, also force updates
+              console.log(`Rewriting actions to update existing row ${matchingRowForToday} due to update intent`);
+              (parsed as any).actions = (parsed as any).actions
+                .filter((a: any) => a.type !== 'insertRow')
+                .map((a: any) => a.type === 'updateCell' ? { ...a, row: matchingRowForToday } : a);
+            }
+          } catch (rewriteErr) {
+            console.warn('Failed to apply update-over-insert rewrite:', rewriteErr);
+          }
           
           // Separate insertRow and updateCell actions
           const insertRowActions = parsed.actions.filter((action: any) => action.type === 'insertRow');

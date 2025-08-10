@@ -9,8 +9,8 @@ import { FirestoreSyncProvider } from "./providers/FirestoreSyncProvider";
 import { ChatProvider } from "./providers/ChatProvider";
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import SidePanel from './components/SidePanel';
+import NavBar from './NavBar';
 import { DialogProvider } from './providers/DialogProvider';
-import MobileSidebarButton from './components/MobileSidebarButton';
 import FeedbackButton from './components/FeedbackButton';
 import FeedbackNudge from './components/FeedbackNudge';
 
@@ -101,13 +101,18 @@ export default function RootLayout({
                     <DialogProvider>
                       {/* Sidebar renders only when logged in; margin should follow CSS var */}
                       <SidePanel />
-                      <div className="transition-all" style={{ marginLeft: 'var(--sidebar-width, 0px)' }}>
-                        {children}
+                      <div
+                        className="transition-all min-h-screen flex flex-col"
+                        style={{ marginLeft: 'var(--sidebar-width, 0px)' }}
+                      >
+                        <NavBar />
+                        <main className="flex-1 w-full max-w-[110rem] mx-auto px-3 sm:px-6">
+                          {children}
+                        </main>
                         <FeedbackNudge />
                         <FeedbackButton />
                       </div>
-                      {/* Mobile open button */}
-                      <MobileSidebarButton />
+                      {/* Mobile open button removed; use navbar hamburger */}
                     </DialogProvider>
                   </ChatProvider>
                 </FirestoreSyncProvider>
