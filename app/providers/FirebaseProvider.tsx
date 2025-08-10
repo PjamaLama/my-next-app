@@ -96,15 +96,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     })();
   }, []);
 
-  // After sign-in, force navigation off landing/join to the app route as a safety net
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!user) return;
-    const path = window.location.pathname;
-    if (path === '/' || path === '/join') {
-      try { window.location.replace('/report'); } catch {}
-    }
-  }, [user]);
+  // Removed post-auth redirects here to avoid navigation loops. The main page renders the chat when authenticated.
 
   // Ensure a user profile subdocument exists (under allowed subcollection rules)
   useEffect(() => {

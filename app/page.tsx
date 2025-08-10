@@ -1,6 +1,5 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
-import { useRouter } from 'next/navigation';
 import { useChat, ChatMessage as ProviderChatMessage } from './providers/ChatProvider';
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
@@ -119,7 +118,6 @@ type ChatMessage = {
 
 export default function Home() {
   // All hooks must be called before any return!
-  const router = useRouter();
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, joinBeta, authError, betaTester, betaWaitlist, continueWithGoogle } = useFirebase();
@@ -144,15 +142,36 @@ export default function Home() {
   const [stepperComplete, setStepperComplete] = useState(false);
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  // Onboarding state for first-time setup
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+  const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3>(1);
 
-  // If authenticated and still on landing, route to the main app
+  // Initialize onboarding for new users without a connected spreadsheet
   useEffect(() => {
-    if (!user) return;
-    if (typeof window === 'undefined') return;
-    if (window.location.pathname === '/') {
-      router.replace('/report');
+    if (!user) { setShowOnboarding(false); return; }
+    if (defaultSpreadsheetId) { setShowOnboarding(false); return; }
+    try {
+      const done = typeof window !== 'undefined' ? localStorage.getItem('onboardingDone') === '1' : false;
+      setShowOnboarding(!done);
+    } catch { setShowOnboarding(true); }
+  }, [user, defaultSpreadsheetId]);
+
+  // Advance to Step 2 after a spreadsheet is connected
+  useEffect(() => {
+    if (showOnboarding && onboardingStep === 1 && defaultSpreadsheetId) {
+      setOnboardingStep(2);
     }
-  }, [user, router]);
+  }, [showOnboarding, onboardingStep, defaultSpreadsheetId]);
+
+  const completeOnboarding = () => {
+    try { localStorage.setItem('onboardingDone', '1'); } catch {}
+    setShowOnboarding(false);
+  };
+  const dismissOnboarding = () => {
+    setShowOnboarding(false);
+  };
+
+  // Stay on '/', which renders the chat UI when authenticated
 
   // Beta program live count
   const [betaLimit, setBetaLimit] = useState<number>(100);
@@ -1729,8 +1748,8 @@ export default function Home() {
       <PWAInstaller />
       <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-0 overflow-hidden">
         <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-0 sm:pb-0 pt-0">
-          {/* Only show a lightweight nudge if no spreadsheet is selected */}
-          {chatMessages.length === 0 && !defaultSpreadsheetId && (
+          {/* Only show a lightweight nudge if no spreadsheet is selected and onboarding is not showing */}
+          {chatMessages.length === 0 && !defaultSpreadsheetId && !showOnboarding && (
             <div className="mx-3 sm:mx-4 mt-4 mb-2 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
               <p className="text-sm mb-2">No spreadsheet connected yet.</p>
               <p className="text-xs opacity-80 mb-3">Paste a Google Sheets URL or ID to connect, then you can select sheets and start updating.</p>
@@ -1772,6 +1791,103 @@ export default function Home() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          {showOnboarding && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={dismissOnboarding} aria-hidden />
+              <div className="relative w-[92%] max-w-lg rounded-2xl border border-white/10 glass-soft shadow-2xl bg-black/60">
+                <div className="px-5 py-4 border-b border-white/10">
+                  <div className="text-base font-semibold text-white/90">Get set up</div>
+                  <div className="text-xs text-white/70">Step {onboardingStep} of 3</div>
+                </div>
+                <div className="px-5 py-4 text-sm text-white/90">
+                  {onboardingStep === 1 && (
+                    <div className="space-y-3">
+                      <div className="text-white/90 font-medium">Add your first spreadsheet</div>
+                      <div className="text-white/70 text-sm">Paste a Google Sheets URL or ID. We’ll use it for updates.</div>
+                      <div className="flex gap-2">
+                        <input
+                          value={newSheetId}
+                          onChange={(e) => setNewSheetId(e.target.value)}
+                          placeholder="Paste full Google Sheets URL or ID"
+                          className="flex-1 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white placeholder-white/50 focus:outline-none"
+                        />
+                        <button
+                          onClick={handleAddSpreadsheet}
+                          disabled={addingSheet || !newSheetId.trim()}
+                          className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          {addingSheet ? 'Adding…' : 'Add'}
+                        </button>
+                      </div>
+                      <div className="text-xs text-white/60">Need a new sheet? <a className="underline" href={process.env.NEXT_PUBLIC_SHEETS_LINK || 'https://sheets.google.com'} target="_blank">Open Google Sheets</a></div>
+                    </div>
+                  )}
+                  {onboardingStep === 2 && (
+                    <div className="space-y-3">
+                      <div className="text-white/90 font-medium">Share access</div>
+                      <div className="text-white/70 text-sm">Share your spreadsheet with the service account as Editor.</div>
+                      {serviceAccountEmail ? (
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/90 text-[11px] select-all">{serviceAccountEmail}</span>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(serviceAccountEmail)}
+                            className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/90 text-[11px] hover:bg-white/20"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-white/60">Fetching service account…</div>
+                      )}
+                    </div>
+                  )}
+                  {onboardingStep === 3 && (
+                    <div className="space-y-3">
+                      <div className="text-white/90 font-medium">Select sheets</div>
+                      <div className="text-white/70 text-sm">Use the chips above the input bar to pick which sheets you want to update.</div>
+                      <div className="text-white/70 text-sm">Then send a message or speak to start updating.</div>
+                    </div>
+                  )}
+                </div>
+                <div className="px-5 py-3 border-t border-white/10 bg-black/30 rounded-b-2xl flex items-center justify-between">
+                  <button
+                    onClick={dismissOnboarding}
+                    className="px-3 py-1.5 rounded-lg text-xs border border-white/15 text-white/80 hover:bg-white/10"
+                  >
+                    Skip for now
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {onboardingStep > 1 && (
+                      <button
+                        onClick={() => setOnboardingStep((s) => (s === 2 ? 1 : 2))}
+                        className="px-3 py-1.5 rounded-lg text-xs border border-white/15 text-white/80 hover:bg-white/10"
+                      >
+                        Back
+                      </button>
+                    )}
+                    {onboardingStep < 3 && (
+                      <button
+                        onClick={() => setOnboardingStep((s) => (s === 1 ? 2 : 3))}
+                        className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={onboardingStep === 1 && !defaultSpreadsheetId}
+                        title={onboardingStep === 1 && !defaultSpreadsheetId ? 'Add a spreadsheet to continue' : ''}
+                      >
+                        Next
+                      </button>
+                    )}
+                    {onboardingStep === 3 && (
+                      <button
+                        onClick={completeOnboarding}
+                        className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        Finish
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
