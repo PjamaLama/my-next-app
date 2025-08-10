@@ -9,6 +9,7 @@ A Next.js application for AI-powered Google Sheets automation and chat-driven up
 - Voice recording and transcription
 - PWA support for mobile devices
 - Real-time data synchronization
+- Centralized ingestion pipeline with de-duplication and idempotency
 
 ## AI Error Handling Improvements
 
@@ -110,6 +111,13 @@ npm test
 - **Database**: Google Sheets + Firestore
 - **Authentication**: Firebase Auth
 - **Deployment**: Vercel/Netlify ready
+
+### Ingestion Orchestration
+
+- API: `POST /api/ingest-rows` with `{ spreadsheetId, sheetNames: string[], rows: Array<Record<string, unknown>>, dryRun?: boolean }`.
+- Library: `lib/ingestion/orchestrator.ts` exports `ingestRows`.
+- Config: `lib/sheetConfig.ts` allows per-sheet `primaryKeys`, `required`, `types`, `synonyms`, `mergePolicy`.
+- Genkit routes `extract_data_from_files/images` and `apply_structured_rows` call this endpoint to ensure consistent mapping, de-duplication, and updates.
 
 ## Contributing
 

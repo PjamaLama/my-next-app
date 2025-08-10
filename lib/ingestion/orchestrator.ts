@@ -76,6 +76,20 @@ function matchRowByConfig(headers: string[], rows: string[][], candidate: Record
   return bestScore >= 1.4 ? bestRow : -1;
 }
 
+function buildDefaultKeySets(headers: string[]): Array<{ headers: string[]; fuzzy?: boolean }> {
+  const present = (h: string) => headers.includes(h);
+  const sets: Array<{ headers: string[]; fuzzy?: boolean }> = [];
+  const pairs: Array<[string, string]> = [
+    ['Date', 'Reg#'],
+    ['Date', 'Vehicle'],
+    ['Date', 'Fuel Cost in Rands'],
+  ];
+  for (const [a, b] of pairs) {
+    if (present(a) && present(b)) sets.push({ headers: [a, b], fuzzy: /Vehicle/i.test(b) });
+  }
+  return sets;
+}
+
 export async function ingestRows(params: {
   spreadsheetId: string;
   sheetNames: string[];
@@ -156,11 +170,12 @@ export async function ingestRows(params: {
       }
     }
 
+    const defaultKeySets = buildDefaultKeySets(headers);
     const matchIdx = isDuplicate ? (()=>{
       // Try to locate the actual target row by strict key equality for update
       const headerIndex: Record<string, number> = {}; headers.forEach((h,i)=>headerIndex[h]=i);
       const allKeyHeadersPresent = keyHeaders.every(h => headerIndex[h] != null);
-      if (!allKeyHeadersPresent) return matchRowByConfig(headers, values, bestMapped, conf?.primaryKeys);
+      if (!allKeyHeadersPresent) return matchRowByConfig(headers, values, bestMapped, conf?.primaryKeys || defaultKeySets);
       let best = -1;
       for (let r=1; r<values.length; r++){
         const row = values[r] || [];
@@ -177,8 +192,8 @@ export async function ingestRows(params: {
         }
         if (ok) { best = r; break; }
       }
-      return best >= 0 ? best : matchRowByConfig(headers, values, bestMapped, conf?.primaryKeys);
-    })() : matchRowByConfig(headers, values, bestMapped, conf?.primaryKeys);
+      return best >= 0 ? best : matchRowByConfig(headers, values, bestMapped, conf?.primaryKeys || defaultKeySets);
+    })() : matchRowByConfig(headers, values, bestMapped, conf?.primaryKeys || defaultKeySets);
     if (matchIdx >= 0) {
       const targetRow = matchIdx + 1;
       headers.forEach((h, idx) => {
