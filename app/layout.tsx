@@ -1,20 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { FirebaseProvider } from "./providers/FirebaseProvider";
-import { SheetProvider } from "./providers/SheetProvider";
-import { ServiceAccountProvider } from "./providers/ServiceAccountProvider";
-import { SettingsProvider } from "./providers/SettingsProvider"; // Import the new SettingsProvider
-import { FirestoreSyncProvider } from "./providers/FirestoreSyncProvider";
-import { ChatProvider } from "./providers/ChatProvider";
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
-import SidePanel from './components/SidePanel';
-import NavBar from './NavBar';
-import { DialogProvider } from './providers/DialogProvider';
-import FeedbackButton from './components/FeedbackButton';
-import FeedbackNudge from './components/FeedbackNudge';
-import { ClientGatedLayout } from './providers/ClientGatedLayout';
-import PWAInstaller from './components/PWAInstaller';
+import ClientRoot from './ClientRoot';
 
 // Enable Firebase telemetry for Genkit monitoring
 enableFirebaseTelemetry();
@@ -94,32 +82,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         style={{ minHeight: '100vh', background: 'var(--background)' }}
       >
-        <FirebaseProvider>
-          <SheetProvider>
-            <ServiceAccountProvider>
-              <SettingsProvider>
-                <FirestoreSyncProvider>
-                  <ChatProvider>
-                    <DialogProvider>
-                      {/* Sidebar + NavBar are hidden on landing (no user) to avoid empty space */}
-                      <SidePanel />
-                      <div className="transition-all min-h-screen flex flex-col">
-                        {/* Only render NavBar and sidebar margin when a user is present */}
-                        <ClientGatedLayout>
-                          {children}
-                        </ClientGatedLayout>
-                        <FeedbackNudge />
-                        <FeedbackButton />
-                        <PWAInstaller />
-                      </div>
-                      {/* Mobile open button removed; use navbar hamburger */}
-                    </DialogProvider>
-                  </ChatProvider>
-                </FirestoreSyncProvider>
-              </SettingsProvider>
-            </ServiceAccountProvider>
-          </SheetProvider>
-        </FirebaseProvider>
+        <ClientRoot>{children}</ClientRoot>
       </body>
     </html>
   );

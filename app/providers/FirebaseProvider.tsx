@@ -228,27 +228,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       setAuthError(null);
       const provider = new GoogleAuthProvider();
       if (loginHint) provider.setCustomParameters({ login_hint: loginHint });
-
-      const isProbablyPopupUnreliable = (() => {
-        if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-        const ua = navigator.userAgent || '';
-        const isIOS = /iP(ad|hone|od)/i.test(ua);
-        const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-        const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-        const isMobile = /Mobi|Android/i.test(ua);
-        return isIOS || isSafari || isStandalonePWA || isMobile;
-      })();
-
-      if (isProbablyPopupUnreliable) {
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-
-      try {
-        await signInWithPopup(auth, provider);
-      } catch {
-        await signInWithRedirect(auth, provider);
-      }
+      await signInWithRedirect(auth, provider);
     } catch (error: any) {
       console.error('Firebase continue auth error:', error);
       setAuthError(error?.message || 'Authentication failed. Please try again.');

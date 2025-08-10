@@ -24,7 +24,7 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
-import { useDialog } from './providers/DialogProvider';
+// Dialog not used on landing to avoid provider coupling issues
 import dynamic from 'next/dynamic';
 
 
@@ -123,7 +123,6 @@ export default function Home() {
   const { user, loading, signInWithGoogle, joinBeta, authError, betaTester, betaWaitlist, continueWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides, setDefaultSpreadsheetId } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
-  const { notify } = useDialog();
   // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
@@ -142,6 +141,7 @@ export default function Home() {
   const [stepperValues, setStepperValues] = useState<{ [cell: string]: string }>({});
   const [stepperComplete, setStepperComplete] = useState(false);
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
 
   // Beta program live count
   const [betaLimit, setBetaLimit] = useState<number>(100);
@@ -255,13 +255,7 @@ export default function Home() {
     
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; // eslint-disable-line @typescript-eslint/no-explicit-any
     if (!SpeechRecognitionClass) {
-      console.error('Speech recognition not supported in this browser');
-      notify({
-        title: 'Speech recognition not supported',
-        description: 'Please use Chrome, Edge, or Safari for voice input.',
-        tone: 'info',
-        okText: 'Got it'
-      });
+      console.warn('Speech recognition not supported in this browser');
       return;
     }
     
@@ -1567,7 +1561,7 @@ export default function Home() {
         </div>
 
         {/* Hero */}
-        <section className="relative">
+        <section className="relative isolate">
           <div className="mx-auto max-w-6xl px-6 pt-20 pb-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
               {/* Hero copy */}
@@ -1583,8 +1577,8 @@ export default function Home() {
               </div>
               {/* Login card (kept) */}
               <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover relative z-30">
-                  <div className="card-gradient">
-                  <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up relative z-30">
+                  <div className="card-gradient relative z-[20000] pointer-events-auto">
+                  <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up relative z-[20000] pointer-events-auto">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="bg-white/10 rounded-xl p-2">
                       <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="invert" />
@@ -1618,13 +1612,30 @@ export default function Home() {
                       </button>
                     )}
                     <button
+                      id="cta-join-beta"
                       type="button"
-                      onClick={joinBeta}
-                      className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-emerald-600 text-white hover:bg-emerald-500 active:scale-[0.98] pointer-events-auto border border-emerald-300/30"
+                      onClick={() => {
+                        try { console.log('Join Beta clicked'); } catch {}
+                        try { setJoining(true); } catch {}
+                        try { void continueWithGoogle?.(); } catch (e) { try { console.error('Join Beta continue error', e); } catch {} }
+                        // Fallback: ensure navigation to join splash page which also triggers redirect
+                        try { window.location.assign('/join'); } catch {}
+                      }}
+                      disabled={joining}
+                      className={`relative z-[10000] inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 border border-emerald-300/30 pointer-events-auto ${joining ? 'bg-emerald-700/60 text-white/80 cursor-wait' : 'bg-emerald-600 text-white hover:bg-emerald-500 active:scale-[0.98]'}`}
                       aria-label="Join Beta"
                     >
-                      <svg className="w-5 h-5 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
-                      <span>Join Beta</span>
+                      {joining ? (
+                        <>
+                          <span className="inline-block w-4 h-4 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
+                          <span>Redirecting…</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                          <span>Join Beta</span>
+                        </>
+                      )}
                     </button>
                   </div>
                   
