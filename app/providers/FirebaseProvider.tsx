@@ -137,27 +137,46 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     try {
       setAuthError(null);
       const provider = new GoogleAuthProvider();
-      
+
       // Set custom OAuth parameters to improve sign-in experience
-      provider.setCustomParameters({
-        prompt: 'select_account'
-      });
-      
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      // Prefer redirect on environments where popups are commonly blocked or unreliable
+      const isProbablyPopupUnreliable = (() => {
+        if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+        const ua = navigator.userAgent || '';
+        const isIOS = /iP(ad|hone|od)/i.test(ua);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+        const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+        const isMobile = /Mobi|Android/i.test(ua);
+        return isIOS || isSafari || isStandalonePWA || isMobile;
+      })();
+
+      if (isProbablyPopupUnreliable) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       try {
         await signInWithPopup(auth, provider);
-      } catch (popupError) {
-        // Fallback to redirect in environments where popups are blocked or COOP isolates the opener
+      } catch (popupError: any) {
+        // Common popup failures → fallback to redirect
         await signInWithRedirect(auth, provider);
       }
-    } catch (error: unknown) {
-      console.error("Firebase auth error:", error);
-      
-      // Handle unauthorized domain error specifically
-      if (error && typeof error === 'object' && 'code' in error && error.code === 'auth/unauthorized-domain') {
+    } catch (error: any) {
+      console.error('Firebase auth error:', error);
+      const code = error?.code as string | undefined;
+      if (code === 'auth/unauthorized-domain') {
         setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
+      } else if (
+        code === 'auth/operation-not-supported-in-this-environment' ||
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user'
+      ) {
+        // Give users a clearer hint for popup-related issues
+        setAuthError('Popup sign-in was blocked. Please allow popups for this site or try again.');
       } else {
-        const errorMessage = error && typeof error === 'object' && 'message' in error ? error.message : "Authentication failed. Please try again.";
-        setAuthError(errorMessage as string);
+        setAuthError(error?.message || 'Authentication failed. Please try again.');
       }
     }
   };
@@ -167,18 +186,31 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     try {
       setAuthError(null);
       const provider = new GoogleAuthProvider();
-      if (loginHint) {
-        provider.setCustomParameters({ login_hint: loginHint });
+      if (loginHint) provider.setCustomParameters({ login_hint: loginHint });
+
+      const isProbablyPopupUnreliable = (() => {
+        if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+        const ua = navigator.userAgent || '';
+        const isIOS = /iP(ad|hone|od)/i.test(ua);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+        const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+        const isMobile = /Mobi|Android/i.test(ua);
+        return isIOS || isSafari || isStandalonePWA || isMobile;
+      })();
+
+      if (isProbablyPopupUnreliable) {
+        await signInWithRedirect(auth, provider);
+        return;
       }
+
       try {
         await signInWithPopup(auth, provider);
       } catch {
         await signInWithRedirect(auth, provider);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Firebase continue auth error:', error);
-      const message = (error && typeof error === 'object' && 'message' in error) ? (error as any).message : 'Authentication failed. Please try again.';
-      setAuthError(message as string);
+      setAuthError(error?.message || 'Authentication failed. Please try again.');
     }
   };
 

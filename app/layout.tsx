@@ -14,6 +14,7 @@ import { DialogProvider } from './providers/DialogProvider';
 import FeedbackButton from './components/FeedbackButton';
 import FeedbackNudge from './components/FeedbackNudge';
 import { ClientGatedLayout } from './providers/ClientGatedLayout';
+import PWAInstaller from './components/PWAInstaller';
 
 // Enable Firebase telemetry for Genkit monitoring
 enableFirebaseTelemetry();
@@ -109,6 +110,7 @@ export default function RootLayout({
                         </ClientGatedLayout>
                         <FeedbackNudge />
                         <FeedbackButton />
+                        <PWAInstaller />
                       </div>
                       {/* Mobile open button removed; use navbar hamburger */}
                     </DialogProvider>
