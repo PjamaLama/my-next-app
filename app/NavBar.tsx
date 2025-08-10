@@ -35,7 +35,7 @@ const NavBar: React.FC = () => {
   }, []);
 
   return (
-    <nav className="sticky top-0 z-30 bg-gray-900 border-b border-gray-800 shadow-sm overflow-x-hidden">
+    <nav className="sticky top-0 z-30 bg-gray-900 border-b border-gray-800 shadow-sm overflow-x-hidden sm:hidden">
       <div className="container mx-auto flex justify-between items-center px-3 sm:px-4 py-2 max-w-full">
         {/* Logo and Title */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
