@@ -14,7 +14,7 @@ import { insertRow } from '../../genkit/tools';
 export const config = {
   api: {
     // Increase to match chat endpoint and allow base64 payload overhead
-    bodyParser: { sizeLimit: '64mb' },
+    bodyParser: { sizeLimit: '128mb' },
   },
 };
 

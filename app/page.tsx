@@ -1109,17 +1109,10 @@ export default function Home() {
           userIntent: userIntent,
           context: {
             spreadsheetId: defaultSpreadsheetId,
-            sheetNames: selectedSheetNames, // allow multiple focused sheets
-            // hydrate chat with prefetched sheet info so server can avoid refetches
-            sheetData: Object.fromEntries(
-              (selectedSheetNames && selectedSheetNames.length > 0
-                ? selectedSheetNames
-                : Object.keys(sheetDataCache)
-              ).map(name => [name, sheetDataCache[name]]).filter(([, v]) => Array.isArray(v))
-            ),
+            sheetNames: selectedSheetNames,
             allSheetNames,
             responsePrefs,
-            // include recent file analysis so the server can use it across turns
+            // Keep request small: server will hydrate sheets as needed
             fileAnalysis: isFileAnalysisFresh(recentFileAnalysis) ? recentFileAnalysis : undefined,
           },
           conversationHistory: chatMessages.slice(-5),
@@ -1131,6 +1124,22 @@ export default function Home() {
         let errorMessage = 'Chat processing failed';
         let errorDetails = '';
         
+        // Handle 413 up front even if response body isn't JSON
+        if (response.status === 413) {
+          const friendly = [
+            '📁 File Size Limit Exceeded',
+            'Your upload exceeded the current limits (8MB per file, 20MB total).',
+            'Tips:',
+            '• Compress images before uploading',
+            '• Split large PDFs into smaller sections',
+            '• Use lower resolution images',
+            '• Upload fewer files at once'
+          ].join('\n');
+          setSendResult(friendly);
+          setChatProcessing(false);
+          return;
+        }
+
         try {
           const errorData = await response.json();
           

@@ -4,7 +4,7 @@ import { processMessage as processChatMessage } from '@/lib/chat/processMessage'
 export const config = {
   api: {
     // Increase to accommodate base64-encoded uploads (adds ~33% overhead)
-    bodyParser: { sizeLimit: '64mb' },
+    bodyParser: { sizeLimit: '128mb' },
   },
 };
 
