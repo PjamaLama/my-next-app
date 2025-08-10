@@ -1153,78 +1153,26 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         .flat();
       let updateResult: any;
       if (Array.isArray(extractedRows) && extractedRows.length > 0) {
-        // Build actions directly from rows mapped to headers using synonym-aware mapping across multiple selected sheets
-        const sheets = await getGoogleSheetsClient();
         const selectedNames = Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames : [targetSheetName!];
-        const sheetMeta: Record<string, { headers: string[]; values: string[][]; nextRow: number }> = {};
-        const colLetters = (idx: number) => { let n = idx + 1, s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
-        for (const sn of selectedNames) {
-          const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sn}!A1:T1000` });
-          const values = (meta.data.values || []) as string[][];
-          const headers = (values[0] || []) as string[];
-          const cached = getCachedHeaders(spreadsheetId, sn);
-          const lastDataRow = Math.max(1, (cached?.lastDataRow || (values.length > 1 ? values.length - 1 : 1)));
-          sheetMeta[sn] = { headers, values, nextRow: lastDataRow + 1 };
+        // Dry-run first for preview and safety
+        const dryRunResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames: selectedNames, rows: extractedRows, dryRun: true })
+        });
+        if (!dryRunResp.ok) {
+          const txt = await dryRunResp.text();
+          throw new Error(`ingest-rows dryRun failed: ${dryRunResp.status} - ${txt}`);
         }
-
-        const actions: any[] = [];
-        for (const rowObjRaw of extractedRows as Array<Record<string, unknown>>) {
-          const incomingKeys = Object.keys(rowObjRaw);
-          // Choose best sheet by mapping confidence
-          let bestSheet = selectedNames[0];
-          let bestScore = -1;
-          let bestMapped: Record<string, string> = {};
-          for (const sn of selectedNames) {
-            const { headers } = sheetMeta[sn];
-            const suggestions = suggestHeaderMapping(incomingKeys, headers);
-            const keyToHeader: Record<string, string> = {};
-            let score = 0;
-            suggestions.forEach(s => { if (s.targetHeader && s.confidence >= 0.5) { keyToHeader[s.incomingKey] = s.targetHeader; score += s.confidence; } });
-            const mapped: Record<string, string> = {};
-            headers.forEach(h => {
-              let val: unknown = undefined;
-              if (Object.prototype.hasOwnProperty.call(rowObjRaw, h)) val = (rowObjRaw as any)[h];
-              else {
-                const fromKey = Object.entries(keyToHeader).find(([, t]) => t === h)?.[0];
-                if (fromKey) val = (rowObjRaw as any)[fromKey];
-              }
-              if (val != null && String(val).trim() !== '') mapped[h] = String(val);
-            });
-            const mappedCount = Object.keys(mapped).length;
-            const finalScore = mappedCount >= 2 ? score + mappedCount * 0.1 : score * 0.5;
-            if (finalScore > bestScore) { bestScore = finalScore; bestSheet = sn; bestMapped = mapped; }
-          }
-
-          // Insert/update on bestSheet
-          const { headers, values } = sheetMeta[bestSheet];
-          const existingRows = values;
-          const matchIdx = matchRowIdentity(headers, existingRows, {
-            Date: bestMapped['Date'] || (bestMapped as any)['date'] || '',
-            'Reg#': bestMapped['Reg#'] || (bestMapped as any)['Registration'] || (bestMapped as any)['Vehicle Reg'] || '',
-            Vehicle: bestMapped['Vehicle'] || '',
-            'Fuel Cost in Rands': bestMapped['Fuel Cost in Rands'] || (bestMapped as any)['Amount'] || (bestMapped as any)['Total'] || ''
-          });
-
-          if (matchIdx >= 0) {
-            const targetRow = matchIdx + 1;
-            headers.forEach((h, idx) => {
-              const val = bestMapped[h];
-              if (val != null && String(val).trim() !== '') {
-                actions.push({ type: 'updateCell', sheet: bestSheet, row: targetRow, column: colLetters(idx), value: String(val) });
-              }
-            });
-          } else {
-            const rowIndex = sheetMeta[bestSheet].nextRow++;
-            actions.push({ type: 'insertRow', sheet: bestSheet, row: rowIndex });
-            headers.forEach((h, idx) => {
-              const val = bestMapped[h];
-              if (val != null && String(val).trim() !== '') {
-                actions.push({ type: 'updateCell', sheet: bestSheet, row: rowIndex, column: colLetters(idx), value: String(val) });
-              }
-            });
-          }
+        const preview = await dryRunResp.json();
+        // Commit
+        const commitResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames: selectedNames, rows: extractedRows, dryRun: false })
+        });
+        if (!commitResp.ok) {
+          const txt = await commitResp.text();
+          throw new Error(`ingest-rows commit failed: ${commitResp.status} - ${txt}`);
         }
-        updateResult = { actions };
+        const committed = await commitResp.json();
+        updateResult = { ingestPreview: preview, ingestCommitted: committed };
       } else {
         // Fallback: combine as transcript and let updateSheetFlow infer actions
         const extractedData = analysisResults
@@ -1240,11 +1188,17 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       }
 
       console.log('UpdateSheetFlow (no-commit) result:', updateResult);
+      // If routed via ingestion, return that result and avoid manual A1 operations
+      if (updateResult && (updateResult as any).ingestCommitted) {
+        return res.status(200).json({
+          success: true,
+          result: `Successfully processed extracted rows via centralized ingestion for ${targetSheetName}.`,
+          details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults, updateResult }
+        });
+      }
 
-      // Build actions: first perform required insertRow operations, then batch cell updates
+      // Fallback path (when we built actions via updateSheetFlow): keep existing behavior
       const actions = Array.isArray(updateResult?.actions) ? updateResult.actions : [];
-
-      // Execute insertRow actions first using one batchUpdate (ordered ascending)
       const insertRowActions = actions.filter((a: any) => a.type === 'insertRow');
       if (insertRowActions.length > 0) {
         try {
@@ -1254,123 +1208,21 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
           if (target?.properties?.sheetId == null) throw new Error(`Sheet ${targetSheetName} not found`);
           const internalSheetId = target.properties.sheetId;
           const sorted = [...insertRowActions].sort((a, b) => a.row - b.row);
-          const requests = sorted.map(a => ({
-            insertRange: {
-              range: {
-                sheetId: internalSheetId,
-                startRowIndex: a.row - 1,
-                endRowIndex: a.row,
-                startColumnIndex: 0,
-                endColumnIndex: 0
-              },
-              shiftDimension: 'ROWS'
-            }
-          }));
+          const requests = sorted.map(a => ({ insertRange: { range: { sheetId: internalSheetId, startRowIndex: a.row - 1, endRowIndex: a.row, startColumnIndex: 0, endColumnIndex: 0 }, shiftDimension: 'ROWS' } }));
           await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
         } catch (e) {
           console.warn('Batch insert rows failed:', e);
         }
       }
 
-      // Then prepare updateCell actions for batch update
-      let updates = actions
-        .filter((a: any) => a.type === 'updateCell')
-        .map((a: any) => ({
-          sheetName: targetSheetName,
-          cell: `${a.column}${a.row}`,
-          value: a.value ?? ''
-        }));
-
-      // Optional dedupe: if we have headers cached, try to filter out duplicates based on key fields
-      if (targetSheetName) {
-        const cached = getCachedHeaders(spreadsheetId, targetSheetName);
-        if (cached && cached.headers && cached.headers.length > 0) {
-        // Choose key columns you care about for dedupe
-        const keyHeaders = ['Date', 'Reg#', 'TOWN VISITED', 'Fuel in liters', 'Fuel Cost in Rands']
-          .filter(h => cached.headers.includes(h));
-        if (keyHeaders.length > 0) {
-          try {
-            const sheets = await getGoogleSheetsClient();
-            const range = `${targetSheetName.includes(' ')? `'${targetSheetName.replace(/'/g, "''")}'`: targetSheetName}!A1:T${Math.max(2, cached.lastDataRow + 20)}`;
-            const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-            const existing = (resp.data.values || []) as string[][];
-            const existingKeys = buildExistingKeySet(existing, cached.headers, keyHeaders);
-
-            // Convert cell updates into row-shaped objects to dedupe; keep only unique new rows
-            const headerIndex: Record<string, number> = {};
-            cached.headers.forEach((h, i) => (headerIndex[h] = i));
-            const rowMap = new Map<number, Record<string, string>>();
-            for (const up of updates) {
-              const match = up.cell.match(/([A-Z]+)(\d+)/);
-              if (!match) continue;
-              const row = parseInt(match[2], 10);
-              const col = match[1];
-              // Map column letters to header index by A=0 etc.
-              const colIdx = col.split('').reduce((acc: number, ch: string) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
-              const header = cached.headers[colIdx];
-              if (!header) continue;
-              const obj = rowMap.get(row) || {};
-              obj[header] = String(up.value ?? '');
-              rowMap.set(row, obj);
-            }
-            const candidates = Array.from(rowMap.values());
-            const unique = filterNewRows(candidates, existingKeys, keyHeaders);
-
-            // Rebuild updates only for unique rows
-            const uniqueRowSet = new Set<number>();
-            for (const [row, obj] of rowMap.entries()) {
-              const keyObj: any = {};
-              keyHeaders.forEach(h => (keyObj[h] = obj[h] ?? ''));
-              const k = keyHeaders.map(h => String(keyObj[h]).trim().toLowerCase()).join('|');
-              const exists = existingKeys.has(require('crypto').createHash('sha1').update(k).digest('hex'));
-              if (!exists) uniqueRowSet.add(row);
-            }
-            updates = updates.filter((up: { sheetName: string; cell: string; value: string }) => {
-              const m = up.cell.match(/([A-Z]+)(\d+)/);
-              if (!m) return true;
-              const row = parseInt(m[2], 10);
-              return uniqueRowSet.has(row);
-            });
-          } catch (e) {
-            console.warn('Dedupe phase skipped due to error:', e);
-          }
-        }
-        }
-      }
-
-      // If there are no updates, return early
+      let updates = actions.filter((a: any) => a.type === 'updateCell').map((a: any) => ({ sheetName: targetSheetName, cell: `${a.column}${a.row}`, value: a.value ?? '' }));
       if (updates.length === 0) {
-        return res.status(200).json({
-          success: true,
-          result: `Extracted data from ${successfulAnalyses.length} file(s), but no actionable updates were generated for ${targetSheetName}.`,
-          details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults }
-        });
+        return res.status(200).json({ success: true, result: `Extracted data from ${successfulAnalyses.length} file(s), but no actionable updates were generated for ${targetSheetName}.`, details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults } });
       }
-
-      // Execute batch update via internal API
-      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetId, updates })
-      });
-
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        throw new Error(`Batch update failed: ${updateResponse.status} - ${errorText}`);
-      }
-
+      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, updates }) });
+      if (!updateResponse.ok) { const errorText = await updateResponse.text(); throw new Error(`Batch update failed: ${updateResponse.status} - ${errorText}`); }
       const updateSummary = await updateResponse.json();
-
-      return res.status(200).json({
-        success: true,
-        result: `Successfully extracted data from ${successfulAnalyses.length} out of ${images.length} file(s) and applied ${updates.length} updates to ${targetSheetName}.`,
-        details: {
-          filesProcessed: images.length,
-          successfulAnalyses: successfulAnalyses.length,
-          analysisResults,
-          updateSummary
-        }
-      });
+      return res.status(200).json({ success: true, result: `Successfully extracted data from ${successfulAnalyses.length} out of ${images.length} file(s) and applied ${updates.length} updates to ${targetSheetName}.`, details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults, updateSummary } });
       
     } catch (updateError) {
       console.error('Error updating sheet with extracted data:', updateError);
@@ -1537,11 +1389,11 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
   }
 }
 
-// Apply structured rows (from chat preview) into selected sheet(s) using synonym-aware mapping and dedupe
+// Apply structured rows through the centralized ingestion endpoint
 async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { spreadsheetId, sheetNames } = context;
-    const { rows } = (args || {}) as { rows?: Array<Record<string, unknown>> };
+    const { rows, dryRun } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean };
     if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
       return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
     }
@@ -1549,130 +1401,15 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
       return res.status(400).json({ success: false, error: 'No structured rows provided' });
     }
 
-    const sheets = await getGoogleSheetsClient();
-    const selectedNames = sheetNames;
-    const sheetMeta: Record<string, { headers: string[]; values: string[][]; nextRow: number }> = {};
-    const colLetters = (idx: number) => { let n = idx + 1, s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
-
-    // Hydrate metadata
-    for (const sn of selectedNames) {
-      const meta = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sn}!A1:T1000` });
-      const values = (meta.data.values || []) as string[][];
-      const headers = (values[0] || []) as string[];
-      const cached = getCachedHeaders(spreadsheetId, sn);
-      const lastDataRow = Math.max(1, (cached?.lastDataRow || (values.length > 1 ? values.length - 1 : 1)));
-      sheetMeta[sn] = { headers, values, nextRow: lastDataRow + 1 };
-    }
-
-    // Build actions with best-fit sheet selection per row using synonyms
-    const actions: any[] = [];
-    for (const rowObjRaw of rows) {
-      const incomingKeys = Object.keys(rowObjRaw);
-      let bestSheet = selectedNames[0];
-      let bestScore = -1;
-      let bestMapped: Record<string, string> = {};
-
-      for (const sn of selectedNames) {
-        const { headers } = sheetMeta[sn];
-        const suggestions = suggestHeaderMapping(incomingKeys, headers);
-        const keyToHeader: Record<string, string> = {};
-        let score = 0;
-        suggestions.forEach(s => { if (s.targetHeader && s.confidence >= 0.5) { keyToHeader[s.incomingKey] = s.targetHeader; score += s.confidence; } });
-        const mapped: Record<string, string> = {};
-        headers.forEach(h => {
-          let val: unknown = undefined;
-          if (Object.prototype.hasOwnProperty.call(rowObjRaw, h)) val = (rowObjRaw as any)[h];
-          else {
-            const fromKey = Object.entries(keyToHeader).find(([, t]) => t === h)?.[0];
-            if (fromKey) val = (rowObjRaw as any)[fromKey];
-          }
-          if (val != null && String(val).trim() !== '') mapped[h] = String(val);
-        });
-        // Heuristic: if the target sheet has an 'Item' column and our incoming has 'DETAILS OF VISIT', map it strongly
-        const hasItem = headers.some(h => h.toLowerCase() === 'item');
-        if (hasItem && !mapped['Item']) {
-          const prefer = (rowObjRaw as any)['DETAILS OF VISIT'] || (rowObjRaw as any)['Details of Visit'] || (rowObjRaw as any)['details of visit'];
-          if (prefer) mapped['Item'] = String(prefer);
-        }
-        // Normalize amount preference: prefer Total Incl if present into amount-like columns
-        if (!mapped['Fuel Cost in Rands'] && (rowObjRaw as any)['Total Incl']) {
-          mapped['Fuel Cost in Rands'] = String((rowObjRaw as any)['Total Incl']);
-        }
-        const mappedCount = Object.keys(mapped).length;
-        const finalScore = mappedCount >= 2 ? score + mappedCount * 0.1 : score * 0.5;
-        if (finalScore > bestScore) { bestScore = finalScore; bestSheet = sn; bestMapped = mapped; }
-      }
-
-      // Insert/update on bestSheet with identity matching
-      const { headers, values } = sheetMeta[bestSheet];
-      const existingRows = values;
-      const matchIdx = matchRowIdentity(headers, existingRows, {
-        Date: bestMapped['Date'] || (bestMapped as any)['date'] || '',
-        'Reg#': bestMapped['Reg#'] || (bestMapped as any)['Registration'] || (bestMapped as any)['Vehicle Reg'] || '',
-        Vehicle: bestMapped['Vehicle'] || '',
-        'Fuel Cost in Rands': bestMapped['Fuel Cost in Rands'] || (bestMapped as any)['Amount'] || (bestMapped as any)['Total'] || ''
-      });
-
-      if (matchIdx >= 0) {
-        const targetRow = matchIdx + 1;
-        headers.forEach((h, idx) => {
-          const val = bestMapped[h];
-          if (val != null && String(val).trim() !== '') {
-            actions.push({ type: 'updateCell', sheet: bestSheet, row: targetRow, column: colLetters(idx), value: String(val) });
-          }
-        });
-      } else {
-        const rowIndex = sheetMeta[bestSheet].nextRow++;
-        actions.push({ type: 'insertRow', sheet: bestSheet, row: rowIndex });
-        headers.forEach((h, idx) => {
-          const val = bestMapped[h];
-          if (val != null && String(val).trim() !== '') {
-            actions.push({ type: 'updateCell', sheet: bestSheet, row: rowIndex, column: colLetters(idx), value: String(val) });
-          }
-        });
-      }
-    }
-
-    // Execute inserts first (batch per sheet)
-    const insertsBySheet: Record<string, Array<{ row: number }>> = {};
-    actions.filter(a => a.type === 'insertRow').forEach(a => {
-      (insertsBySheet[a.sheet] ||= []).push({ row: a.row });
+    const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows, dryRun: !!dryRun })
     });
-    try {
-      const sheetMetadata = await sheets.spreadsheets.get({ spreadsheetId, includeGridData: false });
-      for (const [sn, rowsToInsert] of Object.entries(insertsBySheet)) {
-        const target = sheetMetadata.data.sheets?.find(s => s.properties?.title === sn);
-        if (target?.properties?.sheetId == null) continue;
-        const internalSheetId = target.properties.sheetId;
-        const sorted = [...rowsToInsert].sort((a, b) => a.row - b.row);
-        const requests = sorted.map(a => ({
-          insertRange: {
-            range: { sheetId: internalSheetId, startRowIndex: a.row - 1, endRowIndex: a.row, startColumnIndex: 0, endColumnIndex: 0 },
-            shiftDimension: 'ROWS'
-          }
-        }));
-        if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
-      }
-    } catch (e) {
-      console.warn('Batch insert rows failed:', e);
+    if (!ingestResp.ok) {
+      const txt = await ingestResp.text();
+      throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
     }
-
-    // Execute cell updates via internal batch API
-    const updates = actions
-      .filter(a => a.type === 'updateCell')
-      .map(a => ({ sheetName: a.sheet, cell: `${a.column}${a.row}`, value: a.value ?? '' }));
-
-    if (updates.length > 0) {
-      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, updates })
-      });
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        throw new Error(`Batch update failed: ${updateResponse.status} - ${errorText}`);
-      }
-    }
-
-    return res.status(200).json({ success: true, result: `Applied ${updates.length} updates across ${Object.keys(insertsBySheet).length} sheet(s).` });
+    const result = await ingestResp.json();
+    return res.status(200).json({ success: true, result: `Ingestion ${result.success ? 'succeeded' : 'failed'}. Inserts=${result.inserts}, Updates=${result.updates}.`, details: result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);
     return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });
