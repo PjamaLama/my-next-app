@@ -13,9 +13,8 @@ import { insertRow } from '../../genkit/tools';
 // Configure API to handle larger file uploads
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: '25mb', // Allow up to 25MB for file uploads
-    },
+    // Increase to match chat endpoint and allow base64 payload overhead
+    bodyParser: { sizeLimit: '64mb' },
   },
 };
 
