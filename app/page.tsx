@@ -120,7 +120,7 @@ export default function Home() {
   // All hooks must be called before any return!
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const { user, loading, signInWithGoogle, authError, betaTester, betaWaitlist, continueWithGoogle } = useFirebase();
+  const { user, loading, signInWithGoogle, joinBeta, authError, betaTester, betaWaitlist, continueWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides, setDefaultSpreadsheetId } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
   const { notify } = useDialog();
@@ -1619,7 +1619,7 @@ export default function Home() {
                     )}
                     <button
                       type="button"
-                      onClick={signInWithGoogle}
+                      onClick={joinBeta}
                       className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-emerald-600 text-white hover:bg-emerald-500 active:scale-[0.98] pointer-events-auto border border-emerald-300/30"
                       aria-label="Join Beta"
                     >

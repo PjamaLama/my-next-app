@@ -27,6 +27,7 @@ interface IFirebaseContext {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  joinBeta: () => Promise<void>;
   signOutUser: () => Promise<void>;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
@@ -41,6 +42,7 @@ const FirebaseContext = createContext<IFirebaseContext>({
   user: null,
   loading: true,
   signInWithGoogle: async () => {},
+  joinBeta: async () => {},
   signOutUser: async () => {},
   geminiApiKey: "",
   setGeminiApiKey: () => {},
@@ -90,19 +92,40 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
           photoURL: user.photoURL || null,
           lastLoginAt: serverTimestamp(),
         };
+        // Read global beta capacity to decide tester/waitlist flags deterministically
+        const metaRef = doc(db, 'meta', 'beta');
+        const metaSnap = await getDoc(metaRef);
+        const capacity = (metaSnap.exists() && typeof metaSnap.data()?.capacity === 'number') ? (metaSnap.data() as any).capacity as number : 100;
+        const testerCount = (metaSnap.exists() && typeof metaSnap.data()?.testerCount === 'number') ? (metaSnap.data() as any).testerCount as number : 0;
+        const spotsLeft = Math.max(0, capacity - testerCount);
+
         if (!snap.exists()) {
           baseData.createdAt = serverTimestamp();
-          baseData.betaTester = true; // default allow access without global count
-          baseData.betaWaitlist = false;
-          setBetaTester(true);
-          setBetaWaitlist(false);
-        } else {
-          const data = snap.data() as any;
-          if (typeof data.betaTester !== 'boolean' && typeof data.betaWaitlist !== 'boolean') {
+          if (spotsLeft > 0) {
             baseData.betaTester = true;
             baseData.betaWaitlist = false;
             setBetaTester(true);
             setBetaWaitlist(false);
+          } else {
+            baseData.betaTester = false;
+            baseData.betaWaitlist = true;
+            setBetaTester(false);
+            setBetaWaitlist(true);
+          }
+        } else {
+          const data = snap.data() as any;
+          if (typeof data.betaTester !== 'boolean' && typeof data.betaWaitlist !== 'boolean') {
+            if (spotsLeft > 0) {
+              baseData.betaTester = true;
+              baseData.betaWaitlist = false;
+              setBetaTester(true);
+              setBetaWaitlist(false);
+            } else {
+              baseData.betaTester = false;
+              baseData.betaWaitlist = true;
+              setBetaTester(false);
+              setBetaWaitlist(true);
+            }
           } else {
             setBetaTester(!!data.betaTester);
             setBetaWaitlist(!!data.betaWaitlist);
@@ -181,6 +204,24 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
+  // Redirect-only sign-in for the Join Beta CTA to maximize reliability
+  const joinBeta = async () => {
+    try {
+      setAuthError(null);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithRedirect(auth, provider);
+    } catch (error: any) {
+      console.error('Firebase join beta error:', error);
+      const code = error?.code as string | undefined;
+      if (code === 'auth/unauthorized-domain') {
+        setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
+      } else {
+        setAuthError(error?.message || 'Authentication failed. Please try again.');
+      }
+    }
+  };
+
   // Continue with Google using a login hint when we know the last email
   const continueWithGoogle = async (loginHint?: string) => {
     try {
@@ -243,6 +284,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       user, 
       loading, 
       signInWithGoogle, 
+      joinBeta,
       signOutUser,
       geminiApiKey,
       setGeminiApiKey,
