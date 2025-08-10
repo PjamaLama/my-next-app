@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from 'next/navigation';
 import { useChat, ChatMessage as ProviderChatMessage } from './providers/ChatProvider';
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
@@ -118,6 +119,7 @@ type ChatMessage = {
 
 export default function Home() {
   // All hooks must be called before any return!
+  const router = useRouter();
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const { user, loading, signInWithGoogle, joinBeta, authError, betaTester, betaWaitlist, continueWithGoogle } = useFirebase();
@@ -142,6 +144,15 @@ export default function Home() {
   const [stepperComplete, setStepperComplete] = useState(false);
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+
+  // If authenticated and still on landing, route to the main app
+  useEffect(() => {
+    if (!user) return;
+    if (typeof window === 'undefined') return;
+    if (window.location.pathname === '/') {
+      router.replace('/report');
+    }
+  }, [user, router]);
 
   // Beta program live count
   const [betaLimit, setBetaLimit] = useState<number>(100);
@@ -1593,7 +1604,7 @@ export default function Home() {
                   </p>
                   {/* Primary CTAs */}
                   <div className="mt-4 flex flex-col items-center sm:flex-row sm:items-center justify-center gap-4 flex-wrap">
-                    {lastGoogle?.email && (
+                    {!user && lastGoogle?.email && (
                       <button
                         type="button"
                         onClick={() => continueWithGoogle?.(lastGoogle.email)}
@@ -1617,23 +1628,28 @@ export default function Home() {
                       onClick={() => {
                         try { console.log('Join Beta clicked'); } catch {}
                         try { setJoining(true); } catch {}
-                        try { void continueWithGoogle?.(); } catch (e) { try { console.error('Join Beta continue error', e); } catch {} }
-                        // Fallback: ensure navigation to join splash page which also triggers redirect
-                        try { window.location.assign('/join'); } catch {}
+                        try {
+                          if (user) {
+                            window.location.assign('/report');
+                          } else {
+                            // Start Google sign-in (redirect) directly
+                            void continueWithGoogle?.();
+                          }
+                        } catch (e) { try { console.error('Join Beta error', e); } catch {} }
                       }}
                       disabled={joining}
                       className={`relative z-[10000] inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 border border-emerald-300/30 pointer-events-auto ${joining ? 'bg-emerald-700/60 text-white/80 cursor-wait' : 'bg-emerald-600 text-white hover:bg-emerald-500 active:scale-[0.98]'}`}
-                      aria-label="Join Beta"
+                      aria-label={user ? 'Open App' : 'Join Beta'}
                     >
                       {joining ? (
                         <>
                           <span className="inline-block w-4 h-4 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-                          <span>Redirecting…</span>
+                          <span>{user ? 'Opening…' : 'Redirecting…'}</span>
                         </>
                       ) : (
                         <>
                           <svg className="w-5 h-5 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
-                          <span>Join Beta</span>
+                          <span>{user ? 'Open App' : 'Join Beta'}</span>
                         </>
                       )}
                     </button>

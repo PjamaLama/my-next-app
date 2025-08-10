@@ -24,7 +24,12 @@ type DialogContextValue = {
   notify: (options: NotifyOptions) => Promise<void>;
 };
 
-const DialogContext = createContext<DialogContextValue | undefined>(undefined);
+const defaultDialogValue: DialogContextValue = {
+  confirm: async () => false,
+  notify: async () => { /* no-op */ },
+};
+
+const DialogContext = createContext<DialogContextValue>(defaultDialogValue);
 
 type ActiveDialog =
   | { type: "confirm"; options: ConfirmOptions; resolve: (value: boolean) => void }
@@ -175,16 +180,6 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 };
 
-export const useDialog = (): DialogContextValue => {
-  const ctx = useContext(DialogContext);
-  // Graceful fallback for environments/tests or components rendered outside provider
-  if (!ctx) {
-    return {
-      confirm: async () => false,
-      notify: async () => { /* no-op */ },
-    };
-  }
-  return ctx;
-};
+export const useDialog = (): DialogContextValue => useContext(DialogContext);
 
 

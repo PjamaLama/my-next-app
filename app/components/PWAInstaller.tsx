@@ -21,9 +21,12 @@ export default function PWAInstaller() {
   useEffect(() => {
     // Register service worker
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      // Bust SW cache with a versioned URL to ensure the latest logic (v3)
+      navigator.serviceWorker.register('/sw.js?v=3', { scope: '/' })
         .then((registration) => {
           console.log('SW registered: ', registration);
+          // Try to update on load to pick latest
+          try { registration.update(); } catch {}
         })
         .catch((registrationError) => {
           console.log('SW registration failed: ', registrationError);

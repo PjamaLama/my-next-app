@@ -1,4 +1,4 @@
-const CACHE_NAME = 'report-ai-v1';
+const CACHE_NAME = 'report-ai-v3';
 const urlsToCache = [
   '/',
   '/manifest.json',
@@ -10,56 +10,69 @@ const urlsToCache = [
 // Install event
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.addAll(urlsToCache);
+      } catch (e) {
+        // ignore
+      }
+      // Activate updated SW immediately
+      await self.skipWaiting();
+    })()
   );
 });
 
 // Fetch event
 self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  // Never handle non-GET; fixes "put on Cache: Request method 'POST' is unsupported"
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  const sameOrigin = url.origin === self.location.origin;
+  const cacheableDestinations = new Set(['image', 'style', 'font']);
+  const shouldCache = sameOrigin && cacheableDestinations.has(req.destination);
+
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        if (response) {
-          return response;
+    (async () => {
+      // Try cache first for allowed assets
+      if (shouldCache) {
+        const cached = await caches.match(req);
+        if (cached) return cached;
+      }
+
+      const networkResponse = await fetch(req).catch(() => undefined);
+      if (!networkResponse) return new Response('', { status: 504 });
+
+      if (
+        shouldCache &&
+        networkResponse.status === 200 &&
+        (networkResponse.type === 'basic' || networkResponse.type === 'opaqueredirect')
+      ) {
+        const responseToCache = networkResponse.clone();
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(req, responseToCache);
+        } catch (_) {
+          // ignore cache failures
         }
-        return fetch(event.request).then((response) => {
-          // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-
-          return response;
-        });
-      })
+      }
+      return networkResponse;
+    })()
   );
 });
 
 // Activate event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
+    (async () => {
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames.map((cacheName) => cacheName !== CACHE_NAME ? caches.delete(cacheName) : Promise.resolve())
       );
-    })
+      await self.clients.claim();
+    })()
   );
 });
 

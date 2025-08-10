@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, setPersistence, browserLocalPersistence, GoogleAuthProvider, signOut, User } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, setPersistence, browserLocalPersistence, GoogleAuthProvider, signOut, User, getRedirectResult } from "firebase/auth";
 import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -78,6 +78,33 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     });
     return () => unsubscribe();
   }, []);
+
+  // Finalize pending redirect sign-in once after load
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          // Clear pending flag on successful redirect completion
+          try { sessionStorage.setItem('authRedirectPending', '0'); } catch {}
+          setUser(result.user);
+        }
+      } catch (e) {
+        // Clear pending flag on failure as well to avoid loops
+        try { sessionStorage.setItem('authRedirectPending', '0'); } catch {}
+      }
+    })();
+  }, []);
+
+  // After sign-in, force navigation off landing/join to the app route as a safety net
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!user) return;
+    const path = window.location.pathname;
+    if (path === '/' || path === '/join') {
+      try { window.location.replace('/report'); } catch {}
+    }
+  }, [user]);
 
   // Ensure a user profile subdocument exists (under allowed subcollection rules)
   useEffect(() => {
@@ -204,13 +231,40 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
-  // Redirect-only sign-in for the Join Beta CTA to maximize reliability
+  // Common Google sign-in with popup first (desktop), redirect fallback (mobile/PWA/Safari)
+  const startGoogleSignIn = async (provider: GoogleAuthProvider) => {
+    // Detect environments where popups are unreliable
+    const isPopupUnreliable = (() => {
+      if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+      const ua = navigator.userAgent || '';
+      const isIOS = /iP(ad|hone|od)/i.test(ua);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+      const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+      const isMobile = /Mobi|Android/i.test(ua);
+      return isIOS || isSafari || isStandalonePWA || isMobile;
+    })();
+
+    if (!isPopupUnreliable) {
+      try {
+        await signInWithPopup(auth, provider);
+        try { sessionStorage.setItem('authRedirectPending', '0'); } catch {}
+        return;
+      } catch (popupError: any) {
+        // Fallback to redirect for any popup failures
+      }
+    }
+    try { sessionStorage.setItem('authRedirectPending', '1'); } catch {}
+    await signInWithRedirect(auth, provider);
+  };
+
+  // Join Beta → Google sign-in
   const joinBeta = async () => {
     try {
       setAuthError(null);
+      if (auth.currentUser) return;
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithRedirect(auth, provider);
+      await startGoogleSignIn(provider);
     } catch (error: any) {
       console.error('Firebase join beta error:', error);
       const code = error?.code as string | undefined;
@@ -227,8 +281,9 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     try {
       setAuthError(null);
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       if (loginHint) provider.setCustomParameters({ login_hint: loginHint });
-      await signInWithRedirect(auth, provider);
+      await startGoogleSignIn(provider);
     } catch (error: any) {
       console.error('Firebase continue auth error:', error);
       setAuthError(error?.message || 'Authentication failed. Please try again.');
