@@ -1543,7 +1543,7 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div className="relative min-h-screen overflow-y-auto bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
+      <div className="relative min-h-screen overflow-y-auto no-scrollbar bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
         <div className="absolute inset-0 pointer-events-none" aria-hidden>
           <div className="aurora">
             <span className="a1" />
@@ -1582,9 +1582,9 @@ export default function Home() {
                 {/* Compact feature hints removed to reduce redundancy */}
               </div>
               {/* Login card (kept) */}
-              <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover relative z-10">
+              <div className="w-full max-w-md mx-auto md:mx-0 tilt-hover relative z-30">
                   <div className="card-gradient">
-                  <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up relative z-10">
+                  <div className="glass gloss rounded-2xl p-6 border border-white/10 shadow-2xl animate-fade-in-up relative z-30">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="bg-white/10 rounded-xl p-2">
                       <Image src="/logo.png" alt="Sheety AI" width={28} height={28} className="invert" />
@@ -1601,8 +1601,9 @@ export default function Home() {
                   <div className="mt-4 flex flex-col items-center sm:flex-row sm:items-center justify-center gap-4 flex-wrap">
                     {lastGoogle?.email && (
                       <button
+                        type="button"
                         onClick={() => continueWithGoogle?.(lastGoogle.email)}
-                        className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98]"
+                        className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] pointer-events-auto"
                       >
                         {lastGoogle?.photo ? (
                           <img
@@ -1617,10 +1618,13 @@ export default function Home() {
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={signInWithGoogle}
-                      className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98]"
+                      className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-emerald-600 text-white hover:bg-emerald-500 active:scale-[0.98] pointer-events-auto border border-emerald-300/30"
+                      aria-label="Join Beta"
                     >
-                      Join Beta
+                      <svg className="w-5 h-5 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                      <span>Join Beta</span>
                     </button>
                   </div>
                   

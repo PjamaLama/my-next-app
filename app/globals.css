@@ -507,3 +507,8 @@ html.theme-dark {
 }
 .animate-count-up { animation: count-bump-up 450ms ease; }
 .animate-count-down { animation: count-bump-down 450ms ease; }
+
+/* Hide scrollbars while preserving scroll (landing page)
+   Works for WebKit, Firefox, and legacy Edge/IE */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

@@ -13,6 +13,7 @@ import NavBar from './NavBar';
 import { DialogProvider } from './providers/DialogProvider';
 import FeedbackButton from './components/FeedbackButton';
 import FeedbackNudge from './components/FeedbackNudge';
+import { ClientGatedLayout } from './providers/ClientGatedLayout';
 
 // Enable Firebase telemetry for Genkit monitoring
 enableFirebaseTelemetry();
@@ -99,16 +100,13 @@ export default function RootLayout({
                 <FirestoreSyncProvider>
                   <ChatProvider>
                     <DialogProvider>
-                      {/* Sidebar renders only when logged in; margin should follow CSS var */}
+                      {/* Sidebar + NavBar are hidden on landing (no user) to avoid empty space */}
                       <SidePanel />
-                      <div
-                        className="transition-all min-h-screen flex flex-col"
-                        style={{ marginLeft: 'var(--sidebar-width, 0px)' }}
-                      >
-                        <NavBar />
-                        <main className="flex-1 w-full max-w-[110rem] mx-auto px-3 sm:px-6">
+                      <div className="transition-all min-h-screen flex flex-col">
+                        {/* Only render NavBar and sidebar margin when a user is present */}
+                        <ClientGatedLayout>
                           {children}
-                        </main>
+                        </ClientGatedLayout>
                         <FeedbackNudge />
                         <FeedbackButton />
                       </div>
@@ -124,3 +122,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+// ClientGatedLayout is a client component that conditionally renders NavBar and sidebar margin
