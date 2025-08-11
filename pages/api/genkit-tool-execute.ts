@@ -9,6 +9,7 @@ import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
 import { buildExistingKeySet, filterNewRows } from '@/lib/dedupe';
 import { insertRow } from '../../genkit/tools';
+import { executeSheetQuery, type QuerySpec } from '@/lib/sheets/queryEngine';
 
 // Configure API to handle larger file uploads
 export const config = {
@@ -121,6 +122,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`API: Gemini API key provided:`, !!apiKey);
 
     switch (name) {
+      case 'sheet_query':
+        return await handleSheetQuery(args, context, res);
       case 'update_sheet':
         return await handleUpdateSheet(args, context, res);
       case 'convert_unstructured_sheet':
@@ -246,6 +249,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       error: errorMessage,
       details: errorDetails
     });
+  }
+}
+
+async function handleSheetQuery(args: ToolArgs, context: Context, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetNames } = context;
+    const spec = (args || {}) as unknown as QuerySpec & { sheetName?: string };
+    if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
+      return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
+    }
+    const target = spec.sheet || spec.sheetName || sheetNames[0];
+    const sheets = await getGoogleSheetsClient();
+    const escaped = target.includes(' ')? `'${target.replace(/'/g, "''")}'`: target;
+    const range = `${escaped}!A1:T2000`;
+    const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+    const table = (resp.data.values || []) as string[][];
+    const { headers, rows, summary } = executeSheetQuery(spec, table);
+    return res.status(200).json({ success: true, result: summary || `Returned ${rows.length} row(s).`, table: { headers, rows } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to execute sheet query', details: e instanceof Error ? e.message : String(e) });
   }
 }
 async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {

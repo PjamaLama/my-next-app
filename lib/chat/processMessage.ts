@@ -304,6 +304,20 @@ export async function processMessage(
         if (Object.keys(map).length > 0) {
           ctxAny.sheetData = map;
           ctxAny._sheetHydratedAt = now;
+          // Build a lightweight column catalog for the first hydrated sheet
+          try {
+            const first = Object.keys(map)[0];
+            const table = map[first] || [];
+            const headers = Array.isArray(table) && table.length > 0 ? table[0] : [];
+            const lower = headers.map((h: string) => String(h || '').toLowerCase());
+            const types = headers.map((_, i) => {
+              // numeric if >50% parseNumber
+              const col = (table.slice(1) as string[][]).map(r => r?.[i]);
+              const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
+              return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
+            });
+            ctxAny.columnCatalog = { sheet: first, headers, lower, types };
+          } catch {}
         }
       }
     } catch {}
