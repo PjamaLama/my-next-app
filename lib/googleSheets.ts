@@ -56,3 +56,25 @@ export const getGoogleSheetsClient = async (retries = 3) => {
   
   throw new Error('This should never be reached');
 }; 
+
+export const normalizeSpreadsheetId = (input: string): string => {
+  const trimmed = (input || '').trim();
+  if (!trimmed) return '';
+  // Try parsing as URL to extract /spreadsheets/d/{ID}
+  try {
+    const url = new URL(trimmed);
+    const segments = url.pathname.split('/').filter(Boolean);
+    const dIndex = segments.findIndex(seg => seg === 'd');
+    if (dIndex !== -1 && segments[dIndex + 1]) {
+      return segments[dIndex + 1];
+    }
+  } catch {
+    // Not a full URL, continue
+  }
+  // Fallback: split on "/d/" if present
+  if (trimmed.includes('/d/')) {
+    const afterD = trimmed.split('/d/')[1] || '';
+    return (afterD.split('/')[0] || '').trim();
+  }
+  return trimmed;
+};

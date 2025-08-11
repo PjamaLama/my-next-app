@@ -26,11 +26,14 @@ const SheetChipSelector: React.FC = () => {
       setIsLoading(true);
       setError(null);
       fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`)
-        .then(res => {
+        .then(async res => {
+          const json = await res.json().catch(() => ({}));
           if (!res.ok) {
-            throw new Error('Failed to fetch sheet names');
+            const serverMsg = json?.error || json?.details || 'Failed to fetch sheet names';
+            const hint = json?.hint ? ` — ${json.hint}` : '';
+            throw new Error(`${serverMsg}${hint}`);
           }
-          return res.json();
+          return json;
         })
         .then(data => {
           const names: string[] = Array.isArray(data.sheetNames) ? data.sheetNames : [];
@@ -61,8 +64,11 @@ const SheetChipSelector: React.FC = () => {
     if (!defaultSpreadsheetId) return;
     try {
       const res = await fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`);
-      if (!res.ok) throw new Error('Failed to fetch sheet names');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const serverMsg = data?.error || data?.details || 'Failed to fetch sheet names';
+        throw new Error(serverMsg);
+      }
       setSheetNames(data.sheetNames);
     } catch (e) {
       console.warn('Failed to refresh sheet names:', e);
@@ -165,7 +171,7 @@ const SheetChipSelector: React.FC = () => {
             </div>
           );
         })}
-        {/* Right-aligned compact controls */
+        {/* Right-aligned compact controls */}
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {selectedSheetNames.length > 0 && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-300 border border-emerald-800/50 whitespace-nowrap">

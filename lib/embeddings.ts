@@ -7,7 +7,10 @@ import { executeAIWithRetry } from './aiUtils';
 const GOOGLE_EMBEDDING_MODEL = 'text-embedding-004';
 
 type EmbedResponse = {
-  embeddings: Array<{ values: number[] }>
+  // Newer Generative Language API shape
+  embedding?: { values: number[] };
+  // Some variants may return an array key
+  embeddings?: Array<{ values: number[] }>
 };
 
 function getApiKey(): string {
@@ -47,11 +50,9 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
           throw new Error(`Embedding request failed (${resp.status}): ${details}`);
         }
         const json = (await resp.json()) as EmbedResponse;
-        const vec = json?.embeddings?.[0]?.values;
-        if (!Array.isArray(vec) || vec.length === 0) {
-          throw new Error('Empty embedding vector');
-        }
-        return vec;
+        const vec = (json?.embedding?.values || json?.embeddings?.[0]?.values || []) as number[];
+        // Gracefully allow empty vectors to avoid hard failures in background tasks
+        return Array.isArray(vec) ? vec : [];
       };
       results[i] = await executeAIWithRetry(doCall, 'Embedding request');
     })

@@ -1,4 +1,4 @@
-import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import { getGoogleSheetsClient, normalizeSpreadsheetId } from '@/lib/googleSheets';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -13,16 +13,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const sheets = await getGoogleSheetsClient();
-    const response = await sheets.spreadsheets.get({
-      spreadsheetId: spreadsheetIdParam,
-    });
+    const spreadsheetId = normalizeSpreadsheetId(spreadsheetIdParam);
+    const response = await sheets.spreadsheets.get({ spreadsheetId });
 
-    const sheetNames = response.data.sheets?.map(sheet => sheet.properties?.title || '').filter(Boolean) || [];
+    const sheetNames = response.data.sheets?.map(s => s.properties?.title || '').filter(Boolean) || [];
     const spreadsheetTitle = response.data.properties?.title || null;
 
-    res.status(200).json({ sheetNames, spreadsheetTitle });
-  } catch (error) {
+    return res.status(200).json({ sheetNames, spreadsheetTitle });
+  } catch (error: unknown) {
+    const gaxiosMessage = (error as any)?.response?.data?.error?.message as string | undefined;
+    const message = gaxiosMessage || (error as any)?.message || 'Failed to fetch sheet names';
     console.error('Error fetching sheet names:', error);
-    res.status(500).json({ error: 'Failed to fetch sheet names' });
+
+    if (typeof message === 'string') {
+      if (message.includes('This operation is not supported for this document')) {
+        return res.status(400).json({
+          error: 'The provided ID is not a Google Sheet.',
+          details: message,
+          hint:
+            'Open the Google Sheet in your browser and copy the ID from the URL between /d/ and /edit. If this is an Excel file, open it in Google Sheets and save as a Google Sheet first.'
+        });
+      }
+
+      if (message.includes('Requested entity was not found')) {
+        return res.status(404).json({
+          error: 'Spreadsheet not found or the service account does not have access.',
+          details: message,
+          hint:
+            'Ensure the spreadsheet exists and is shared with the service account email shown in /api/get-service-account.'
+        });
+      }
+    }
+
+    return res.status(500).json({ error: message });
   }
 }

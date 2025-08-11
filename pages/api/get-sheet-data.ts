@@ -1,4 +1,4 @@
-import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import { getGoogleSheetsClient, normalizeSpreadsheetId } from '@/lib/googleSheets';
 import { findLastDataRow } from '@/lib/sheetUtils';
 import { getCachedHeaders, setCachedHeaders } from '@/lib/sheetHeaderCache';
 import { analyzeSheetStructure, detectHeaderRow, detectTableBlocks } from '@/lib/sheetStructure';
@@ -21,7 +21,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   try {
     const sheets = await getGoogleSheetsClient();
-    const { spreadsheetId, sheetName, range } = req.body;
+    const { spreadsheetId: rawSpreadsheetId, sheetName, range } = req.body;
+    const spreadsheetId = normalizeSpreadsheetId(rawSpreadsheetId);
 
     // Serve from cache if fresh
     const key = cacheKey(spreadsheetId, sheetName, range);
@@ -222,6 +223,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (metadataError: unknown) {
         const metaErrorMsg = metadataError instanceof Error ? metadataError.message : String(metadataError);
         log.warn('Could not get sheet metadata', metaErrorMsg);
+        if (metaErrorMsg.includes('This operation is not supported for this document')) {
+          return res.status(400).json({
+            error: 'The provided ID is not a Google Sheet.',
+            details: metaErrorMsg,
+            hint: 'Open the Google Sheet in your browser and copy the ID from the URL between /d/ and /edit. If this is an Excel file, open it in Google Sheets and save as a Google Sheet first.',
+            requestId
+          });
+        }
         
         // Check if this is a sheet not found error
         if (metaErrorMsg.includes('Unable to parse range') || metaErrorMsg.includes('not found')) {
