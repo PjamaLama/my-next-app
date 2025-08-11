@@ -95,13 +95,31 @@ export function answerQuestionFromSheets(
 
   const wantsMargin = /\b(margin|profit|markup)\b/i.test(message);
   const productKeyIdx = (() => {
-    const idx = bestHeaderIndex(headers, 'product')
-      ;
+    const idx = bestHeaderIndex(headers, 'product');
     if (idx >= 0) return idx;
     const hints = ['title', 'name', 'handle'];
     for (const h of hints) { const i = bestHeaderIndex(headers, h); if (i >= 0) return i; }
     return -1;
   })();
+
+  const vals = filtered.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
+  if (vals.length === 0 && !wantsCount) return null;
+
+  const aggTitle = (t: string) => `${t}(${headers[metricIdx]})${range?.label ? ` · ${range.label}` : ''}`;
+  const baseTitle = `${sheetName}${range?.label ? ` · ${range.label}` : ''}`;
+
+  const filterSpec = parseSimpleFilter(message);
+  let rowsForAgg = filtered;
+  if (filterSpec) {
+    const idx = resolveColumnIndex(headers, filterSpec.columnQuery);
+    if (idx >= 0) {
+      rowsForAgg = filtered.filter((r) => {
+        const v = String(r[idx] ?? '').toLowerCase();
+        const q = filterSpec.value.toLowerCase();
+        return filterSpec.op === 'contains' ? v.includes(q) : v === q;
+      });
+    }
+  }
 
   if (wantsMargin) {
     const priceIdxCandidates = ['price', 'sell price', 'list price', 'amount', 'total'];
@@ -137,25 +155,6 @@ export function answerQuestionFromSheets(
         const answer = `Best average margin: ${best?.key ?? 'n/a'} (${best ? Number(best.avg.toFixed(2)) : 0}).`;
         return { answer, tables };
       }
-    }
-  }
-
-  const vals = filtered.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
-  if (vals.length === 0 && !wantsCount) return null;
-
-  const aggTitle = (t: string) => `${t}(${headers[metricIdx]})${range?.label ? ` · ${range.label}` : ''}`;
-  const baseTitle = `${sheetName}${range?.label ? ` · ${range.label}` : ''}`;
-
-  const filterSpec = parseSimpleFilter(message);
-  let rowsForAgg = filtered;
-  if (filterSpec) {
-    const idx = resolveColumnIndex(headers, filterSpec.columnQuery);
-    if (idx >= 0) {
-      rowsForAgg = filtered.filter((r) => {
-        const v = String(r[idx] ?? '').toLowerCase();
-        const q = filterSpec.value.toLowerCase();
-        return filterSpec.op === 'contains' ? v.includes(q) : v === q;
-      });
     }
   }
 
