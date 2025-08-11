@@ -2,10 +2,12 @@ import { genkit } from 'genkit';
 import { gemini15Flash, gemini15Pro, googleAI } from '@genkit-ai/googleai';
 import { buildSheetUpdatePrompt } from '../lib/prompts/sheetUpdate';
 import { getGoogleSheetsClient } from '../lib/googleSheets';
-import { suggestHeaderMapping, inferColumnTypes, matchRowIdentity, parseDateFlexible, parseDecimal } from '../lib/mapping';
+import { suggestHeaderMapping, suggestHeaderMappingWithEmbeddings, inferColumnTypes, matchRowIdentity, parseDateFlexible, parseDecimal, findRowSemantically } from '../lib/mapping';
 import { insertRow, updateCell } from './tools';
 import { executeAIWithRetry, executeAIWithModelFallback } from '../lib/aiUtils';
 import { findLastDataRow } from '../lib/sheetUtils';
+import { detectHeaderRow } from '../lib/sheetStructure';
+import { ensureHeaderVectors, getHeaderVectors } from '../lib/sheetVectorIndex';
 import dayjs from 'dayjs';
 
 // Create multiple AI configurations with different models for fallback
@@ -158,9 +160,11 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
     console.log('Pattern analysis:', patternAnalysis);
     
     // Convert to CSV for the prompt
+    const headerDetect = detectHeaderRow(sheetData);
+    const headerRowIdx = Math.max(0, headerDetect.rowIndex);
     const csvData = sheetData.map(row => row.join(',')).join('\n');
-    const headers = sheetData[0];
-    const rowsOnly = sheetData.slice(1);
+    const headers = sheetData[headerRowIdx] || [];
+    const rowsOnly = sheetData.slice(headerRowIdx + 1);
     const columnTypes = inferColumnTypes(headers, rowsOnly);
     
     // Current date/time context for the prompt
@@ -171,6 +175,14 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
     const isoDateTime = now.toDate().toISOString();
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
+    // Ensure header vectors for embeddings-backed mapping
+    try {
+      await ensureHeaderVectors(sheetId, sheetName, headers, rowsOnly);
+    } catch (e) {
+      console.warn('Failed to ensure header vectors:', e);
+    }
+    const vectors = getHeaderVectors(sheetId, sheetName) || [];
+
     // Try to find an existing row for "today" to encourage updates over inserts
     let matchingRowForToday = -1;
     try {
@@ -180,13 +192,59 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
       console.warn('Failed to compute matchingRowForToday:', e);
     }
 
+    // If no matching row found by heuristic and transcript looks like an update, use semantic finder
+    try {
+      const wantsUpdate = /\b(update|fix|change|edit|correct|adjust)\b/i.test(cleanedTranscript);
+      if (wantsUpdate && matchingRowForToday < 0) {
+        const semantic = await findRowSemantically(headers, rowsOnly, cleanedTranscript);
+        if (semantic.rowIndex >= 0 && semantic.score >= 0.55) {
+          // Convert rowsOnly index to absolute sheet row index (1-based)
+          matchingRowForToday = (headerRowIdx + 1) + semantic.rowIndex + 1; // headerRowIdx is 0-based, +1 for 1-based rows
+          console.log(`Semantic row match selected at row ${matchingRowForToday} (score=${semantic.score.toFixed(2)})`);
+        }
+      }
+    } catch (e) {
+      console.warn('Semantic row finder failed:', e);
+    }
+
     // Build inline prompt text to avoid missing prompt artifacts in production
+    // Build mapping hints for common canonical fields
+    const canonicalKeys = ['date', 'amount', 'total', 'price', 'vehicle', 'registration', 'reg#', 'driver', 'category', 'description'];
+    let headerMappingHints: Record<string, string> = {};
+    try {
+      const suggestions = await suggestHeaderMappingWithEmbeddings(canonicalKeys, headers, vectors);
+      // Convert header index to column letters
+      const headerToLetter = (idx: number) => {
+        let n = idx + 1, s = '';
+        while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+        return s;
+      };
+      suggestions.forEach(sug => {
+        const idx = headers.findIndex(h => h === sug.targetHeader);
+        if (idx >= 0 && sug.confidence >= 0.4) headerMappingHints[sug.incomingKey] = headerToLetter(idx);
+      });
+    } catch (e) {
+      console.warn('Header mapping with embeddings failed, falling back to lexical only');
+      const suggestions = suggestHeaderMapping(canonicalKeys, headers);
+      const headerToLetter = (idx: number) => {
+        let n = idx + 1, s = '';
+        while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+        return s;
+      };
+      suggestions.forEach(sug => {
+        const idx = headers.findIndex(h => h === sug.targetHeader);
+        if (idx >= 0 && sug.confidence >= 0.5) headerMappingHints[sug.incomingKey] = headerToLetter(idx);
+      });
+    }
+
     const promptText = buildSheetUpdatePrompt({
       transcript: cleanedTranscript,
       sheetName,
       lastDataRow,
       insertionRow,
       headers: headers.join(', '),
+      detectedHeaderRowIndex: headerRowIdx,
+      headerMappingHints: JSON.stringify(headerMappingHints),
       patternAnalysis,
       currentDate,
       currentTime,
@@ -283,6 +341,22 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
             console.warn('Failed to apply update-over-insert rewrite:', rewriteErr);
           }
           
+          // Confidence gating: require sufficient preview confidence before committing
+          try {
+            const preview = (parsed as UpdateSheetOutput).preview || [];
+            if (preview.length > 0) {
+              const avg = preview.reduce((s, p) => s + (p.confidence ?? 0), 0) / preview.length;
+              const min = preview.reduce((m, p) => Math.min(m, p.confidence ?? 1), 1);
+              const COMMIT_CONFIDENCE_THRESHOLD = 0.6;
+              if (avg < COMMIT_CONFIDENCE_THRESHOLD || min < 0.4) {
+                console.warn(`Aborting commit due to low confidence. avg=${avg.toFixed(2)} min=${min.toFixed(2)}`);
+                return { ...(parsed as UpdateSheetOutput), success: false, executedActions: 0 } as UpdateSheetOutput;
+              }
+            }
+          } catch (e) {
+            console.warn('Confidence gating failed to compute:', e);
+          }
+
           // Separate insertRow and updateCell actions
           const insertRowActions = parsed.actions.filter((action: any) => action.type === 'insertRow');
           const updateCellActions = parsed.actions.filter((action: any) => action.type === 'updateCell');
@@ -338,6 +412,14 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
 
               await ensureSheetCapacity(sheetId, sheetName, maxRow, maxCol);
 
+              // Snapshot pre-values for verification/rollback
+              const ranges = updates.map(u => `${escapeSheetName(sheetName)}!${u.cell}:${u.cell}`);
+              const pre = await sheets.spreadsheets.values.batchGet({
+                spreadsheetId: sheetId,
+                ranges
+              });
+              const preValues = (pre.data.valueRanges || []).map(vr => (vr.values && vr.values[0] ? String(vr.values[0][0] ?? '') : ''));
+
               // Prepare batch update payload
               const batchData = updates.map((u: UpdateItem) => ({
                 range: `${escapeSheetName(sheetName)}!${u.cell}`,
@@ -352,7 +434,41 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
                 }
               });
 
-              executedCount += updateCellActions.length;
+              // Read-after-write verification
+              const post = await sheets.spreadsheets.values.batchGet({ spreadsheetId: sheetId, ranges });
+              const postValues = (post.data.valueRanges || []).map(vr => (vr.values && vr.values[0] ? String(vr.values[0][0] ?? '') : ''));
+              const failures: number[] = [];
+              postValues.forEach((v, i) => {
+                const intended = String(updates[i]?.value ?? '');
+                if (String(v) !== intended) failures.push(i);
+              });
+
+              if (failures.length > 0) {
+                console.warn(`Verification failed for ${failures.length}/${updates.length} update(s). Attempting targeted rollback for failed cells.`);
+                // Rollback failed cells to pre-values
+                const rollbackData = failures.map(i => ({
+                  range: `${escapeSheetName(sheetName)}!${updates[i].cell}`,
+                  values: [[preValues[i] ?? '']]
+                }));
+                try {
+                  await sheets.spreadsheets.values.batchUpdate({
+                    spreadsheetId: sheetId,
+                    requestBody: { data: rollbackData, valueInputOption: 'USER_ENTERED' }
+                  });
+                } catch (rbErr) {
+                  console.error('Rollback failed:', rbErr);
+                }
+                // Report failure without counting those updates
+                executedCount += (updates.length - failures.length);
+                return {
+                  ...(parsed as UpdateSheetOutput),
+                  success: false,
+                  executedActions: executedCount,
+                  preview: (parsed as UpdateSheetOutput).preview
+                } as UpdateSheetOutput;
+              }
+
+              executedCount += updates.length;
             } catch (err) {
               console.error('Batch update for updateCell actions failed:', err);
               writeErrors.push(err instanceof Error ? err.message : String(err));

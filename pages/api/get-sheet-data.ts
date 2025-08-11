@@ -1,7 +1,8 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { findLastDataRow } from '@/lib/sheetUtils';
 import { getCachedHeaders, setCachedHeaders } from '@/lib/sheetHeaderCache';
-import { analyzeSheetStructure } from '@/lib/sheetStructure';
+import { analyzeSheetStructure, detectHeaderRow, detectTableBlocks } from '@/lib/sheetStructure';
+import { ensureHeaderVectors } from '@/lib/sheetVectorIndex';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createLogger } from '@/lib/logger';
 
@@ -152,15 +153,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // Cache headers and last data row (TTL handled by cache consumer)
             const values = response.data.values || [];
             if (values.length > 0) {
-              const headers = values[0] as string[];
+              // Detect header row and normalize headers accordingly
+              const headerDetect = detectHeaderRow(values as string[][]);
+              const headerRowIdx = Math.max(0, headerDetect.rowIndex);
+              const headers = (values[headerRowIdx] as string[]) || [];
               const lastRow = findLastDataRow(values as string[][]);
               setCachedHeaders(spreadsheetId, sheetName, headers, lastRow);
+
+              // Build header vectors in background (best-effort)
+              try {
+                const dataRows = (values as string[][]).slice(headerRowIdx + 1);
+                await ensureHeaderVectors(spreadsheetId, sheetName, headers, dataRows);
+              } catch {}
             }
 
             // Always include structure analysis so UI can flag unstructured sheets
             let structure = null;
             try {
-              structure = analyzeSheetStructure(values as string[][]);
+              const table = values as string[][];
+              const meta = analyzeSheetStructure(table);
+              // inject detected header row info and blocks for clients
+              const headerDetect = detectHeaderRow(table);
+              const blocks = detectTableBlocks(table).map(b => ({
+                headerRowIndex: b.headerRowIndex,
+                startRowIndex: b.startRowIndex,
+                endRowIndex: b.endRowIndex,
+                score: b.score
+              }));
+              structure = { ...meta, detectedHeaderRowIndex: headerDetect.rowIndex, blocks };
             } catch (e) {
               log.warn('Structure analysis failed', e);
             }

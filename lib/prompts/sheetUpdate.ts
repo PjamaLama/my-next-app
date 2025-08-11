@@ -4,6 +4,9 @@ export type SheetUpdatePromptVars = {
   lastDataRow: number;
   insertionRow: number;
   headers: string; // comma separated
+  detectedHeaderRowIndex?: number;
+  headerMappingHints?: string; // JSON string canonical->columnLetter
+  identityHints?: string; // JSON string describing row identity columns
   patternAnalysis: string;
   currentDate: string;
   currentTime: string;
@@ -37,6 +40,9 @@ export function buildSheetUpdatePrompt(vars: SheetUpdatePromptVars): string {
     'SHEET ANALYSIS:',
     `- Last data row: ${lastDataRow}`,
     `- Insertion row: ${insertionRow} (insert after last data row, before any formulas)`,
+    typeof detectedHeaderRowIndex === 'number' ? `- Detected header row index (0-based): ${detectedHeaderRowIndex}` : '',
+    headerMappingHints ? `- Column mapping hints (canonical -> column letter): ${headerMappingHints}` : '',
+    identityHints ? `- Row identity hints: ${identityHints}` : '',
     '',
     'CURRENT DATE/TIME CONTEXT:',
     `- Today (YYYY-MM-DD): ${currentDate}`,
@@ -58,6 +64,7 @@ export function buildSheetUpdatePrompt(vars: SheetUpdatePromptVars): string {
     patternAnalysis,
     '',
     'CRITICAL RULES:',
+    '0. Do not assume headers are in row 1. Use the detectedHeaderRowIndex when reasoning about row numbers.',
     '1. If a matching row exists for the user\'s intent (e.g., a row for "today"), DO NOT insert a new row. Emit ONLY updateCell actions targeting the matched row.',
     '2. Only insert a new row when there is no suitable existing row to update. When inserting, use the insertionRow or higher and keep formula/summary rows intact.',
     '3. For multiple entries, increment row numbers starting from insertionRow when inserting.',

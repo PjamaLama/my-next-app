@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { cosineSimilarity, embedText } from './embeddings';
 
 export type ColumnType = 'date' | 'number' | 'string' | 'boolean';
 
@@ -93,6 +94,45 @@ export function suggestHeaderMapping(incomingKeys: string[], headers: string[], 
     suggestions.push({ incomingKey: rawKey, targetHeader: best.header, confidence, reasons: best.reasons });
   }
   return suggestions;
+}
+
+/**
+ * Embeddings-augmented header mapping. Combines lexical score with cosine similarity
+ * between incoming key and per-header embeddings built from header + examples.
+ */
+export async function suggestHeaderMappingWithEmbeddings(
+  incomingKeys: string[],
+  headers: string[],
+  headerVectors: Array<{ header: string; vector: number[] }>,
+  customSynonyms?: Record<string, string[]>
+): Promise<MappingSuggestion[]> {
+  const lexical = suggestHeaderMapping(incomingKeys, headers, customSynonyms);
+  const byHeader = new Map<string, number[]>();
+  headerVectors.forEach(h => byHeader.set(h.header, h.vector));
+
+  // Pre-embed incoming keys
+  const embeddedIncoming = await Promise.all(incomingKeys.map(k => embedText(k)));
+
+  return lexical.map((lex, i) => {
+    const vec = embeddedIncoming[i];
+    let bestHeader = lex.targetHeader;
+    let bestCos = 0;
+    for (const hv of headerVectors) {
+      const cos = cosineSimilarity(vec, hv.vector);
+      if (cos > bestCos) {
+        bestCos = cos;
+        bestHeader = hv.header;
+      }
+    }
+    // blend scores
+    const blended = Math.max(
+      0,
+      Math.min(1, 0.4 * (lex.confidence || 0) + 0.6 * bestCos)
+    );
+    const reasons = [...lex.reasons];
+    reasons.push(`embedding similarity ${bestCos.toFixed(2)}`);
+    return { incomingKey: lex.incomingKey, targetHeader: bestHeader || lex.targetHeader, confidence: blended, reasons };
+  });
 }
 
 export function inferColumnTypes(headers: string[], rows: string[][]): Record<string, ColumnType> {
@@ -192,6 +232,34 @@ export function matchRowIdentity(headers: string[], existingRows: string[][], ca
   }
   // Require reasonable certainty
   return bestScore >= 1.4 ? bestRow : -1;
+}
+
+/**
+ * Semantic row finder: when explicit identity keys are missing, find the best row matching a natural-language intent
+ * and optional key-value hints using embeddings over concatenated row text.
+ */
+export async function findRowSemantically(
+  headers: string[],
+  rows: string[][],
+  intentDescription: string,
+  hints: Record<string, string> = {}
+): Promise<{ rowIndex: number; score: number }> {
+  if (!Array.isArray(rows) || rows.length === 0) return { rowIndex: -1, score: 0 };
+  const hintText = Object.entries(hints)
+    .map(([k, v]) => `${String(k)}: ${String(v)}`)
+    .join('\n');
+  const query = [intentDescription || '', hintText].filter(Boolean).join('\n');
+
+  const rowTexts = rows.map(r => r.map((v, i) => `${headers[i] ?? ''}: ${String(v ?? '')}`).join(' | '));
+  const [qVec, ...rowVecs] = await Promise.all([embedText(query), ...rowTexts.map(t => embedText(t))]);
+
+  let best = -1; let bestCos = 0;
+  rowVecs.forEach((vec, i) => {
+    const cos = cosineSimilarity(qVec, vec);
+    if (cos > bestCos) { bestCos = cos; best = i; }
+  });
+  // Return 1-based offset for sheet row including header row handled by caller
+  return { rowIndex: best >= 0 ? best : -1, score: bestCos };
 }
 
 
