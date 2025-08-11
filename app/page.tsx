@@ -1746,7 +1746,15 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="px-6 pb-10 text-center text-xs text-white/50">
-          © {new Date().getFullYear()} Sheety AI — Private beta
+          <span>
+            © {new Date().getFullYear()} Sheety AI — Private beta
+          </span>
+          <span className="mx-2">•</span>
+          <a href="/privacy" className="underline hover:text-white">Privacy Policy</a>
+          <span className="mx-1">·</span>
+          <a href="/terms" className="underline hover:text-white">Terms of Service</a>
+          <span className="mx-1">·</span>
+          <a href="/feedback" className="underline hover:text-white">Contact</a>
         </footer>
       </div>
     );
