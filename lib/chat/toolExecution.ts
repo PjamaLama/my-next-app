@@ -23,7 +23,11 @@ export async function executeToolCall(
   images: ImageData[] = []
 ) {
   try {
-    const baseUrl = resolveBaseUrl();
+    // Prefer a request-scoped base URL passed via context when running server-side
+    const scopedBase = (typeof window === 'undefined' && context && (context as any)._baseUrl)
+      ? String((context as any)._baseUrl)
+      : undefined;
+    const baseUrl = scopedBase || resolveBaseUrl();
     const url = `${baseUrl}/api/genkit-tool-execute`;
     const response = await fetch(url, {
       method: 'POST',

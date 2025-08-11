@@ -49,7 +49,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    const result = await processChatMessage(message, context || {}, conversationHistory || [], images || []);
+    // Derive a reliable base URL for server-side tool calls
+    const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
+    const host = ((req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || '').toString();
+    const baseUrl = host ? `${proto}://${host}` : undefined;
+
+    const ctx = { ...(context || {}), _baseUrl: baseUrl };
+
+    const result = await processChatMessage(message, ctx, conversationHistory || [], images || []);
 
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
