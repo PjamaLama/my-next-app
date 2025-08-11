@@ -1,5 +1,18 @@
 import { Context, ImageData } from './types';
 
+function resolveBaseUrl(): string {
+  // In the browser, use relative URLs
+  if (typeof window !== 'undefined') return '';
+  // Prefer explicit site URL
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit && /^https?:\/\//i.test(explicit)) return explicit.replace(/\/$/, '');
+  // Fallback to platform-provided host (e.g., Vercel)
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) return `https://${vercelUrl}`.replace(/\/$/, '');
+  // Last resort: localhost (dev)
+  return 'http://localhost:3000';
+}
+
 export async function executeToolCall(
   toolCall: {
     id: string;
@@ -10,7 +23,9 @@ export async function executeToolCall(
   images: ImageData[] = []
 ) {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/genkit-tool-execute`, {
+    const baseUrl = resolveBaseUrl();
+    const url = `${baseUrl}/api/genkit-tool-execute`;
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toolCall, context, images })
