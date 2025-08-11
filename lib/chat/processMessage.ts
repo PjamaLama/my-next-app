@@ -212,15 +212,26 @@ export async function processMessage(
             context.fileAnalysis.lastUpdated = Date.now();
           }
         } else if (executedToolName === 'update_sheet') {
-          enhancedResponse += '';
-        } else if (executedToolName === 'get_sheet_data') {
-          // no extra text
-        } else if (executedToolName === 'get_sheet_stats') {
-          // no extra text
-        } else if (executedToolName === 'get_column_stats') {
-          // no extra text
+          // Surface the tool summary so the user sees a meaningful confirmation
+          if (typeof result.result === 'string' && result.result.trim()) {
+            enhancedResponse += `\n${result.result.trim()}`;
+          }
+        } else if (
+          executedToolName === 'get_sheet_data' ||
+          executedToolName === 'get_sheet_stats' ||
+          executedToolName === 'get_column_stats' ||
+          executedToolName === 'update_single_cell' ||
+          executedToolName === 'bulk_update_column' ||
+          executedToolName === 'apply_structured_rows'
+        ) {
+          if (typeof result.result === 'string' && result.result.trim()) {
+            enhancedResponse += `\n${result.result.trim()}`;
+          }
         } else if (executedToolName === 'extract_data_from_files') {
-          enhancedResponse += '';
+          // Extraction tools may not directly update sheets; still surface a brief summary
+          if (typeof result.result === 'string' && result.result.trim()) {
+            enhancedResponse += `\n${result.result.trim()}`;
+          }
         }
       } else {
         enhancedResponse += `\nTool error: ${result.result}`;
@@ -475,6 +486,11 @@ export async function processMessage(
         }
       }
     } catch {}
+
+    // If no explicit response was formed but we have meaningful tool summaries, use them
+    if (!response && enhancedResponse && enhancedResponse.trim()) {
+      response = enhancedResponse.trim();
+    }
 
     return {
       response: isFileOnly ? '' : (response || ''),

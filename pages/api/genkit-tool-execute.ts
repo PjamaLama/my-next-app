@@ -736,7 +736,16 @@ function formatAnalysesAsMarkdown(analyses: Array<{ index: number; type: string;
 async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { transcript, preview } = args;
-    const { spreadsheetId, sheetNames } = context;
+    const { spreadsheetId } = context;
+    // Resolve sheet selection with sensible fallbacks
+    const providedList = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
+    const fallbackSingle = typeof (context as any).sheetName === 'string' && (context as any).sheetName.trim() ? [(context as any).sheetName as string] : [];
+    const allSheetNames = Array.isArray((context as any).allSheetNames) ? ((context as any).allSheetNames as string[]) : [];
+    const resolvedSheetNames = providedList.length > 0
+      ? providedList
+      : (fallbackSingle.length > 0
+        ? fallbackSingle
+        : (allSheetNames.length > 0 ? [allSheetNames[0]] : []));
 
     if (!transcript) {
       return res.status(400).json({
@@ -745,7 +754,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       });
     }
 
-    if (!spreadsheetId || !sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) {
+    if (!spreadsheetId || !Array.isArray(resolvedSheetNames) || resolvedSheetNames.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Spreadsheet ID and at least one sheet name are required'
@@ -754,7 +763,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
 
     const allUpdates: SheetAction[] = [];
     let totalExecuted = 0;
-    for (const sheetName of sheetNames) {
+    for (const sheetName of resolvedSheetNames) {
       console.log(`Processing updates for sheet: ${sheetName}`);
       const result = await updateSheetFlow({
         transcript,
@@ -794,7 +803,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         // Return preview data without actually updating
         return res.status(200).json({
           success: true,
-          result: `Preview: ${allUpdates.length} cells would be updated across ${sheetNames.length} sheet(s).`,
+          result: `Preview: ${allUpdates.length} cells would be updated across ${resolvedSheetNames.length} sheet(s).`,
           actions: allUpdates,
           preview: true,
           // pass through any flow-generated preview for confidence display
@@ -803,8 +812,8 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       } else {
         // The flow already executed updates (commit=true). Avoid double-applying.
         const message = totalExecuted > 0
-          ? `Successfully executed ${totalExecuted} action(s) across ${sheetNames.length} sheet(s).`
-          : `Successfully applied updates across ${sheetNames.length} sheet(s).`;
+          ? `Successfully executed ${totalExecuted} action(s) across ${resolvedSheetNames.length} sheet(s).`
+          : `Successfully applied updates across ${resolvedSheetNames.length} sheet(s).`;
         return res.status(200).json({
           success: true,
           result: message,

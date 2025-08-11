@@ -1655,12 +1655,12 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         try { console.log('Join Beta clicked'); } catch {}
-                        try { setJoining(true); } catch {}
                         try {
                           if (user) {
-                            window.location.assign('/report');
+                            // Already signed in; stay on home and show app
+                            return;
                           } else {
-                            // Start Google sign-in (redirect) directly
+                            try { setJoining(true); } catch {}
                             void continueWithGoogle?.();
                           }
                         } catch (e) { try { console.error('Join Beta error', e); } catch {} }
