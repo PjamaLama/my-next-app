@@ -1247,18 +1247,24 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       }
 
       // Build updates and write directly via Sheets API
-      const updates = actions
+      type UpdateItem = { cell: string; row: number; column: string; value: string };
+      const updates: UpdateItem[] = actions
         .filter((a: any) => a.type === 'updateCell')
-        .map((a: any) => ({ cell: `${a.column}${a.row}`, row: a.row, column: a.column, value: a.value ?? '' }));
+        .map((a: any) => ({
+          cell: `${a.column}${a.row}`,
+          row: Number(a.row),
+          column: String(a.column),
+          value: String(a.value ?? '')
+        }));
       if (updates.length === 0) {
         return res.status(200).json({ success: true, result: `Extracted data from ${successfulAnalyses.length} file(s), but no actionable updates were generated for ${targetSheetName}.`, details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults } });
       }
 
       const { ensureSheetCapacity, escapeSheetName } = await import('@/lib/sheetUtils');
-      const maxRow = updates.reduce((m, u) => Math.max(m, u.row || 1), 1);
-      const maxCol = updates.reduce((m, u) => {
-        if (!u.column) return m;
-        return u.column.length > m.length ? u.column : m;
+      const maxRow = updates.reduce((max: number, u: UpdateItem) => Math.max(max, u.row || 1), 1);
+      const maxCol = updates.reduce((max: string, u: UpdateItem) => {
+        if (!u.column) return max;
+        return u.column.length > max.length ? u.column : max;
       }, 'A');
 
       await ensureSheetCapacity(spreadsheetId, targetSheetName!, maxRow, maxCol);
@@ -1267,7 +1273,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
       await sheets.spreadsheets.values.batchUpdate({
         spreadsheetId,
         requestBody: {
-          data: updates.map(u => ({
+          data: updates.map((u: UpdateItem) => ({
             range: `${escapeSheetName(targetSheetName!)}!${u.cell}`,
             values: [[u.value]]
           })),
