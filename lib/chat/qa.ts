@@ -121,6 +121,34 @@ export function answerQuestionFromSheets(
     }
   }
 
+  // Pick a likely item label column for row identification in follow-ups
+  const labelIdx = (() => {
+    const hints = ['product', 'title', 'name', 'handle'];
+    for (const h of hints) { const i = bestHeaderIndex(headers, h); if (i >= 0) return i; }
+    return -1;
+  })();
+
+  // Exact numeric target lookup, e.g. "which item cost 5700"
+  try {
+    const numericMatch = message.match(/\b(\d+(?:\.\d+)?)\b/);
+    if (numericMatch && labelIdx >= 0 && metricIdx >= 0) {
+      const target = parseFloat(numericMatch[1]);
+      if (Number.isFinite(target)) {
+        const matches = rowsForAgg.filter(r => {
+          const n = parseNumber(r[metricIdx]);
+          return n != null && Math.abs(n - target) < 1e-6;
+        });
+        if (matches.length > 0) {
+          const rowsOut = matches.slice(0, 10).map(r => [String(r[labelIdx] ?? ''), String(parseNumber(r[metricIdx]) ?? '')]);
+          return {
+            answer: `Item(s) with ${headers[metricIdx]} = ${target}: ${rowsOut[0][0]}${rowsOut.length > 1 ? ` (+${rowsOut.length - 1} more)` : ''}.`,
+            tables: [{ title: `${sheetName} · Matches`, headers: [headers[labelIdx], headers[metricIdx]], rows: rowsOut }]
+          };
+        }
+      }
+    }
+  } catch {}
+
   if (wantsMargin) {
     const priceIdxCandidates = ['price', 'sell price', 'list price', 'amount', 'total'];
     const costIdxCandidates = ['cost', 'cost per item', 'item cost', 'avg cost', 'average cost'];
@@ -222,11 +250,28 @@ export function answerQuestionFromSheets(
     const min = vals2.length ? Math.min(...vals2) : 0;
     const max = vals2.length ? Math.max(...vals2) : 0;
     let answer = '';
+    let tables: StructuredTable[] | undefined;
     if (wantsSum) answer = `${aggTitle('Sum')}: ${Number(total.toFixed(2))} across ${vals2.length} row(s) in ${baseTitle}.`;
     else if (wantsAvg) answer = `${aggTitle('Average')}: ${Number(avg.toFixed(2))} over ${vals2.length} row(s) in ${baseTitle}.`;
-    else if (wantsMin) answer = `${aggTitle('Min')}: ${Number(min.toFixed(2))} in ${baseTitle}.`;
-    else if (wantsMax) answer = `${aggTitle('Max')}: ${Number(max.toFixed(2))} in ${baseTitle}.`;
-    return { answer };
+    else if (wantsMin || wantsMax) {
+      const target = wantsMin ? min : max;
+      if (labelIdx >= 0 && metricIdx >= 0 && Number.isFinite(target)) {
+        const items = rowsForAgg.filter(r => {
+          const n = parseNumber(r[metricIdx]);
+          return n != null && Math.abs(n - target) < 1e-6;
+        });
+        if (items.length > 0) {
+          const rowsOut = items.slice(0, 10).map(r => [String(r[labelIdx] ?? ''), String(parseNumber(r[metricIdx]) ?? '')]);
+          tables = [{ title: `${sheetName} · ${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}`, headers: [headers[labelIdx], headers[metricIdx]], rows: rowsOut }];
+          answer = `${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} — ${rowsOut[0][0]}${rowsOut.length > 1 ? ` (+${rowsOut.length - 1} more)` : ''}.`;
+        } else {
+          answer = `${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} in ${baseTitle}.`;
+        }
+      } else {
+        answer = `${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} in ${baseTitle}.`;
+      }
+    }
+    return tables ? { answer, tables } : { answer };
   }
 
   return null;
