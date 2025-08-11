@@ -8,6 +8,7 @@ import { Plus, Trash2, MessageSquare, Table as TableIcon, ExternalLink, Copy, Ch
 import { useSheet } from "../providers/SheetProvider";
 import { useFirebase } from "../providers/FirebaseProvider";
 import { useDialog } from "../providers/DialogProvider";
+import SheetSetupHelper from "./SheetSetupHelper";
 dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
@@ -266,6 +267,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                 </button>
               </div>
             )}
+            <SheetSetupHelper
+              serviceAccountEmail={serviceAccountEmail}
+              initialOpen={addOpen || spreadsheets.length === 0}
+            />
             {serviceAccountEmail && (
               <div className="px-3 py-2 flex items-center justify-between">
                 <div className="min-w-0 mr-2">
@@ -427,6 +432,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               </div>
             </div>
           )}
+          <SheetSetupHelper
+            serviceAccountEmail={serviceAccountEmail}
+            initialOpen={addOpen || spreadsheets.length === 0}
+          />
         </div>
 
         {/* Connected spreadsheets list */}
