@@ -47,6 +47,7 @@ export async function executeToolCall(
       details: data.details,
       analyses: data.analyses,
       extractions: data.extractions,
+      data: data.data,
       toolId: toolCall.id
     };
   } catch (error) {

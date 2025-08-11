@@ -228,6 +228,19 @@ export async function processMessage(
           if (typeof result.result === 'string' && result.result.trim()) {
             enhancedResponse += `\n${result.result.trim()}`;
           }
+          // If we fetched sheet data, merge directly into context.sheetData for immediate QA/composer grounding
+          if (executedToolName === 'get_sheet_data' && (result as any).data && Array.isArray((result as any).data)) {
+            try {
+              const args = JSON.parse(toolCall.function.arguments || '{}');
+              const name = String(args.sheetName || '').trim();
+              if (name) {
+                const ctxAny = context as any;
+                if (!ctxAny.sheetData || typeof ctxAny.sheetData !== 'object') ctxAny.sheetData = {};
+                ctxAny.sheetData[name] = (result as any).data as string[][];
+                ctxAny._sheetHydratedAt = Date.now();
+              }
+            } catch {}
+          }
         } else if (executedToolName === 'extract_data_from_files') {
           // Extraction tools may not directly update sheets; still surface a brief summary
           if (typeof result.result === 'string' && result.result.trim()) {
@@ -252,7 +265,13 @@ export async function processMessage(
       const hasHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
       const lastHydration = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
       const isStale = now - lastHydration > 60_000;
-      const sheetNamesList = Array.isArray(ctxAny.sheetNames) ? (ctxAny.sheetNames as string[]) : [];
+      let sheetNamesList = Array.isArray(ctxAny.sheetNames) ? (ctxAny.sheetNames as string[]) : [];
+      // Fallbacks: single sheetName, else first from allSheetNames
+      if ((!sheetNamesList || sheetNamesList.length === 0)) {
+        const single = typeof ctxAny.sheetName === 'string' && ctxAny.sheetName.trim() ? [ctxAny.sheetName] : [];
+        const fromAll = Array.isArray(ctxAny.allSheetNames) && ctxAny.allSheetNames.length > 0 ? [ctxAny.allSheetNames[0]] : [];
+        sheetNamesList = single.length > 0 ? single : fromAll;
+      }
       const canHydrate = (!hasHydrated || isStale) && !!context?.spreadsheetId && sheetNamesList.length > 0 && !hasFiles;
       if (canHydrate) {
         const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
