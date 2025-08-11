@@ -286,6 +286,9 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
           
           console.log(`Found ${insertRowActions.length} insertRow actions and ${updateCellActions.length} updateCell actions`);
           
+          // Track write errors to surface meaningful feedback
+          const writeErrors: string[] = [];
+
           // First, execute all insertRow actions
           for (const action of insertRowActions) {
             try {
@@ -306,6 +309,7 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
               executedCount++;
             } catch (actionError) {
               console.error(`Error executing insertRow action:`, actionError);
+              writeErrors.push(actionError instanceof Error ? actionError.message : String(actionError));
               // Continue with other actions even if one fails
             }
           }
@@ -348,10 +352,15 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
               executedCount += updateCellActions.length;
             } catch (err) {
               console.error('Batch update for updateCell actions failed:', err);
+              writeErrors.push(err instanceof Error ? err.message : String(err));
             }
           }
           
           console.log(`Successfully executed ${executedCount} out of ${parsed.actions.length} actions`);
+          if (executedCount === 0 && writeErrors.length > 0) {
+            // Surface a consolidated error to the caller so the UI can inform the user
+            throw new Error(`No updates could be applied. Possible causes: missing edit permission or protected range. Details: ${writeErrors.join(' | ')}`);
+          }
           
           return {
             ...parsed,
