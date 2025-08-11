@@ -161,10 +161,10 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
     
     // Convert to CSV for the prompt
     const headerDetect = detectHeaderRow(sheetData);
-    const headerRowIdx = Math.max(0, headerDetect.rowIndex);
+    let headerRowIdx = Math.max(0, headerDetect.rowIndex);
     const csvData = sheetData.map(row => row.join(',')).join('\n');
-    const headers = sheetData[headerRowIdx] || [];
-    const rowsOnly = sheetData.slice(headerRowIdx + 1);
+    let headers = sheetData[headerRowIdx] || [];
+    let rowsOnly = sheetData.slice(headerRowIdx + 1);
     const columnTypes = inferColumnTypes(headers, rowsOnly);
     
     // Current date/time context for the prompt
@@ -206,6 +206,18 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
     } catch (e) {
       console.warn('Semantic row finder failed:', e);
     }
+
+    // Respect manual block override from client if present via context (optional):
+    try {
+      // If the client sends a block index in the transcript context like [Block:#]
+      const blockTag = cleanedTranscript.match(/\[Block:(\d+)\]/i);
+      if (blockTag) {
+        const idx = Number(blockTag[1]);
+        // Fallback: parse blocks client-side is not sent; we can ignore if unknown
+        // This is a placeholder for future API to accept explicit block index
+        console.log(`Client requested block override index: ${idx}`);
+      }
+    } catch {}
 
     // Build inline prompt text to avoid missing prompt artifacts in production
     // Build mapping hints for common canonical fields

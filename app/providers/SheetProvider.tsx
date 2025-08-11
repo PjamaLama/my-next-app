@@ -15,9 +15,11 @@ interface SheetContextType {
   sheetDataCache: Record<string, string[][]>;
   sheetsPrefetched: boolean;
   setSheetDataCache: React.Dispatch<React.SetStateAction<Record<string, string[][]>>>;
-  sheetStructureCache: Record<string, { isStructured: boolean; confidence: number; issues: string[] }>;
+  sheetStructureCache: Record<string, { isStructured: boolean; confidence: number; issues: string[]; detectedHeaderRowIndex?: number; blocks?: Array<{ headerRowIndex: number; startRowIndex: number; endRowIndex: number; score: number }> }>;
   unstructuredOverrides: Record<string, boolean>;
   setUnstructuredOverride: (sheetName: string, value: boolean) => void;
+  chosenBlockBySheet: Record<string, number | null>;
+  setChosenBlockForSheet: (sheetName: string, blockIndex: number | null) => void;
 }
 
 const SheetContext = createContext<SheetContextType | null>(null);
@@ -37,8 +39,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [allSheetNames, setAllSheetNames] = useState<string[]>([]);
   const [sheetDataCache, setSheetDataCache] = useState<Record<string, string[][]>>({});
   const [sheetsPrefetched, setSheetsPrefetched] = useState<boolean>(false);
-  const [sheetStructureCache, setSheetStructureCache] = useState<Record<string, { isStructured: boolean; confidence: number; issues: string[] }>>({});
+  const [sheetStructureCache, setSheetStructureCache] = useState<Record<string, { isStructured: boolean; confidence: number; issues: string[]; detectedHeaderRowIndex?: number; blocks?: Array<{ headerRowIndex: number; startRowIndex: number; endRowIndex: number; score: number }> }>>({});
   const [unstructuredOverrides, setUnstructuredOverrides] = useState<Record<string, boolean>>({});
+  const [chosenBlockBySheet, setChosenBlockBySheet] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -63,12 +66,16 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!defaultSpreadsheetId) {
         setAllSheetNames([]);
         setSheetDataCache({});
+        setSheetStructureCache({});
+        setChosenBlockBySheet({});
         setSheetsPrefetched(false);
         return;
       }
       // Reset caches when spreadsheet changes
       setAllSheetNames([]);
       setSheetDataCache({});
+      setSheetStructureCache({});
+      setChosenBlockBySheet({});
       setSheetsPrefetched(false);
       try {
         const namesRes = await fetch('/api/get-sheet-names', {
@@ -102,8 +109,11 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (cancelled) return;
             setSheetDataCache(prev => ({ ...prev, [name]: dataJson.data || [] }));
             if (dataJson.structure) {
-              const { isStructured, confidence, issues } = dataJson.structure;
-              setSheetStructureCache(prev => ({ ...prev, [name]: { isStructured, confidence, issues } }));
+              const { isStructured, confidence, issues, detectedHeaderRowIndex, blocks } = dataJson.structure;
+              setSheetStructureCache(prev => ({ ...prev, [name]: { isStructured, confidence, issues, detectedHeaderRowIndex, blocks } }));
+              if (Array.isArray(blocks) && blocks.length > 0) {
+                setChosenBlockBySheet(prev => ({ ...prev, [name]: null }));
+              }
             }
           } catch (e) {
             console.warn('Prefetch sheet data failed for', name, e);
@@ -146,6 +156,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setUnstructuredOverride = (sheetName: string, value: boolean) => {
     setUnstructuredOverrides(prev => ({ ...prev, [sheetName]: value }));
   };
+  const setChosenBlockForSheet = (sheetName: string, blockIndex: number | null) => {
+    setChosenBlockBySheet(prev => ({ ...prev, [sheetName]: blockIndex }));
+  };
   
   return (
     <SheetContext.Provider
@@ -161,6 +174,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         sheetStructureCache,
         unstructuredOverrides,
         setUnstructuredOverride
+        ,
+        chosenBlockBySheet,
+        setChosenBlockForSheet
       }}
     >
       {children}
