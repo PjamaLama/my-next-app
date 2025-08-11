@@ -6,6 +6,7 @@ import { buildSmartTables } from './tables';
 import { normalizeDateColumns } from './utils';
 import { answerQuestionFromSheets } from './qa';
 import { buildChartSpecs } from './charts';
+import { composeGroundedReply } from './replyComposer';
 
 export async function processMessage(
   message: string,
@@ -22,7 +23,7 @@ export async function processMessage(
     if (isGreeting) {
       const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, false);
       return {
-        response: '',
+        response: 'Hi! How can I help with your sheet or files?',
         toolCalls: [],
         pendingToolCalls: [],
         toolResults: [],
@@ -487,9 +488,24 @@ export async function processMessage(
       }
     } catch {}
 
-    // If no explicit response was formed but we have meaningful tool summaries, use them
-    if (!response && enhancedResponse && enhancedResponse.trim()) {
-      response = enhancedResponse.trim();
+    // Compose a grounded conversational reply if we still don't have a response
+    if (!response || !response.trim()) {
+      try {
+        const toolSummaries = (enhancedResponse || '').split('\n').map(s => s.trim()).filter(Boolean);
+        response = await composeGroundedReply({
+          userMessage: message,
+          qaAnswer: undefined,
+          tables: normalizedTables,
+          charts,
+          insights,
+          toolSummaries
+        });
+      } catch {
+        // Fallback to tool summaries if composition fails
+        if (enhancedResponse && enhancedResponse.trim()) {
+          response = enhancedResponse.trim();
+        }
+      }
     }
 
     return {
