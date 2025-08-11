@@ -50,6 +50,17 @@ export function buildSmartTables(
     groupIdx = bestHeaderIndex(headers, groupMatch[1].trim());
   }
 
+  // Support explicit metric selection and top/bottom N
+  const explicitMetricMatch = message.match(/\bby\s+(sum|avg|average|min|max)\s+of\s+([a-z0-9_\s-]{3,})/i);
+  if (explicitMetricMatch) {
+    const metricHeaderQuery = explicitMetricMatch[2].trim();
+    const idx = bestHeaderIndex(headers, metricHeaderQuery);
+    if (idx >= 0) metricIdx = idx;
+  }
+  const topNMatch = message.match(/\btop\s+(\d+)\b/i);
+  const bottomNMatch = message.match(/\bbottom\s+(\d+)\b/i);
+  const N = Math.min(parseInt((topNMatch?.[1] || bottomNMatch?.[1] || '20'), 10) || 20, 100);
+
   let selectedIdxs: number[] | null = null;
   if (wantsColumns.length > 0) {
     selectedIdxs = [];
@@ -76,9 +87,10 @@ export function buildSmartTables(
       prev.count += 1;
       map.set(key, prev);
     }
-    const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, sum: v.sum, count: v.count }));
+    let entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, sum: v.sum, count: v.count }));
     entries.sort((a, b) => b.sum - a.sum);
-    const rowsOut = entries.slice(0, 20).map((e) => [e.key, String(Number(e.sum.toFixed(2))), String(e.count)]);
+    if (bottomNMatch) entries = entries.reverse();
+    const rowsOut = entries.slice(0, N).map((e) => [e.key, String(Number(e.sum.toFixed(2))), String(e.count)]);
     const total = entries.reduce((acc, e) => acc + e.sum, 0);
     const totalCount = entries.reduce((acc, e) => acc + e.count, 0);
     const footer = ['Total', String(Number(total.toFixed(2))), String(totalCount)];

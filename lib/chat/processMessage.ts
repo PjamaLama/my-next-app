@@ -126,6 +126,15 @@ export async function processMessage(
             function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: message }) }
           });
         }
+      } else if (/\b(report|overview|insights?)\b/i.test(lowerMessage)) {
+        intent = 'get_data';
+        if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('generate_report')) {
+          suggestedTools.push({
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: { name: 'generate_report', arguments: JSON.stringify({ responsePrefs: { charts: true } }) }
+          });
+        }
       } else if (lowerMessage.includes('show') || lowerMessage.includes('get') || lowerMessage.includes('display') || lowerMessage.includes('data')) {
         intent = 'get_data';
         const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];

@@ -141,34 +141,58 @@ export function formatUnifiedDate(value: unknown, withTime = false): string {
 export function normalizeDateColumns(headers: string[], rows: string[][]): string[][] {
   if (!Array.isArray(headers) || !Array.isArray(rows) || headers.length === 0 || rows.length === 0) return rows;
   const lowerHeaders = headers.map(h => String(h || '').toLowerCase());
+
+  // Do not attempt to normalize obvious aggregate/derived columns
+  const skipIdx = new Set<number>();
+  lowerHeaders.forEach((h, i) => {
+    if (/\b(sum|avg|average|min|max|total|count)\b|\(|\)|Δ|delta|vs/i.test(h)) {
+      skipIdx.add(i);
+    }
+  });
+
+  // Strict date parsing only; avoid dayjs(v) which coerces numeric-like strings
+  const tryParseStrict = (raw: string) => {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    // Must look like a date (has separators, month text, or ISO 'T')
+    const looksDatey = /[-\/]/.test(s) || /[A-Za-z]{3}/.test(s) || /T/.test(s) || /^\d{4}-\d{2}-\d{2}/.test(s);
+    if (!looksDatey) return null;
+    for (const fmt of CANDIDATE_DATE_FORMATS) {
+      const d = dayjs(s, fmt, true);
+      if (d.isValid()) return d;
+    }
+    return null;
+  };
+
   const candidateIdxs = new Set<number>();
   lowerHeaders.forEach((h, i) => {
+    if (skipIdx.has(i)) return;
     if (/(^|\b)(date|timestamp|time)($|\b)/i.test(h)) candidateIdxs.add(i);
   });
+
   const width = headers.length;
   for (let c = 0; c < width; c++) {
-    if (candidateIdxs.has(c)) continue;
+    if (skipIdx.has(c) || candidateIdxs.has(c)) continue;
     let total = 0;
     let parsed = 0;
     for (const r of rows) {
       const v = String((r || [])[c] ?? '').trim();
       if (!v) continue;
       total += 1;
-      let d = dayjs(v);
-      if (!d.isValid()) {
-        for (const fmt of CANDIDATE_DATE_FORMATS) {
-          d = dayjs(v, fmt, true);
-          if (d.isValid()) break;
-        }
-      }
-      if (d.isValid()) parsed += 1;
+      if (tryParseStrict(v)) parsed += 1;
     }
     if (total > 0 && parsed / total >= 0.6) candidateIdxs.add(c);
   }
 
   if (candidateIdxs.size === 0) return rows;
   const includeTime = (idx: number) => /(timestamp|time)/i.test(lowerHeaders[idx] || '');
-  return rows.map(row => row.map((cell, i) => (candidateIdxs.has(i) ? formatUnifiedDate(cell, includeTime(i)) : cell)));
+  return rows.map(row => row.map((cell, i) => {
+    if (!candidateIdxs.has(i)) return cell;
+    const d = tryParseStrict(String(cell || '').trim());
+    if (!d) return cell;
+    const target = includeTime(i) ? 'YYYY-MM-DD HH:mm' : 'YYYY-MM-DD';
+    return d.format(target);
+  }));
 }
 
 

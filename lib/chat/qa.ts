@@ -10,7 +10,8 @@ const COLUMN_SYNONYMS: Record<string, string[]> = {
   driver: ['driver', 'driver name', 'operator'],
   vehicle: ['vehicle', 'vehicle reg', 'reg', 'registration', 'plate', 'license'],
   town: ['town', 'city', 'location', 'destination'],
-  date: ['date', 'timestamp', 'time']
+  date: ['date', 'timestamp', 'time'],
+  margin: ['margin', 'profit', 'markup', 'gm', 'gross margin', 'net margin']
 };
 
 function resolveColumnIndex(headers: string[], message: string, hints: string[] = []): number {
@@ -91,6 +92,53 @@ export function answerQuestionFromSheets(
     const fallback = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
     return fallback >= 0 ? fallback : 0;
   })();
+
+  const wantsMargin = /\b(margin|profit|markup)\b/i.test(message);
+  const productKeyIdx = (() => {
+    const idx = bestHeaderIndex(headers, 'product')
+      ;
+    if (idx >= 0) return idx;
+    const hints = ['title', 'name', 'handle'];
+    for (const h of hints) { const i = bestHeaderIndex(headers, h); if (i >= 0) return i; }
+    return -1;
+  })();
+
+  if (wantsMargin) {
+    const priceIdxCandidates = ['price', 'sell price', 'list price', 'amount', 'total'];
+    const costIdxCandidates = ['cost', 'cost per item', 'item cost', 'avg cost', 'average cost'];
+    const priceIdx = resolveColumnIndex(headers, message, priceIdxCandidates);
+    const costIdx  = resolveColumnIndex(headers, message, costIdxCandidates);
+
+    if (priceIdx >= 0 && costIdx >= 0 && productKeyIdx >= 0) {
+      const map = new Map<string, { sum: number; count: number }>();
+      for (const r of rowsForAgg) {
+        const key = String(r[productKeyIdx] ?? 'Unknown');
+        const price = parseNumber(r[priceIdx]);
+        const cost  = parseNumber(r[costIdx]);
+        if (price != null && cost != null) {
+          const margin = price - cost;
+          const prev = map.get(key) || { sum: 0, count: 0 };
+          prev.sum += margin; prev.count += 1;
+          map.set(key, prev);
+        }
+      }
+      if (map.size > 0) {
+        const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, avg: v.count ? v.sum / v.count : 0, count: v.count }));
+        entries.sort((a, b) => b.avg - a.avg);
+
+        const top = entries.slice(0, 10);
+        const rowsOut = top.map(e => [e.key, String(Number(e.avg.toFixed(2))), String(e.count)]);
+        const tables: StructuredTable[] = [{
+          title: `${sheetName} · Best avg margin by ${headers[productKeyIdx]}`,
+          headers: [headers[productKeyIdx], 'Avg Margin', 'Count'],
+          rows: normalizeDateColumns([headers[productKeyIdx], 'Avg Margin', 'Count'], rowsOut)
+        }];
+        const best = top[0];
+        const answer = `Best average margin: ${best?.key ?? 'n/a'} (${best ? Number(best.avg.toFixed(2)) : 0}).`;
+        return { answer, tables };
+      }
+    }
+  }
 
   const vals = filtered.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
   if (vals.length === 0 && !wantsCount) return null;
