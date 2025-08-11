@@ -33,10 +33,12 @@ export async function executeToolCall(
     if (!response.ok) {
       const contentType = response.headers.get('content-type');
       let errorMessage = `Tool execution failed: ${response.status}`;
+      let errorDetails: unknown = undefined;
       if (contentType && contentType.includes('application/json')) {
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
+          errorDetails = errorData.details ?? errorData;
         } catch {}
       } else {
         try {
@@ -46,9 +48,18 @@ export async function executeToolCall(
           } else {
             errorMessage = `Server error (${response.status}): ${errorText}`;
           }
+          errorDetails = errorText;
         } catch {}
       }
-      throw new Error(errorMessage);
+      // Log server-side for visibility in production logs
+      // eslint-disable-next-line no-console
+      console.error('[ToolExecution] HTTP error', { url, status: response.status, errorMessage, errorDetails });
+      return {
+        success: false,
+        result: `Error executing ${toolCall.function.name}: ${errorMessage}`,
+        details: errorDetails ?? null,
+        toolId: toolCall.id
+      };
     }
     let data;
     try {
@@ -66,10 +77,12 @@ export async function executeToolCall(
       toolId: toolCall.id
     };
   } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[ToolExecution] Exception', error);
     return {
       success: false,
       result: `Error executing ${toolCall.function.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      details: null,
+      details: error instanceof Error ? (error.stack || error.message) : null,
       toolId: toolCall.id
     };
   }
