@@ -1,5 +1,6 @@
 import { genkit } from 'genkit';
 import { gemini15Flash, gemini15Pro, googleAI } from '@genkit-ai/googleai';
+import { buildSheetUpdatePrompt } from '../lib/prompts/sheetUpdate';
 import { getGoogleSheetsClient } from '../lib/googleSheets';
 import { suggestHeaderMapping, inferColumnTypes, matchRowIdentity, parseDateFlexible, parseDecimal } from '../lib/mapping';
 import { insertRow, updateCell } from './tools';
@@ -25,8 +26,7 @@ const aiConfigs = [
   }
 ];
 
-// Load the sheet update prompt from the first config
-const sheetUpdatePrompt = aiConfigs[0].config.prompt('sheetUpdate');
+// Note: Some environments may not ship prompt artifacts. We build the prompt inline if missing.
 
 // Input type for the flow
 interface UpdateSheetInput {
@@ -180,23 +180,26 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
       console.warn('Failed to compute matchingRowForToday:', e);
     }
 
-    // Create multiple AI operations for fallback
-    const aiOperations = aiConfigs.map(config => 
-      () => config.config.prompt('sheetUpdate')({
-        transcript: cleanedTranscript,
-        sheetData: csvData,
-        sheetName,
-        lastDataRow,
-        insertionRow,
-        headers: headers.join(', '),
-        patternAnalysis,
-        currentDate,
-        currentTime,
-        currentDateTime,
-        isoDateTime,
-        timezone,
-        matchingRowForToday
-      })
+    // Build inline prompt text to avoid missing prompt artifacts in production
+    const promptText = buildSheetUpdatePrompt({
+      transcript: cleanedTranscript,
+      sheetName,
+      lastDataRow,
+      insertionRow,
+      headers: headers.join(', '),
+      patternAnalysis,
+      currentDate,
+      currentTime,
+      currentDateTime,
+      isoDateTime,
+      timezone,
+      matchingRowForToday,
+      sheetDataCsv: csvData,
+    });
+
+    // Create multiple AI operations for fallback using inline prompt
+    const aiOperations = aiConfigs.map(config =>
+      () => config.config.generate(promptText)
     );
     
     // Use the fallback strategy with multiple models
