@@ -1246,14 +1246,36 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         }
       }
 
-      let updates = actions.filter((a: any) => a.type === 'updateCell').map((a: any) => ({ sheetName: targetSheetName, cell: `${a.column}${a.row}`, value: a.value ?? '' }));
+      // Build updates and write directly via Sheets API
+      const updates = actions
+        .filter((a: any) => a.type === 'updateCell')
+        .map((a: any) => ({ cell: `${a.column}${a.row}`, row: a.row, column: a.column, value: a.value ?? '' }));
       if (updates.length === 0) {
         return res.status(200).json({ success: true, result: `Extracted data from ${successfulAnalyses.length} file(s), but no actionable updates were generated for ${targetSheetName}.`, details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults } });
       }
-      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, updates }) });
-      if (!updateResponse.ok) { const errorText = await updateResponse.text(); throw new Error(`Batch update failed: ${updateResponse.status} - ${errorText}`); }
-      const updateSummary = await updateResponse.json();
-      return res.status(200).json({ success: true, result: `Successfully extracted data from ${successfulAnalyses.length} out of ${images.length} file(s) and applied ${updates.length} updates to ${targetSheetName}.`, details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults, updateSummary } });
+
+      const { ensureSheetCapacity, escapeSheetName } = await import('@/lib/sheetUtils');
+      const maxRow = updates.reduce((m, u) => Math.max(m, u.row || 1), 1);
+      const maxCol = updates.reduce((m, u) => {
+        if (!u.column) return m;
+        return u.column.length > m.length ? u.column : m;
+      }, 'A');
+
+      await ensureSheetCapacity(spreadsheetId, targetSheetName!, maxRow, maxCol);
+
+      const sheets = await getGoogleSheetsClient();
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          data: updates.map(u => ({
+            range: `${escapeSheetName(targetSheetName!)}!${u.cell}`,
+            values: [[u.value]]
+          })),
+          valueInputOption: 'USER_ENTERED'
+        }
+      });
+
+      return res.status(200).json({ success: true, result: `Successfully extracted data from ${successfulAnalyses.length} out of ${images.length} file(s) and applied ${updates.length} updates to ${targetSheetName}.`, details: { filesProcessed: images.length, successfulAnalyses: successfulAnalyses.length, analysisResults } });
       
     } catch (updateError) {
       console.error('Error updating sheet with extracted data:', updateError);

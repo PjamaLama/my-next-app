@@ -314,21 +314,35 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
           if (updateCellActions.length > 0) {
             try {
               const updates = updateCellActions.map((a: any) => ({
-                sheetName,
                 cell: `${a.column}${a.row}`,
+                row: a.row,
+                column: a.column,
                 value: a.value ?? ''
               }));
 
-              const resp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ spreadsheetId: sheetId, updates })
-              });
+              // Ensure capacity to the max row/column being written
+              const { ensureSheetCapacity, escapeSheetName } = await import('../lib/sheetUtils');
+              const maxRow = updates.reduce((m, u) => Math.max(m, u.row || 1), 1);
+              const maxCol = updates.reduce((m, u) => {
+                if (!u.column) return m;
+                return u.column.length > m.length ? u.column : m;
+              }, 'A');
 
-              if (!resp.ok) {
-                const errText = await resp.text();
-                throw new Error(`Batch update failed: ${resp.status} - ${errText}`);
-              }
+              await ensureSheetCapacity(sheetId, sheetName, maxRow, maxCol);
+
+              // Prepare batch update payload
+              const batchData = updates.map(u => ({
+                range: `${escapeSheetName(sheetName)}!${u.cell}`,
+                values: [[u.value]]
+              }));
+
+              await sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId: sheetId,
+                requestBody: {
+                  data: batchData,
+                  valueInputOption: 'USER_ENTERED'
+                }
+              });
 
               executedCount += updateCellActions.length;
             } catch (err) {
