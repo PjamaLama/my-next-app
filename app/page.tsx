@@ -1263,6 +1263,21 @@ export default function Home() {
           }))
         };
         setProviderChatMessages(prev => [...prev, toolResultMessage as unknown as ProviderChatMessage]);
+        // Surface failure details as a toast
+        try {
+          const failures = (data.toolResults as Array<{ success: boolean; result: string; details?: unknown }>).filter(tr => tr && tr.success === false);
+          if (failures.length > 0) {
+            const detailText = failures.map((f, i) => {
+              const d = typeof f.details === 'string' ? f.details : (f.details ? JSON.stringify(f.details) : '');
+              return `${i + 1}. ${f.result}${d ? `\n   Details: ${d}` : ''}`;
+            }).join('\n');
+            const msg = `Tool error: One or more actions failed.\n${detailText}`;
+            setSendResult(msg);
+            // Promote to toast
+            setToast({ type: 'error', message: msg });
+            setTimeout(() => setToast(null), 5000);
+          }
+        } catch { /* noop */ }
       }
 
       console.log(`🔍 [CHAT] Final state - uploadedImages: ${uploadedImages.length}, pendingToolCalls: ${pendingToolCalls.length}`);
