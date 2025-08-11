@@ -313,25 +313,26 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
           // Then, execute updateCell actions in batches (optimize by grouping)
           if (updateCellActions.length > 0) {
             try {
-              const updates = updateCellActions.map((a: any) => ({
+              type UpdateItem = { cell: string; row: number; column: string; value: string };
+              const updates: UpdateItem[] = updateCellActions.map((a: any) => ({
                 cell: `${a.column}${a.row}`,
-                row: a.row,
-                column: a.column,
-                value: a.value ?? ''
+                row: Number(a.row),
+                column: String(a.column),
+                value: String(a.value ?? '')
               }));
 
               // Ensure capacity to the max row/column being written
               const { ensureSheetCapacity, escapeSheetName } = await import('../lib/sheetUtils');
-              const maxRow = updates.reduce((m, u) => Math.max(m, u.row || 1), 1);
-              const maxCol = updates.reduce((m, u) => {
-                if (!u.column) return m;
-                return u.column.length > m.length ? u.column : m;
+              const maxRow = updates.reduce((max: number, u: UpdateItem) => Math.max(max, u.row || 1), 1);
+              const maxCol = updates.reduce((max: string, u: UpdateItem) => {
+                if (!u.column) return max;
+                return u.column.length > max.length ? u.column : max;
               }, 'A');
 
               await ensureSheetCapacity(sheetId, sheetName, maxRow, maxCol);
 
               // Prepare batch update payload
-              const batchData = updates.map(u => ({
+              const batchData = updates.map((u: UpdateItem) => ({
                 range: `${escapeSheetName(sheetName)}!${u.cell}`,
                 values: [[u.value]]
               }));
