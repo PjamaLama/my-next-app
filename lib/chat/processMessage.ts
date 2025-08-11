@@ -257,7 +257,13 @@ export async function processMessage(
           }
         }
       } else {
-        enhancedResponse += `\nTool error: ${result.result}`;
+        // Surface detailed error text for UI toast/logging
+        const detailsText = result && (result as any).details
+          ? (typeof (result as any).details === 'string'
+              ? (result as any).details
+              : JSON.stringify((result as any).details))
+          : '';
+        enhancedResponse += `\nTool error: ${result.result}${detailsText ? `\nDetails: ${detailsText}` : ''}`;
       }
     }
 

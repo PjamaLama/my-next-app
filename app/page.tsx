@@ -135,6 +135,8 @@ export default function Home() {
   const listeningRef = useRef(listening);
   const [editingText, setEditingText] = useState("");
   const [sendResult, setSendResult] = useState<string | null>(null);
+  // Transient toast for prominent error/success notifications
+  const [toast, setToast] = useState<{ type: 'error'|'success'; message: string } | null>(null);
   const [stepperFields, setStepperFields] = useState<StepperField[]>([]);
   const [stepperModalOpen, setStepperModalOpen] = useState(false);
   const [stepperIndex, setStepperIndex] = useState(0);
@@ -172,6 +174,20 @@ export default function Home() {
   };
 
   // Stay on '/', which renders the chat UI when authenticated
+  // Helper to show a transient error toast
+  const showErrorToast = (message: string) => {
+    setToast({ type: 'error', message });
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  // Promote tool error messages to toast for visibility
+  useEffect(() => {
+    if (!sendResult) return;
+    if (/^Tool error:/i.test(sendResult) || /Sheet update failed/i.test(sendResult)) {
+      showErrorToast(sendResult);
+    }
+  }, [sendResult]);
 
   // Beta program live count
   const [betaLimit, setBetaLimit] = useState<number>(100);
@@ -2334,6 +2350,12 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+
+              {toast && (
+                <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] px-4 py-2 rounded-md shadow-lg border ${toast.type === 'error' ? 'bg-red-600/90 border-red-400/50 text-white' : 'bg-emerald-600/90 border-emerald-400/50 text-white'}`} role="status" aria-live="polite">
+                  {toast.message}
+                </div>
+              )}
 
               {sendResult && (
                 <div className="text-xs sm:text-sm text-center text-white/80 px-4">
