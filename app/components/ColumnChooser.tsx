@@ -4,11 +4,13 @@ import React from 'react';
 export type ColumnChooserProps = {
   headers: string[];
   onSelect: (header: string) => void;
-  title?: string;
+  onCancel?: () => void;
 };
 
-export default function ColumnChooser({ headers, onSelect, title }: ColumnChooserProps) {
-  const uniqueHeaders = Array.from(new Set((headers || []).map((h) => String(h ?? '').trim()).filter(Boolean)));
+export default function ColumnChooser({ headers, onSelect, onCancel }: ColumnChooserProps) {
+  const uniqueHeaders = Array.from(
+    new Set((headers || []).map(h => String(h ?? '').trim()).filter(Boolean))
+  );
 
   if (!uniqueHeaders.length) {
     return (
@@ -19,20 +21,32 @@ export default function ColumnChooser({ headers, onSelect, title }: ColumnChoose
   }
 
   return (
-    <div className="w-full">
-      {title ? <div className="mb-2 text-sm font-medium text-gray-800">{title}</div> : null}
-      <div className="flex flex-wrap gap-2">
-        {uniqueHeaders.map((h) => (
+    <div className="w-full rounded-md border border-gray-200 bg-white p-3">
+      <div className="mb-2 text-sm font-medium text-gray-800">Select a column</div>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {uniqueHeaders.map((h, i) => (
           <button
-            key={h}
+            key={`${i}-${h}`}
             type="button"
             onClick={() => onSelect(h)}
-            className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="inline-flex items-center rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            {h}
+            <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-xs font-medium text-gray-700">
+              {i + 1}
+            </span>
+            <span>{h}</span>
           </button>
         ))}
       </div>
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs font-medium text-gray-600 hover:text-gray-800"
+        >
+          Cancel
+        </button>
+      )}
     </div>
   );
 }

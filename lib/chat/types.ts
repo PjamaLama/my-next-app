@@ -8,6 +8,7 @@ export interface Context {
   sheetNames?: string[];
   spreadsheetUrl?: string;
   sheetData?: any;
+  conversationHistory?: ConversationHistoryItem[];
   fileAnalysis?: {
     files: Array<{
       mimeType: string;

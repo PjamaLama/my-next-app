@@ -3,6 +3,7 @@ import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import { aggregateRows } from '@/lib/analytics/simpleAnalytics';
 import { ensureSheetCapacity, findLastDataRow, escapeSheetName, indexToColumn, columnToIndex, parseA1Range } from '@/lib/sheetUtils';
 import { suggestHeaderMapping, matchRowIdentity } from '@/lib/mapping';
 import { analyzeSheetStructure } from '@/lib/sheetStructure';
@@ -59,7 +60,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { toolCall, context, images } = req.body;
+    const rawBody: any = req.body || {};
+    let toolCall = rawBody.toolCall;
+    const context = rawBody.context;
+    const images = rawBody.images;
+
+    // Back-compat: support shape { name, args, context } by normalizing into toolCall
+    if (!toolCall && rawBody.name) {
+      const name: string = String(rawBody.name);
+      const argsPayload = rawBody.arguments ?? rawBody.args ?? {};
+      const argsString: string = typeof argsPayload === 'string' ? argsPayload : JSON.stringify(argsPayload || {});
+      toolCall = { function: { name, arguments: argsString } } as any;
+    }
 
     // Validate file sizes before processing
     if (images && images.length > 0) {
@@ -212,7 +224,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const avg = nums.length ? sum / nums.length : 0;
           const count = nums.length;
 
-          const { aggregateRows } = require('../../lib/analytics/simpleAnalytics');
           const agg = aggregateRows(rows, headers, specObj);
 
           /**
@@ -237,7 +248,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             numeric: { column: colName, sum: Number(sum.toFixed(6)), avg: Number(avg.toFixed(6)), count },
           });
         } catch (e) {
+          console.error('Failed to aggregate:', e);
           return res.status(500).json({ success: false, error: 'Failed to aggregate', details: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      case 'trend_analysis': {
+        try {
+          // Expect args: { series?: number[], labels?: string[] } or infer from last aggregation in args.input
+          const series: number[] = Array.isArray((args as any)?.series) ? (args as any).series : [];
+          const labels: string[] = Array.isArray((args as any)?.labels) ? (args as any).labels : [];
+          if (!series || series.length < 3) {
+            return res.status(200).json({ success: false, error: 'Not enough data points for trend analysis', details: { points: series?.length || 0 } });
+          }
+          const n = series.length;
+          const xs = Array.from({ length: n }, (_, i) => i + 1);
+          const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+          const xBar = mean(xs);
+          const yBar = mean(series);
+          const num = xs.reduce((acc, xi, i) => acc + (xi - xBar) * (series[i] - yBar), 0);
+          const den = xs.reduce((acc, xi) => acc + (xi - xBar) ** 2, 0) || 1;
+          const slope = num / den;
+          const direction = Math.abs(slope) < 0.01 ? 'flat' : (slope > 0 ? 'increasing' : 'decreasing');
+          const insight = labels && labels.length === n
+            ? `${direction} trend across ${labels[0]} → ${labels[n - 1]}`
+            : `${direction} trend over time`;
+          return res.status(200).json({ success: true, result: `Trend ${direction} (slope ${Number(slope.toFixed(4))})`, details: { slope: Number(slope.toFixed(6)), points: n, insight } });
+        } catch (e) {
+          return res.status(500).json({ success: false, error: 'Failed trend analysis', details: e instanceof Error ? e.message : String(e) });
         }
       }
       case 'sheet_query':

@@ -1,6 +1,8 @@
 import dayjs from 'dayjs';
 import { StructuredTable } from './types';
 import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structureForDisplay, normalizeDateColumns } from './utils';
+import { genkit } from 'genkit';
+import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
 export type QAResult = { answer: string; tables?: StructuredTable[] } | null;
 
@@ -382,6 +384,101 @@ export function answerQuestionFromSheets(
     }
     return tables ? { answer, tables } : { answer };
   }
+
+  // As a fallback for complex questions: Use LLM chain-of-thought with a safe pseudo-execution
+  try {
+    const sampleRows = rows.slice(0, 30);
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+    const previewTable = [headers, ...sampleRows];
+    const prompt = `You are a spreadsheet QA assistant.
+Follow these steps strictly:
+Step 1: Understand the query.
+Step 2: Identify relevant columns and any filters from the provided headers/rows.
+Step 3: Reason step-by-step how to compute the answer.
+Step 4: Provide a concise final answer.
+
+Return STRICT JSON only with fields: {"reasoning": string, "queryType": "aggregate"|"filter"|"text"|"other", "code": string, "answer": string}
+- "code" should be short Python-like pseudocode using pandas (e.g., df['Sales'].sum(), df[df['Region']=='East']['Sales'].mean(), df.groupby('Region')['Sales'].sum().sort_values(desc=True).head(3)).
+- Keep reasoning concise (<= 3 sentences). Do NOT include any non-JSON text.
+
+User query: ${JSON.stringify(message)}
+Headers: ${JSON.stringify(headers)}
+Sample rows (CSV-like): ${JSON.stringify(previewTable)}
+`;
+    let text = '';
+    try {
+      const out = await ai.generate(prompt);
+      text = (out?.text || '').trim();
+    } catch {}
+    if (text.startsWith('```')) text = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(text);
+    const code: string = typeof parsed.code === 'string' ? parsed.code : '';
+    const llmAnswer: string = typeof parsed.answer === 'string' ? parsed.answer : '';
+
+    // Simple pseudo-executor to simulate pandas-like snippets on our in-memory table
+    const runPseudo = (): { answer?: string; tables?: StructuredTable[] } | null => {
+      try {
+        // groupby sum: df.groupby('X')['Y'].sum()
+        const mGroup = code.match(/groupby\(['"](.+?)['"]\).*?\['(.+?)'\]\.sum\(\)/i);
+        if (mGroup) {
+          const gCol = mGroup[1];
+          const yCol = mGroup[2];
+          const gIdx = headers.indexOf(gCol);
+          const yIdx = headers.indexOf(yCol);
+          if (gIdx >= 0 && yIdx >= 0) {
+            const map = new Map<string, number>();
+            for (const r of rows) {
+              const k = String(r[gIdx] ?? '');
+              const v = parseNumber(r[yIdx]);
+              if (v != null) map.set(k, (map.get(k) || 0) + v);
+            }
+            const entries = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+            const tbl: StructuredTable = {
+              title: `${sheetName} · Sum(${yCol}) by ${gCol}`,
+              headers: [gCol, `Sum(${yCol})`],
+              rows: entries.slice(0, 10).map(([k, v]) => [k, String(Number(v.toFixed(2)))]),
+            };
+            // Basic anomaly detection (z-score on group sums)
+            const values = entries.map(e => e[1]);
+            const mean = values.reduce((a,b)=>a+b,0) / Math.max(1, values.length);
+            const sd = Math.sqrt(values.reduce((a,b)=>a + (b-mean)*(b-mean), 0) / Math.max(1, values.length));
+            const anomalies = entries.filter(([,v]) => sd > 0 && Math.abs((v-mean)/sd) >= 2.5).map(e => e[0]);
+            const suffix = anomalies.length > 0 ? ` Possible anomalies: ${anomalies.slice(0,3).join(', ')}.` : '';
+            return { answer: `Top ${gCol} by total ${yCol}: ${entries[0]?.[0] ?? 'n/a'} (${Number((entries[0]?.[1] ?? 0).toFixed(2))}).${suffix}`, tables: [tbl] };
+          }
+        }
+        // simple sum: df['Col'].sum()
+        const mSum = code.match(/\[['"](.+?)['"]\]\.sum\(\)/i);
+        if (mSum) {
+          const col = mSum[1];
+          const idx = headers.indexOf(col);
+          if (idx >= 0) {
+            const vals = rows.map(r => parseNumber(r[idx])).filter((n): n is number => n != null);
+            const total = vals.reduce((a,b)=>a+b,0);
+            return { answer: `Sum(${col}): ${Number(total.toFixed(2))}.` };
+          }
+        }
+        // filter mean: df[df['A']=="x"]["B"].mean()
+        const mFilterMean = code.match(/df\[df\[['"](.+?)['"]\]\s*([!=]=)\s*['"](.+?)['"]\]\[['"](.+?)['"]\]\.mean\(\)/i);
+        if (mFilterMean) {
+          const colA = mFilterMean[1]; const op = mFilterMean[2]; const val = mFilterMean[3]; const colB = mFilterMean[4];
+          const aIdx = headers.indexOf(colA); const bIdx = headers.indexOf(colB);
+          if (aIdx >= 0 && bIdx >= 0) {
+            const filt = rows.filter(r => (op === '==' ? String(r[aIdx]) === val : String(r[aIdx]) !== val));
+            const vals = filt.map(r => parseNumber(r[bIdx])).filter((n): n is number => n != null);
+            const avg = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : 0;
+            return { answer: `Average ${colB} where ${colA} ${op} ${val}: ${Number(avg.toFixed(2))}.` };
+          }
+        }
+      } catch {}
+      return null;
+    };
+
+    const sim = runPseudo();
+    if (sim && sim.answer) return sim;
+    if (llmAnswer) return { answer: llmAnswer };
+  } catch {}
 
   return null;
 }

@@ -8,6 +8,7 @@ module.exports = {
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    '^node-fetch$': '<rootDir>/__mocks__/node-fetch.js',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testTimeout: 10000,

@@ -5,7 +5,7 @@ import fetch from 'node-fetch';
 // Minimal bootstrap of the Next API handler under test by importing and wiring to a local server
 // We simulate the Google Sheets client and the required imports via jest mocks.
 
-jest.mock('../lib/googleSheets', () => ({
+jest.mock('@/lib/googleSheets', () => ({
   getGoogleSheetsClient: async () => ({
     spreadsheets: {
       values: {
@@ -26,9 +26,9 @@ jest.mock('../lib/googleSheets', () => ({
 }));
 
 // Patch module path used in the handler
-jest.mock('../lib/utils/normalizeNumber', () => require('../lib/utils/normalizeNumber'));
-jest.mock('../lib/sheets/columnTypeInfer', () => require('../lib/sheets/columnTypeInfer'));
-jest.mock('../lib/analytics/simpleAnalytics', () => require('../lib/analytics/simpleAnalytics'));
+jest.mock('../lib/utils/normalizeNumber', () => jest.requireActual('../lib/utils/normalizeNumber'));
+jest.mock('../lib/sheets/columnTypeInfer', () => jest.requireActual('../lib/sheets/columnTypeInfer'));
+// Note: do not mock simpleAnalytics; the handler imports it directly now to avoid recursive mocks
 
 describe('aggregate handler end-to-end', () => {
   let server: http.Server;

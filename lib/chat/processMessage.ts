@@ -8,6 +8,43 @@ import { answerQuestionFromSheets } from './qa';
 import { buildChartSpecs } from './charts';
 import { composeGroundedReply } from './replyComposer';
 import { generatePlan } from './planner';
+import { DataSource, SheetDataSource, FileDataSource } from '../data/source';
+
+// Helper: robustly extract headers from diverse tool response shapes
+function extractHeadersFromTool(toolRes: any): string[] {
+  try {
+    if (!toolRes) return [];
+    // Direct table.headers
+    const table = (toolRes as any).table || (toolRes as any).details?.table;
+    if (table && Array.isArray(table.headers)) {
+      return (table.headers as any[]).map((h: any) => String(h ?? ''));
+    }
+    // table.rows[0]
+    if (table && Array.isArray(table.rows) && Array.isArray(table.rows[0])) {
+      return (table.rows[0] as any[]).map((h: any) => String(h ?? ''));
+    }
+    // data[0].values or data[0]
+    const data = (toolRes as any).data || (toolRes as any).details?.data;
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0];
+      if (first && Array.isArray((first as any).values)) {
+        return ((first as any).values as any[]).map((h: any) => String(h ?? ''));
+      }
+      if (Array.isArray(first)) {
+        return (first as any[]).map((h: any) => String(h ?? ''));
+      }
+    }
+    // Sometimes servers return JSON in result string
+    const result = (toolRes as any).result;
+    if (typeof result === 'string' && result.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(result);
+        return extractHeadersFromTool(parsed);
+      } catch {}
+    }
+  } catch {}
+  return [];
+}
 
 export async function processMessage(
   message: string,
@@ -16,6 +53,13 @@ export async function processMessage(
   images: ImageData[] = []
 ) {
   try {
+    // Initialize and append current user message to in-context history (keep last 5)
+    try {
+      const ctxAny = context as any;
+      const existing: ConversationHistoryItem[] = Array.isArray(ctxAny.conversationHistory) ? ctxAny.conversationHistory : [];
+      const combined = [...existing, { role: 'user', content: String(message || ''), timestamp: Date.now() }];
+      ctxAny.conversationHistory = combined.slice(-5);
+    } catch {}
     const debugEnabled = Boolean((context as any)?.debug);
     const lowerMessage = (message || '').toLowerCase();
     let intent = 'chat';
@@ -178,16 +222,92 @@ export async function processMessage(
       }
     }
 
+    // Build an abstracted data source (sheet vs file)
+    let dataSource: DataSource | null = null;
+    try {
+      const ctxAny = context as any;
+      const scopedBase = (typeof window === 'undefined' && context && (ctxAny)._baseUrl)
+        ? String((ctxAny)._baseUrl)
+        : undefined;
+      if (!hasFiles && context?.spreadsheetId) {
+        // Prefer current sheetName or first sheetNames
+        const sheetName = (ctxAny.sheetName && String(ctxAny.sheetName))
+          || (Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames[0])
+          || (Array.isArray(ctxAny.allSheetNames) && ctxAny.allSheetNames[0])
+          || '';
+        if (sheetName) {
+          dataSource = new SheetDataSource(context.spreadsheetId, sheetName, scopedBase);
+        }
+      } else if (hasFiles) {
+        // Build FileDataSource using any structured extractions present in tool results later
+        dataSource = new FileDataSource(images as any, []);
+      }
+    } catch {}
+
+    // Before planning: ensure header row is attached for planner if missing (via data source when available)
+    try {
+      const ctxAny = context as any;
+      const hasHeaders = Array.isArray(ctxAny.sheetHeaders) && ctxAny.sheetHeaders.length > 0;
+      const sheetName = typeof ctxAny.sheetName === 'string' && ctxAny.sheetName.trim() ? ctxAny.sheetName : '';
+      if (!hasHeaders) {
+        if (dataSource) {
+          try {
+            const headers = await dataSource.getHeaders();
+            if (Array.isArray(headers) && headers.length > 0) {
+              ctxAny.sheetHeaders = headers.map((h: any) => String(h ?? ''));
+            }
+          } catch {}
+        } else if (context?.spreadsheetId && sheetName) {
+          const toolCall = {
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: {
+              name: 'sheet_query',
+              arguments: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName, range: 'A1:Z1' })
+            }
+          };
+          const headerRes = await executeToolCall(toolCall as any, context, images);
+          if (headerRes && headerRes.success) {
+            const headers = extractHeadersFromTool(headerRes);
+            if (Array.isArray(headers) && headers.length > 0) {
+              ctxAny.sheetHeaders = headers.map((h: any) => String(h ?? ''));
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[processMessage] Header prefetch error (continuing without headers)', e);
+    }
+
+    // Helper: summarize recent conversation (simple truncation by characters approximating tokens)
+    const summarizeHistory = (): string => {
+      try {
+        const items: ConversationHistoryItem[] = Array.isArray((context as any).conversationHistory) ? ((context as any).conversationHistory as ConversationHistoryItem[]) : [];
+        const joined = items.map(i => `${i.role}: ${i.content}`).join('\n');
+        // rough cap ~1000 tokens ≈ 4000 chars
+        return joined.length > 4000 ? joined.slice(-4000) : joined;
+      } catch { return ''; }
+    };
+
     // Plan → Execute: use LLM planner to decide tools conservatively
     let plannedToolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
     let currentPlan: any = null;
     try {
-      const ctxSummary = `sheetName:${(context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames?.[0] : '') || ''}`;
-      const plan: any = await generatePlan(message, ctxSummary);
+      const headersForPlanner: string[] = Array.isArray((context as any)?.sheetHeaders)
+        ? ((context as any).sheetHeaders as string[])
+        : [];
+      const historySummary = summarizeHistory();
+      const plan: any = await generatePlan(`${message}\n\n(Recent context:)\n${historySummary}`, { headers: headersForPlanner });
       currentPlan = plan;
       // eslint-disable-next-line no-console
       console.log('[Planner] plan', plan);
-      if (plan && plan.clarifyQuestion) {
+
+      // Use the plan as-is (auto-pick is handled inside the planner now)
+      if (plan?.intent && typeof plan.intent === 'string') intent = plan.intent;
+
+      // If clarification is still needed (e.g., no confident target), return clarification flow
+      if (plan && plan.clarifyQuestion && !(String(plan?.intent || '').toLowerCase() === 'aggregate' && plan?.targetColumn)) {
         const clarifyOut = {
           response: String(plan.clarifyQuestion),
           requiresClarification: true,
@@ -211,6 +331,47 @@ export async function processMessage(
         type: 'function',
         function: { name: String(t?.name || ''), arguments: JSON.stringify(t?.args || {}) },
       }));
+
+      // If planner provided a dependency-aware toolChain, execute it here with parallelization
+      const chain: any[] = Array.isArray((plan as any).toolChain) ? (plan as any).toolChain : [];
+      if (chain.length > 0) {
+        const chainResults: any[] = [];
+        const completed = new Set<number>();
+        const maxIterations = 50;
+        let iter = 0;
+        while (completed.size < chain.length && iter++ < maxIterations) {
+          const runnable: number[] = [];
+          for (let i = 0; i < chain.length; i++) {
+            if (completed.has(i)) continue;
+            const deps: number[] = Array.isArray(chain[i].dependsOn) ? chain[i].dependsOn : [];
+            const depsDone = deps.every((d) => completed.has(d));
+            if (depsDone) runnable.push(i);
+          }
+          if (runnable.length === 0) break; // deadlock or cyclic deps
+          const tasks = runnable.map(async (idx) => {
+            const step = chain[idx];
+            const call = {
+              id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              type: 'function',
+              function: { name: String(step.toolName || ''), arguments: JSON.stringify(step.params || {}) }
+            } as any;
+            let res = await executeToolCall(call, context, images);
+            if (!res?.success && step.fallback && step.fallback.toolName) {
+              const fb = {
+                id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: 'function',
+                function: { name: String(step.fallback.toolName), arguments: JSON.stringify(step.fallback.params || {}) }
+              } as any;
+              res = await executeToolCall(fb, context, images);
+            }
+            chainResults[idx] = res;
+            completed.add(idx);
+            return res;
+          });
+          const batchResults = await Promise.all(tasks);
+          toolResults.push(...batchResults);
+        }
+      }
     } catch {
       plannedToolCalls = [];
     }
@@ -340,63 +501,34 @@ export async function processMessage(
     // Determine if user is asking for charts/graphs early (used by table suppression later)
     const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);
 
-    // auto-hydrate sheets
+    // auto-hydrate via abstract data source
     try {
       const now = Date.now();
       const ctxAny = context as any;
       const hasHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
       const lastHydration = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
       const isStale = now - lastHydration > 60_000;
-      let sheetNamesList = Array.isArray(ctxAny.sheetNames) ? (ctxAny.sheetNames as string[]) : [];
-      // Fallbacks: single sheetName, else first from allSheetNames
-      if ((!sheetNamesList || sheetNamesList.length === 0)) {
-        const single = typeof ctxAny.sheetName === 'string' && ctxAny.sheetName.trim() ? [ctxAny.sheetName] : [];
-        const fromAll = Array.isArray(ctxAny.allSheetNames) && ctxAny.allSheetNames.length > 0 ? [ctxAny.allSheetNames[0]] : [];
-        sheetNamesList = single.length > 0 ? single : fromAll;
-      }
-      const canHydrate = (!hasHydrated || isStale) && !!context?.spreadsheetId && sheetNamesList.length > 0 && !hasFiles;
-      if (canHydrate) {
-        // Prefer a request-scoped base URL (set by API handler) to avoid env mismatch
-        const scopedBase = (typeof window === 'undefined' && context && (context as any)._baseUrl)
-          ? String((context as any)._baseUrl)
-          : undefined;
-        const baseUrl = scopedBase
-          || (process.env.NEXT_PUBLIC_SITE_URL && /^https?:\/\//i.test(process.env.NEXT_PUBLIC_SITE_URL!)
-                ? String(process.env.NEXT_PUBLIC_SITE_URL).replace(/\/$/, '')
-                : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'));
-        const take = sheetNamesList.slice(0, 3);
-        const results = await Promise.allSettled(
-          take.map(async (name) => {
-            const resp = await fetch(`${baseUrl}/api/get-sheet-data`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: name, tailRows: 800 })
-            });
-            if (!resp.ok) throw new Error(`Failed to hydrate ${name}`);
-            const json = await resp.json();
-            return { name, data: (json?.data as string[][]) || [] };
-          })
-        );
+      const canHydrate = (!hasHydrated || isStale) && dataSource && !hasFiles;
+      if (canHydrate && dataSource) {
+        const headers = await dataSource.getHeaders();
+        const rows = await dataSource.getSampleRows(800);
         const map: Record<string, string[][]> = {};
-        for (const r of results) {
-          if (r.status === 'fulfilled' && r.value) map[r.value.name] = r.value.data;
-        }
+        const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
+        map[sheetName] = [headers, ...rows];
         if (Object.keys(map).length > 0) {
           ctxAny.sheetData = map;
           ctxAny._sheetHydratedAt = now;
-          // Build a lightweight column catalog for the first hydrated sheet
           try {
             const first = Object.keys(map)[0];
             const table = map[first] || [];
-            const headers = Array.isArray(table) && table.length > 0 ? table[0] : [];
-            const lower = headers.map((h: string) => String(h || '').toLowerCase());
-            const types = headers.map((_, i) => {
-              // numeric if >50% parseNumber
+            const hdrs = Array.isArray(table) && table.length > 0 ? table[0] : [];
+            const lower = hdrs.map((h: string) => String(h || '').toLowerCase());
+            const types = hdrs.map((_, i) => {
               const col = (table.slice(1) as string[][]).map(r => r?.[i]);
               const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
               return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
             });
-            ctxAny.columnCatalog = { sheet: first, headers, lower, types };
+            ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
           } catch {}
         }
       }
@@ -409,7 +541,8 @@ export async function processMessage(
       const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
       const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
       if (hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
-        const qa = answerQuestionFromSheets(message, hydratedForQA, selectedForQA);
+        const historySummary = summarizeHistory();
+        const qa = answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}`, hydratedForQA, selectedForQA);
         if (qa) {
           response = qa.answer;
           if (qa.tables && qa.tables.length > 0) dataTables.push(...qa.tables);
@@ -655,6 +788,13 @@ export async function processMessage(
       insights,
       suppressResponseText: isFileOnly
     };
+    // Append assistant reply into conversation history (keep last 5)
+    try {
+      const ctxAny = context as any;
+      const existing: ConversationHistoryItem[] = Array.isArray(ctxAny.conversationHistory) ? ctxAny.conversationHistory : [];
+      const combined = [...existing, { role: 'assistant', content: String(out.response || ''), timestamp: Date.now() }];
+      ctxAny.conversationHistory = combined.slice(-5);
+    } catch {}
     if (debugEnabled) {
       out.plan = currentPlan;
       out.debugSources = (toolResults || []).map((r: any) => r?.result).slice(0, 5);
