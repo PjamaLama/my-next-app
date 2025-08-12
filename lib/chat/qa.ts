@@ -115,6 +115,85 @@ export function answerQuestionFromSheets(
     }
   } catch {}
 
+  // Generalized categorical Q&A: detect target categorical column via synonyms (e.g., town/city/location) and answer
+  try {
+    const wantsMost = /\b(most|top|frequent|often)\b/i.test(message);
+    const categoryKeys = Object.keys(COLUMN_SYNONYMS) as Array<keyof typeof COLUMN_SYNONYMS>;
+    // Determine which categorical column is referenced, if any
+    let targetKey: keyof typeof COLUMN_SYNONYMS | null = null;
+    let targetIdx = -1;
+    for (const key of categoryKeys) {
+      // Skip numeric-focused categories here
+      if (key === 'amount' || key === 'fuel' || key === 'margin') continue;
+      const synonyms = COLUMN_SYNONYMS[key];
+      if (synonyms.some(s => lower.includes(s))) {
+        const idx = resolveColumnIndex(headers, message, synonyms);
+        if (idx >= 0) {
+          targetKey = key;
+          targetIdx = idx;
+          break;
+        }
+      }
+    }
+
+    if (targetIdx >= 0) {
+      const nonEmpty = filtered.filter(r => String(r[targetIdx] ?? '').trim() !== '');
+      // Case A: Most/common value for the referenced categorical column
+      if (wantsMost && nonEmpty.length > 0) {
+        const counts = new Map<string, number>();
+        for (const r of nonEmpty) {
+          const v = String(r[targetIdx] ?? '').trim();
+          counts.set(v, (counts.get(v) || 0) + 1);
+        }
+        const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+        if (sorted.length > 0) {
+          const [topValue, topCount] = sorted[0];
+          const title = `${sheetName} · Most common ${headers[targetIdx]}` + (range?.label ? ` · ${range.label}` : '');
+          const tblHeaders = [headers[targetIdx], 'Count'];
+          const tblRows = sorted.slice(0, 10).map(([v, c]) => [v, String(c)]);
+          return {
+            answer: `Most common ${headers[targetIdx]}: ${topValue} (${topCount}).`,
+            tables: [{ title, headers: tblHeaders, rows: tblRows }]
+          };
+        }
+      }
+
+      // Case B: If a date window is present, return the value for the latest row in that window
+      if (range && nonEmpty.length > 0) {
+        let candidate = nonEmpty;
+        if (dateIdx >= 0) {
+          candidate = candidate
+            .map(r => ({ r, d: dayjs(String(r[dateIdx] || '')) }))
+            .filter(x => x.d.isValid())
+            .sort((a, b) => a.d.valueOf() - b.d.valueOf())
+            .map(x => x.r);
+        }
+        const latest = candidate[candidate.length - 1];
+        const value = String(latest[targetIdx] ?? '').trim();
+        if (value) {
+          return { answer: `${headers[targetIdx]}: ${value}${range?.label ? ` · ${range.label}` : ''}.` };
+        }
+      }
+
+      // Case C: Fallback — return the latest non-empty categorical value
+      if (nonEmpty.length > 0) {
+        let candidate = nonEmpty;
+        if (dateIdx >= 0) {
+          candidate = candidate
+            .map(r => ({ r, d: dayjs(String(r[dateIdx] || '')) }))
+            .filter(x => x.d.isValid())
+            .sort((a, b) => a.d.valueOf() - b.d.valueOf())
+            .map(x => x.r);
+        }
+        const latest = candidate[candidate.length - 1];
+        const value = String(latest[targetIdx] ?? '').trim();
+        if (value) {
+          return { answer: `${headers[targetIdx]}: ${value}.` };
+        }
+      }
+    }
+  } catch {}
+
   const metricIdx = (() => {
     const hints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
     const direct = resolveColumnIndex(headers, message, hints);
