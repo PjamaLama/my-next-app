@@ -111,6 +111,19 @@ const SheetChipSelector: React.FC = () => {
           </svg>
           <span className="text-sm text-red-400">Error: {error}</span>
         </div>
+        {/* If not a Google Sheet, show manual conversion help */}
+        {typeof error === 'string' && error.includes('The provided ID is not a Google Sheet') && (
+          <div className="mt-2">
+            <a
+              href="https://support.google.com/docs/answer/49114?hl=en"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-white/80 underline"
+            >
+              How to convert to a Google Sheet
+            </a>
+          </div>
+        )}
       </div>
     );
   }
