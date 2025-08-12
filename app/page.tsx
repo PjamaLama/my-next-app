@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import { useChat, ChatMessage as ProviderChatMessage } from './providers/ChatProvider';
+import ColumnChooser from './components/ColumnChooser';
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
 import { useServiceAccount } from './providers/ServiceAccountProvider';
@@ -1966,6 +1967,39 @@ export default function Home() {
                       <span className="text-[11px]">{message.timestamp.toLocaleTimeString()}</span>
                     </div>
                     <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+
+                    {/* Column chooser for aggregate clarification */}
+                    {message.role === 'assistant' && /Which column contains the sales amounts\?/i.test(message.content) && (
+                      <div className="mt-2">
+                        {(() => {
+                          try {
+                            // Pull headers from last fetched sheet in cache
+                            const sheetNames = selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(sheetDataCache || {});
+                            const first = sheetNames && sheetNames.length > 0 ? sheetNames[0] : undefined;
+                            const table = first ? sheetDataCache[first] : undefined;
+                            const headers = Array.isArray(table) && table.length > 0 ? (table[0] as string[]) : [];
+                            if (!headers || headers.length === 0) return null;
+                            return (
+                              <ColumnChooser
+                                headers={headers}
+                                title="Pick a column"
+                                onSelect={(header) => {
+                                  const h = (header || '').trim();
+                                  if (!h) return;
+                                  const synth: ChatMessage = {
+                                    id: `msg_${Date.now()}_column_select`,
+                                    role: 'user',
+                                    content: `Use column: ${h}`,
+                                    timestamp: new Date(),
+                                  } as any;
+                                  setProviderChatMessages(prev => [...prev, synth as unknown as ProviderChatMessage]);
+                                }}
+                              />
+                            );
+                          } catch { return null; }
+                        })()}
+                      </div>
+                    )}
 
                     {/* Render user attachments inside the bubble, WhatsApp-style */}
                     {message.role === 'user' && Array.isArray(message.attachments) && message.attachments.length > 0 && (

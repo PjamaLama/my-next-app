@@ -143,9 +143,99 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
           const headers = values[0] || [];
           const rows = values.slice(1);
+
+          // Auto-select numeric column if missing, then validate with normalization heuristics
+          const { pickBestNumericColumn } = require('../../lib/sheets/columnTypeInfer');
+          const { normalizeNumber } = require('../../lib/utils/normalizeNumber');
+
+          const specObj: any = spec || {};
+          let colName: string | null = specObj.col || (Array.isArray(specObj.metrics) && specObj.metrics[0]?.col) || null;
+          let chosenIndex: number | null = colName ? headers.indexOf(colName) : null;
+
+          if (chosenIndex === null || chosenIndex < 0) {
+            chosenIndex = pickBestNumericColumn(headers, rows);
+            if (chosenIndex !== null && chosenIndex >= 0) {
+              colName = headers[chosenIndex] ?? null;
+            }
+          }
+
+          if (chosenIndex === null || chosenIndex < 0) {
+            const sampleRows = rows.slice(0, 5).map((r: string[], i: number) => ({ rowIndex: i + 2, rawValue: String(r?.[0] ?? '') }));
+            return res.status(200).json({ success: false, error: { code: 'NO_NUMERIC_COLUMN', message: 'No suitable numeric column found for aggregation.', sampleRows } });
+          }
+
+          // Map selected column through normalizeNumber and determine parsed ratio
+          const columnSamples = rows.map((r: string[], i: number) => {
+            const rawValue = String(r?.[chosenIndex as number] ?? '').trim();
+            return { rowIndex: i + 2, rawValue, parsed: normalizeNumber(rawValue) };
+          });
+
+          const nonEmpty = columnSamples.filter((s: any) => s.rawValue.length > 0);
+          const parsedNumbers = nonEmpty
+            .map((s: any) => ({ ...s, value: s.parsed?.value as number | null }))
+            .filter((s: any) => s.value !== null);
+
+          const rowsExamined = nonEmpty.length;
+          const parsedCount = parsedNumbers.length;
+          const unparsedCount = rowsExamined - parsedCount;
+          const parsedRatio = rowsExamined > 0 ? parsedCount / rowsExamined : 0;
+          const sampleUnparsed = nonEmpty.filter((s: any) => s.parsed?.value === null).slice(0, 5).map((s: any) => ({ rowIndex: s.rowIndex, rawValue: s.rawValue }));
+          // Build provenance rows (up to first 20 examined rows) with original row values and parsed numeric value
+          const provenanceRows = nonEmpty.slice(0, 20).map((s: any) => {
+            const dataIdx = Math.max(0, (s.rowIndex as number) - 2);
+            const values = Array.isArray(rows[dataIdx]) ? rows[dataIdx] : [];
+            const parsedValue = s.parsed?.value != null ? Number(s.parsed.value) : null;
+            return { rowIndex: s.rowIndex, values, parsedValue };
+          });
+
+          if (rowsExamined === 0 || parsedRatio < 0.6) {
+            return res.status(200).json({
+              success: false,
+              error: {
+                code: 'NO_NUMERIC_COLUMN',
+                message: `Parsed ratio ${parsedRatio.toFixed(2)} below threshold for column '${colName ?? '(unknown)'}'.`,
+                sampleRows: sampleUnparsed,
+              },
+            });
+          }
+
+          // Ensure spec has a column for metrics if missing
+          if (Array.isArray(specObj.metrics)) {
+            specObj.metrics = specObj.metrics.map((m: any) => ({ ...m, col: m.col || colName }));
+          } else if (!specObj.col && colName) {
+            specObj.col = colName;
+          }
+
+          // Deterministic numeric results for the chosen column
+          const nums = parsedNumbers.map((p: any) => p.value as number);
+          const sum = nums.reduce((a: number, b: number) => a + b, 0);
+          const avg = nums.length ? sum / nums.length : 0;
+          const count = nums.length;
+
           const { aggregateRows } = require('../../lib/analytics/simpleAnalytics');
-          const agg = aggregateRows(rows, headers, spec || {});
-          return res.status(200).json({ success: true, result: `Aggregated ${rows.length} row(s) into ${agg.length} group(s).`, details: { headers, groups: agg.length }, data: agg });
+          const agg = aggregateRows(rows, headers, specObj);
+
+          /**
+           * Aggregate response schema (selected fields):
+           * {
+           *   success: boolean,
+           *   result: string,
+           *   details: { headers: string[], groups: number },
+           *   data: any[],
+           *   provenance: { rowsExamined: number, parsedCount: number, unparsedCount: number, sampleUnparsed: Array<{ rowIndex: number, rawValue: string }> },
+           *   provenanceRows: Array<{ rowIndex: number, values: string[], parsedValue: number | null }>,
+           *   numeric: { column: string | null, sum: number, avg: number, count: number }
+           * }
+           */
+          return res.status(200).json({
+            success: true,
+            result: `Aggregated ${rows.length} row(s) into ${agg.length} group(s).`,
+            details: { headers, groups: agg.length },
+            data: agg,
+            provenance: { rowsExamined, parsedCount, unparsedCount, sampleUnparsed },
+            provenanceRows,
+            numeric: { column: colName, sum: Number(sum.toFixed(6)), avg: Number(avg.toFixed(6)), count },
+          });
         } catch (e) {
           return res.status(500).json({ success: false, error: 'Failed to aggregate', details: e instanceof Error ? e.message : String(e) });
         }
