@@ -179,6 +179,7 @@ export async function processMessage(
     const toolResults: any[] = [];
     let enhancedResponse = '';
     let didUpdateSheet = false;
+    const dataTables: StructuredTable[] = [];
     for (const toolCall of suggestedTools) {
       const result = await executeToolCall(toolCall, context, images);
       toolResults.push(result);
@@ -293,7 +294,6 @@ export async function processMessage(
     }
 
     let response = '';
-    const dataTables: StructuredTable[] = [];
 
     // Determine if user is asking for charts/graphs early (used by table suppression later)
     const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);
