@@ -4,7 +4,7 @@ import { useSheet } from '../providers/SheetProvider';
 import { useDialog } from '../providers/DialogProvider';
 
 const SheetChipSelector: React.FC = () => {
-  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides, chosenBlockBySheet, setChosenBlockForSheet } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides } = useSheet();
   const { notify } = useDialog();
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -280,34 +280,7 @@ const SheetChipSelector: React.FC = () => {
         </div>
       </div>
 
-      {/* Block selector for transparency and manual override (first selected sheet) */}
-      {selectedSheetNames.length > 0 && (() => {
-        const sheetName = selectedSheetNames[0];
-        const blocks = sheetStructureCache[sheetName]?.blocks || [];
-        if (!blocks || blocks.length === 0) return null;
-        const chosen = chosenBlockBySheet[sheetName];
-        return (
-          <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-200">
-            <span className="opacity-80">Block:</span>
-            <select
-              className="bg-black/40 border border-white/15 rounded px-2 py-1 text-white/90"
-              value={chosen == null ? '' : String(chosen)}
-              onChange={(e) => {
-                const idx = e.target.value === '' ? null : Number(e.target.value);
-                setChosenBlockForSheet(sheetName, idx);
-              }}
-            >
-              <option value="">Auto</option>
-              {blocks.map((b, i) => (
-                <option key={i} value={i}>{`Header@${b.headerRowIndex + 1} Rows ${b.startRowIndex + 1}-${b.endRowIndex + 1}`}</option>
-              ))}
-            </select>
-            {chosen != null && blocks[chosen] && (
-              <span className="opacity-60">Selected: {`Header@${blocks[chosen].headerRowIndex + 1}`}</span>
-            )}
-          </div>
-        );
-      })()}
+      
       
       {/* Help text */}
       {selectedSheetNames.length === 0 && sheetNames.length > 0 && (

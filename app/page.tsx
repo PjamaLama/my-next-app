@@ -2438,7 +2438,11 @@ export default function Home() {
                       const toolCall = {
                         id: `tool_${Date.now()}_apply_direct`,
                         type: 'function' as const,
-                        function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: editingText || transcript || 'Apply updates', preview: false }) }
+                        function: { name: 'update_sheet', arguments: JSON.stringify({
+                          transcript: editingText || transcript || 'Apply updates',
+                          preview: false,
+                          forceCommit: true
+                        }) }
                       };
                       const resp = await fetch('/api/genkit-tool-execute', {
                         method: 'POST',
@@ -2450,7 +2454,7 @@ export default function Home() {
                         setSendResult(data.result || 'Applied updates');
                         setPreviewModal({ open: false, rows: null });
                       } else {
-                        setSendResult(data?.error || 'Apply failed');
+                        setSendResult(data?.error || data?.result || 'Apply failed');
                       }
                     } catch (e) {
                       setSendResult('Apply failed');

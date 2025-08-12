@@ -1261,7 +1261,7 @@ function formatAnalysesAsMarkdown(analyses: Array<{ index: number; type: string;
 
 async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
-    const { transcript, preview } = args;
+    const { transcript, preview, forceCommit = false, minConfidence, minRowConfidence, approvedRows, approveAll } = args as any;
     const { spreadsheetId } = context;
     // Resolve sheet selection with sensible fallbacks
     const providedList = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
@@ -1289,13 +1289,19 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
 
     const allUpdates: SheetAction[] = [];
     let totalExecuted = 0;
+    const flowPreviews: Record<string, any> = {};
+    let anyAborted = false;
     for (const sheetName of resolvedSheetNames) {
       console.log(`Processing updates for sheet: ${sheetName}`);
+      const wantsManualApproval = !preview && (approveAll === true || (Array.isArray(approvedRows) && approvedRows.length > 0));
       const result = await updateSheetFlow({
         transcript,
         sheetId: spreadsheetId,
         sheetName: sheetName,
-        commit: !preview // Only commit if not in preview mode
+        commit: wantsManualApproval ? false : !preview,
+        forceCommit,
+        minConfidence,
+        minRowConfidence
       });
 
       if (result && Array.isArray((result as any).actions) && (result as any).actions.length > 0) {
@@ -1318,40 +1324,88 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         allUpdates.push(...updatesForSheet);
       }
 
+      // capture per-sheet preview from flow for UI visibility
+      if ((result as any)?.preview) {
+        flowPreviews[sheetName] = (result as any).preview;
+      }
+
+      // detect aborted commit due to confidence gate
+      if (!preview && (result as any)?.success === false) {
+        anyAborted = true;
+      }
+
       // Track how many actions the flow executed when commit=true
       if (!preview && typeof (result as any)?.executedActions === 'number') {
         totalExecuted += (result as any).executedActions;
       }
+
+      // If manual approval requested, execute only approved rows now
+      if (wantsManualApproval && (result as any)?.actions) {
+        try {
+          const sheets = await getGoogleSheetsClient();
+          const targetRows = approveAll === true ? null : new Set((approvedRows as any[]).map(n => Number(n)));
+          const actions = (result as any).actions as Array<{ type: string; row: number; column?: string; value?: string }>;
+          const approvedInsertActions = actions.filter(a => a.type === 'insertRow' && (targetRows ? targetRows.has(Number(a.row)) : true));
+          const approvedUpdateActions = actions.filter(a => a.type === 'updateCell' && (targetRows ? targetRows.has(Number(a.row)) : true));
+
+          if (approvedInsertActions.length > 0) {
+            const meta = await sheets.spreadsheets.get({ spreadsheetId, includeGridData: false });
+            const target = meta.data.sheets?.find(s => s.properties?.title === sheetName);
+            if (!target?.properties?.sheetId && target?.properties?.sheetId !== 0) throw new Error(`Sheet ${sheetName} not found`);
+            const internalSheetId = target.properties.sheetId as number;
+            const sorted = [...approvedInsertActions].sort((a, b) => a.row - b.row);
+            const requests = sorted.map(a => ({ insertRange: { range: { sheetId: internalSheetId, startRowIndex: a.row - 1, endRowIndex: a.row, startColumnIndex: 0, endColumnIndex: 1 }, shiftDimension: 'ROWS' as const } }));
+            await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
+            totalExecuted += approvedInsertActions.length;
+          }
+
+          if (approvedUpdateActions.length > 0) {
+            type UpdateItem = { cell: string; row: number; column: string; value: string };
+            const updates: UpdateItem[] = approvedUpdateActions.map((a: any) => ({ cell: `${a.column}${a.row}`, row: Number(a.row), column: String(a.column), value: String(a.value ?? '') }));
+            const { ensureSheetCapacity, escapeSheetName } = await import('@/lib/sheetUtils');
+            const maxRow = updates.reduce((max, u) => Math.max(max, u.row || 1), 1);
+            const maxCol = updates.reduce((max, u) => (u.column && u.column.length > max.length ? u.column : max), 'A');
+            await ensureSheetCapacity(spreadsheetId, sheetName, maxRow, maxCol);
+            await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { data: updates.map(u => ({ range: `${escapeSheetName(sheetName)}!${u.cell}`, values: [[u.value]] })), valueInputOption: 'USER_ENTERED' } });
+            totalExecuted += updates.length;
+          }
+        } catch (e) {
+          console.error('Manual approval commit failed:', e);
+        }
+      }
     }
 
-    if (allUpdates.length > 0) {
+    if (allUpdates.length > 0 || totalExecuted > 0) {
       if (preview) {
         // Return preview data without actually updating
         return res.status(200).json({
           success: true,
-          result: `Preview: ${allUpdates.length} cells would be updated across ${resolvedSheetNames.length} sheet(s).`,
+          result: `Preview: ${allUpdates.length} cell(s) would be updated across ${resolvedSheetNames.length} sheet(s).`,
           actions: allUpdates,
           preview: true,
           // pass through any flow-generated preview for confidence display
-          flowPreview: undefined
+          flowPreview: flowPreviews
         });
       } else {
         // The flow already executed updates (commit=true). Avoid double-applying.
+        if (totalExecuted === 0 && anyAborted) {
+          return res.status(200).json({
+            success: false,
+            result: 'No updates were applied because the confidence gate blocked the commit. You can retry with forceCommit=true or lower thresholds.',
+            actions: allUpdates,
+            flowPreview: flowPreviews
+          });
+        }
         const message = totalExecuted > 0
-          ? `Successfully executed ${totalExecuted} action(s) across ${resolvedSheetNames.length} sheet(s).`
-          : `Successfully applied updates across ${resolvedSheetNames.length} sheet(s).`;
-        return res.status(200).json({
-          success: true,
-          result: message,
-          actions: allUpdates
-        });
+          ? `Executed ${totalExecuted} action(s) across ${resolvedSheetNames.length} sheet(s).`
+          : `No actions were executed.`;
+        return res.status(200).json({ success: totalExecuted > 0, result: message, actions: allUpdates, flowPreview: flowPreviews });
       }
     } else {
-      return res.status(200).json({
-        success: true,
-        result: 'No updates were needed based on the transcript',
-        actions: []
-      });
+      const nothingAppliedMsg = preview
+        ? 'Preview only: no actionable updates detected.'
+        : 'No updates were applied (either none were needed or confidence gate blocked the commit).';
+      return res.status(200).json({ success: false, result: nothingAppliedMsg, actions: [], flowPreview: flowPreviews });
     }
   } catch (error) {
     console.error('Sheet update error:', error);

@@ -178,6 +178,7 @@ export async function processMessage(
 
     const toolResults: any[] = [];
     let enhancedResponse = '';
+    let didUpdateSheet = false;
     for (const toolCall of suggestedTools) {
       const result = await executeToolCall(toolCall, context, images);
       toolResults.push(result);
@@ -226,6 +227,30 @@ export async function processMessage(
           if (typeof result.result === 'string' && result.result.trim()) {
             enhancedResponse += `\n${result.result.trim()}`;
           }
+          didUpdateSheet = true;
+          // If update_sheet returned a preview of what was written, render it as a data table
+          try {
+            const flowPreview = (result as any).flowPreview;
+            // Support single or multi-sheet responses
+            const sheets = flowPreview && typeof flowPreview === 'object' && !Array.isArray(flowPreview)
+              ? Object.keys(flowPreview)
+              : [];
+            const previews = sheets.length > 0 ? sheets.flatMap((name: string) => (flowPreview as any)[name]) : ((result as any).preview || (result as any).details?.preview || []);
+            if (Array.isArray(previews) && previews.length > 0) {
+              const headers = ['Row', 'Field', 'Value'];
+              const rows: string[][] = [];
+              for (const p of previews.slice(0, 30)) {
+                const rowIndex = p.row ?? p.targetRow ?? '';
+                const updates = p.updates || {};
+                for (const [k, v] of Object.entries(updates)) {
+                  rows.push([String(rowIndex), String(k), String(v ?? '')]);
+                }
+              }
+              if (rows.length > 0) {
+                dataTables.push({ title: 'Applied updates (preview)', headers, rows, summary: `Showing ${rows.length} cell update(s)` });
+              }
+            }
+          } catch {}
         } else if (
           executedToolName === 'get_sheet_data' ||
           executedToolName === 'get_sheet_stats' ||
@@ -535,6 +560,18 @@ export async function processMessage(
         }
       }
     } catch {}
+
+    // If we successfully updated sheets, prefer a deterministic confirmation over a generative reply
+    if (didUpdateSheet) {
+      try {
+        const sheets = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
+        const suffix = sheets.length > 0 ? ` in ${sheets.join(', ')}` : '';
+        const summary = (enhancedResponse || '').trim();
+        response = summary || `Applied updates${suffix}.`;
+      } catch {
+        response = (enhancedResponse || '').trim() || 'Applied updates.';
+      }
+    }
 
     // Compose a grounded conversational reply if we still don't have a response
     if (!response || !response.trim()) {

@@ -35,7 +35,11 @@ interface UpdateSheetInput {
   transcript: string;
   sheetId: string;
   sheetName?: string;
-  commit?: boolean; // New flag to indicate if actions should be executed
+  commit?: boolean; // Execute actions when true
+  // Optional safety-gate overrides
+  forceCommit?: boolean; // If true, bypass confidence gating
+  minConfidence?: number; // Minimum average preview confidence required
+  minRowConfidence?: number; // Minimum per-row preview confidence required
 }
 
 // Output type for the flow
@@ -359,10 +363,16 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
             if (preview.length > 0) {
               const avg = preview.reduce((s, p) => s + (p.confidence ?? 0), 0) / preview.length;
               const min = preview.reduce((m, p) => Math.min(m, p.confidence ?? 1), 1);
-              const COMMIT_CONFIDENCE_THRESHOLD = 0.6;
-              if (avg < COMMIT_CONFIDENCE_THRESHOLD || min < 0.4) {
-                console.warn(`Aborting commit due to low confidence. avg=${avg.toFixed(2)} min=${min.toFixed(2)}`);
+              // Code-level defaults: if no per-call override is provided, do not block (0)
+              const thresholdAvg = (typeof input.minConfidence === 'number' ? input.minConfidence : 0);
+              const thresholdMin = (typeof input.minRowConfidence === 'number' ? input.minRowConfidence : 0);
+              const force = !!input.forceCommit;
+              if (!force && (avg < thresholdAvg || min < thresholdMin)) {
+                console.warn(`Aborting commit due to low confidence. avg=${avg.toFixed(2)} min=${min.toFixed(2)} (req avg>=${thresholdAvg}, min>=${thresholdMin})`);
                 return { ...(parsed as UpdateSheetOutput), success: false, executedActions: 0 } as UpdateSheetOutput;
+              }
+              if (force) {
+                console.warn(`Bypassing confidence gate via forceCommit. avg=${avg.toFixed(2)} min=${min.toFixed(2)}`);
               }
             }
           } catch (e) {
@@ -452,7 +462,29 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
               const failures: number[] = [];
               postValues.forEach((v, i) => {
                 const intended = String(updates[i]?.value ?? '');
-                if (String(v) !== intended) failures.push(i);
+                const colIndex = updates[i].column.split('').reduce((acc: number, ch: string) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
+                const header = headers[colIndex] || '';
+                const type = columnTypes[header] || 'string';
+                const vv = String(v ?? '');
+                let equal = false;
+                if (type === 'date') {
+                  try {
+                    const d1 = parseDateFlexible(intended);
+                    const d2 = parseDateFlexible(vv);
+                    if (d1 && d2) {
+                      const iso1 = new Date(d1).toISOString().slice(0, 10);
+                      const iso2 = new Date(d2).toISOString().slice(0, 10);
+                      equal = iso1 === iso2;
+                    }
+                  } catch {}
+                } else if (type === 'number') {
+                  const n1 = parseFloat(intended.replace(/[^0-9.\-]+/g, ''));
+                  const n2 = parseFloat(vv.replace(/[^0-9.\-]+/g, ''));
+                  if (Number.isFinite(n1) && Number.isFinite(n2)) equal = Math.abs(n1 - n2) < 1e-6;
+                } else {
+                  equal = vv === intended;
+                }
+                if (!equal) failures.push(i);
               });
 
               if (failures.length > 0) {

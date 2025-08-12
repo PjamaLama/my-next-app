@@ -78,6 +78,8 @@ export async function executeToolCall(
       analyses: data.analyses,
       extractions: data.extractions,
       data: data.data,
+      flowPreview: (data as any)?.flowPreview,
+      actions: (data as any)?.actions,
       toolId: toolCall.id
     };
   } catch (error) {
