@@ -5,9 +5,10 @@ export type ColumnChooserProps = {
   headers: string[];
   onSelect: (header: string) => void;
   onCancel?: () => void;
+  title?: string;
 };
 
-export default function ColumnChooser({ headers, onSelect, onCancel }: ColumnChooserProps) {
+export default function ColumnChooser({ headers, onSelect, onCancel, title }: ColumnChooserProps) {
   const uniqueHeaders = Array.from(
     new Set((headers || []).map(h => String(h ?? '').trim()).filter(Boolean))
   );
@@ -22,7 +23,7 @@ export default function ColumnChooser({ headers, onSelect, onCancel }: ColumnCho
 
   return (
     <div className="w-full rounded-md border border-gray-200 bg-white p-3">
-      <div className="mb-2 text-sm font-medium text-gray-800">Select a column</div>
+      <div className="mb-2 text-sm font-medium text-gray-800">{title || 'Select a column'}</div>
       <div className="mb-3 flex flex-wrap gap-2">
         {uniqueHeaders.map((h, i) => (
           <button

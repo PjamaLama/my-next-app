@@ -334,12 +334,14 @@ export async function processMessage(
       }));
 
       // If planner provided a dependency-aware toolChain, execute it here with parallelization
+      let _chainCollected: any[] = [];
       const chain: any[] = Array.isArray((plan as any).toolChain) ? (plan as any).toolChain : [];
       if (chain.length > 0) {
         const chainResults: any[] = [];
         const completed = new Set<number>();
         const maxIterations = 50;
         let iter = 0;
+        const collectedResults: any[] = [];
         while (completed.size < chain.length && iter++ < maxIterations) {
           const runnable: number[] = [];
           for (let i = 0; i < chain.length; i++) {
@@ -387,14 +389,21 @@ export async function processMessage(
             return res;
           });
           const batchResults = await Promise.all(tasks);
-          toolResults.push(...batchResults);
+          collectedResults.push(...batchResults);
         }
+        _chainCollected = collectedResults;
       }
     } catch {
       plannedToolCalls = [];
     }
 
     const toolResults: any[] = [];
+    // Note: _chainCollected is defined above; wrap reference in try/catch to avoid TS hoist issues
+    try {
+      // @ts-ignore
+      const chainCollectedLocal: any[] = _chainCollected;
+      if (Array.isArray(chainCollectedLocal) && chainCollectedLocal.length > 0) toolResults.push(...chainCollectedLocal);
+    } catch {}
     let enhancedResponse = '';
     let didUpdateSheet = false;
     const dataTables: StructuredTable[] = [];
@@ -567,7 +576,7 @@ export async function processMessage(
       const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
       if (hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
         const historySummary = summarizeHistory();
-        const qa = answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}`, hydratedForQA, selectedForQA);
+        const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}`, hydratedForQA, selectedForQA);
         if (qa) {
           response = qa.answer;
           if (qa.tables && qa.tables.length > 0) dataTables.push(...qa.tables);

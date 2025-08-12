@@ -54,11 +54,11 @@ function parseSimpleFilter(message: string): { columnQuery: string; value: strin
   return null;
 }
 
-export function answerQuestionFromSheets(
+export async function answerQuestionFromSheets(
   message: string,
   hydratedSheetData: Record<string, string[][]>,
   selectedSheetNames: string[]
-): QAResult {
+): Promise<QAResult> {
   if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return null;
 
   const lower = message.toLowerCase();
@@ -417,7 +417,7 @@ Sample rows (CSV-like): ${JSON.stringify(previewTable)}
     const llmAnswer: string = typeof parsed.answer === 'string' ? parsed.answer : '';
 
     // Simple pseudo-executor to simulate pandas-like snippets on our in-memory table
-    const runPseudo = (): { answer?: string; tables?: StructuredTable[] } | null => {
+    const runPseudo = (): { answer: string; tables?: StructuredTable[] } | null => {
       try {
         // groupby sum: df.groupby('X')['Y'].sum()
         const mGroup = code.match(/groupby\(['"](.+?)['"]\).*?\['(.+?)'\]\.sum\(\)/i);
@@ -476,7 +476,7 @@ Sample rows (CSV-like): ${JSON.stringify(previewTable)}
     };
 
     const sim = runPseudo();
-    if (sim && sim.answer) return sim;
+    if (sim) return sim;
     if (llmAnswer) return { answer: llmAnswer };
   } catch {}
 
