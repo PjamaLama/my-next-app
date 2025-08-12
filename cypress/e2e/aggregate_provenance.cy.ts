@@ -1,3 +1,4 @@
+/// <reference types="cypress" />
 describe('Aggregate provenance smoke', () => {
   it('asks for total sales and shows provenance and numeric result', () => {
     cy.visit('/');
