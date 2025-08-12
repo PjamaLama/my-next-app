@@ -192,8 +192,9 @@ export default function Home() {
   // Beta program live count
   const [betaLimit, setBetaLimit] = useState<number>(100);
   const [betaCount, setBetaCount] = useState<number>(0);
+  const [betaOpen, setBetaOpen] = useState<boolean>(false);
   const spotsLeft = Math.max(0, betaLimit - betaCount);
-  const betaFull = spotsLeft <= 0;
+  const betaFull = betaOpen ? false : spotsLeft <= 0;
 
   
 
@@ -483,12 +484,14 @@ export default function Home() {
     const metaRef = doc(db, 'meta', 'beta');
     const unsub = onSnapshot(metaRef, (snap) => {
       if (snap.exists()) {
-        const data = snap.data() as { capacity?: number; testerCount?: number };
+        const data = snap.data() as { capacity?: number; testerCount?: number; open?: boolean };
         setBetaLimit(typeof data.capacity === 'number' ? data.capacity : 100);
         setBetaCount(typeof data.testerCount === 'number' ? data.testerCount : 0);
+        setBetaOpen(!!data.open);
       } else {
         setBetaLimit(100);
         setBetaCount(0);
+        setBetaOpen(false);
       }
     });
     return () => unsub();

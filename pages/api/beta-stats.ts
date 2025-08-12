@@ -1,12 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '../../lib/firebaseAdmin';
-import { FieldPath } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
 
 type BetaStats = {
   capacity: number;
   testerCount: number;
   spotsLeft: number;
+  open?: boolean;
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<BetaStats | { error: string }>) {
@@ -15,27 +14,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   try {
     const db = getAdminDb();
 
-    // Read capacity from meta/beta, default 100
+    // Read centralized beta meta document
     const metaRef = db.doc('meta/beta');
     const metaSnap = await metaRef.get();
-    const capacity = (metaSnap.exists && typeof metaSnap.get('capacity') === 'number') ? metaSnap.get('capacity') as number : 100;
+    const capacity = (metaSnap.exists && typeof metaSnap.get('capacity') === 'number') ? (metaSnap.get('capacity') as number) : 100;
+    const testerCount = (metaSnap.exists && typeof metaSnap.get('testerCount') === 'number') ? (metaSnap.get('testerCount') as number) : 0;
+    const open = (metaSnap.exists && typeof metaSnap.get('open') === 'boolean') ? (metaSnap.get('open') as boolean) : false;
 
-    // Robust: count registered users via Firebase Authentication
-    const auth = getAuth();
-    let nextPageToken: string | undefined = undefined;
-    let testerCount = 0;
-    do {
-      const result = await auth.listUsers(1000, nextPageToken);
-      testerCount += result.users.length;
-      nextPageToken = result.pageToken;
-    } while (nextPageToken);
+    const spotsLeft = open ? Number.POSITIVE_INFINITY : Math.max(0, capacity - testerCount);
 
-    // Persist latest testerCount on meta/beta so clients can listen live without client perms to user data
-    await metaRef.set({ testerCount, capacity, updatedAt: new Date() }, { merge: true });
+    // Ensure doc is initialized
+    if (!metaSnap.exists) {
+      await metaRef.set({ capacity, testerCount, open, updatedAt: new Date() }, { merge: true });
+    }
 
-    const spotsLeft = Math.max(0, capacity - testerCount);
-
-    return res.status(200).json({ capacity, testerCount, spotsLeft });
+    return res.status(200).json({ capacity, testerCount, spotsLeft, open });
   } catch (err: any) {
     console.error('beta-stats error', err);
     return res.status(500).json({ error: err?.message || 'Internal error' });

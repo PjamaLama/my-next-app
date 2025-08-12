@@ -29,6 +29,64 @@ export const columnToIndex = (col: string): number => {
   return index - 1;
 };
 
+// Helper: convert a 0-based column index to its A1 letter(s) (0 -> A)
+export const indexToColumn = (idx: number): string => {
+  if (idx <= 0) {
+    // handle 0 explicitly; below logic expects 1-based
+    return 'A';
+  }
+  let n = idx + 1;
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s || 'A';
+};
+
+// Parse simple A1 ranges like "A2:C10", "D:D", "A2:A", "B5" into parts
+export function parseA1Range(range: string): {
+  startColumn: string;
+  startRow?: number;
+  endColumn?: string;
+  endRow?: number;
+} | null {
+  const r = String(range || '').trim();
+  if (!r) return null;
+  const singleCell = r.match(/^([A-Z]+)(\d+)$/i);
+  if (singleCell) {
+    return { startColumn: singleCell[1].toUpperCase(), startRow: parseInt(singleCell[2], 10) };
+  }
+  const fullCol = r.match(/^([A-Z]+):\1$/i);
+  if (fullCol) {
+    return { startColumn: fullCol[1].toUpperCase() };
+  }
+  const colOpenEnd = r.match(/^([A-Z]+)(\d+):([A-Z]+)?$/i);
+  if (colOpenEnd && colOpenEnd[1] && !colOpenEnd[3]) {
+    return { startColumn: colOpenEnd[1].toUpperCase(), startRow: parseInt(colOpenEnd[2], 10) };
+  }
+  const openStartToRow = r.match(/^([A-Z]+):([A-Z]+)(\d+)$/i);
+  if (openStartToRow) {
+    return { startColumn: openStartToRow[1].toUpperCase(), endColumn: openStartToRow[2].toUpperCase(), endRow: parseInt(openStartToRow[3], 10) };
+  }
+  const proper = r.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+  if (proper) {
+    return {
+      startColumn: proper[1].toUpperCase(),
+      startRow: parseInt(proper[2], 10),
+      endColumn: proper[3].toUpperCase(),
+      endRow: parseInt(proper[4], 10),
+    };
+  }
+  // A single column letter like "C"
+  const singleCol = r.match(/^[A-Z]+$/i);
+  if (singleCol) {
+    return { startColumn: singleCol[0].toUpperCase() };
+  }
+  return null;
+}
+
 // Helper function to expand sheet dimensions if needed
 export const ensureSheetCapacity = async (
   sheetId: string, 

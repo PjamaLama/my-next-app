@@ -88,6 +88,14 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
           // Clear pending flag on successful redirect completion
           try { sessionStorage.setItem('authRedirectPending', '0'); } catch {}
           setUser(result.user);
+          // Ensure beta flags are set server-side atomically
+          try {
+            const token = await result.user.getIdToken();
+            await fetch('/api/beta-ensure', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+            });
+          } catch (_) {}
         }
       } catch (e) {
         // Clear pending flag on failure as well to avoid loops
@@ -111,44 +119,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
           photoURL: user.photoURL || null,
           lastLoginAt: serverTimestamp(),
         };
-        // Read global beta capacity to decide tester/waitlist flags deterministically
-        const metaRef = doc(db, 'meta', 'beta');
-        const metaSnap = await getDoc(metaRef);
-        const capacity = (metaSnap.exists() && typeof metaSnap.data()?.capacity === 'number') ? (metaSnap.data() as any).capacity as number : 100;
-        const testerCount = (metaSnap.exists() && typeof metaSnap.data()?.testerCount === 'number') ? (metaSnap.data() as any).testerCount as number : 0;
-        const spotsLeft = Math.max(0, capacity - testerCount);
-
         if (!snap.exists()) {
           baseData.createdAt = serverTimestamp();
-          if (spotsLeft > 0) {
-            baseData.betaTester = true;
-            baseData.betaWaitlist = false;
-            setBetaTester(true);
-            setBetaWaitlist(false);
-          } else {
-            baseData.betaTester = false;
-            baseData.betaWaitlist = true;
-            setBetaTester(false);
-            setBetaWaitlist(true);
-          }
-        } else {
-          const data = snap.data() as any;
-          if (typeof data.betaTester !== 'boolean' && typeof data.betaWaitlist !== 'boolean') {
-            if (spotsLeft > 0) {
-              baseData.betaTester = true;
-              baseData.betaWaitlist = false;
-              setBetaTester(true);
-              setBetaWaitlist(false);
-            } else {
-              baseData.betaTester = false;
-              baseData.betaWaitlist = true;
-              setBetaTester(false);
-              setBetaWaitlist(true);
-            }
-          } else {
-            setBetaTester(!!data.betaTester);
-            setBetaWaitlist(!!data.betaWaitlist);
-          }
         }
         await setDoc(profileRef, baseData, { merge: true });
       } catch (e) {
@@ -156,6 +128,23 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       }
     };
     void ensureUserDoc();
+  }, [user]);
+
+  // After login, ask server to atomically ensure beta tester/waitlist flags
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user) return;
+      try {
+        const token = await user.getIdToken();
+        if (cancelled) return;
+        await fetch('/api/beta-ensure', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (_) {}
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   // Load profile fields (Gemini API key, beta flags) from profile subdocument
