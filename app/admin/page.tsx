@@ -16,7 +16,7 @@ export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const fetchMeta = async () => {
-    if (!user) return;
+    if (!user || isAdmin !== true) return;
     try {
       setError(null);
       setLoading(true);
@@ -32,7 +32,7 @@ export default function AdminPage() {
     }
   };
 
-  useEffect(() => { void fetchMeta(); }, [user]);
+  useEffect(() => { void fetchMeta(); }, [user, isAdmin]);
 
   useEffect(() => {
     (async () => {
@@ -123,6 +123,14 @@ export default function AdminPage() {
           <div className="text-xl font-semibold mb-2">Not authorized</div>
           <p className="text-white/70">Your account does not have admin access.</p>
         </div>
+      </div>
+    );
+  }
+
+  if (isAdmin !== true) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white bg-[#0b0b0e]">
+        <div className="text-center text-white/70">Checking access…</div>
       </div>
     );
   }
