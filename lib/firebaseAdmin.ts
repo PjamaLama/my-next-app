@@ -1,4 +1,4 @@
-import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import { getApps, initializeApp, cert, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 export const getAdminDb = () => {
@@ -7,19 +7,22 @@ export const getAdminDb = () => {
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
     const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY;
 
-    if (!clientEmail || !rawPrivateKey) {
-      throw new Error('Missing service account env vars (clientEmail, privateKey)');
-    }
-
-    const privateKey = rawPrivateKey.replace(/\\n/g, '\n');
-
-    initializeApp({
-      credential: cert({
+    if (clientEmail && rawPrivateKey) {
+      const privateKey = rawPrivateKey.replace(/\\n/g, '\n');
+      initializeApp({
+        credential: cert({
+          projectId: projectId || undefined,
+          clientEmail,
+          privateKey,
+        }),
+      });
+    } else {
+      // Fallback to Application Default Credentials (supports GOOGLE_APPLICATION_CREDENTIALS)
+      initializeApp({
+        credential: applicationDefault(),
         projectId: projectId || undefined,
-        clientEmail,
-        privateKey,
-      }),
-    });
+      });
+    }
   }
 
   return getFirestore();

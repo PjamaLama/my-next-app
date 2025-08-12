@@ -7,6 +7,7 @@ import { normalizeDateColumns } from './utils';
 import { answerQuestionFromSheets } from './qa';
 import { buildChartSpecs } from './charts';
 import { composeGroundedReply } from './replyComposer';
+import { generatePlan } from './planner';
 
 export async function processMessage(
   message: string,
@@ -15,6 +16,7 @@ export async function processMessage(
   images: ImageData[] = []
 ) {
   try {
+    const debugEnabled = Boolean((context as any)?.debug);
     const lowerMessage = (message || '').toLowerCase();
     let intent = 'chat';
     const suggestedTools: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
@@ -176,13 +178,53 @@ export async function processMessage(
       }
     }
 
+    // Plan → Execute: use LLM planner to decide tools conservatively
+    let plannedToolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
+    let currentPlan: any = null;
+    try {
+      const ctxSummary = `sheetName:${(context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames?.[0] : '') || ''}`;
+      const plan: any = await generatePlan(message, ctxSummary);
+      currentPlan = plan;
+      // eslint-disable-next-line no-console
+      console.log('[Planner] plan', plan);
+      if (plan && plan.clarifyQuestion) {
+        const clarifyOut = {
+          response: String(plan.clarifyQuestion),
+          requiresClarification: true,
+          plan: debugEnabled ? plan : undefined,
+          toolCalls: [],
+          pendingToolCalls: [],
+          toolResults: [],
+          context,
+          quickReplies: await generateQuickReplies(message, conversationHistory, context, intent, hasFiles),
+          dataTables: [],
+          charts: [],
+          insights: [],
+          suppressResponseText: false
+        };
+        if (debugEnabled) (clarifyOut as any).debugSources = [];
+        return clarifyOut;
+      }
+      const toolsFromPlan = Array.isArray(plan?.tools) ? plan.tools : [];
+      plannedToolCalls = toolsFromPlan.map((t: any) => ({
+        id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type: 'function',
+        function: { name: String(t?.name || ''), arguments: JSON.stringify(t?.args || {}) },
+      }));
+    } catch {
+      plannedToolCalls = [];
+    }
+
     const toolResults: any[] = [];
     let enhancedResponse = '';
     let didUpdateSheet = false;
     const dataTables: StructuredTable[] = [];
-    for (const toolCall of suggestedTools) {
+    const toolCallsToRun = plannedToolCalls.length > 0 ? plannedToolCalls : suggestedTools;
+    for (const toolCall of toolCallsToRun) {
       const result = await executeToolCall(toolCall, context, images);
       toolResults.push(result);
+      // eslint-disable-next-line no-console
+      try { console.log('[Planner] tool result', { name: toolCall.function.name, success: result?.success }); } catch {}
       if (result.success) {
         const executedToolName = toolCall.function.name;
         if (executedToolName === 'extract_text_only') {
@@ -600,7 +642,7 @@ export async function processMessage(
       }
     }
 
-    return {
+    const out: any = {
       response: isFileOnly ? '' : (response || ''),
       toolCalls: [],
       pendingToolCalls: [],
@@ -613,6 +655,11 @@ export async function processMessage(
       insights,
       suppressResponseText: isFileOnly
     };
+    if (debugEnabled) {
+      out.plan = currentPlan;
+      out.debugSources = (toolResults || []).map((r: any) => r?.result).slice(0, 5);
+    }
+    return out;
   } catch (error) {
     return {
       response: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,

@@ -122,6 +122,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`API: Gemini API key provided:`, !!apiKey);
 
     switch (name) {
+      case 'aggregate': {
+        try {
+          const { spreadsheetId, sheetNames } = context as any;
+          const { sheetName, range, spec } = args as any;
+          if (!spreadsheetId) {
+            return res.status(400).json({ success: false, error: 'Spreadsheet ID is required' });
+          }
+          const targetSheet = sheetName || (Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames[0] : null);
+          if (!targetSheet) {
+            return res.status(400).json({ success: false, error: 'sheetName is required (or provide context.sheetNames)' });
+          }
+          const sheets = await getGoogleSheetsClient();
+          const escaped = targetSheet.includes(' ')? `'${targetSheet.replace(/'/g, "''")}'`: targetSheet;
+          const targetRange = range ? `${escaped}!${String(range)}` : `${escaped}!A1:T2000`;
+          const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: targetRange, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+          const values = (resp.data.values || []) as string[][];
+          if (!values || values.length === 0) {
+            return res.status(200).json({ success: true, result: 'No data found in range', details: { rows: 0 } });
+          }
+          const headers = values[0] || [];
+          const rows = values.slice(1);
+          const { aggregateRows } = require('../../lib/analytics/simpleAnalytics');
+          const agg = aggregateRows(rows, headers, spec || {});
+          return res.status(200).json({ success: true, result: `Aggregated ${rows.length} row(s) into ${agg.length} group(s).`, details: { headers, groups: agg.length }, data: agg });
+        } catch (e) {
+          return res.status(500).json({ success: false, error: 'Failed to aggregate', details: e instanceof Error ? e.message : String(e) });
+        }
+      }
       case 'sheet_query':
         return await handleSheetQuery(args, context, res);
       case 'update_sheet':
@@ -287,6 +315,29 @@ async function handleSheetQuery(args: ToolArgs, context: Context, res: NextApiRe
       return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
     }
     const target = spec.sheet || spec.sheetName || sheetNames[0];
+    // Top-K vector mode: delegate to internal get-sheet-data with topKQuery
+    const maybeAny: any = spec as any;
+    const isTopK = String(maybeAny?.mode || '').toLowerCase() === 'topk' || typeof maybeAny?.topKQuery === 'string' || typeof maybeAny?.queryText === 'string';
+    if (isTopK) {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+        const body = {
+          spreadsheetId,
+          sheetName: target,
+          topKQuery: String(maybeAny?.topKQuery || maybeAny?.queryText || ''),
+          topK: typeof maybeAny?.topK === 'number' ? maybeAny.topK : 5,
+        };
+        const resp = await fetch(`${baseUrl}/api/get-sheet-data`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!resp.ok) {
+          const t = await resp.text();
+          throw new Error(`vector get-sheet-data failed: ${resp.status} - ${t}`);
+        }
+        const json = await resp.json();
+        return res.status(200).json({ success: true, result: `Top ${body.topK} similar row(s).`, details: { mode: 'topk' }, data: json.rows || [] });
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'TopK vector query failed', details: e instanceof Error ? e.message : String(e) });
+      }
+    }
     const sheets = await getGoogleSheetsClient();
     const escaped = target.includes(' ')? `'${target.replace(/'/g, "''")}'`: target;
     const range = `${escaped}!A1:T2000`;

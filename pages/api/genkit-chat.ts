@@ -57,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const ctx = { ...(context || {}), _baseUrl: baseUrl };
 
     const result = await processChatMessage(message, ctx, conversationHistory || [], images || []);
-
+    // If debug mode requested, ensure plan/toolResults bubble up (processMessage already includes when context.debug=true)
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     return res.status(500).json({

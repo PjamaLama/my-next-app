@@ -5,6 +5,7 @@ import { analyzeSheetStructure, detectHeaderRow, detectTableBlocks } from '@/lib
 import { ensureHeaderVectors } from '@/lib/sheetVectorIndex';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createLogger } from '@/lib/logger';
+import { embedTexts } from '@/lib/embeddings';
 
 // Lightweight in-memory response cache to reduce duplicate fetches
 const RESPONSE_TTL_MS = 30 * 1000; // 30s cache to coalesce rapid requests
@@ -23,6 +24,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sheets = await getGoogleSheetsClient();
     const { spreadsheetId: rawSpreadsheetId, sheetName, range, tailRows } = req.body;
     const spreadsheetId = normalizeSpreadsheetId(rawSpreadsheetId);
+
+    // Vector top-K query branch (bypasses cache)
+    if (req.body && req.body.topKQuery) {
+      try {
+        const qText: string = String(req.body.topKQuery || '');
+        const [qVec] = await embedTexts([qText]);
+        const topK: number = typeof req.body.topK === 'number' ? req.body.topK : 5;
+        const { queryRowVectors } = require('../../lib/sheetVectorStore');
+        const scored = await queryRowVectors(spreadsheetId, qVec, topK);
+        return res.status(200).json({ success: true, rows: scored });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return res.status(500).json({ success: false, error: 'Vector query failed', details: msg });
+      }
+    }
 
     // Serve from cache if fresh
     const key = cacheKey(
