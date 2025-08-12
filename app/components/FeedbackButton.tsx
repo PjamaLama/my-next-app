@@ -18,6 +18,7 @@ interface SimilarItem {
 type Attachment = { url: string; mimeType: string; name?: string };
 
 const PERSIST_KEY = 'feedbackModalState_v1';
+const COOLDOWN_MS = 800;
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
@@ -34,6 +35,8 @@ export default function FeedbackButton() {
   const { user } = useFirebase();
   const [voting, setVoting] = useState<Record<string, boolean>>({});
   const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
+  const [cooldownUntil, setCooldownUntil] = useState<Record<string, number>>({});
+  const isCooling = (id: string) => (cooldownUntil[id] || 0) > Date.now();
 
   // Attachments
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -178,7 +181,7 @@ export default function FeedbackButton() {
       return;
     }
     try {
-      if (voting[id]) return;
+      if (voting[id] || isCooling(id)) return;
       // trigger quick visual feedback
       setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
       setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
@@ -203,6 +206,7 @@ export default function FeedbackButton() {
         return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
       }));
       setVoting((m) => ({ ...m, [id]: false }));
+      setCooldownUntil((m) => ({ ...m, [id]: Date.now() + COOLDOWN_MS }));
     } catch (_) {}
   };
 
@@ -256,7 +260,7 @@ export default function FeedbackButton() {
                             type="button"
                              className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id]}
+                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                              <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
@@ -265,7 +269,7 @@ export default function FeedbackButton() {
                             type="button"
                              className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id]}
+                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                              <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
@@ -365,7 +369,7 @@ export default function FeedbackButton() {
                             type="button"
                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id]}
+                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                             <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
@@ -374,7 +378,7 @@ export default function FeedbackButton() {
                             type="button"
                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id]}
+                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                             <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
@@ -418,7 +422,9 @@ export default function FeedbackButton() {
                   type="button"
                   onClick={() => {
                     setAllLoading(true);
-                    fetch('/api/feedback?sort=top')
+                    const params = new URLSearchParams({ sort: 'top' });
+                    if (user?.uid) params.set('userId', user.uid);
+                    fetch(`/api/feedback?${params.toString()}`)
                       .then((r) => r.json())
                       .then((json) => setAllItems(Array.isArray(json?.data) ? json.data : []))
                       .finally(() => setAllLoading(false));
@@ -450,23 +456,21 @@ export default function FeedbackButton() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === 1 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'} ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id]}
+                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.25 12.75A2.25 2.25 0 0 1 4.5 10.5h4.318a2.25 2.25 0 0 0 2.122-1.477l.982-2.62a3.75 3.75 0 0 1 3.505-2.403h.585c1.079 0 1.96.882 1.96 1.961v8.789a2.25 2.25 0 0 1-2.25 2.25H9a2.25 2.25 0 0 1-2.25-2.25v-1.5H4.5a2.25 2.25 0 0 1-2.25-2.25Z"/></svg>
-                            {/* outline flash removed per design preference */}
+                            <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
                           </button>
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 inline-flex items-center gap-1 ${item.userVote === -1 ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-white/80 hover:bg-zinc-700 hover:text-white'} ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
+                            className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id]}
+                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.25 11.25A2.25 2.25 0 0 0 4.5 13.5h4.318a2.25 2.25 0 0 1 2.122 1.477l.982 2.62a3.75 3.75 0 0 0 3.505 2.403h.585c1.079 0 1.96-.882 1.96-1.961V9.75a2.25 2.25 0 0 0-2.25-2.25H9A2.25 2.25 0 0 0 6.75 9.75v1.5H4.5a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
-                            {/* outline flash removed per design preference */}
+                            <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
                           </button>
                           {typeof (item as any).votesCount === 'number' ? (
                             <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{(item as any).votesCount.toLocaleString()}</span>
