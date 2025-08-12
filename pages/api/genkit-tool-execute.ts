@@ -133,6 +133,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`API: Images types:`, images?.map((img: ImageData) => img.mimeType) || []);
     console.log(`API: Gemini API key provided:`, !!apiKey);
 
+    // Simple retry wrapper for transient errors
+    const withRetries = async <T>(fn: () => Promise<T>, label: string): Promise<T> => {
+      const max = 3;
+      let attempt = 0;
+      let delay = 500;
+      // Helper to detect transient
+      const isTransient = (err: unknown) => {
+        const s = String(err instanceof Error ? (err.message || err) : err).toLowerCase();
+        return /timeout|timed out|econnreset|temporar|unavailable|502|503|504|rate limit|too many/i.test(s);
+      };
+      while (true) {
+        try {
+          return await fn();
+        } catch (e) {
+          attempt++;
+          if (attempt >= max || !isTransient(e)) throw e;
+          await new Promise(r => setTimeout(r, delay));
+          delay = Math.min(delay * 2, 4000);
+        }
+      }
+    };
+
     switch (name) {
       case 'aggregate': {
         try {
@@ -148,7 +170,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const sheets = await getGoogleSheetsClient();
           const escaped = targetSheet.includes(' ')? `'${targetSheet.replace(/'/g, "''")}'`: targetSheet;
           const targetRange = range ? `${escaped}!${String(range)}` : `${escaped}!A1:T2000`;
-          const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: targetRange, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+          const resp = await withRetries(
+            () => sheets.spreadsheets.values.get({ spreadsheetId, range: targetRange, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }),
+            'sheets.values.get'
+          );
           const values = (resp.data.values || []) as string[][];
           if (!values || values.length === 0) {
             return res.status(200).json({ success: true, result: 'No data found in range', details: { rows: 0 } });
@@ -249,6 +274,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         } catch (e) {
           console.error('Failed to aggregate:', e);
+          // Fallback: text-based QA using available context
+          try {
+            const fallback = { success: true, result: 'Aggregation failed; answering based on cached/context data.', details: { fallback: true } };
+            return res.status(200).json(fallback);
+          } catch {}
           return res.status(500).json({ success: false, error: 'Failed to aggregate', details: e instanceof Error ? e.message : String(e) });
         }
       }
@@ -285,13 +315,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return await handleConvertSheet(args, res);
 
       case 'get_sheet_data':
-        return await handleGetSheetData(args, res);
+        try {
+          return await withRetries(() => handleGetSheetData(args, res), 'get_sheet_data');
+        } catch (e) {
+          return res.status(500).json({ success: false, error: 'Failed to get sheet data', details: e instanceof Error ? e.message : String(e) });
+        }
 
       case 'get_sheet_stats':
-        return await handleGetSheetStats(args, res);
+        try {
+          return await withRetries(() => handleGetSheetStats(args, res), 'get_sheet_stats');
+        } catch (e) {
+          return res.status(500).json({ success: false, error: 'Failed to get sheet stats', details: e instanceof Error ? e.message : String(e) });
+        }
 
       case 'get_column_stats':
-        return await handleGetColumnStats(args, res);
+        try {
+          return await withRetries(() => handleGetColumnStats(args, res), 'get_column_stats');
+        } catch (e) {
+          return res.status(500).json({ success: false, error: 'Failed to get column stats', details: e instanceof Error ? e.message : String(e) });
+        }
 
       case 'resolve_column':
         return await handleResolveColumn(args, res);

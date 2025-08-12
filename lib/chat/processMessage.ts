@@ -236,7 +236,8 @@ export async function processMessage(
           || (Array.isArray(ctxAny.allSheetNames) && ctxAny.allSheetNames[0])
           || '';
         if (sheetName) {
-          dataSource = new SheetDataSource(context.spreadsheetId, sheetName, scopedBase);
+          const sessionKey = String((ctxAny.userId || ctxAny.sessionId || '') || '');
+          dataSource = new SheetDataSource(context.spreadsheetId, sheetName, scopedBase, sessionKey || undefined);
         }
       } else if (hasFiles) {
         // Build FileDataSource using any structured extractions present in tool results later
@@ -350,6 +351,23 @@ export async function processMessage(
           if (runnable.length === 0) break; // deadlock or cyclic deps
           const tasks = runnable.map(async (idx) => {
             const step = chain[idx];
+            // Lazy loading: if step.params needs only a particular column/range, prefer get-sheet-data partials
+            if (step.toolName === 'get_sheet_data') {
+              try {
+                const tCol = String(plan?.targetColumn || '').trim();
+                if (tCol) {
+                  const ctxAny = context as any;
+                  const hdrs: string[] = Array.isArray(ctxAny.sheetHeaders) ? ctxAny.sheetHeaders : [];
+                  const colIdx = hdrs.indexOf(tCol);
+                  if (colIdx >= 0) {
+                    // Convert index to A1 column letter (1-based)
+                    const toCol = (n: number) => { let s=''; n++; while(n>0){n--; s=String.fromCharCode(65+(n%26))+s; n=Math.floor(n/26);} return s; };
+                    const colLetter = toCol(colIdx);
+                    step.params = { ...(step.params || {}), range: `${colLetter}:${colLetter}` };
+                  }
+                }
+              } catch {}
+            }
             const call = {
               id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               type: 'function',
@@ -510,26 +528,33 @@ export async function processMessage(
       const isStale = now - lastHydration > 60_000;
       const canHydrate = (!hasHydrated || isStale) && dataSource && !hasFiles;
       if (canHydrate && dataSource) {
-        const headers = await dataSource.getHeaders();
-        const rows = await dataSource.getSampleRows(800);
-        const map: Record<string, string[][]> = {};
-        const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
-        map[sheetName] = [headers, ...rows];
-        if (Object.keys(map).length > 0) {
-          ctxAny.sheetData = map;
-          ctxAny._sheetHydratedAt = now;
-          try {
-            const first = Object.keys(map)[0];
-            const table = map[first] || [];
-            const hdrs = Array.isArray(table) && table.length > 0 ? table[0] : [];
-            const lower = hdrs.map((h: string) => String(h || '').toLowerCase());
-            const types = hdrs.map((_, i) => {
-              const col = (table.slice(1) as string[][]).map(r => r?.[i]);
-              const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
-              return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
-            });
-            ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
-          } catch {}
+        try {
+          const headers = await dataSource.getHeaders();
+          const rows = await dataSource.getSampleRows(800);
+          const map: Record<string, string[][]> = {};
+          const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
+          map[sheetName] = [headers, ...rows];
+          if (Object.keys(map).length > 0) {
+            ctxAny.sheetData = map;
+            ctxAny._sheetHydratedAt = now;
+            try {
+              const first = Object.keys(map)[0];
+              const table = map[first] || [];
+              const hdrs = Array.isArray(table) && table.length > 0 ? table[0] : [];
+              const lower = hdrs.map((h: string) => String(h || '').toLowerCase());
+              const types = hdrs.map((_, i) => {
+                const col = (table.slice(1) as string[][]).map(r => r?.[i]);
+                const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
+                return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
+              });
+              ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
+            } catch {}
+          }
+        } catch (e) {
+          // Hydration failed: use cached data if available
+          if (ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0) {
+            ctxAny._hydrationWarning = 'Using cached data due to error.';
+          }
         }
       }
     } catch {}
@@ -788,6 +813,9 @@ export async function processMessage(
       insights,
       suppressResponseText: isFileOnly
     };
+    if ((context as any)._hydrationWarning) {
+      out.response = `${out.response ? out.response + '\n' : ''}${(context as any)._hydrationWarning}`.trim();
+    }
     // Append assistant reply into conversation history (keep last 5)
     try {
       const ctxAny = context as any;

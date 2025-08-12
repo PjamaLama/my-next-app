@@ -7,11 +7,11 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { createLogger } from '@/lib/logger';
 import { embedTexts } from '@/lib/embeddings';
 
-// Lightweight in-memory response cache to reduce duplicate fetches
-const RESPONSE_TTL_MS = 30 * 1000; // 30s cache to coalesce rapid requests
+// Response cache (extendable to Redis). Use 5-minute TTL and include session/user keys if provided
+const RESPONSE_TTL_MS = 5 * 60 * 1000;
 type CacheEntry = { at: number; payload: { data: unknown; structure: unknown } };
 const responseCache = new Map<string, CacheEntry>();
-const cacheKey = (spreadsheetId: string, sheetName: string, range?: string) => `${spreadsheetId}::${sheetName}::${range || 'auto'}`;
+const cacheKey = (spreadsheetId: string, sheetName: string, range?: string, sessionKey?: string) => `${sessionKey || 'anon'}::${spreadsheetId}::${sheetName}::${range || 'auto'}`;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requestId = Math.random().toString(36).substr(2, 9);
@@ -22,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   try {
     const sheets = await getGoogleSheetsClient();
-    const { spreadsheetId: rawSpreadsheetId, sheetName, range, tailRows } = req.body;
+    const { spreadsheetId: rawSpreadsheetId, sheetName, range, tailRows, sessionKey } = req.body;
     const spreadsheetId = normalizeSpreadsheetId(rawSpreadsheetId);
 
     // Vector top-K query branch (bypasses cache)
@@ -44,7 +44,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const key = cacheKey(
       spreadsheetId,
       sheetName,
-      range ? String(range) : (typeof tailRows === 'number' ? `tail:${tailRows}` : undefined)
+      range ? String(range) : (typeof tailRows === 'number' ? `tail:${tailRows}` : undefined),
+      typeof sessionKey === 'string' ? sessionKey : undefined
     );
     const cached = responseCache.get(key);
     if (cached && Date.now() - cached.at < RESPONSE_TTL_MS) {

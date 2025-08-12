@@ -63,6 +63,19 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     }
   } catch {}
 
+  // Clarification polish: if plan requests clarification, generate a natural prompt
+  try {
+    if (plan && typeof plan.clarifyQuestion === 'string' && plan.clarifyQuestion.trim()) {
+      const options = Array.isArray(plan?.headers) ? (plan.headers as string[]) : [];
+      const optsText = options.length ? ` Options: [Use the ColumnChooser to select: ${options.join(', ')}].` : '';
+      const preface = /which column/i.test(plan.clarifyQuestion)
+        ? 'To compute totals, which column has the values?'
+        : plan.clarifyQuestion;
+      const quick = ['Show chart', 'Update values', 'Preview updates'];
+      return `${preface}${optsText}\nQuick replies: [${quick.join('] [')}]`;
+    }
+  } catch {}
+
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
 
@@ -95,7 +108,12 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     insights: insights.slice(0, 5)
   });
 
-  const prompt = `${system}
+  // If charts are present, prioritize visuals and suggest interactivity
+  const visualsHint = (compactCharts && compactCharts.length > 0)
+    ? '\nPrioritize the charts in your answer. Suggest interactive options like zoom or filter. Keep text minimal; if visuals suffice, keep the answer to one sentence.'
+    : '';
+
+  const prompt = `${system}${visualsHint}
 
 User message:
 ${userMessage}
@@ -106,7 +124,12 @@ ${contextJson}
 Write a short, friendly answer grounded in the context.`;
 
   const { text } = await ai.generate(prompt);
-  return (text || '').trim() || 'I analyzed your data.';
+  const out = (text || '').trim();
+  if (compactCharts.length > 0) {
+    // If visuals suffice, we keep this succinct
+    return out.split('\n').slice(0, 2).join('\n') || 'See the chart above.';
+  }
+  return out || 'I analyzed your data.';
 }
 
 

@@ -10,7 +10,7 @@ export abstract class DataSource {
 }
 
 export class SheetDataSource extends DataSource {
-  constructor(private readonly spreadsheetId: string, private readonly sheetName: string, private readonly baseUrl?: string) {
+  constructor(private readonly spreadsheetId: string, private readonly sheetName: string, private readonly baseUrl?: string, private readonly sessionKey?: string) {
     super();
   }
 
@@ -61,7 +61,7 @@ export class SheetDataSource extends DataSource {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, range: input.range }) } },
-          context: { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName }
+          context: { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, sessionKey: this.sessionKey }
         })
       });
       const json = await res.json();

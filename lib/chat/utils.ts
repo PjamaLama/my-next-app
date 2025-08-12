@@ -186,7 +186,11 @@ export function normalizeDateColumns(headers: string[], rows: string[][]): strin
 
   if (candidateIdxs.size === 0) return rows;
   const includeTime = (idx: number) => /(timestamp|time)/i.test(lowerHeaders[idx] || '');
-  return rows.map(row => row.map((cell, i) => {
+  const cleaned = rows.map(row => row.map(v => {
+    const s = String(v ?? '').trim();
+    return s;
+  }));
+  return cleaned.map(row => row.map((cell, i) => {
     if (!candidateIdxs.has(i)) return cell;
     const d = tryParseStrict(String(cell || '').trim());
     if (!d) return cell;
