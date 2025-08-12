@@ -13,6 +13,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const fetchMeta = async () => {
     if (!user) return;
@@ -32,6 +33,20 @@ export default function AdminPage() {
   };
 
   useEffect(() => { void fetchMeta(); }, [user]);
+
+  useEffect(() => {
+    (async () => {
+      if (!user) { setIsAdmin(null); return; }
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch('/api/admin/whoami', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        setIsAdmin(!!data.isAdmin);
+      } catch {
+        setIsAdmin(false);
+      }
+    })();
+  }, [user]);
 
   const updateMeta = async (updates: Partial<BetaMeta>) => {
     if (!user) return;
@@ -97,6 +112,17 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-[#0b0b0e]">
         <p>Please sign in to access admin.</p>
+      </div>
+    );
+  }
+
+  if (isAdmin === false) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white bg-[#0b0b0e]">
+        <div className="text-center">
+          <div className="text-xl font-semibold mb-2">Not authorized</div>
+          <p className="text-white/70">Your account does not have admin access.</p>
+        </div>
       </div>
     );
   }
