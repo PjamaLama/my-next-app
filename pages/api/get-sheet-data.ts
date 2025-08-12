@@ -21,11 +21,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   try {
     const sheets = await getGoogleSheetsClient();
-    const { spreadsheetId: rawSpreadsheetId, sheetName, range } = req.body;
+    const { spreadsheetId: rawSpreadsheetId, sheetName, range, tailRows } = req.body;
     const spreadsheetId = normalizeSpreadsheetId(rawSpreadsheetId);
 
     // Serve from cache if fresh
-    const key = cacheKey(spreadsheetId, sheetName, range);
+    const key = cacheKey(
+      spreadsheetId,
+      sheetName,
+      range ? String(range) : (typeof tailRows === 'number' ? `tail:${tailRows}` : undefined)
+    );
     const cached = responseCache.get(key);
     if (cached && Date.now() - cached.at < RESPONSE_TTL_MS) {
       log.debug('Cache hit', key);
@@ -124,8 +128,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const maxRow = Math.min(rowCount, 1000);
         const escapedSheetName = escapeSheetName(sheetName);
         
+        // Bottom-biased strategies when requesting recent rows
+        const tail = typeof tailRows === 'number' && tailRows > 0 ? tailRows : 0;
+        const tailSizes = tail ? [Math.max(200, tail * 2), Math.max(100, tail)] : [];
+        const tailStrategies = tailSizes.map(sz => {
+          const start = Math.max(1, rowCount - sz + 1);
+          return `${escapedSheetName}!A${start}:${endColumn}${rowCount}`;
+        });
+
         // Try different range strategies based on sheet size
-        const strategies = [
+        const baseStrategies = [
           // 1. Use actual dimensions
           `${escapedSheetName}!A1:${endColumn}${maxRow}`,
           // 2. Use just the columns with all rows
@@ -135,6 +147,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           // 4. Very safe range
           `${escapedSheetName}!A1:T50`
         ];
+        const strategies = [...tailStrategies, ...baseStrategies];
+        const tailSet = new Set(tailStrategies);
         
         log.debug('Trying strategies', strategies.length);
         
@@ -151,27 +165,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             log.debug('Strategy success', strategy, 'rows', response.data.values?.length || 0);
 
-            // Cache headers and last data row (TTL handled by cache consumer)
-            const values = response.data.values || [];
-            if (values.length > 0) {
-              // Detect header row and normalize headers accordingly
+            // Prepare values and headers
+            let values = (response.data.values || []) as string[][];
+            const usedTail = tail > 0 && tailSet.has(strategy);
+            let headers: string[] = [];
+
+            if (usedTail) {
+              // Fetch the real header row separately when using bottom window
+              try {
+                const headerResp = await sheets.spreadsheets.values.get({
+                  spreadsheetId,
+                  range: `${escapedSheetName}!1:1`,
+                  valueRenderOption: 'FORMATTED_VALUE',
+                  dateTimeRenderOption: 'FORMATTED_STRING',
+                });
+                headers = (headerResp.data.values?.[0] as string[]) || [];
+              } catch (e) {
+                log.warn('Failed to fetch header row for tail window, falling back to detection', e);
+              }
+            }
+
+            if (headers.length === 0 && values.length > 0) {
+              // Detect header row from the retrieved chunk
               const headerDetect = detectHeaderRow(values as string[][]);
               const headerRowIdx = Math.max(0, headerDetect.rowIndex);
-              const headers = (values[headerRowIdx] as string[]) || [];
-              const lastRow = findLastDataRow(values as string[][]);
-              setCachedHeaders(spreadsheetId, sheetName, headers, lastRow);
-
-              // Build header vectors in background (best-effort)
-              try {
-                const dataRows = (values as string[][]).slice(headerRowIdx + 1);
-                await ensureHeaderVectors(spreadsheetId, sheetName, headers, dataRows);
-              } catch {}
+              headers = (values[headerRowIdx] as string[]) || [];
+              // Trim values to data rows
+              values = values.slice(headerRowIdx + 1);
             }
+
+            // If a recent window is requested, slice to last N rows
+            if (tail > 0) {
+              values = values.slice(-tail);
+            }
+
+            // Update header cache and vectors (best-effort)
+            try {
+              const lastRow = findLastDataRow([headers, ...values]);
+              setCachedHeaders(spreadsheetId, sheetName, headers, lastRow);
+              await ensureHeaderVectors(spreadsheetId, sheetName, headers, values);
+            } catch {}
 
             // Always include structure analysis so UI can flag unstructured sheets
             let structure = null;
             try {
-              const table = values as string[][];
+              const table = [headers, ...values] as string[][];
               const meta = analyzeSheetStructure(table);
               // inject detected header row info and blocks for clients
               const headerDetect = detectHeaderRow(table);
@@ -186,7 +224,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               log.warn('Structure analysis failed', e);
             }
 
-            const payload = { data: values, structure };
+            const payload = { data: [headers, ...values], structure };
             responseCache.set(key, { at: Date.now(), payload });
             return res.status(200).json(payload);
             

@@ -296,7 +296,7 @@ export async function processMessage(
             const resp = await fetch(`${baseUrl}/api/get-sheet-data`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: name })
+              body: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: name, tailRows: 800 })
             });
             if (!resp.ok) throw new Error(`Failed to hydrate ${name}`);
             const json = await resp.json();
