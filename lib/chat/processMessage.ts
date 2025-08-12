@@ -314,7 +314,14 @@ export async function processMessage(
       }
       const canHydrate = (!hasHydrated || isStale) && !!context?.spreadsheetId && sheetNamesList.length > 0 && !hasFiles;
       if (canHydrate) {
-        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+        // Prefer a request-scoped base URL (set by API handler) to avoid env mismatch
+        const scopedBase = (typeof window === 'undefined' && context && (context as any)._baseUrl)
+          ? String((context as any)._baseUrl)
+          : undefined;
+        const baseUrl = scopedBase
+          || (process.env.NEXT_PUBLIC_SITE_URL && /^https?:\/\//i.test(process.env.NEXT_PUBLIC_SITE_URL!)
+                ? String(process.env.NEXT_PUBLIC_SITE_URL).replace(/\/$/, '')
+                : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'));
         const take = sheetNamesList.slice(0, 3);
         const results = await Promise.allSettled(
           take.map(async (name) => {

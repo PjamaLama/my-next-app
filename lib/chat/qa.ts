@@ -85,6 +85,36 @@ export function answerQuestionFromSheets(
       })
     : rows;
 
+  // Handle simple entity lookup questions like "who was the driver"
+  try {
+    const asksWho = /\bwho\b/i.test(message);
+    const mentionsDriver = /\b(driver|driver name|operator)\b/i.test(lower);
+    if (asksWho && mentionsDriver) {
+      const driverIdx = resolveColumnIndex(headers, message, COLUMN_SYNONYMS.driver);
+      if (driverIdx >= 0) {
+        // Prefer the latest by date when available; otherwise, use the last non-empty driver in the filtered window
+        let candidateRows = filtered.filter(r => String(r[driverIdx] ?? '').trim() !== '');
+        if (candidateRows.length > 0) {
+          if (dateIdx >= 0) {
+            candidateRows = candidateRows
+              .map(r => ({ r, d: dayjs(String(r[dateIdx] || '')) }))
+              .filter(x => x.d.isValid())
+              .sort((a, b) => a.d.valueOf() - b.d.valueOf())
+              .map(x => x.r);
+          }
+          const latest = candidateRows[candidateRows.length - 1];
+          const name = String(latest[driverIdx] ?? '').trim();
+          if (name) {
+            // If there are multiple drivers, optionally surface that there are others
+            const uniqueDrivers = Array.from(new Set(candidateRows.map(r => String(r[driverIdx] ?? '').trim()).filter(Boolean)));
+            const suffix = uniqueDrivers.length > 1 ? ` (latest${range?.label ? ` ${range.label}` : ''})` : '';
+            return { answer: `Driver: ${name}${suffix}.` };
+          }
+        }
+      }
+    }
+  } catch {}
+
   const metricIdx = (() => {
     const hints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
     const direct = resolveColumnIndex(headers, message, hints);
