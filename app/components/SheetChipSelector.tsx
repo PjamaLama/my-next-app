@@ -111,17 +111,54 @@ const SheetChipSelector: React.FC = () => {
           </svg>
           <span className="text-sm text-red-400">Error: {error}</span>
         </div>
-        {/* If not a Google Sheet, show manual conversion help */}
+        {/* If not a Google Sheet, show in-app modal trigger and inline GIF spot */}
         {typeof error === 'string' && error.includes('The provided ID is not a Google Sheet') && (
-          <div className="mt-2">
-            <a
-              href="https://support.google.com/docs/answer/49114?hl=en"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-white/80 underline"
+          <div className="mt-3 space-y-2">
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded-md text-xs font-medium border border-white/15 bg-white/5 text-white/90 hover:bg-white/10"
+              onClick={() =>
+                notify({
+                  title: 'Convert to Google Sheets',
+                  tone: 'info',
+                  okText: 'Got it',
+                  description: (
+                    <div className="space-y-3">
+                      <div className="text-white/80 text-sm">
+                        You can convert your file to Google Sheets in a few seconds:
+                      </div>
+                      <ol className="list-decimal list-inside space-y-1 text-white/80 text-sm">
+                        <li>Open the file in Google Drive.</li>
+                        <li>Click <span className="font-semibold">Open with → Google Sheets</span> (or upload and open in Sheets).</li>
+                        <li>In Google Sheets, click <span className="font-semibold">File → Save as Google Sheets</span>.</li>
+                        <li>Copy the new Sheet URL and paste the ID here.</li>
+                      </ol>
+                      {/* Embedded image in modal */}
+                      <div className="rounded-lg overflow-hidden border border-white/10 bg-black/30 p-2">
+                        <img
+                          src="/templates/convert-to-google-sheets.png"
+                          alt="How to convert to Google Sheets"
+                          className="w-full h-auto max-w-[520px] max-h-72 mx-auto object-contain"
+                          loading="lazy"
+                        />
+                      </div>
+                    </div>
+                  ),
+                })
+              }
             >
-              How to convert to a Google Sheet
-            </a>
+              How to convert (quick steps)
+            </button>
+
+            {/* Inline image fallback spot (no external link) */}
+            <div className="rounded-lg overflow-hidden border border-white/10 bg-black/20 p-2">
+              <img
+                src="/templates/convert-to-google-sheets.png"
+                alt="How to convert to Google Sheets"
+                className="w-full h-auto max-w-[420px] max-h-56 mx-auto object-contain"
+                loading="lazy"
+              />
+            </div>
           </div>
         )}
       </div>

@@ -6,7 +6,7 @@ type DialogTone = "default" | "info" | "success" | "warning" | "danger";
 
 type BaseDialogOptions = {
   title?: string;
-  description?: string;
+  description?: React.ReactNode;
   tone?: DialogTone;
 };
 
