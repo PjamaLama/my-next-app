@@ -3,7 +3,7 @@ import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
-import { ensureSheetCapacity, findLastDataRow } from '@/lib/sheetUtils';
+import { ensureSheetCapacity, findLastDataRow, escapeSheetName, indexToColumn, columnToIndex, parseA1Range } from '@/lib/sheetUtils';
 import { suggestHeaderMapping, matchRowIdentity } from '@/lib/mapping';
 import { analyzeSheetStructure } from '@/lib/sheetStructure';
 import { getCachedHeaders } from '@/lib/sheetHeaderCache';
@@ -137,6 +137,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'get_column_stats':
         return await handleGetColumnStats(args, res);
+
+      case 'resolve_column':
+        return await handleResolveColumn(args, res);
+
+      case 'get_used_range':
+        return await handleGetUsedRange(args, res);
+
+      case 'preview_column_operation':
+        return await handlePreviewColumnOperation(args, res);
+
+      case 'apply_column_operation':
+        return await handleApplyColumnOperation(args, res);
+
+      case 'insert_formula_range':
+        return await handleInsertFormulaRange(args, res);
+
+      case 'detect_formulas':
+        return await handleDetectFormulas(args, res);
+
+      case 'bake_formulas_to_values':
+        return await handleBakeFormulasToValues(args, res);
 
     case 'update_single_cell': {
       try {
@@ -660,6 +681,285 @@ async function handleGetColumnStats(args: ToolArgs, res: NextApiResponse) {
     });
   } catch (e) {
     return res.status(500).json({ success: false, error: 'Failed to get column stats', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Resolve a header name or column letter to a 0-based index and letter
+async function handleResolveColumn(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, query } = args as any;
+    if (!spreadsheetId || !sheetName || !query) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName and query are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
+    const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1`, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+    const headers = (resp.data.values?.[0] || []) as string[];
+    let idx = -1;
+    const letterMatch = String(query).trim().match(/^[A-Z]+$/i);
+    if (letterMatch) {
+      idx = columnToIndex(String(query).toUpperCase());
+    } else {
+      idx = pickHeaderIndex(headers, String(query));
+    }
+    if (idx < 0) {
+      return res.status(404).json({ success: false, error: `Column not found: ${query}` });
+    }
+    const letter = indexToColumn(idx);
+    return res.status(200).json({ success: true, result: `${query} -> ${letter} (index ${idx})`, details: { index: idx, letter, header: headers[idx] || null } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to resolve column', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Get a best-effort used range bounds
+async function handleGetUsedRange(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName } = args as any;
+    if (!spreadsheetId || !sheetName) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
+    const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!A1:T2000`, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
+    const values = (resp.data.values || []) as string[][];
+    const lastRow = findLastDataRow(values);
+    let lastColIdx = 0;
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r] || [];
+      for (let c = row.length - 1; c >= 0; c--) {
+        const v = String(row[c] ?? '').trim();
+        if (v !== '') { if (c > lastColIdx) lastColIdx = c; break; }
+      }
+    }
+    const endCol = indexToColumn(lastColIdx);
+    return res.status(200).json({ success: true, result: `Used range ~ A1:${endCol}${lastRow}`, details: { start: 'A1', endColumn: endCol, endRow: lastRow } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to get used range', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Preview a math operation on a column
+async function handlePreviewColumnOperation(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, column, op, amount, startRow = 2, endRow, includeFormulas = false } = args as any;
+    if (!spreadsheetId || !sheetName || !column || !op) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName, column and op are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = escapeSheetName(sheetName);
+    // Resolve column index
+    let colIdx = -1;
+    const colStr = String(column);
+    const letterMatch = colStr.trim().match(/^[A-Z]+$/i);
+    if (letterMatch) colIdx = columnToIndex(colStr.toUpperCase());
+    else {
+      const hdrResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1`, valueRenderOption: 'FORMATTED_VALUE' });
+      const headers = (hdrResp.data.values?.[0] || []) as string[];
+      colIdx = pickHeaderIndex(headers, colStr);
+      if (colIdx < 0) return res.status(404).json({ success: false, error: `Column not found: ${column}` });
+    }
+    const letter = indexToColumn(colIdx);
+    const end = endRow ? Number(endRow) : undefined;
+    const range = end ? `${escaped}!${letter}${startRow}:${letter}${end}` : `${escaped}!${letter}${startRow}:${letter}`;
+    // Get raw numbers
+    const rawResp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'UNFORMATTED_VALUE' });
+    const formulaResp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'FORMULA' });
+    const rows = (rawResp.data.values || []).map(r => r?.[0]);
+    const formulas = (formulaResp.data.values || []).map(r => r?.[0]);
+    const preview: Array<{ row: number; before: any; after: any; formula?: string }> = [];
+    let affected = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const val = rows[i];
+      const f = String(formulas[i] ?? '');
+      const isFormula = f.startsWith('=');
+      if (isFormula && !includeFormulas) continue;
+      const n = typeof val === 'number' ? val : parseFloat(String(val));
+      if (!Number.isFinite(n)) continue;
+      let after: number | null = null;
+      switch (op) {
+        case 'add': after = n + Number(amount); break;
+        case 'subtract': after = n - Number(amount); break;
+        case 'multiply': after = n * Number(amount); break;
+        case 'divide': after = Number(amount) === 0 ? null : n / Number(amount); break;
+        default: after = null;
+      }
+      if (after == null) continue;
+      if (preview.length < 10) preview.push({ row: startRow + i, before: n, after: Number(after.toFixed(6)), formula: isFormula ? f : undefined });
+      affected++;
+    }
+    return res.status(200).json({ success: true, result: `Would affect ~${affected} cell(s) in ${letter}.`, details: { column: letter, startRow, endRow: end ?? null, preview } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to preview column operation', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Apply a math operation on a column with batching
+async function handleApplyColumnOperation(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, column, op, amount, startRow = 2, endRow, includeFormulas = false, dryRun = false } = args as any;
+    if (!spreadsheetId || !sheetName || !column || !op) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName, column and op are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = escapeSheetName(sheetName);
+    // Resolve column index
+    let colIdx = -1;
+    const colStr = String(column);
+    const letterMatch = colStr.trim().match(/^[A-Z]+$/i);
+    if (letterMatch) colIdx = columnToIndex(colStr.toUpperCase());
+    else {
+      const hdrResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1`, valueRenderOption: 'FORMATTED_VALUE' });
+      const headers = (hdrResp.data.values?.[0] || []) as string[];
+      colIdx = pickHeaderIndex(headers, colStr);
+      if (colIdx < 0) return res.status(404).json({ success: false, error: `Column not found: ${column}` });
+    }
+    const letter = indexToColumn(colIdx);
+    const end = endRow ? Number(endRow) : undefined;
+    const range = end ? `${escaped}!${letter}${startRow}:${letter}${end}` : `${escaped}!${letter}${startRow}:${letter}`;
+    const rawResp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'UNFORMATTED_VALUE' });
+    const formulaResp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'FORMULA' });
+    const rows = (rawResp.data.values || []).map(r => r?.[0]);
+    const formulas = (formulaResp.data.values || []).map(r => r?.[0]);
+    const updates: Array<{ sheetName: string; cell: string; value: number | string }> = [];
+    let updated = 0; let skipped = 0; let formulaTouched = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const f = String(formulas[i] ?? '');
+      const isFormula = f.startsWith('=');
+      if (isFormula && !includeFormulas) { skipped++; continue; }
+      const n = typeof rows[i] === 'number' ? rows[i] : parseFloat(String(rows[i]));
+      if (!Number.isFinite(n)) { skipped++; continue; }
+      let after: number | null = null;
+      switch (op) {
+        case 'add': after = n + Number(amount); break;
+        case 'subtract': after = n - Number(amount); break;
+        case 'multiply': after = n * Number(amount); break;
+        case 'divide': after = Number(amount) === 0 ? null : n / Number(amount); break;
+        default: after = null;
+      }
+      if (after == null) { skipped++; continue; }
+      if (isFormula) formulaTouched++;
+      updates.push({ sheetName, cell: `${letter}${startRow + i}`, value: Number(after.toFixed(6)) });
+      updated++;
+    }
+    if (dryRun) {
+      return res.status(200).json({ success: true, result: `Dry run: would update ${updated} cell(s), skipped ${skipped}.`, details: { column: letter, updated, skipped, formulaTouched } });
+    }
+    if (updates.length === 0) {
+      return res.status(200).json({ success: true, result: 'No applicable cells to update', details: { updated, skipped } });
+    }
+    // Ensure capacity once
+    const maxRow = startRow + rows.length;
+    await ensureSheetCapacity(spreadsheetId, sheetName, maxRow, letter);
+    // Batch write via internal endpoint (handles grouping and timeouts)
+    const resp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/save-sheet-data-multi`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, updates })
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`batch update failed: ${resp.status} - ${text}`);
+    }
+    return res.status(200).json({ success: true, result: `Updated ${updated} cell(s), skipped ${skipped}.`, details: { column: letter, updated, skipped, formulaTouched } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to apply column operation', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Insert formulas over a range
+async function handleInsertFormulaRange(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, targetRange, formula, mode = 'fill', bakeToValues = false } = args as any;
+    if (!spreadsheetId || !sheetName || !targetRange || !formula) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName, targetRange and formula are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = escapeSheetName(sheetName);
+    const parsed = parseA1Range(String(targetRange).toUpperCase());
+    if (!parsed) return res.status(400).json({ success: false, error: `Invalid targetRange: ${targetRange}` });
+    const startCol = parsed.startColumn;
+    const startRow = parsed.startRow || 1;
+    const endCol = parsed.endColumn || startCol;
+    const endRow = parsed.endRow || startRow;
+    // Ensure capacity
+    await ensureSheetCapacity(spreadsheetId, sheetName, endRow, endCol);
+    if (mode === 'array') {
+      const topLeft = `${escaped}!${startCol}${startRow}`;
+      await sheets.spreadsheets.values.update({ spreadsheetId, range: topLeft, valueInputOption: 'USER_ENTERED', requestBody: { values: [[String(formula)]] } });
+    } else {
+      // fill mode: produce a 2D array filled with the same formula (relative refs will adjust)
+      const width = columnToIndex(endCol) - columnToIndex(startCol) + 1;
+      const height = endRow - startRow + 1;
+      const values = Array.from({ length: height }, () => Array.from({ length: width }, () => String(formula)));
+      const range = `${escaped}!${startCol}${startRow}:${endCol}${endRow}`;
+      await sheets.spreadsheets.values.update({ spreadsheetId, range, valueInputOption: 'USER_ENTERED', requestBody: { values } });
+    }
+    if (bakeToValues) {
+      // Read computed values then write back as RAW
+      const range = `${escaped}!${startCol}${startRow}:${endCol}${endRow}`;
+      const get = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'UNFORMATTED_VALUE' });
+      const values = (get.data.values || []) as any[];
+      await sheets.spreadsheets.values.update({ spreadsheetId, range, valueInputOption: 'RAW', requestBody: { values } });
+    }
+    return res.status(200).json({ success: true, result: `Inserted formula${mode === 'array' ? ' (ARRAYFORMULA)' : ''} into ${sheetName}:${startCol}${startRow}${(endCol !== startCol || endRow !== startRow) ? `:${endCol}${endRow}` : ''}${bakeToValues ? ' and baked to values' : ''}.` });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to insert formula', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Detect formulas in a range
+async function handleDetectFormulas(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, range } = args as any;
+    if (!spreadsheetId || !sheetName) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = escapeSheetName(sheetName);
+    const target = range ? `${escaped}!${range}` : `${escaped}!A1:T2000`;
+    const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: target, valueRenderOption: 'FORMULA' });
+    const values = (resp.data.values || []) as string[][];
+    const formulaCells: Array<{ cell: string; formula: string }> = [];
+    let maxWidth = 0;
+    values.forEach(r => { if (r && r.length > maxWidth) maxWidth = r.length; });
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r] || [];
+      for (let c = 0; c < Math.max(maxWidth, row.length); c++) {
+        const v = String(row[c] ?? '');
+        if (v.startsWith('=')) {
+          const cell = `${indexToColumn(c)}${r + 1}`;
+          formulaCells.push({ cell, formula: v });
+        }
+      }
+    }
+    const sample = formulaCells.slice(0, 20);
+    return res.status(200).json({ success: true, result: `Found ${formulaCells.length} formula cell(s).`, details: { total: formulaCells.length, sample } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to detect formulas', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Bake formulas into values for a range
+async function handleBakeFormulasToValues(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, range } = args as any;
+    if (!spreadsheetId || !sheetName || !range) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName and range are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = escapeSheetName(sheetName);
+    const parsed = parseA1Range(String(range).toUpperCase());
+    if (!parsed) return res.status(400).json({ success: false, error: `Invalid range: ${range}` });
+    const startCol = parsed.startColumn;
+    const startRow = parsed.startRow || 1;
+    const endCol = parsed.endColumn || startCol;
+    const endRow = parsed.endRow || startRow;
+    const target = `${escaped}!${startCol}${startRow}:${endCol}${endRow}`;
+    const get = await sheets.spreadsheets.values.get({ spreadsheetId, range: target, valueRenderOption: 'UNFORMATTED_VALUE' });
+    const values = (get.data.values || []) as any[];
+    await sheets.spreadsheets.values.update({ spreadsheetId, range: target, valueInputOption: 'RAW', requestBody: { values } });
+    return res.status(200).json({ success: true, result: `Baked formulas to values in ${sheetName}:${startCol}${startRow}:${endCol}${endRow}` });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to bake formulas to values', details: e instanceof Error ? e.message : String(e) });
   }
 }
 

@@ -13,6 +13,13 @@ const TOOL_REGISTRY = [
   { name: 'extract_text_only', label: 'Extract Text Only', description: 'OCR or PDF text extraction without AI analysis.' },
   { name: 'apply_structured_rows', label: 'Apply Structured Rows', description: 'Apply already-structured rows into selected sheets using orchestrated ingest.' },
   { name: 'bulk_update_column', label: 'Bulk Update Column', description: 'Transform a column across all rows (add, subtract, multiply, divide, or set values).' },
+  { name: 'resolve_column', label: 'Resolve Column', description: 'Resolve a header name to its column letter and index.' },
+  { name: 'get_used_range', label: 'Get Used Range', description: 'Get an approximate used range (end column and last data row).' },
+  { name: 'preview_column_operation', label: 'Preview Column Operation', description: 'Preview math ops on a column (sample, counts) before applying.' },
+  { name: 'apply_column_operation', label: 'Apply Column Operation', description: 'Apply math ops on a column in batches with guardrails.' },
+  { name: 'insert_formula_range', label: 'Insert Formula', description: 'Insert formulas across a range (ARRAYFORMULA or fill).' },
+  { name: 'detect_formulas', label: 'Detect Formulas', description: 'List cells with formulas in a range.' },
+  { name: 'bake_formulas_to_values', label: 'Bake Formulas', description: 'Replace formulas in a range with their computed values.' },
   { name: 'get_current_datetime', label: 'Current Date/Time', description: 'Returns the current date/time in multiple formats for use in date/time columns.' }
 ];
 
