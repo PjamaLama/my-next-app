@@ -20,6 +20,8 @@ const TOOL_REGISTRY = [
   { name: 'insert_formula_range', label: 'Insert Formula', description: 'Insert formulas across a range (ARRAYFORMULA or fill).' },
   { name: 'detect_formulas', label: 'Detect Formulas', description: 'List cells with formulas in a range.' },
   { name: 'bake_formulas_to_values', label: 'Bake Formulas', description: 'Replace formulas in a range with their computed values.' },
+  { name: 'text_transform_column', label: 'Text Transform', description: 'Trim/upper/lower/title/regex transforms into a target column.' },
+  { name: 'compute_column_from_expression', label: 'Compute Column', description: 'Create a new column from a header-referenced expression (e.g., {Qty}*{Price}).' },
   { name: 'get_current_datetime', label: 'Current Date/Time', description: 'Returns the current date/time in multiple formats for use in date/time columns.' }
 ];
 

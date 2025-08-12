@@ -159,6 +159,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'bake_formulas_to_values':
         return await handleBakeFormulasToValues(args, res);
 
+      case 'text_transform_column':
+        return await handleTextTransformColumn(args, res);
+
+      case 'compute_column_from_expression':
+        return await handleComputeColumnFromExpression(args, res);
+
     case 'update_single_cell': {
       try {
         const { spreadsheetId, sheetName, cell, value } = args as any;
@@ -960,6 +966,203 @@ async function handleBakeFormulasToValues(args: ToolArgs, res: NextApiResponse) 
     return res.status(200).json({ success: true, result: `Baked formulas to values in ${sheetName}:${startCol}${startRow}:${endCol}${endRow}` });
   } catch (e) {
     return res.status(500).json({ success: false, error: 'Failed to bake formulas to values', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Text transformation: trim/upper/lower/title/remove_non_numeric/regex_replace
+async function handleTextTransformColumn(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, sourceColumn, transform, pattern, replacement = '', targetColumn, headerLabel, mode = 'array', previewOnly = false } = args as any;
+    if (!spreadsheetId || !sheetName || !sourceColumn || !transform) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName, sourceColumn and transform are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = escapeSheetName(sheetName);
+    // Resolve source column index and letter
+    let srcIdx = -1;
+    const srcStr = String(sourceColumn);
+    const letterMatch = srcStr.trim().match(/^[A-Z]+$/i);
+    if (letterMatch) srcIdx = columnToIndex(srcStr.toUpperCase());
+    else {
+      const hdrResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1`, valueRenderOption: 'FORMATTED_VALUE' });
+      const headers = (hdrResp.data.values?.[0] || []) as string[];
+      srcIdx = pickHeaderIndex(headers, srcStr);
+      if (srcIdx < 0) return res.status(404).json({ success: false, error: `Source column not found: ${sourceColumn}` });
+    }
+    const srcLetter = indexToColumn(srcIdx);
+
+    // Determine target column index/letter
+    let tgtIdx = -1; let tgtLetter = '';
+    const hdrResp2 = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1`, valueRenderOption: 'FORMATTED_VALUE' });
+    const headers = (hdrResp2.data.values?.[0] || []) as string[];
+    if (targetColumn) {
+      const tgtStr = String(targetColumn);
+      const tgtLetterMatch = tgtStr.trim().match(/^[A-Z]+$/i);
+      if (tgtLetterMatch) { tgtIdx = columnToIndex(tgtStr.toUpperCase()); }
+      else {
+        const found = pickHeaderIndex(headers, tgtStr);
+        if (found >= 0) tgtIdx = found; else tgtIdx = headers.length; // next empty
+      }
+    } else {
+      // choose next empty header cell or next column
+      tgtIdx = headers.findIndex(h => !String(h || '').trim());
+      if (tgtIdx < 0) tgtIdx = headers.length;
+    }
+    tgtLetter = indexToColumn(tgtIdx);
+
+    // Optional preview: read first 20 data rows and show sample
+    if (previewOnly) {
+      const startRow = 2; const endRow = 21;
+      const range = `${escaped}!${srcLetter}${startRow}:${srcLetter}${endRow}`;
+      const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'FORMATTED_VALUE' });
+      const vals = (resp.data.values || []).map(r => (r?.[0] ?? '')) as string[];
+      const jsTransform = (s: string): string => {
+        switch (transform) {
+          case 'trim': return String(s).trim();
+          case 'upper': return String(s).toUpperCase();
+          case 'lower': return String(s).toLowerCase();
+          case 'title': return String(s).toLowerCase().replace(/\b\w/g, m => m.toUpperCase());
+          case 'remove_non_numeric': return String(s).replace(/[^0-9.\-]+/g, '');
+          case 'regex_replace': {
+            try { const rx = new RegExp(String(pattern)); return String(s).replace(rx, String(replacement)); } catch { return String(s); }
+          }
+          default: return String(s);
+        }
+      };
+      const preview = vals.slice(0, 10).map((v, i) => ({ row: 2 + i, before: v, after: jsTransform(v) }));
+      return res.status(200).json({ success: true, result: `Preview ${preview.length} row(s)`, details: { source: srcLetter, target: tgtLetter, preview } });
+    }
+
+    // Ensure capacity for target column
+    await ensureSheetCapacity(spreadsheetId, sheetName, 2, tgtLetter);
+
+    // Build Sheets transform expression
+    const colRef = `${srcLetter}:${srcLetter}`;
+    let expr = '';
+    switch (transform) {
+      case 'trim': expr = `TRIM(${colRef})`; break;
+      case 'upper': expr = `UPPER(${colRef})`; break;
+      case 'lower': expr = `LOWER(${colRef})`; break;
+      case 'title': expr = `PROPER(${colRef})`; break;
+      case 'remove_non_numeric': expr = `REGEXREPLACE(${colRef}, "[^0-9.\-]+", "")`; break;
+      case 'regex_replace': expr = `REGEXREPLACE(${colRef}, "${String(pattern).replace(/"/g, '""')}", "${String(replacement).replace(/"/g, '""')}")`; break;
+      default: return res.status(400).json({ success: false, error: `Unknown transform: ${transform}` });
+    }
+
+    const header = headerLabel || (headers[srcIdx] ? `${headers[srcIdx]} (${transform})` : `Column ${tgtLetter}`);
+
+    if (mode === 'array') {
+      const formula = `=ARRAYFORMULA(IF(ROW(A:A)=1, "${header.replace(/"/g, '""')}", IF(LEN(${colRef})=0, , ${expr})))`;
+      const topLeft = `${escaped}!${tgtLetter}1`;
+      await sheets.spreadsheets.values.update({ spreadsheetId, range: topLeft, valueInputOption: 'USER_ENTERED', requestBody: { values: [[formula]] } });
+      return res.status(200).json({ success: true, result: `Inserted ARRAYFORMULA into ${tgtLetter} with transform '${transform}'.` });
+    }
+
+    // values mode: read full column and write transformed values
+    const readRange = `${escaped}!${srcLetter}2:${srcLetter}`;
+    const readResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: readRange, valueRenderOption: 'FORMATTED_VALUE' });
+    const vals = (readResp.data.values || []).map(r => (r?.[0] ?? '')) as string[];
+    const applyJs = (s: string): string => {
+      switch (transform) {
+        case 'trim': return String(s).trim();
+        case 'upper': return String(s).toUpperCase();
+        case 'lower': return String(s).toLowerCase();
+        case 'title': return String(s).toLowerCase().replace(/\b\w/g, m => m.toUpperCase());
+        case 'remove_non_numeric': return String(s).replace(/[^0-9.\-]+/g, '');
+        case 'regex_replace': {
+          try { const rx = new RegExp(String(pattern)); return String(s).replace(rx, String(replacement)); } catch { return String(s); }
+        }
+        default: return String(s);
+      }
+    };
+    const out = vals.map(v => [applyJs(v)]);
+    // Write header + values
+    await sheets.spreadsheets.values.update({ spreadsheetId, range: `${escaped}!${tgtLetter}1`, valueInputOption: 'RAW', requestBody: { values: [[header]] } });
+    await sheets.spreadsheets.values.update({ spreadsheetId, range: `${escaped}!${tgtLetter}2`, valueInputOption: 'RAW', requestBody: { values: out } });
+    return res.status(200).json({ success: true, result: `Transformed ${out.length} row(s) into ${tgtLetter}.` });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to transform column', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Compute new column from an expression referencing headers via {Header}
+async function handleComputeColumnFromExpression(args: ToolArgs, res: NextApiResponse) {
+  try {
+    const { spreadsheetId, sheetName, expression, targetColumn, headerLabel, mode = 'array', bakeToValues = false, previewOnly = false } = args as any;
+    if (!spreadsheetId || !sheetName || !expression) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName and expression are required' });
+    }
+    const sheets = await getGoogleSheetsClient();
+    const escaped = escapeSheetName(sheetName);
+    const hdrResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1`, valueRenderOption: 'FORMATTED_VALUE' });
+    const headers = (hdrResp.data.values?.[0] || []) as string[];
+
+    // Resolve placeholders {Header}
+    const placeholderRegex = /\{([^}]+)\}/g;
+    const headerToLetter = (name: string): string | null => {
+      const idx = pickHeaderIndex(headers, String(name));
+      return idx >= 0 ? indexToColumn(idx) : null;
+    };
+    const used: Array<{ name: string; letter: string }> = [];
+    let formulaBody = String(expression);
+    formulaBody = formulaBody.replace(placeholderRegex, (_m, name) => {
+      const letter = headerToLetter(name);
+      if (!letter) return '0';
+      used.push({ name, letter });
+      return `${letter}:${letter}`; // array-ref in array mode
+    });
+
+    // Determine target column
+    let tgtIdx = -1; let tgtLetter = '';
+    if (targetColumn) {
+      const tgtStr = String(targetColumn);
+      const letterMatch = tgtStr.trim().match(/^[A-Z]+$/i);
+      if (letterMatch) tgtIdx = columnToIndex(tgtStr.toUpperCase());
+      else {
+        const found = pickHeaderIndex(headers, tgtStr);
+        tgtIdx = found >= 0 ? found : headers.length;
+      }
+    } else {
+      tgtIdx = headers.findIndex(h => !String(h || '').trim());
+      if (tgtIdx < 0) tgtIdx = headers.length;
+    }
+    tgtLetter = indexToColumn(tgtIdx);
+
+    const outHeader = headerLabel || 'Computed';
+
+    if (previewOnly) {
+      return res.status(200).json({ success: true, result: `Expression OK. Will write to ${tgtLetter}.`, details: { headersUsed: used, formulaPreview: formulaBody, target: tgtLetter } });
+    }
+
+    // Ensure capacity for target column
+    await ensureSheetCapacity(spreadsheetId, sheetName, 2, tgtLetter);
+
+    if (mode === 'array') {
+      const formula = `=ARRAYFORMULA(IF(ROW(A:A)=1, "${outHeader.replace(/"/g, '""')}", IF(${used.length ? `LEN(${used[0].letter}:${used[0].letter})=0` : 'FALSE'}, , ${formulaBody})))`;
+      const topLeft = `${escaped}!${tgtLetter}1`;
+      await sheets.spreadsheets.values.update({ spreadsheetId, range: topLeft, valueInputOption: 'USER_ENTERED', requestBody: { values: [[formula]] } });
+      if (bakeToValues) {
+        const range = `${escaped}!${tgtLetter}1:${tgtLetter}`;
+        const get = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'UNFORMATTED_VALUE' });
+        const values = (get.data.values || []) as any[];
+        await sheets.spreadsheets.values.update({ spreadsheetId, range: `${escaped}!${tgtLetter}1`, valueInputOption: 'RAW', requestBody: { values } });
+      }
+      return res.status(200).json({ success: true, result: `Inserted computed ${mode === 'array' ? 'ARRAYFORMULA ' : ''}into ${tgtLetter}.`, details: { headersUsed: used } });
+    }
+
+    // values mode: compute per-row by letting Sheets evaluate quickly via temporary range is complex; fallback to writing formula per cell
+    // For simplicity, we still write a single ARRAYFORMULA then optionally bake (equivalent outcome)
+    const formula = `=ARRAYFORMULA(IF(ROW(A:A)=1, "${outHeader.replace(/"/g, '""')}", IF(${used.length ? `LEN(${used[0].letter}:${used[0].letter})=0` : 'FALSE'}, , ${formulaBody})))`;
+    await sheets.spreadsheets.values.update({ spreadsheetId, range: `${escaped}!${tgtLetter}1`, valueInputOption: 'USER_ENTERED', requestBody: { values: [[formula]] } });
+    if (bakeToValues) {
+      const range = `${escaped}!${tgtLetter}1:${tgtLetter}`;
+      const get = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'UNFORMATTED_VALUE' });
+      const values = (get.data.values || []) as any[];
+      await sheets.spreadsheets.values.update({ spreadsheetId, range: `${escaped}!${tgtLetter}1`, valueInputOption: 'RAW', requestBody: { values } });
+    }
+    return res.status(200).json({ success: true, result: `Computed column written to ${tgtLetter}.`, details: { headersUsed: used } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to compute column from expression', details: e instanceof Error ? e.message : String(e) });
   }
 }
 

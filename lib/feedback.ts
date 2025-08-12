@@ -17,6 +17,14 @@ export interface FeedbackDoc {
   createdBy?: { uid?: string | null; displayName?: string | null; email?: string | null };
   createdAt?: FirebaseFirestore.Timestamp | Date | null;
   updatedAt?: FirebaseFirestore.Timestamp | Date | null;
+  // Optional attachments for additional context (e.g., screenshot)
+  attachments?: Array<{
+    url: string;
+    mimeType: string;
+    name?: string;
+    width?: number;
+    height?: number;
+  }>;
 }
 
 export interface VoteRecord {

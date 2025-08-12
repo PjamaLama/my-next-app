@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import { compressImageFile } from '@/lib/imageCompression';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
@@ -13,6 +14,10 @@ interface SimilarItem {
   votesCount?: number;
   userVote?: 1 | -1 | 0;
 }
+
+type Attachment = { url: string; mimeType: string; name?: string };
+
+const PERSIST_KEY = 'feedbackModalState_v1';
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
@@ -29,6 +34,30 @@ export default function FeedbackButton() {
   const { user } = useFirebase();
   const [voting, setVoting] = useState<Record<string, boolean>>({});
   const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
+
+  // Attachments
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  // Persist state across reloads
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PERSIST_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (typeof s?.title === 'string') setTitle(s.title);
+      if (typeof s?.description === 'string') setDescription(s.description);
+      if (s?.type === 'bug' || s?.type === 'feature' || s?.type === 'other') setType(s.type);
+      if (s?.view === 'submit' || s?.view === 'browse') setView(s.view);
+      if (Array.isArray(s?.attachments)) setAttachments(s.attachments);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      const s = { title, description, type, view, attachments };
+      localStorage.setItem(PERSIST_KEY, JSON.stringify(s));
+    } catch {}
+  }, [title, description, type, view, attachments]);
 
   useEffect(() => {
     const q = title.trim() + ' ' + description.trim();
@@ -74,6 +103,30 @@ export default function FeedbackButton() {
       .finally(() => setAllLoading(false));
   }, [open, user?.uid]);
 
+  // Upload compressed image and store URL
+  const handleFile = async (file: File) => {
+    try {
+      setUploading(true);
+      const { base64, mimeType } = await compressImageFile(file, 1200, 0.75);
+      const res = await fetch('/api/feedback?action=upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mimeType, name: file.name }),
+      });
+      const json = await res.json();
+      if (json?.success && json.data?.url) {
+        const att: Attachment = { url: json.data.url, mimeType: json.data.mimeType, name: json.data.name };
+        setAttachments((arr) => [att]);
+      } else {
+        alert(json?.error || 'Upload failed');
+      }
+    } catch (_) {
+      alert('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const canSubmit = useMemo(() => title.trim().length >= 4, [title]);
 
   const submit = async () => {
@@ -98,6 +151,7 @@ export default function FeedbackButton() {
           title,
           description,
           type,
+          attachments,
           user: user ? { uid: user.uid, displayName: user.displayName, email: user.email } : undefined,
         }),
       });
@@ -106,6 +160,7 @@ export default function FeedbackButton() {
         setTitle('');
         setDescription('');
         setType('feature');
+        setAttachments([]);
         setOpen(false);
       } else {
         alert(json?.error || 'Failed to submit feedback');
@@ -242,6 +297,41 @@ export default function FeedbackButton() {
                   rows={4}
                   className="mt-1 w-full rounded-lg bg-zinc-800 border border-white/10 px-3 py-2 outline-none focus:border-emerald-500"
                 />
+              </div>
+              {/* Attachment */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-white/80">Attachment</label>
+                  {attachments.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-xs text-white/60 hover:text-white"
+                      onClick={() => setAttachments([])}
+                      disabled={uploading}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1">
+                  {attachments.length === 0 ? (
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleFile(f);
+                      }}
+                      disabled={uploading}
+                      className="block w-full text-sm text-white/80 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border file:border-white/10 file:bg-zinc-800 hover:file:bg-zinc-700"
+                    />
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <img src={attachments[0].url} alt={attachments[0].name || 'attachment'} className="w-24 h-24 object-cover rounded-lg border border-white/10" />
+                      <span className="text-xs text-white/60">{attachments[0].name || 'image'}</span>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <label className="text-sm text-white/80">Type</label>
