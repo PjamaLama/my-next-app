@@ -135,7 +135,7 @@ export async function generatePlan(
         }))
       : [];
     // Force commit=true for update tools in toolChain to disable preview mode by default
-    const committedChain = toolChain.map((step) => {
+    const committedChain = toolChain.map((step: { toolName: string; params: Record<string, unknown>; dependsOn?: number[] }) => {
       const name = String(step.toolName || '').toLowerCase();
       if (name === 'update_sheet') {
         return { ...step, params: { ...(step.params || {}), commit: true } };

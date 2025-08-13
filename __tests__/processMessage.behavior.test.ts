@@ -296,6 +296,129 @@ describe('processMessage planner/tool behavior - targeted scenarios', () => {
     jest.clearAllMocks();
   });
 
+  it('tabular update parses to structured rows and commits, composing success with new row count', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockResolvedValue(['Date', 'Client', 'Sales']);
+    // After commit, hydration should see 6 rows
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockResolvedValue([
+      ['2024-01-01','A','100'],
+      ['2024-01-02','B','200'],
+      ['2024-01-03','C','300'],
+      ['2024-01-04','D','400'],
+      ['2024-01-05','E','500'],
+      ['2024-01-06','F','600'],
+    ]);
+
+    const calls: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [],
+        toolChain: [ { toolName: 'apply_structured_rows', params: { rows: [{ Date: '08/13/2025', Client: 'Victor', Sales: 4000 }], startRow: 6, commit: true } } ],
+        clarifyQuestion: null,
+        reasoning: 'parsed fields and matched to headers'
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        calls.push({ name, args });
+        if (name === 'apply_structured_rows') {
+          return { success: true, result: 'Added row.' } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Sales', sheetNames: ['Sales'], sheetHeaders: ['Date','Client','Sales'], sheetData: { 'Sales': [['Date','Client','Sales'], ['2024-01-01','A','100'], ['2024-01-02','B','200'], ['2024-01-03','C','300'], ['2024-01-04','D','400'], ['2024-01-05','E','500']] } };
+    const out = await run('add to my sheet, client Victor, sold 4000 rand', ctx, [], []);
+
+    const apply = calls.find(c => c.name === 'apply_structured_rows');
+    expect(apply).toBeTruthy();
+    if (apply) {
+      const row = (apply.args.rows && apply.args.rows[0]) || {};
+      expect(row.Date).toBe('08/13/2025');
+      expect(row.Client).toBe('Victor');
+      expect(Number(row.Sales)).toBe(4000);
+    }
+    expect(out.response).toMatch(/Updated sheet:/i);
+    expect(out.response).toMatch(/Total rows now:\s*6\./i);
+  });
+
+  it('non-tabular update appends text via update_sheet', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockResolvedValue(['Note']);
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockResolvedValue([
+      ['Old note']
+    ]);
+
+    const calls: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async (msg: string) => ({
+        intent: 'update_data',
+        tools: [],
+        toolChain: [ { toolName: 'update_sheet', params: { text: msg, append: true, commit: true } } ],
+        clarifyQuestion: null,
+        reasoning: 'non-tabular append explicit'
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        calls.push({ name, args });
+        if (name === 'update_sheet') return { success: true, result: 'Appended text to sheet.' } as any;
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Notes', sheetNames: ['Notes'], isNonTabular: true };
+    const out = await run('add quick client note', ctx, [], []);
+
+    const upd = calls.find(c => c.name === 'update_sheet');
+    expect(upd).toBeTruthy();
+    if (upd) {
+      expect(upd.args.append).toBe(true);
+      expect(String(upd.args.text || '')).toMatch(/add quick client note/i);
+    }
+    expect(out.response).toMatch(/Appended text to sheet/i);
+  });
+
+  it('preview mode prompts confirmation with quick replies', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const calls: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({ intent: 'update_data', tools: [], toolChain: [ { toolName: 'update_sheet', params: { text: 'add client Z', append: false, commit: false } } ] })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        calls.push({ name, args });
+        if (name === 'update_sheet') {
+          return { success: true, result: 'Preview: 1 cell to update', preview: [{ row: 6, updates: { Client: 'Z' } }] } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Sales', sheetNames: ['Sales'], sheetHeaders: ['Date','Client','Sales'] };
+    const out = await run('add client Z', ctx, [], []);
+    expect(out.response).toMatch(/Proposed update.*Confirm\?/i);
+    expect(Array.isArray(out.quickReplies)).toBe(true);
+    const qrs = (out.quickReplies as string[]).join(' | ');
+    expect(qrs).toMatch(/Apply/);
+    expect(qrs).toMatch(/Edit/);
+  });
+
   it('handles "tell me about my data" via describe_sheet with provided context', async () => {
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
 
