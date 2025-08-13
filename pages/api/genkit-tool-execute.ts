@@ -1824,8 +1824,10 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
             await ensureSheetCapacity(spreadsheetId, sheetName, maxRow, maxCol);
             await sheets.spreadsheets.values.batchUpdate({
               spreadsheetId,
-              requestBody: { data: updates.map(u => ({ range: `${escapeSheetName(sheetName)}!${u.cell}`, values: [[u.value]] })) },
-              valueInputOption: 'USER_ENTERED'
+              requestBody: {
+                data: updates.map(u => ({ range: `${escapeSheetName(sheetName)}!${u.cell}`, values: [[u.value]] })),
+                valueInputOption: 'USER_ENTERED'
+              }
             });
             totalExecuted += updates.length;
           }
@@ -1861,7 +1863,13 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
             const maxRow = updates.reduce((max, u) => Math.max(max, u.row || 1), 1);
             const maxCol = updates.reduce((max, u) => (u.column && u.column.length > max.length ? u.column : max), 'A');
             await ensureSheetCapacity(spreadsheetId, sheetName, maxRow, maxCol);
-            await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { data: updates.map(u => ({ range: `${escapeSheetName(sheetName)}!${u.cell}`, values: [[u.value]] })), valueInputOption: 'USER_ENTERED' } });
+            await sheets.spreadsheets.values.batchUpdate({
+              spreadsheetId,
+              requestBody: {
+                data: updates.map(u => ({ range: `${escapeSheetName(sheetName)}!${u.cell}`, values: [[u.value]] })),
+                valueInputOption: 'USER_ENTERED'
+              }
+            });
             totalExecuted += updates.length;
           }
         } catch (e) {
