@@ -230,8 +230,18 @@ export async function processMessage(
       } catch (e: any) {
         try {
           const ctxAny = context as any;
-          ctxAny.error = 'Sheet access failed: ' + (e?.message || String(e));
+          const name = String(ctxAny.sheetName || '');
+          let errMsg = `Failed to load sheet '${name}': ${e?.message || String(e)}`;
+          if (typeof e?.message === 'string' && /404/.test(e.message)) errMsg += ' (sheet not found)';
+          ctxAny.error = errMsg;
           ctxAny.sheetData = {};
+          // Queue helpful quick actions for the UI and replies
+          try {
+            ctxAny._uiActions = ctxAny._uiActions || [];
+            ctxAny._uiActions.push({ text: 'Check sheet name', action: 'clarify_sheet' }, { text: 'Retry', action: 'retry_hydration' });
+            ctxAny._pendingQuickActions = Array.isArray(ctxAny._pendingQuickActions) ? ctxAny._pendingQuickActions : [];
+            ctxAny._pendingQuickActions.push('Check sheet name', 'Retry');
+          } catch {}
         } catch {}
       }
     };
@@ -280,9 +290,31 @@ export async function processMessage(
           const isStale5m = Date.now() - lastAt > 5 * 60 * 1000;
           if (!alreadyHydrated || isStale5m) {
             try {
-              await hydrateSheetData(earlyDS, context as any);
+              const triggerEarly = /\b(data|sheet)\b/i.test(String(message || '')) || /^(fuel\s+weekly\s+repo|logbook)$/i.test(String(sheetName || ''));
+              if (triggerEarly) {
+                const headers = await earlyDS.getHeaders();
+                const rows = await earlyDS.getSampleRows(50);
+                const map: Record<string, string[][]> = {};
+                map[sheetName] = [headers || [], ...(rows || [])];
+                ctxAny.sheetData = map;
+                ctxAny._sheetHydratedAt = Date.now();
+                if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
+                  ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+                }
+              } else {
+                await hydrateSheetData(earlyDS, context as any);
+              }
             } catch (e: any) {
-              try { ctxAny.error = 'Failed to access sheet: ' + (e?.message || String(e)); } catch {}
+              try {
+                let errMsg = `Failed to load sheet '${sheetName}': ${e?.message || String(e)}`;
+                if (typeof e?.message === 'string' && /404/.test(e.message)) errMsg += ' (sheet not found)';
+                ctxAny.error = errMsg;
+                ctxAny.sheetData = {};
+                ctxAny._uiActions = ctxAny._uiActions || [];
+                ctxAny._uiActions.push({ text: 'Check sheet name', action: 'clarify_sheet' }, { text: 'Retry', action: 'retry_hydration' });
+                ctxAny._pendingQuickActions = Array.isArray(ctxAny._pendingQuickActions) ? ctxAny._pendingQuickActions : [];
+                ctxAny._pendingQuickActions.push('Check sheet name', 'Retry');
+              } catch {}
             }
           }
         }
