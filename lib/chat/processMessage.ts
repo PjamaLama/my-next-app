@@ -707,8 +707,10 @@ export async function processMessage(
           const hasData = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
           if (hasData) {
             // Resolve commonly referenced columns (best-effort)
-            const headers = Array.isArray(ctxAny.sheetHeaders) ? ctxAny.sheetHeaders : [];
-            const likely = headers.find(h => /date|amount|total|fuel|vendor|category/i.test(String(h)));
+            const headers: string[] = Array.isArray(ctxAny.sheetHeaders)
+              ? (ctxAny.sheetHeaders as string[]).map((x: any) => String(x ?? ''))
+              : [];
+            const likely = headers.find((h: string) => /date|amount|total|fuel|vendor|category/i.test(h));
             if (likely) {
               plannedToolCalls.unshift({
                 id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
