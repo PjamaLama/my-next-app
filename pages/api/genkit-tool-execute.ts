@@ -1599,6 +1599,49 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
     for (const sheetName of resolvedSheetNames) {
       console.log(`Processing updates for sheet: ${sheetName}`);
       const wantsManualApproval = !preview && (approveAll === true || (Array.isArray(approvedRows) && approvedRows.length > 0));
+      // Try to detect if prior chain extracted structured rows and if they match headers for apply_structured_rows routing
+      let appliedViaStructured = false;
+      let autoPreview: any[] | null = null;
+      try {
+        // 1) Grab headers from cached context (set by proactive hydration)
+        const headers: string[] = Array.isArray((context as any)?.sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
+        // 2) Gather any extracted_rows from recent analyses saved in context.fileAnalysis by upstream tools
+        const extractedRows: Array<Record<string, unknown>> = (() => {
+          const files = (context as any)?.fileAnalysis?.files || [];
+          const found = files.map((f: any) => (f?.extractedData?.extracted_rows || [])).filter((x: any) => Array.isArray(x) && x.length > 0);
+          return found.length > 0 ? found[found.length - 1] : [];
+        })();
+        // 3) Basic column compatibility check: at least half of extracted keys exist in headers
+        const keys = Array.isArray(extractedRows) && extractedRows.length > 0 ? Array.from(new Set(extractedRows.flatMap(r => Object.keys(r || {})))) : [];
+        const keyMatches = keys.filter(k => headers.includes(k));
+        const compatible = headers.length > 0 && keys.length > 0 && keyMatches.length / keys.length >= 0.5;
+        if (compatible && extractedRows.length > 0) {
+          // Compute current last row for startRow via get_used_range or get-sheet-data
+          let startRow = 2;
+          try {
+            const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+            const resp = await fetch(`${baseUrl}/api/get-sheet-data`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetName }) });
+            if (resp.ok) {
+              const json = await resp.json();
+              const arr = (json?.data as string[][]) || [];
+              startRow = Math.max(2, (Array.isArray(arr) && arr.length > 0 ? arr.length + 1 : 2));
+            }
+          } catch {}
+          // Return preview-only suggestion to apply structured rows via apply_structured_rows
+          autoPreview = extractedRows.slice(0, Math.min(30, extractedRows.length)).map((r, i) => ({ row: startRow + i, updates: r }));
+          appliedViaStructured = true;
+          // Do not commit here; surface preview and suggestion for UI to confirm
+          flowPreviews[sheetName] = autoPreview;
+          // Short-circuit for this sheet to avoid running updateSheetFlow when we have a clean mapping
+          continue;
+        }
+        // If not compatible, build a suggested mapping table
+        if (headers.length > 0 && keys.length > 0) {
+          const mapping = keys.map(k => ({ file: k, sheet: headers.find(h => h.toLowerCase() === k.toLowerCase()) || '', score: headers.includes(k) ? 0.9 : 0.5 }));
+          (flowPreviews as any)[`${sheetName}__suggestedMapping`] = mapping;
+        }
+      } catch {}
+
       const result = await updateSheetFlow({
         transcript,
         sheetId: spreadsheetId,
@@ -1680,7 +1723,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       }
     }
 
-    if (allUpdates.length > 0 || totalExecuted > 0) {
+    if (allUpdates.length > 0 || totalExecuted > 0 || Object.keys(flowPreviews).length > 0) {
       if (preview) {
         // Return preview data without actually updating
         return res.status(200).json({

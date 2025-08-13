@@ -58,35 +58,64 @@ export class SheetDataSource extends DataSource {
   }
 
   async getSampleRows(n: number): Promise<string[][]> {
-    const withRetries = async (): Promise<any> => {
-      let lastErr: any = null;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: `A2:Z${Math.max(2 + n, 50)}` }) } },
-              context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
-            })
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return await res.json();
-        } catch (e) {
-          lastErr = e;
-          if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-      // eslint-disable-next-line no-console
-      console.warn('[SheetDataSource] getSampleRows failed after retries', lastErr);
-      return null;
+    // Strategy: fetch first 50 rows + up to 50 random rows if total > 100
+    const fetchRange = async (range: string): Promise<string[][]> => {
+      const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range }) } },
+          context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const table = json?.table;
+      if (Array.isArray(table?.rows)) return table.rows as string[][];
+      const data = json?.data;
+      if (Array.isArray(data) && data.length > 1) return data.slice(1) as string[][];
+      return [];
     };
 
-    const json = await withRetries();
-    const table = json?.table;
-    if (Array.isArray(table?.rows)) return table.rows as string[][];
-    const data = json?.data;
-    if (Array.isArray(data) && data.length > 1) return data.slice(1) as string[][];
-    return [];
+    try {
+      const top = await fetchRange('A2:Z51');
+      // Attempt to determine total rows quickly by fetching a far range end
+      let totalRows = top.length + 1; // approximate
+      try {
+        const tail = await fetchRange('A1:Z20001');
+        totalRows = Array.isArray(tail) && tail.length > 0 ? tail.length : totalRows;
+      } catch {}
+      if (totalRows <= 100) {
+        return top.slice(0, Math.min(n, top.length));
+      }
+      // Random sample indices between 52 and totalRows (1-based sheet rows, excluding header)
+      const need = Math.max(0, Math.min(50, n - top.length));
+      const picks = new Set<number>();
+      while (picks.size < need) {
+        const idx = 2 + Math.floor(Math.random() * Math.max(1, totalRows - 1));
+        if (idx > 51) picks.add(idx);
+      }
+      // Build batched ranges in chunks of ~25
+      const ranges: string[] = Array.from(picks).map(i => `A${i}:Z${i}`);
+      const chunks: string[][] = [];
+      for (let i = 0; i < ranges.length; i += 25) {
+        const group = ranges.slice(i, i + 25);
+        const minRow = Math.min(...group.map(r => parseInt(r.match(/A(\d+):/i)![1], 10)));
+        const maxRow = Math.max(...group.map(r => parseInt(r.match(/:(?:Z)(\d+)/i)![1], 10)));
+        const part = await fetchRange(`A${minRow}:Z${maxRow}`);
+        chunks.push(part);
+      }
+      const randoms = chunks.flat();
+      return [...top, ...randoms].slice(0, n);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[SheetDataSource] getSampleRows sampling fallback', e);
+      // Fallback to contiguous window if sampling fails
+      try {
+        return await fetchRange(`A2:Z${Math.max(2 + n, 50)}`);
+      } catch {
+        return [];
+      }
+    }
   }
 
   async query(input: QueryInput): Promise<{ headers: string[]; rows: string[][] }> {
