@@ -65,8 +65,8 @@ export class SheetDataSource extends DataSource {
     const allBlank = !headers || headers.length === 0 || headers.every((h: any) => String(h ?? '').trim() === '');
     if (!allBlank) return headers.map(h => String(h ?? ''));
 
-    // Non-standard layout: examine first 10 rows to detect headers
-    const jsonTen = await withRetries('A1:Z10');
+    // Non-standard layout: examine first 100 rows to detect headers
+    const jsonTen = await withRetries('A1:Z100');
     const rows10: string[][] = (jsonTen?.table?.rows as string[][])
       || (Array.isArray(jsonTen?.data) ? (jsonTen.data as string[][]) : []);
     const detected = this.detectHeaders(rows10 || []);
