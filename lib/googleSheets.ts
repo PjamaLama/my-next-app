@@ -7,6 +7,8 @@ const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 let cachedSheets: ReturnType<typeof google.sheets> | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// Allow auth timeout to be configured via env; default to 30s to reduce flakiness
+const AUTH_TIMEOUT_MS = Number(process.env.GSHEETS_AUTH_TIMEOUT_MS || process.env.GOOGLE_SHEETS_AUTH_TIMEOUT_MS || 30000);
 
 export const getGoogleSheetsClient = async (retries = 3) => {
   const log = createLogger('lib/googleSheets');
@@ -28,7 +30,7 @@ export const getGoogleSheetsClient = async (retries = 3) => {
       // Add timeout for authorization
       const authPromise = client.authorize();
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Authentication timeout after 10 seconds')), 10000)
+        setTimeout(() => reject(new Error(`Authentication timeout after ${Math.round(AUTH_TIMEOUT_MS / 1000)} seconds`)), AUTH_TIMEOUT_MS)
       );
 
       await Promise.race([authPromise, timeoutPromise]);

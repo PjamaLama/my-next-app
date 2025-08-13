@@ -2546,7 +2546,8 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
               success: true,
               result: 'Columns don’t fully match. Suggested mapping provided. Confirm?',
               details: { previewSuggestedMapping: suggested, preview },
-              preview
+              preview: true,
+              previewData: preview
             });
           }
           // Perfect or good match: rewrite rows to header-aligned objects so ingestion aligns cleanly

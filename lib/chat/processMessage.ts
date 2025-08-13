@@ -815,7 +815,10 @@ export async function processMessage(
           executedToolName === 'apply_structured_rows'
         ) {
           if (executedToolName === 'apply_structured_rows') {
-            didUpdateSheet = true;
+            const isPreview = (result as any)?.preview === true || /preview/i.test(String(result?.result || ''));
+            if (!isPreview) {
+              didUpdateSheet = true;
+            }
             if (typeof result.result === 'string' && result.result.trim()) {
               enhancedResponse += `\n${result.result.trim()}`;
             }
