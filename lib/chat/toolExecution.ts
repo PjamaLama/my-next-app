@@ -118,6 +118,7 @@ export async function executeToolCall(
       success: data.success,
       result: data.result,
       details: data.details,
+      preview: (data as any)?.preview,
       analyses: data.analyses,
       extractions: data.extractions,
       data: data.data,

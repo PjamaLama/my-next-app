@@ -709,6 +709,7 @@ export async function processMessage(
     let describeText: string | null = null;
     let didUpdateSheet = false;
     const dataTables: StructuredTable[] = [];
+    let response = '';
     const postQuickActions: string[] = [];
     // Hoist quickReplies so we can modify them during tool processing (e.g., preview confirmations)
     let quickReplies: string[] = [];
@@ -735,6 +736,19 @@ export async function processMessage(
           response = 'Proposed update (using sheet columns):';
           const ctxAny = context as any;
           ctxAny.previewActions = (result as any).preview;
+          // Render a data table in chat using the preview
+          try {
+            const pv = (result as any).preview;
+            if (pv && Array.isArray(pv.headers) && Array.isArray(pv.rows)) {
+              const headers = pv.headers as string[];
+              const rows: string[][] = (pv.rows as Array<Array<{ column: string; value: unknown }>>)
+                .map((row) => headers.map((h) => {
+                  const cell = row.find((c: any) => String(c.column) === h);
+                  return String(cell ? cell.value ?? '' : '');
+                }));
+              dataTables.push({ title: 'Proposed update', headers, rows, summary: pv.message || 'Confirm to apply' });
+            }
+          } catch {}
           // Provide structured quick replies for UI and simple text fallbacks
           ctxAny.quickReplies = [
             { text: 'Commit', action: 'confirm_update' },
@@ -965,7 +979,7 @@ export async function processMessage(
       }
     }
 
-    let response = '';
+    // (response declared earlier)
 
     // Determine if user is asking for charts/graphs early (used by table suppression later)
     const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);

@@ -84,15 +84,18 @@ ${fewShot}
 
   Chain-of-thought (do not output):
   Update parsing guidance for update_data:
-  Step 1: Use context.sheetHeaders (e.g., ['Date', 'Vendor', 'TOWN VISITED', 'Fuel Cost in Rands', 'Notes']) to parse message fields. Map terms to headers via keyword similarity strictly against these headers:
-    - "client"/"customer" → Vendor (header that contains "vendor").
-    - "hogwarts"/"town"/"city" → TOWN VISITED.
-    - "sold"/"amount"/"rand" → Fuel Cost in Rands (header containing "cost" or "amount").
-    - "spoke"/"reports" → Notes.
+  Step 1: Use context.sheetHeaders to parse message fields. Map terms to the EXACT header names present in the sheet:
+    - Prefer exact header names from context.sheetHeaders. Never invent new headers.
+    - Examples of common mappings:
+      • "client"/"customer" → header that includes "client" (e.g., "CLIENT SEEN").
+      • "town"/"city"/known place → header that includes "town" (e.g., "TOWN").
+      • "sold"/"amount"/"rand"/"price" → header that includes "sale" or "amount" (e.g., "SALES MADE").
+      • "spoke"/"visit"/"reports" → header that includes "detail" or "visit" (e.g., "DETAILS OF VISIT").
     - Always include Date. If unspecified, use current date 08/13/2025 in MM/DD/YYYY.
-  Step 2: Output a row object using exact header names only. Example:
+  Step 2: Output a row object using exact header names only. ALWAYS show a preview first, do not commit until the user confirms.
+    Example:
     {Date: '08/13/2025', Vendor: 'Victor', TOWN VISITED: 'Hogwarts', Fuel Cost in Rands: '4000', Notes: 'spoke to him about the upcoming seed reports'}
-  Step 3: Plan apply_structured_rows with params { rows: [parsed_row], commit: true }.
+  Step 3: Plan apply_structured_rows with params { rows: [parsed_row], commit: false } to return a preview for confirmation.
   Example mapping: "add client victor in hogwarts, sold 4000 rand" → rows: [{Date: '08/13/2025', Vendor: 'Victor', TOWN VISITED: 'Hogwarts', Fuel Cost in Rands: '4000'}].
   Include reasoning in JSON and show mapping details, e.g.: {"mapped_fields": {"client": "Vendor", "sold": "Fuel Cost in Rands"}}.
 
@@ -100,8 +103,8 @@ ${fewShot}
   - Be proactive. If the message includes "tell me about my data" or contains a probable sheet name (e.g., "Fuel Weekly Repo"), plan describe_sheet immediately with args { sheetName: context.sheetName (or detected), mode: context.isNonTabular ? "text_summary" : "tabular" }.
   - For column/lookup queries like "who is the driver" or "which driver", scan context.sheetHeaders for likely matches (keywords: "driver", "name"). Plan tools=[{"name":"get_column_stats","args":{"column":"<matched header>"}}]. If isNonTabular=true, prefer tools=[{"name":"describe_sheet","args":{"mode":"text_summary"}}].
   - If no headers are known, use context.sheetData when present or guess from conversationHistory to avoid clarifications. Only ask to clarify when there is no usable data and no helpful history.
-  - For updates ("add", "update", "append"), set intent="update_data" and choose ONE of these paths:
-    • Tabular: If context.sheetData has rows, parse against context.sheetHeaders and plan apply_structured_rows with { rows: [parsed_row], commit: true }.
+  - For updates ("add", "update", "append"), set intent="update_data" and choose ONE of these paths (preview first):
+    • Tabular: If context.sheetData has rows, parse against context.sheetHeaders and plan apply_structured_rows with { rows: [parsed_row], commit: false }.
     • Non-tabular explicit append: If context.isNonTabular is true AND the user explicitly asked to append raw text ("append", "note", "log", "add text"), plan update_sheet with { text: ${JSON.stringify(message)}, append: true, commit: true }.
     • Files present: First plan extraction then structured apply when compatible: toolChain=[{"toolName":"get_sheet_data"}, ${hasFiles ? "{\"toolName\":\"extract_data_from_files\"}," : ''}{"toolName":"apply_structured_rows","dependsOn":[0${hasFiles ? ',1' : ''}], "params": {"commit": true}}].
   - Only ask to clarify if there is no accessible data (no headers or sheetData) AND no helpful history cues; otherwise include a best-guess tool.

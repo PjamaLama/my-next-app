@@ -1595,6 +1595,40 @@ export default function Home() {
     }
   };
 
+  // Commit from a rendered table (headers:string[], rows:string[][])
+  const handleCommitFromTable = async (headers: string[], tableRows: string[][]) => {
+    try {
+      if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+        setSendResult('Select a spreadsheet and sheet first.');
+        return;
+      }
+      const rows = tableRows.map((r) => {
+        const obj: Record<string, unknown> = {};
+        headers.forEach((h, i) => { obj[h] = r[i] ?? ''; });
+        return obj;
+      });
+      const toolCall = {
+        id: `tool_${Date.now()}_apply_structured_rows_confirm_table`,
+        type: 'function' as const,
+        function: { name: 'apply_structured_rows', arguments: JSON.stringify({ rows, commit: true }) }
+      };
+      const resp = await fetch('/api/genkit-tool-execute', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames }, images: [] })
+      });
+      const data = await resp.json();
+      if (resp.ok && data?.success) setSendResult(data.message || data.result || 'Update applied.');
+      else setSendResult(data?.error || data?.result || 'Apply failed');
+    } catch {
+      setSendResult('Apply failed');
+    }
+  };
+
+  const openEditModalFromTable = (headers: string[], tableRows: string[][], message?: string) => {
+    const rows = (tableRows || []).map((r) => headers.map((h, i) => ({ column: h, value: r[i] ?? '' })));
+    openEditModal({ headers, rows, message });
+  };
+
   // Auto-scroll messages container to bottom when messages change
   useEffect(() => {
     if (messagesContainerRef.current) {
@@ -2093,7 +2127,7 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Render assistant data tables as rich tables */}
+                     {/* Render assistant data tables as rich tables (includes proposed update previews) */}
                     {message.role === 'assistant' && Array.isArray(message.tables) && message.tables.length > 0 && (
                       <div className="mt-2 space-y-3">
                         {/* Tiny toggle: if a combined table exists, allow switching view */}
@@ -2161,7 +2195,7 @@ export default function Home() {
                             {/* Sticky quick action bar (always visible while scrolling) */}
                             <div className="sticky bottom-0 right-0 w-full">
                               <div className="pointer-events-none bg-gradient-to-t from-black/40 to-transparent px-2 pt-6 pb-2">
-                                <div className="pointer-events-auto flex items-center justify-end">
+                                <div className="pointer-events-auto flex items-center justify-end gap-2">
                                   <button
                                     onClick={() => addExtractedTableToSheet(message.id, tIdx, { headers: t.headers, rows: t.rows, title: t.title })}
                                     className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
@@ -2182,6 +2216,25 @@ export default function Home() {
                                       )}
                                     </span>
                                   </button>
+                                    {/* When table title indicates a proposed update, show Commit/Edit actions */}
+                                    {t.title && /Proposed update/i.test(t.title) && (
+                                      <>
+                                        <button
+                                          onClick={() => handleCommitFromTable(t.headers, t.rows)}
+                                          className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
+                                          title="Commit proposed update"
+                                        >
+                                          Commit
+                                        </button>
+                                        <button
+                                          onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary)}
+                                          className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-sky-400/40 bg-sky-600 hover:bg-sky-700 text-white shadow"
+                                          title="Edit proposed update"
+                                        >
+                                          Edit
+                                        </button>
+                                      </>
+                                    )}
                                 </div>
                               </div>
                             </div>
