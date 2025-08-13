@@ -701,6 +701,8 @@ export async function processMessage(
     let didUpdateSheet = false;
     const dataTables: StructuredTable[] = [];
     const postQuickActions: string[] = [];
+    // Hoist quickReplies so we can modify them during tool processing (e.g., preview confirmations)
+    let quickReplies: string[] = [];
     const toolCallsToRun = plannedToolCalls;
     for (const toolCall of toolCallsToRun) {
       const result = await executeToolCall(toolCall, context, images);
@@ -1068,7 +1070,7 @@ export async function processMessage(
       }
     } catch {}
 
-    let quickReplies: string[] = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
+    quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
     // If a specific error response was prepared during hydration, surface it and add helpful actions
     try {
       const ctxAny = context as any;
