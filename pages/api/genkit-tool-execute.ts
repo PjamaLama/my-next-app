@@ -2475,6 +2475,7 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
         const incomingKeys = Object.keys(firstRow);
         if (incomingKeys.length > 0) {
           const { suggested, isPerfect } = matchColumnsWithSynonyms(incomingKeys, headers);
+          // If not perfect, still return a suggested preview for client confirmation
           if (!isPerfect) {
             const preview = buildPreviewTable(rows, suggested);
             return res.status(200).json({
@@ -2484,6 +2485,21 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
               preview
             });
           }
+          // Perfect or good match: rewrite rows to header-aligned objects so ingestion aligns cleanly
+          try {
+            const mapping: Record<string, string> = {};
+            suggested.forEach(m => { if (m.sheet) mapping[m.file] = m.sheet; });
+            const remapped = rows.map((r) => {
+              const out: Record<string, unknown> = {};
+              for (const [k, v] of Object.entries(r || {})) {
+                const target = mapping[k] || k;
+                out[target] = v;
+              }
+              return out;
+            });
+            // Overwrite rows for ingestion
+            (args as any).rows = remapped;
+          } catch {}
         }
       }
     } catch (e) {
