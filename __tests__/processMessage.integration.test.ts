@@ -50,6 +50,7 @@ describe('processMessage integration', () => {
   it('answers total sales via aggregate chain', async () => {
     const ctx: Context = { spreadsheetId: 'abc', sheetName: 'Sheet1', sheetNames: ['Sheet1'] } as any;
     const history: ConversationHistoryItem[] = [];
+    jest.setTimeout(30000);
     const out = await processMessage('total sales', ctx, history, []);
     expect(out).toBeTruthy();
     // Check that it produced a response

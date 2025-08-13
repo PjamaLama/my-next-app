@@ -29,11 +29,14 @@ export class SheetDataSource extends DataSource {
       let lastErr: any = null;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
+          const context = { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, sheetNames: [this.sheetName], isNonTabular: Boolean(this.contextRef?.isNonTabular) };
+          // eslint-disable-next-line no-console
+          console.log('[SheetDataSource.getHeaders] context:', context);
           const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range }) } },
-              context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, isNonTabular: Boolean(this.contextRef?.isNonTabular) }
+              context
             })
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -121,11 +124,14 @@ export class SheetDataSource extends DataSource {
   async getSampleRows(n: number, range?: string): Promise<string[][]> {
     const fetchRange = async (r: string): Promise<string[][]> => {
       try {
+        const context = { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, sheetNames: [this.sheetName], isNonTabular: Boolean(this.contextRef?.isNonTabular) };
+        // eslint-disable-next-line no-console
+        console.log('[SheetDataSource.getSampleRows] context:', context);
         const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: r }) } },
-            context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, isNonTabular: Boolean(this.contextRef?.isNonTabular) }
+            context
           })
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -162,11 +168,14 @@ export class SheetDataSource extends DataSource {
         let lastErr: any = null;
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
+            const context = { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, sheetNames: [input.sheetName || this.sheetName], sessionKey: this.sessionKey };
+            // eslint-disable-next-line no-console
+            console.log('[SheetDataSource.query] context:', context);
             const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, range: input.range }) } },
-                context: { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, sessionKey: this.sessionKey }
+                context
               })
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -180,8 +180,8 @@ export async function processMessage(
     // Helper to hydrate sheet data early and prepare summary for planner (robust range fallback)
     const hydrateSheetData = async (ds: DataSource, ctxAny: any): Promise<void> => {
       try {
-        const headers = await ds.getHeaders();
-        let rows = await (ds as any).getSampleRows(50);
+				const headers = await ds.getHeaders();
+				let rows = await (ds as any).getSampleRows(50);
         if (!Array.isArray(rows) || rows.length === 0) {
           rows = await (ds as any).getSampleRows(100, 'A1:Z100');
           ctxAny.hydrationNote = 'No data in standard range; scanned A1:Z100';
@@ -195,15 +195,18 @@ export async function processMessage(
         }
         ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
         ctxAny._sheetHydratedAt = Date.now();
-      } catch (e: any) {
-        const name = String((ctxAny && ctxAny.sheetName) || '');
-        ctxAny.error = `Failed to load '${name}': ${e?.message || String(e)}`;
-        if (typeof e?.message === 'string' && e.message.includes('404')) ctxAny.error += ' (tab not found)';
-        ctxAny.sheetData = {};
-        ctxAny.quickReplies = [
-          { text: 'Check tab name', action: 'clarify_sheet' },
-          { text: 'Retry', action: 'retry_hydration' }
-        ];
+			} catch (e: any) {
+				const name = String((ctxAny && ctxAny.sheetName) || '');
+				const msg = String(e?.message || e || 'Unknown error');
+				ctxAny.error = `Failed to load '${name}': ${msg}`;
+				if (msg.includes('400')) ctxAny.error += ' (invalid sheet configuration)';
+				else if (msg.includes('403')) ctxAny.error += ' (check service account permissions)';
+				else if (msg.includes('404')) ctxAny.error += ' (tab not found)';
+				ctxAny.sheetData = ctxAny.sheetData || {};
+				ctxAny.quickReplies = [
+					{ text: `Check tab: ${name}`, action: 'clarify_sheet' },
+					{ text: 'Retry', action: 'retry_hydration' }
+				];
       }
     };
 
@@ -255,12 +258,18 @@ export async function processMessage(
               if (triggerEarly) {
                 const headers = await earlyDS.getHeaders();
                 const rows = await earlyDS.getSampleRows(50);
-                const map: Record<string, string[][]> = {};
-                map[sheetName] = [headers || [], ...(rows || [])];
-                ctxAny.sheetData = map;
-                ctxAny._sheetHydratedAt = Date.now();
-                if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
-                  ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+                const hasAny = (Array.isArray(headers) && headers.length > 0) || (Array.isArray(rows) && rows.length > 0);
+                if (hasAny) {
+                  const map: Record<string, string[][]> = (ctxAny.sheetData && typeof ctxAny.sheetData === 'object') ? ctxAny.sheetData : {};
+                  map[sheetName] = [headers || [], ...(rows || [])];
+                  ctxAny.sheetData = map;
+                  ctxAny._sheetHydratedAt = Date.now();
+                  if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
+                    ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+                  }
+                } else {
+                  // keep cached data; note that early fetch returned empty
+                  ctxAny._hydrationWarning = 'Tried to refresh sheet but found no data; using cached context.';
                 }
               } else {
                 await hydrateSheetData(earlyDS, context as any);
@@ -376,7 +385,7 @@ export async function processMessage(
       const lastHydration = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
       const isStale = now - lastHydration > 60_000;
       const canHydrate = Boolean(dataSource);
-      const shouldHydrate = Boolean(context?.spreadsheetId) && (!hasCached || isStale);
+      const shouldHydrate = Boolean(context?.spreadsheetId) && !hasCached;
       if (canHydrate && shouldHydrate && dataSource) {
         try {
           const headers = await dataSource.getHeaders();
@@ -385,33 +394,33 @@ export async function processMessage(
           // Treat empty headers and rows as a failed hydration as well
           const noHeaders = !Array.isArray(headers) || headers.length === 0;
           const noRows = !Array.isArray(rows) || rows.length === 0;
-          if (noHeaders && noRows) {
-            throw new Error('No data returned from sheet');
-          }
-
-           const map: Record<string, string[][]> = hasCached ? (ctxAny.sheetData as Record<string, string[][]>) : {};
-           const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
-           map[sheetName] = [headers, ...rows];
-          if (Object.keys(map).length > 0) {
-            ctxAny.sheetData = map;
-            ctxAny._sheetHydratedAt = now;
-            // Backfill sheetHeaders if not set
-            if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
-              ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+          const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
+          if (!(noHeaders && noRows)) {
+            const map: Record<string, string[][]> = hasCached ? (ctxAny.sheetData as Record<string, string[][]>) : {};
+            map[sheetName] = [headers, ...rows];
+            if (Object.keys(map).length > 0) {
+              ctxAny.sheetData = map;
+              ctxAny._sheetHydratedAt = now;
+              // Backfill sheetHeaders if not set
+              if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
+                ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+              }
+              // Build a lightweight column catalog for planner/QA
+              try {
+                const first = Object.keys(map)[0];
+                const table = map[first] || [];
+                const hdrs = Array.isArray(table) && table.length > 0 ? table[0] : [];
+                const lower = hdrs.map((h: string) => String(h || '').toLowerCase());
+                const types = hdrs.map((_, i) => {
+                  const col = (table.slice(1) as string[][]).map(r => r?.[i]);
+                  const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
+                  return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
+                });
+                ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
+              } catch {}
             }
-            // Build a lightweight column catalog for planner/QA
-            try {
-              const first = Object.keys(map)[0];
-              const table = map[first] || [];
-              const hdrs = Array.isArray(table) && table.length > 0 ? table[0] : [];
-              const lower = hdrs.map((h: string) => String(h || '').toLowerCase());
-              const types = hdrs.map((_, i) => {
-                const col = (table.slice(1) as string[][]).map(r => r?.[i]);
-                const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
-                return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
-              });
-              ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
-            } catch {}
+          } else {
+            ctxAny._hydrationWarning = 'Tried to refresh sheet but found no data; using cached context.';
           }
         } catch (e) {
           // Hydration failed: ensure sheetData is empty, use data source standardized error mapping, log, and enqueue a summary fallback
@@ -1004,7 +1013,7 @@ export async function processMessage(
       const isEmptyData = !dataObj || Object.keys(dataObj).length === 0;
       const hasCtxError = Boolean(ctxAny?.error);
       const wantsRawToolOutput = String(intent || '').toLowerCase() === 'execute_tool';
-      if ((isEmptyData || hasCtxError) && !wantsRawToolOutput) {
+      if ((isEmptyData || hasCtxError) && !wantsRawToolOutput && intent !== 'describe_data') {
         const historySummary = summarizeHistory();
         const nameGuess = (ctxAny.sheetName && String(ctxAny.sheetName)) || extractSheetNameFromMessage(message) || extractSheetNameFromMessage(historySummary) || '';
         const topicGuess = inferFromHistory();
@@ -1112,7 +1121,7 @@ export async function processMessage(
     }
 
     // Compose a grounded conversational reply if we still don't have a response
-    if (!response || !response.trim()) {
+		if (!response || !response.trim()) {
       try {
         const toolSummaries = (enhancedResponse || '').split('\n').map(s => s.trim()).filter(Boolean);
         const ctxAny = context as any;
@@ -1120,19 +1129,27 @@ export async function processMessage(
         const table = (ctxAny.sheetData && sheetName && Array.isArray(ctxAny.sheetData[sheetName])) ? (ctxAny.sheetData[sheetName] as string[][]) : [];
         const hasAnyData = Array.isArray(table) && table.length > 0;
         const hasErr = Boolean(ctxAny?.error);
-        if (!hasAnyData || hasErr) {
-          const base = `Couldn’t load data for '${sheetName}'${ctxAny?.error ? ': ' + String(ctxAny.error) : ''}. It might track fuel sales or clients. Specify columns or upload a file.`;
-          const fuelHint = sheetName && /fuel\s+weekly\s+repo/i.test(String(sheetName)) ? ' Is this about fuel sales?' : '';
-          response = `${base}${fuelHint}`.trim();
+				if (!hasAnyData || hasErr) {
+          // If we have concrete tool summaries (e.g., from get_column_stats), prefer surfacing them over generic fallback
+          if (toolSummaries.length > 0) {
+            response = toolSummaries.join('\n');
+            if (describeText && describeText.trim()) {
+              response = `${response}\n${describeText.trim()}`.trim();
+            }
+            return;
+          }
+					let errText = String(ctxAny?.error || '');
+					if (/404/.test(errText) && !/tab not found/i.test(errText)) errText += ' (tab not found)';
+					response = `Couldn’t load data: ${errText || 'Unknown error'}. Try checking the tab or uploading a file.`;
           try {
-            ctxAny.quickReplies = [
-              { text: 'Check tab: Fuel Weekly Repo?', action: 'clarify_sheet' },
-              { text: 'Upload file', action: 'upload' }
-            ];
-            const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
-            quickReplies = Array.from(new Set([...baseQR, 'Check tab: Fuel Weekly Repo?', 'Upload file'])).slice(0, 6);
-            ctxAny._uiActions = ctxAny._uiActions || [];
-            ctxAny._uiActions.push({ text: 'Check tab: Fuel Weekly Repo?', action: 'clarify_sheet' }, { text: 'Upload file', action: 'upload' });
+						ctxAny.quickReplies = [
+							{ text: `Check tab: ${sheetName || 'Sheet1'}`, action: 'clarify_sheet' },
+							{ text: 'Retry', action: 'retry_hydration' }
+						];
+						const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+						quickReplies = Array.from(new Set([...baseQR, `Check tab: ${sheetName || 'Sheet1'}`, 'Retry'])).slice(0, 6);
+						ctxAny._uiActions = ctxAny._uiActions || [];
+						ctxAny._uiActions.push({ text: `Check tab: ${sheetName || 'Sheet1'}`, action: 'clarify_sheet' }, { text: 'Retry', action: 'retry_hydration' });
           } catch {}
           if (describeText && describeText.trim()) {
             response = `${response}\n${describeText.trim()}`.trim();
@@ -1153,7 +1170,7 @@ export async function processMessage(
             toolSummaries
           });
           if (composed && composed.trim() && composed !== response) {
-            response = composed;
+            response = `${response}\n${composed}`.trim();
           }
         }
       } catch {
