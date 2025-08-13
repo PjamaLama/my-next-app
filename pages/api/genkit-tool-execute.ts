@@ -1624,7 +1624,11 @@ function formatAnalysesAsMarkdown(analyses: Array<{ index: number; type: string;
 
 async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
-    const { transcript, text, append, preview, forceCommit = false, minConfidence, minRowConfidence, approvedRows, approveAll } = args as any;
+    const { transcript, text, append, forceCommit = false, minConfidence, minRowConfidence, approvedRows, approveAll } = args as any;
+    // New: commit flag (default true). If commit=false, behave as preview-only.
+    const commitArg = (args as any)?.commit;
+    const commit: boolean = commitArg === undefined ? true : Boolean(commitArg);
+    const preview: boolean = !commit; // preview is now derived solely from commit
     const { spreadsheetId } = context;
     // Resolve sheet selection with sensible fallbacks
     const providedList = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
@@ -1688,13 +1692,34 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
               startRow = Math.max(2, (Array.isArray(arr) && arr.length > 0 ? arr.length + 1 : 2));
             }
           } catch {}
-          // Return preview-only suggestion to apply structured rows via apply_structured_rows
           autoPreview = extractedRows.slice(0, Math.min(30, extractedRows.length)).map((r, i) => ({ row: startRow + i, updates: r }));
           appliedViaStructured = true;
-          // Do not commit here; surface preview and suggestion for UI to confirm
-          flowPreviews[sheetName] = autoPreview;
-          // Short-circuit for this sheet to avoid running updateSheetFlow when we have a clean mapping
-          continue;
+          if (preview) {
+            // Surface preview and suggestion for UI to confirm
+            flowPreviews[sheetName] = autoPreview;
+            // Short-circuit this sheet in preview mode
+            continue;
+          } else {
+            // Commit immediately via centralized ingestion
+            try {
+              const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spreadsheetId, sheetNames: [sheetName], rows: extractedRows, dryRun: false, startRow })
+              });
+              if (!ingestResp.ok) {
+                const txt = await ingestResp.text();
+                throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
+              }
+              const result = await ingestResp.json();
+              totalExecuted += Number(result?.inserts || 0) + Number(result?.updates || 0);
+              // Keep a minimal preview for visibility
+              flowPreviews[sheetName] = autoPreview;
+              continue;
+            } catch (e) {
+              console.warn('apply_structured_rows commit failed, falling back to flow:', e);
+            }
+          }
         }
         // If not compatible, build a suggested mapping table
         if (headers.length > 0 && keys.length > 0) {
@@ -1776,6 +1801,30 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       // Track how many actions the flow executed when commit=true
       if (!preview && typeof (result as any)?.executedActions === 'number') {
         totalExecuted += (result as any).executedActions;
+      }
+
+      // If commit=true and the flow did not execute updates, apply any returned updateCell actions here in batch
+      if (!preview) {
+        try {
+          const pendingUpdateCells = (result as any)?.actions?.filter((a: any) => a.type === 'updateCell') || [];
+          if (Array.isArray(pendingUpdateCells) && pendingUpdateCells.length > 0 && (!Number.isFinite((result as any)?.executedActions) || (result as any)?.executedActions === 0)) {
+            const sheets = await getGoogleSheetsClient();
+            type UpdateItem = { cell: string; row: number; column: string; value: string };
+            const updates: UpdateItem[] = pendingUpdateCells.map((a: any) => ({ cell: `${a.column}${a.row}`, row: Number(a.row), column: String(a.column), value: String(a.value ?? '') }));
+            const { ensureSheetCapacity, escapeSheetName } = await import('@/lib/sheetUtils');
+            const maxRow = updates.reduce((max, u) => Math.max(max, u.row || 1), 1);
+            const maxCol = updates.reduce((max, u) => (u.column && u.column.length > max.length ? u.column : max), 'A');
+            await ensureSheetCapacity(spreadsheetId, sheetName, maxRow, maxCol);
+            await sheets.spreadsheets.values.batchUpdate({
+              spreadsheetId,
+              requestBody: { data: updates.map(u => ({ range: `${escapeSheetName(sheetName)}!${u.cell}`, values: [[u.value]] })) },
+              valueInputOption: 'USER_ENTERED'
+            });
+            totalExecuted += updates.length;
+          }
+        } catch (e) {
+          console.error('Auto-commit of updateCell actions failed:', e);
+        }
       }
 
       // If manual approval requested, execute only approved rows now
@@ -2457,7 +2506,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { spreadsheetId, sheetNames, sheetName } = context as any;
-    const { rows, dryRun, startRow } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number };
+    const { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
     if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
       return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
     }
@@ -2507,14 +2556,18 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
       console.warn('apply_structured_rows matching warning:', e);
     }
 
+    const doCommit = commit === undefined ? true : Boolean(commit);
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows, dryRun: !!dryRun, startRow })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows, dryRun: doCommit ? false : true, startRow })
     });
     if (!ingestResp.ok) {
       const txt = await ingestResp.text();
       throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
     }
     const result = await ingestResp.json();
+    if (!doCommit) {
+      return res.status(200).json({ success: true, result: `Preview only: ${Number(result.inserts || 0) + Number(result.updates || 0)} row(s) would be affected.`, details: result, preview: true });
+    }
     return res.status(200).json({ success: true, result: `Ingestion ${result.success ? 'succeeded' : 'failed'}. Inserts=${result.inserts}, Updates=${result.updates}.`, details: result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);

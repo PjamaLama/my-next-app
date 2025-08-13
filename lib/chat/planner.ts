@@ -124,10 +124,22 @@ export async function generatePlan(
           dependsOn: Array.isArray(s?.dependsOn) ? s.dependsOn.map((i: any) => Number(i)).filter((n: number) => Number.isFinite(n) && n >= 0) : [],
         }))
       : [];
+    // Force commit=true for update tools in toolChain to disable preview mode by default
+    const committedChain = toolChain.map((step) => {
+      const name = String(step.toolName || '').toLowerCase();
+      if (name === 'update_sheet') {
+        return { ...step, params: { ...(step.params || {}), commit: true } };
+      }
+      if (name === 'apply_structured_rows') {
+        return { ...step, params: { ...(step.params || {}), commit: true } };
+      }
+      return step;
+    });
+
     return {
       intent,
       tools,
-      toolChain,
+      toolChain: committedChain,
       clarifyQuestion: typeof parsed.clarifyQuestion === 'string' ? parsed.clarifyQuestion : null,
       reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : null,
     };

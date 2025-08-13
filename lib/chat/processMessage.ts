@@ -168,6 +168,44 @@ export async function processMessage(
     }
 
     const hasFiles = images && images.length > 0;
+    // Intercept confirmation/cancellation for pending previewed updates
+    try {
+      const lower = String(message || '').toLowerCase();
+      const isConfirm = /(confirm\s+update|apply\s+changes|yes,\s*apply|go\s*ahead)/i.test(lower);
+      const isCancel = /^(cancel|cancel\s+update|no|nevermind|never\s+mind)$/i.test(lower.trim());
+      const pending = (context as any)._lastUpdateToolCall as { name: string; args: any } | undefined;
+      if (pending && (isConfirm || isCancel)) {
+        if (isCancel) {
+          try { (context as any)._lastUpdateToolCall = undefined; } catch {}
+          return {
+            response: 'Canceled. No changes were applied.',
+            toolCalls: [],
+            pendingToolCalls: [],
+            toolResults: [],
+            context,
+            quickReplies: ['Show current sheet data', 'Preview updates']
+          };
+        }
+        // Re-run the pending tool with commit=true
+        const call = {
+          id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'function',
+          function: { name: pending.name, arguments: JSON.stringify({ ...(pending.args || {}), commit: true }) }
+        } as any;
+        const result = await executeToolCall(call, context, images);
+        try { (context as any)._lastUpdateToolCall = undefined; } catch {}
+        const success = !!result?.success;
+        const msg = success ? (String(result?.result || 'Applied updates.')) : `Tool error: ${String(result?.error || result?.result || 'Failed to apply')}`;
+        return {
+          response: msg,
+          toolCalls: [],
+          pendingToolCalls: [],
+          toolResults: [result],
+          context,
+          quickReplies: ['Show current sheet data', 'Undo (not available)', 'Add more data']
+        };
+      }
+    } catch {}
     const isFileOnly = hasFiles && (!message || message.trim() === '');
 
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
@@ -791,6 +829,26 @@ export async function processMessage(
             }
           }
         }
+        // If this was a preview-only result for an update tool, store pending call for confirmation flow
+        try {
+          const nameLower = String(executedToolName || '').toLowerCase();
+          const isUpdateTool = nameLower === 'update_sheet' || nameLower === 'apply_structured_rows';
+          const wasPreview = (result as any)?.preview === true || /preview/i.test(String(result?.result || ''));
+          if (isUpdateTool && wasPreview) {
+            const args = JSON.parse(toolCall.function.arguments || '{}');
+            // Ensure commit will be true on confirm
+            const pendingArgs = { ...args, commit: true };
+            (context as any)._lastUpdateToolCall = { name: executedToolName, args: pendingArgs };
+            // Ensure quick replies include confirm/cancel and add prompt in response
+            const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+            quickReplies = Array.from(new Set([...baseQR, 'Confirm update', 'Cancel'])).slice(0, 5);
+            const hasPreviewTable = Array.isArray((result as any)?.details?.preview?.rows) && ((result as any)?.details?.preview?.rows.length > 0);
+            if (!enhancedResponse || !/Confirm to apply\?/i.test(enhancedResponse)) {
+              const suffix = hasPreviewTable ? 'Preview shown.' : 'Preview ready.';
+              enhancedResponse = `${(enhancedResponse || '').trim()}\n${suffix} Confirm to apply?`.trim();
+            }
+          }
+        } catch {}
       } else {
         // Surface detailed error text for UI toast/logging
         const detailsText = result && (result as any).details
