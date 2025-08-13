@@ -1121,13 +1121,18 @@ export default function Home() {
       }
       
       // Call the chat API with enhanced context
+      const focus = selectedSheetNames?.[0];
+      const cachedTable = focus ? sheetDataCache[focus] : undefined;
+      const isNonTabular = !!focus && (unstructuredOverrides[focus] ?? (sheetStructureCache[focus] ? !sheetStructureCache[focus].isStructured : false));
       const contextForChat = {
         spreadsheetId: defaultSpreadsheetId,
         sheetNames: selectedSheetNames,
-        sheetName: selectedSheetNames?.[0],
+        sheetName: focus,
         debug: true,
         allSheetNames,
         responsePrefs,
+        ...(cachedTable && cachedTable.length > 0 ? { sheetData: { [focus as string]: cachedTable }, sheetHeaders: cachedTable[0] } : {}),
+        ...(isNonTabular ? { isNonTabular: true } : {}),
         // Keep request small: server will hydrate sheets as needed
         fileAnalysis: isFileAnalysisFresh(recentFileAnalysis) ? recentFileAnalysis : undefined,
       };
