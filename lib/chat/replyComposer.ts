@@ -32,6 +32,13 @@ function buildClarifyUnparsedMessage(column: string, total: number, unparsed: nu
 export async function composeGroundedReply(input: ComposeInput): Promise<string> {
   const { userMessage, qaAnswer, tables = [], charts = [], insights = [], toolSummaries = [], plan, toolResults } = input;
 
+  // Prefer QA summary if available
+  try {
+    if (typeof qaAnswer === 'string' && qaAnswer.trim()) {
+      return qaAnswer.trim();
+    }
+  } catch {}
+
   // Pre-answer validation for aggregate provenance
   try {
     if (plan && plan.intent === 'aggregate') {
@@ -94,7 +101,7 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
 
   const system = [
     'You are a helpful spreadsheet assistant.',
-    'Ground your answer ONLY in the provided context (tables, charts, insights, tool summaries).',
+    'Ground your answer ONLY in the provided context (qaAnswer, tables, charts, insights, tool summaries).',
     'If information is missing from the context, say you do not have enough information.',
     'Keep it concise, conversational, and specific. Avoid markdown tables unless asked.',
     'If the user intent suggests data updates, suggest "Preview updates" or "Apply changes" as next steps.'

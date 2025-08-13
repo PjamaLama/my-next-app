@@ -2,6 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { updateSheetFlow } from '../../genkit/updateSheetFlow';
 import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
+import { genkit } from 'genkit';
+import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
 import { aggregateRows } from '@/lib/analytics/simpleAnalytics';
 import { ensureSheetCapacity, findLastDataRow, escapeSheetName, indexToColumn, columnToIndex, parseA1Range } from '@/lib/sheetUtils';
@@ -398,6 +400,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'generate_report':
         return await handleGenerateReport(args, context, res);
+
+      case 'describe_sheet':
+        return await handleDescribeSheet(args, context, res);
 
       case 'apply_structured_rows':
         return await handleApplyStructuredRows(args, context, res);
@@ -1460,6 +1465,86 @@ async function handleGenerateReport(args: ToolArgs, context: Context, res: NextA
     return res.status(200).json({ success: true, report: { spreadsheetId, sheetNames, sections } });
   } catch (e) {
     return res.status(500).json({ success: false, error: 'Failed to generate report', details: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Describe a sheet by fetching headers and sample rows, then using Gemini to summarize
+async function handleDescribeSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
+  try {
+    const { spreadsheetId } = (context || {}) as any;
+    const { sheetName: argSheetName, range: argRange } = (args || {}) as any;
+    const sheetNames = (context as any)?.sheetNames as string[] | undefined;
+    const sheetName = argSheetName || (Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames[0] : null);
+    if (!spreadsheetId || !sheetName) {
+      return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required' });
+    }
+
+    // Fetch a limited range for speed; prefer internal get-sheet-data endpoint
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const range = typeof argRange === 'string' && argRange.trim() ? argRange : 'A1:Z50';
+    let data: string[][] | null = null;
+    try {
+      const resp = await fetch(`${baseUrl}/api/get-sheet-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetId, sheetName, range })
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        const arr = (json?.data as string[][]) || [];
+        data = Array.isArray(arr) ? arr : [];
+      }
+    } catch {}
+
+    if (!data || data.length === 0) {
+      // Fallback: direct Sheets API
+      try {
+        const sheets = await getGoogleSheetsClient();
+        const escaped = sheetName.includes(' ')? `'${sheetName.replace(/'/g, "''")}'`: sheetName;
+        const resp = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `${escaped}!${range}`,
+          valueRenderOption: 'FORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING'
+        });
+        data = (resp.data.values || []) as string[][];
+      } catch {}
+    }
+
+    const headers = Array.isArray(data) && data.length > 0 ? (data[0] || []) : [];
+    const rows = Array.isArray(data) && data.length > 1 ? data.slice(1) : [];
+    const sampleRows = rows.slice(0, 10);
+    const approxCount = rows.length;
+
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+
+    // Build a compact textual context
+    const columnsStr = headers.join(', ');
+    const sampleStr = sampleRows.map(r => r.slice(0, headers.length).join(' | ')).join('\n');
+    const prompt = `You are describing a spreadsheet for a user. Be concise (1-3 sentences), natural, and specific.
+Data:
+Sheet name: ${sheetName}
+Columns: ${columnsStr}
+Approx rows: ${approxCount}
+Sample (up to 10 rows):
+${sampleStr}
+
+Write a short overview for a non-technical user. If it looks like a sales/financial/time series, say so. Mention notable columns and the approximate row count.`;
+
+    let text = '';
+    try {
+      const out = await ai.generate(prompt);
+      text = String(out?.text || '').trim();
+    } catch {}
+
+    const fallback = headers.length
+      ? `Sheet "${sheetName}" has columns: ${headers.join(', ')}. About ${approxCount} row(s).`
+      : `Sheet "${sheetName}" appears to be empty or unreadable.`;
+
+    return res.status(200).json({ success: true, result: text || fallback, details: { sheetName, headers, approxCount, sampleCount: sampleRows.length } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to describe sheet', details: e instanceof Error ? e.message : String(e) });
   }
 }
 

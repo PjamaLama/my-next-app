@@ -143,6 +143,25 @@ export async function processMessage(
             function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: message }) }
           });
         }
+      } else if (
+        lowerMessage.includes('tell me about') ||
+        lowerMessage.includes('what data') ||
+        lowerMessage.includes('describe sheet') ||
+        lowerMessage.includes('summary of sheet')
+      ) {
+        intent = 'describe_data';
+        const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
+        const targetSheet = (context?.sheetName as string) || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
+        if (context?.spreadsheetId && targetSheet) {
+          const canUse = !Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('describe_sheet');
+          if (canUse) {
+            suggestedTools.push({
+              id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              type: 'function',
+              function: { name: 'describe_sheet', arguments: JSON.stringify({ sheetName: targetSheet, range: 'A1:Z50' }) }
+            });
+          }
+        }
       } else if (/\b[A-Z]{1,3}\d+\b/.test(message) && (lowerMessage.includes('set') || lowerMessage.includes('change') || lowerMessage.includes('update'))) {
         const cellMatch = message.match(/\b([A-Z]{1,3}\d+)\b/);
         const valueMatch = message.match(/to\s+(.+)$/i);
@@ -281,10 +300,72 @@ export async function processMessage(
       console.warn('[processMessage] Header prefetch error (continuing without headers)', e);
     }
 
+    // Proactive auto-hydration: ensure headers and sample rows are available before planning
+    try {
+      const now = Date.now();
+      const ctxAny = context as any;
+      const hasHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
+      const lastHydration = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
+      const isStale = now - lastHydration > 60_000;
+      const canHydrate = Boolean(dataSource);
+      const shouldHydrate = Boolean(context?.spreadsheetId) && (!hasHydrated || isStale);
+      if (canHydrate && shouldHydrate && dataSource) {
+        try {
+          const headers = await dataSource.getHeaders();
+          const rows = await dataSource.getSampleRows(800); // at least 50 samples upfront
+          const map: Record<string, string[][]> = {};
+          const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
+          map[sheetName] = [headers, ...rows];
+          if (Object.keys(map).length > 0) {
+            ctxAny.sheetData = map;
+            ctxAny._sheetHydratedAt = now;
+            // Backfill sheetHeaders if not set
+            if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
+              ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+            }
+            // Build a lightweight column catalog for planner/QA
+            try {
+              const first = Object.keys(map)[0];
+              const table = map[first] || [];
+              const hdrs = Array.isArray(table) && table.length > 0 ? table[0] : [];
+              const lower = hdrs.map((h: string) => String(h || '').toLowerCase());
+              const types = hdrs.map((_, i) => {
+                const col = (table.slice(1) as string[][]).map(r => r?.[i]);
+                const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
+                return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
+              });
+              ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
+            } catch {}
+          }
+        } catch (e) {
+          // Hydration failed: use cached data if available, log and continue
+          // eslint-disable-next-line no-console
+          console.warn('[processMessage] Early hydration failed (continuing)', e);
+          if (ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0) {
+            ctxAny._hydrationWarning = 'Using cached data due to error.';
+          } else {
+            try { ctxAny.error = 'Sheet access failed'; } catch {}
+          }
+        }
+      }
+    } catch {}
+
     // Helper: summarize recent conversation (simple truncation by characters approximating tokens)
     const summarizeHistory = (): string => {
       try {
         const items: ConversationHistoryItem[] = Array.isArray((context as any).conversationHistory) ? ((context as any).conversationHistory as ConversationHistoryItem[]) : [];
+        // Extract potential sheet info (e.g., "sheetName: X") to fill context gaps
+        try {
+          for (const it of items.slice(-3)) {
+            const m = String(it.content || '').match(/\bsheetName\s*:\s*([A-Za-z0-9 _\-()]+)\b/);
+            if (m && m[1]) {
+              const name = m[1].trim();
+              const ctxAny = context as any;
+              if (!ctxAny.sheetName) ctxAny.sheetName = name;
+              if (!Array.isArray(ctxAny.sheetNames) || ctxAny.sheetNames.length === 0) ctxAny.sheetNames = [name];
+            }
+          }
+        } catch {}
         const joined = items.map(i => `${i.role}: ${i.content}`).join('\n');
         // rough cap ~1000 tokens ≈ 4000 chars
         return joined.length > 4000 ? joined.slice(-4000) : joined;
@@ -299,7 +380,19 @@ export async function processMessage(
         ? ((context as any).sheetHeaders as string[])
         : [];
       const historySummary = summarizeHistory();
-      const plan: any = await generatePlan(`${message}\n\n(Recent context:)\n${historySummary}`, { headers: headersForPlanner });
+      // Build a compact sheet summary for planner and pass recent history
+      const hydratedForPlanner = (context as any).sheetData as Record<string, string[][]> | undefined;
+      let sheetSummary: string | undefined;
+      try {
+        if (hydratedForPlanner && Object.keys(hydratedForPlanner).length > 0) {
+          const first = Object.keys(hydratedForPlanner)[0];
+          const table = hydratedForPlanner[first] || [];
+          const hdrs = Array.isArray(table) && table.length > 0 ? (table[0] || []) : [];
+          const rowCount = Math.max(0, (table.length || 0) - 1);
+          sheetSummary = `Sheet ${first}: ${hdrs.join(', ')} · ~${rowCount} rows`;
+        }
+      } catch {}
+      const plan: any = await generatePlan(`${message}\n\n(Recent context:)\n${historySummary}`, { headers: headersForPlanner, sheetSummary, historySummary, error: (context as any)?.error });
       currentPlan = plan;
       // eslint-disable-next-line no-console
       console.log('[Planner] plan', plan);
@@ -405,6 +498,7 @@ export async function processMessage(
       if (Array.isArray(chainCollectedLocal) && chainCollectedLocal.length > 0) toolResults.push(...chainCollectedLocal);
     } catch {}
     let enhancedResponse = '';
+    let describeText: string | null = null;
     let didUpdateSheet = false;
     const dataTables: StructuredTable[] = [];
     const toolCallsToRun = plannedToolCalls.length > 0 ? plannedToolCalls : suggestedTools;
@@ -511,6 +605,14 @@ export async function processMessage(
           if (typeof result.result === 'string' && result.result.trim()) {
             enhancedResponse += `\n${result.result.trim()}`;
           }
+        } else if (executedToolName === 'describe_sheet') {
+          // Prefer the description as main response for describe_data intent
+          if (typeof result.result === 'string' && result.result.trim()) {
+            enhancedResponse += `\n${result.result.trim()}`;
+            if (intent === 'describe_data') {
+              describeText = result.result.trim();
+            }
+          }
         }
       } else {
         // Surface detailed error text for UI toast/logging
@@ -528,47 +630,9 @@ export async function processMessage(
     // Determine if user is asking for charts/graphs early (used by table suppression later)
     const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);
 
-    // auto-hydrate via abstract data source
-    try {
-      const now = Date.now();
-      const ctxAny = context as any;
-      const hasHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
-      const lastHydration = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
-      const isStale = now - lastHydration > 60_000;
-      const canHydrate = (!hasHydrated || isStale) && dataSource && !hasFiles;
-      if (canHydrate && dataSource) {
-        try {
-          const headers = await dataSource.getHeaders();
-          const rows = await dataSource.getSampleRows(800);
-          const map: Record<string, string[][]> = {};
-          const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
-          map[sheetName] = [headers, ...rows];
-          if (Object.keys(map).length > 0) {
-            ctxAny.sheetData = map;
-            ctxAny._sheetHydratedAt = now;
-            try {
-              const first = Object.keys(map)[0];
-              const table = map[first] || [];
-              const hdrs = Array.isArray(table) && table.length > 0 ? table[0] : [];
-              const lower = hdrs.map((h: string) => String(h || '').toLowerCase());
-              const types = hdrs.map((_, i) => {
-                const col = (table.slice(1) as string[][]).map(r => r?.[i]);
-                const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
-                return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
-              });
-              ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
-            } catch {}
-          }
-        } catch (e) {
-          // Hydration failed: use cached data if available
-          if (ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0) {
-            ctxAny._hydrationWarning = 'Using cached data due to error.';
-          }
-        }
-      }
-    } catch {}
+    // (moved) auto-hydration now occurs earlier before planning
 
-    // QA over sheets (skip if user is asking specifically for charts/graphs without an explicit data/table request)
+    // QA over sheets (always attempt after hydration; for vague queries, produce a high-level overview)
     try {
       const hydratedForQA = (context as any).sheetData as Record<string, string[][]> | undefined;
       const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
@@ -576,7 +640,7 @@ export async function processMessage(
       const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
       if (hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
         const historySummary = summarizeHistory();
-        const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}`, hydratedForQA, selectedForQA);
+        const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}\n\nIf query is vague, provide a high-level overview of the data.`, hydratedForQA, selectedForQA);
         if (qa) {
           response = qa.answer;
           if (qa.tables && qa.tables.length > 0) dataTables.push(...qa.tables);
@@ -756,7 +820,17 @@ export async function processMessage(
       }
     } catch {}
 
-    const quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
+    let quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
+    try {
+      const hdrs = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
+      const add: string[] = [];
+      if (hdrs.length > 0) {
+        add.push('Show headers');
+        const salesLike = hdrs.find(h => /sales|amount|total|revenue|price|cost/i.test(String(h)));
+        if (salesLike) add.push('Compute total sales');
+      }
+      if (add.length > 0) quickReplies = [...new Set([...(quickReplies || []), ...add])].slice(0, 5);
+    } catch {}
 
     // Normalize date formats across all tables before returning
     let normalizedTables = dataTables.map(t => ({
@@ -773,6 +847,39 @@ export async function processMessage(
         // Also clear any QA-generated response if charts exist to focus on charts
         if (charts && charts.length > 0) {
           response = '';
+        }
+      }
+    } catch {}
+
+    // If intent was a broad description request, prefer tool description if present; else provide concise overview from hydrated data
+    try {
+      if (!hasFiles && intent === 'describe_data') {
+        if (describeText && (!response || !response.trim())) {
+          response = describeText;
+        }
+        const hydrated = (context as any).sheetData as Record<string, string[][]> | undefined;
+        if (hydrated && Object.keys(hydrated).length > 0) {
+          const sheetOrder = Array.isArray((context as any).sheetNames) && (context as any).sheetNames.length > 0
+            ? ((context as any).sheetNames as string[])
+            : Object.keys(hydrated);
+          const first = sheetOrder.find(n => hydrated[n]) || Object.keys(hydrated)[0];
+          const table = hydrated[first] || [];
+          if (Array.isArray(table) && table.length > 0) {
+            const headers = table[0] || [];
+            const rows = table.slice(1);
+            const sample = rows.slice(0, 3).map(r => (r || []).slice(0, headers.length).join(' | '));
+            const total = Math.max(0, rows.length);
+            const summaryParts: string[] = [];
+            if (headers.length > 0) summaryParts.push(`columns: ${headers.join(', ')}`);
+            if (sample.length > 0) summaryParts.push(`sample rows: ${sample.join(' || ')}`);
+            summaryParts.push(`total rows: ${total}`);
+            const text = `Your sheet (${first}) has ${summaryParts.join('. ')}.`;
+            if (!response || !response.trim()) {
+              response = text;
+            } else {
+              response = `${response}\n${text}`.trim();
+            }
+          }
         }
       }
     } catch {}
@@ -795,7 +902,7 @@ export async function processMessage(
         const toolSummaries = (enhancedResponse || '').split('\n').map(s => s.trim()).filter(Boolean);
         response = await composeGroundedReply({
           userMessage: message,
-          qaAnswer: undefined,
+          qaAnswer: response && response.trim() ? response : undefined,
           tables: normalizedTables,
           charts,
           insights,
@@ -807,6 +914,11 @@ export async function processMessage(
           response = enhancedResponse.trim();
         }
       }
+    }
+
+    // If still no data-driven response, guide the user
+    if ((!response || !response.trim()) && (!context || !(context as any).sheetData || Object.keys((context as any).sheetData || {}).length === 0)) {
+      response = 'No sheet data loaded yet. Please provide spreadsheet details or upload files.';
     }
 
     const out: any = {

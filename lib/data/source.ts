@@ -23,14 +23,30 @@ export class SheetDataSource extends DataSource {
   }
 
   async getHeaders(): Promise<string[]> {
-    const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: 'A1:Z1' }) } },
-        context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
-      })
-    });
-    const json = await res.json();
+    const withRetries = async (): Promise<any> => {
+      let lastErr: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: 'A1:Z1' }) } },
+              context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
+            })
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } catch (e) {
+          lastErr = e;
+          if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.warn('[SheetDataSource] getHeaders failed after retries', lastErr);
+      return null;
+    };
+
+    const json = await withRetries();
     const table = json?.table;
     if (table?.headers && Array.isArray(table.headers)) return table.headers as string[];
     if (Array.isArray(table?.rows) && Array.isArray(table.rows[0])) return table.rows[0] as string[];
@@ -40,14 +56,30 @@ export class SheetDataSource extends DataSource {
   }
 
   async getSampleRows(n: number): Promise<string[][]> {
-    const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: `A2:Z${Math.max(2 + n, 50)}` }) } },
-        context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
-      })
-    });
-    const json = await res.json();
+    const withRetries = async (): Promise<any> => {
+      let lastErr: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: `A2:Z${Math.max(2 + n, 50)}` }) } },
+              context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
+            })
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } catch (e) {
+          lastErr = e;
+          if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.warn('[SheetDataSource] getSampleRows failed after retries', lastErr);
+      return null;
+    };
+
+    const json = await withRetries();
     const table = json?.table;
     if (Array.isArray(table?.rows)) return table.rows as string[][];
     const data = json?.data;
@@ -57,14 +89,29 @@ export class SheetDataSource extends DataSource {
 
   async query(input: QueryInput): Promise<{ headers: string[]; rows: string[][] }> {
     if (input.type === 'range') {
-      const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, range: input.range }) } },
-          context: { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, sessionKey: this.sessionKey }
-        })
-      });
-      const json = await res.json();
+      const withRetries = async (): Promise<any> => {
+        let lastErr: any = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, range: input.range }) } },
+                context: { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, sessionKey: this.sessionKey }
+              })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+          } catch (e) {
+            lastErr = e;
+            if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+        // eslint-disable-next-line no-console
+        console.warn('[SheetDataSource] query(range) failed after retries', lastErr);
+        return null;
+      };
+      const json = await withRetries();
       const data = (json?.data as string[][]) || [];
       const headers = data[0] || json?.table?.headers || [];
       const rows = data.length > 1 ? data.slice(1) : (json?.table?.rows || []);

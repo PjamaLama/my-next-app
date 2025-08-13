@@ -29,11 +29,26 @@ export async function executeToolCall(
       : undefined;
     const baseUrl = scopedBase || resolveBaseUrl();
     const url = `${baseUrl}/api/genkit-tool-execute`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ toolCall, context, images })
-    });
+    const withRetries = async (): Promise<Response> => {
+      let lastErr: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ toolCall, context, images })
+          });
+          if (resp.ok) return resp;
+          lastErr = new Error(`HTTP ${resp.status}`);
+        } catch (e) {
+          lastErr = e;
+        }
+        if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+      }
+      throw lastErr || new Error('Unknown fetch error');
+    };
+
+    const response = await withRetries();
     if (!response.ok) {
       const contentType = response.headers.get('content-type');
       let errorMessage = `Tool execution failed: ${response.status}`;
@@ -85,6 +100,7 @@ export async function executeToolCall(
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('[ToolExecution] Exception', error);
+    try { (context as any).error = 'Sheet access failed'; } catch {}
     return {
       success: false,
       result: `Error executing ${toolCall.function.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,

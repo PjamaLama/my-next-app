@@ -1,7 +1,7 @@
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
-type PlannerCtx = { headers: string[] };
+type PlannerCtx = { headers: string[]; sheetSummary?: string; historySummary?: string; error?: string };
 export type PlannerPlan = {
   intent: 'get_data' | 'aggregate' | 'update' | 'other';
   queryType: 'aggregate' | 'filter' | 'join' | 'text' | 'other';
@@ -9,6 +9,7 @@ export type PlannerPlan = {
   targetColumn: string | null;
   targetColumnScore?: number | null;
   targetColumnReason?: string | null;
+  bestGuess?: string | null;
   // For filter queries
   condition?: { column: string | null; op: '>=' | '<=' | '>' | '<' | '==' | '!=' | 'contains' | 'not_contains' | null; value: string | null } | null;
   // For join queries
@@ -26,6 +27,8 @@ export type PlannerPlan = {
 export const plannerPrompt = (message: string, ctx: PlannerCtx): string => {
   const headers = Array.isArray(ctx?.headers) ? ctx.headers : [];
   const headersList = headers.map(h => JSON.stringify(String(h))).join(', ');
+  const sheetSummary = typeof ctx?.sheetSummary === 'string' && ctx.sheetSummary.trim() ? ctx.sheetSummary.trim() : '';
+  const previousContext = typeof ctx?.historySummary === 'string' && ctx.historySummary.trim() ? ctx.historySummary.trim() : '';
   // Diverse few-shot examples covering aggregate, filter, text, and join
   const fewShot = `
 Example A (aggregate, clear numeric header):
@@ -73,17 +76,19 @@ Output: {"intent":"get_data","queryType":"aggregate","reasoning":"Fetch data, ag
 
 User message: ${JSON.stringify(message)}
 Headers (the ONLY valid columns): [${headersList}]
+  ${sheetSummary ? `\nSheet data summary (best-effort, may be partial): ${sheetSummary}` : ''}
+  ${previousContext ? `\nPrevious context (last 3 messages): ${previousContext}\nUse this to infer missing details like sheetName or targetColumn.` : ''}
 
 ${fewShot}
 
  Instructions:
 - First classify "queryType" among [aggregate, filter, join, text, other]. Then set "intent" among [get_data, aggregate, update, other].
-- For aggregate: choose the best targetColumn from headers. Prefer headers containing ['sale','sales','amount','cost','price','revenue','total'] (case-insensitive). Boost confidence by +0.10 if a keyword is present. Compute confidence [0,1]. If score < 0.7 or no suitable header, set targetColumn to null and set clarifyQuestion to EXACTLY: "Which column contains the amounts? Options: [${headers.join(', ')}]" and set tools to [].
+  - For aggregate: choose the best targetColumn from headers. Prefer headers containing ['sale','sales','amount','cost','price','revenue','total'] (case-insensitive). Boost confidence by +0.10 if a keyword is present. Compute confidence [0,1]. If score < 0.5 or no suitable header, set targetColumn to null and set clarifyQuestion to EXACTLY: "Which column contains the amounts? Options: [${headers.join(', ')}]" and set tools to []. If 0.5 <= score < 0.7, still pick the column but this will be treated as a best-guess.
 - For filter: extract a simple condition with fields {column, op, value}. Support ops: ">=", "<=", ">", "<", "==", "!=", "contains", "not_contains". If column not in headers, ask a clarification question.
 - For join: set join: {leftSheet, rightSheet, key}. If sheet names or key are missing, ask for clarification. Do not invent sheet names.
 - For text: pick the categorical column if obvious (e.g., 'Client', 'Category'). If ambiguous, ask for clarification.
 - Only use headers as-is; do not invent or transform.
-- Return STRICT JSON with EXACT fields: { "intent", "queryType", "reasoning", "targetColumn", "targetColumnScore", "targetColumnReason", "clarifyQuestion", "condition", "join", "tools", "toolChain" }.
+  - Return STRICT JSON with EXACT fields: { "intent", "queryType", "reasoning", "targetColumn", "targetColumnScore", "targetColumnReason", "clarifyQuestion", "condition", "join", "tools", "toolChain" }.
 - tools is an array of {"name": string, "args": object} chosen conservatively based on the queryType.
 - toolChain is an ordered array of steps. Each step: {"toolName": string, "params": object, "dependsOn": number[] (indices of prior steps), "fallback"?: {"toolName": string, "params": object}}. Use dependsOn to indicate explicit dependencies; steps without dependsOn can run in parallel.
 - Keep reasoning concise (1-2 sentences). Do NOT include any text outside the JSON. Do NOT wrap in code fences.
@@ -93,7 +98,14 @@ ${fewShot}
 export async function generatePlan(message: string, ctxOrLegacy: PlannerCtx | string = { headers: [] }): Promise<PlannerPlan> {
   const ctx: PlannerCtx = typeof ctxOrLegacy === 'string'
     ? { headers: [] }
-    : { headers: Array.isArray((ctxOrLegacy as any)?.headers) ? (ctxOrLegacy as any).headers.map((h: any) => String(h ?? '')) : [] };
+    : {
+        headers: Array.isArray((ctxOrLegacy as any)?.headers) ? (ctxOrLegacy as any).headers.map((h: any) => String(h ?? '')) : [],
+        sheetSummary: typeof (ctxOrLegacy as any)?.sheetSummary === 'string' ? String((ctxOrLegacy as any).sheetSummary) : undefined,
+        historySummary: typeof (ctxOrLegacy as any)?.historySummary === 'string' ? String((ctxOrLegacy as any).historySummary) : undefined,
+        error: typeof (ctxOrLegacy as any)?.error === 'string' ? String((ctxOrLegacy as any).error) : undefined,
+      };
+  // If there was a sheet access error, bias towards clarification instead of tool execution
+  const hasAccessError = typeof (ctxOrLegacy as any) === 'object' && (ctxOrLegacy as any) && typeof (ctxOrLegacy as any).error === 'string';
 
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
@@ -116,6 +128,7 @@ export async function generatePlan(message: string, ctxOrLegacy: PlannerCtx | st
       targetColumn: typeof parsed.targetColumn === 'string' && parsed.targetColumn ? parsed.targetColumn : null,
       targetColumnScore: typeof parsed.targetColumnScore === 'number' ? parsed.targetColumnScore : null,
       targetColumnReason: typeof parsed.targetColumnReason === 'string' ? parsed.targetColumnReason : null,
+      bestGuess: null,
       condition: parsed.condition && typeof parsed.condition === 'object'
         ? {
             column: typeof parsed.condition.column === 'string' ? parsed.condition.column : null,
@@ -145,19 +158,63 @@ export async function generatePlan(message: string, ctxOrLegacy: PlannerCtx | st
           }))
         : [],
     };
-    // Guard: if aggregate but low confidence or invalid header, ask to clarify
+    // Mark best-guess if medium confidence (>=0.5 and <0.7)
+    if (
+      plan.intent === 'aggregate' &&
+      typeof plan.targetColumnScore === 'number' && plan.targetColumnScore >= 0.5 && plan.targetColumnScore < 0.7 &&
+      typeof plan.targetColumn === 'string' && plan.targetColumn
+    ) {
+      plan.bestGuess = plan.targetColumn;
+    }
+
+    // If targetColumn missing, try to infer from previous context by matching known headers
+    if (!plan.targetColumn && ctx.historySummary && Array.isArray(ctx.headers) && ctx.headers.length > 0) {
+      const text = ctx.historySummary.toLowerCase();
+      let best: { h: string; score: number } | null = null;
+      for (const h of ctx.headers) {
+        const token = String(h || '').trim();
+        if (!token) continue;
+        const tLower = token.toLowerCase();
+        let score = 0;
+        if (text.includes(` ${tLower} `)) score += 3;
+        if (text.includes(tLower)) score += Math.min(tLower.length, 3);
+        if (/column|amount|sum|total|revenue|price|cost|sales/i.test(ctx.historySummary)) score += 0.5;
+        if (!best || score > best.score) best = { h: token, score };
+      }
+      if (best && best.score >= 1) {
+        plan.targetColumn = best.h;
+        plan.bestGuess = best.h;
+        if (plan.intent !== 'aggregate') plan.intent = 'get_data';
+      }
+    }
+
+    // Guard: if aggregate but low confidence (<0.5), missing, or invalid header, ask to clarify
     if (
       plan.intent === 'aggregate' && (
         !plan.targetColumn ||
-        (typeof plan.targetColumnScore === 'number' && plan.targetColumnScore < 0.7) ||
+        (typeof plan.targetColumnScore === 'number' && plan.targetColumnScore < 0.5) ||
         (plan.targetColumn && !ctx.headers.includes(plan.targetColumn))
       )
     ) {
+      const hadHeaders = Array.isArray(ctx.headers) && ctx.headers.length > 0;
+      const suggestion = (typeof parsed.targetColumn === 'string' && parsed.targetColumn) ? parsed.targetColumn : (plan.bestGuess || null);
       plan.targetColumn = null;
       plan.targetColumnScore = null;
       plan.targetColumnReason = null;
-      plan.clarifyQuestion = `Which column contains the amounts? Options: [${ctx.headers.join(', ')}]`;
       plan.tools = [];
+      if (!hadHeaders) {
+        plan.clarifyQuestion = `I couldn’t load column headers—please check your sheet connection or specify a column manually.`;
+      } else if (suggestion) {
+        plan.clarifyQuestion = `Which column? I suggest ${suggestion}. Options: [${ctx.headers.join(', ')}]`;
+      } else {
+        plan.clarifyQuestion = `Which column contains the amounts? Options: [${ctx.headers.join(', ')}]`;
+      }
+    }
+    // If a sheet access error was observed upstream, avoid proposing tools and ask a generic clarification
+    if (hasAccessError) {
+      plan.clarifyQuestion = plan.clarifyQuestion || 'I had trouble accessing the sheet. Please verify access or tell me what you want to know, and I will guide you.';
+      plan.tools = [];
+      plan.toolChain = [];
     }
     // Guard: if filter but column not in headers, clarify
     if (plan.queryType === 'filter') {
@@ -177,9 +234,10 @@ export async function generatePlan(message: string, ctxOrLegacy: PlannerCtx | st
       targetColumn: null,
       targetColumnScore: null,
       targetColumnReason: null,
+      bestGuess: null,
       condition: null,
       join: null,
-      clarifyQuestion: hdrs.length ? `Which column contains the amounts? Options: [${hdrs.join(', ')}]` : null,
+      clarifyQuestion: hdrs.length ? `Which column contains the amounts? Options: [${hdrs.join(', ')}]` : `I couldn’t load column headers—please check your sheet connection or specify a column manually.`,
       tools: [],
     };
   }
