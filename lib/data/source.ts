@@ -96,7 +96,7 @@ export class SheetDataSource extends DataSource {
       }
       // Build batched ranges in chunks of ~25
       const ranges: string[] = Array.from(picks).map(i => `A${i}:Z${i}`);
-      const chunks: string[][] = [];
+      const chunks: string[][][] = [];
       for (let i = 0; i < ranges.length; i += 25) {
         const group = ranges.slice(i, i + 25);
         const minRow = Math.min(...group.map(r => parseInt(r.match(/A(\d+):/i)![1], 10)));

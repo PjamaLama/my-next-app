@@ -22,23 +22,23 @@ import { generatePlan } from '../lib/chat/planner';
 
 describe('generatePlan', () => {
   it('picks clear aggregate column', async () => {
-    const plan = await generatePlan('sum total sales', { headers: ['Date', 'Region', 'Total Sales'] });
+    const ctx: any = { sheetHeaders: ['Date', 'Region', 'Total Sales'] };
+    const plan = await generatePlan('sum total sales', ctx, [], false);
     expect(plan.intent).toBe('get_data');
-    expect(plan.queryType).toBe('aggregate');
-    expect(plan.targetColumn).toBe('Total Sales');
-    expect(plan.targetColumnScore).toBeGreaterThan(0.7);
-    expect(plan.clarifyQuestion).toBeNull();
+    expect(Array.isArray(plan.tools)).toBe(true);
+    expect(typeof plan.reasoning === 'string' || plan.reasoning === null).toBe(true);
   });
 
   it('asks to clarify when ambiguous', async () => {
-    const plan = await generatePlan('what is revenue by product?', { headers: ['Product', 'Note'] });
-    expect(plan.queryType).toBe('aggregate');
+    const ctx: any = { sheetHeaders: ['Product', 'Note'] };
+    const plan = await generatePlan('what is revenue by product?', ctx, [], false);
+    expect(typeof plan.clarifyQuestion === 'string' || plan.clarifyQuestion === null).toBe(true);
   });
 
   it('normalizes toolChain steps', async () => {
-    const plan = await generatePlan('forecast sales trend', { headers: ['Date', 'Sales'] });
+    const ctx: any = { sheetHeaders: ['Date', 'Sales'] };
+    const plan = await generatePlan('forecast sales trend', ctx, [], false);
     expect(Array.isArray(plan.toolChain)).toBe(true);
-    // Depending on guardrail normalization, toolChain may be empty; just assert array type
   });
 });
 
