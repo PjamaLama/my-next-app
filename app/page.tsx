@@ -1542,6 +1542,59 @@ export default function Home() {
     };
   }, [uploadedImages]);
 
+  // Handle confirm for structured preview commits
+  const handleConfirmPreview = async (preview: { headers: string[]; rows: Array<Array<{ column: string; value: unknown }>> }) => {
+    try {
+      if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+        setSendResult('Select a spreadsheet and sheet first.');
+        return;
+      }
+      const rows = preview.rows.map((r) => {
+        const obj: Record<string, unknown> = {};
+        r.forEach(({ column, value }) => { obj[String(column)] = value; });
+        return obj;
+      });
+      const toolCall = {
+        id: `tool_${Date.now()}_apply_structured_rows_confirm`,
+        type: 'function' as const,
+        function: {
+          name: 'apply_structured_rows',
+          arguments: JSON.stringify({ rows, commit: true })
+        }
+      };
+      const resp = await fetch('/api/genkit-tool-execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toolCall,
+          context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames },
+          images: []
+        })
+      });
+      const data = await resp.json();
+      if (resp.ok && data?.success) {
+        setSendResult(data.message || data.result || 'Update applied.');
+      } else {
+        setSendResult(data?.error || data?.result || 'Apply failed');
+      }
+    } catch (e) {
+      setSendResult('Apply failed');
+    }
+  };
+
+  const openEditModal = (preview: { headers: string[]; rows: Array<Array<{ column: string; value: unknown }>>; message?: string }) => {
+    try {
+      const converted = (preview.rows || []).map((row, idx) => ({
+        row: idx + 2,
+        updates: row.reduce((acc, cur) => { acc[cur.column] = String(cur.value ?? ''); return acc; }, {} as Record<string, string>),
+        confidence: 0.8
+      }));
+      setPreviewModal({ open: true, rows: converted, summary: preview.message || 'Review and confirm updates.' } as any);
+    } catch {
+      setPreviewModal({ open: true, rows: null });
+    }
+  };
+
   // Auto-scroll messages container to bottom when messages change
   useEffect(() => {
     if (messagesContainerRef.current) {
