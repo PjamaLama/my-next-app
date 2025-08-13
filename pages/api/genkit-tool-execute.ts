@@ -2356,13 +2356,39 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 // Apply structured rows through the centralized ingestion endpoint
 async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
-    const { spreadsheetId, sheetNames } = context;
+    const { spreadsheetId, sheetNames, sheetName } = context as any;
     const { rows, dryRun } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean };
     if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
       return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
     }
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ success: false, error: 'No structured rows provided' });
+    }
+
+    // Auto-match incoming file columns to target sheet headers
+    try {
+      const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
+      const headers = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
+      if (activeSheet && headers.length > 0) {
+        // Detect key set from first row
+        const firstRow = rows[0] || {};
+        const incomingKeys = Object.keys(firstRow);
+        if (incomingKeys.length > 0) {
+          const { suggested, isPerfect } = matchColumns(incomingKeys, headers);
+          if (!isPerfect) {
+            const preview = buildPreviewTable(rows, suggested);
+            return res.status(200).json({
+              success: true,
+              result: 'Columns don’t fully match. Suggested mapping provided. Confirm?',
+              details: { previewSuggestedMapping: suggested, preview },
+              preview
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Continue without blocking if matching fails
+      console.warn('apply_structured_rows matching warning:', e);
     }
 
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
@@ -2378,6 +2404,56 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     console.error('apply_structured_rows error:', error);
     return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });
   }
+}
+
+// Best-effort column matcher between incoming file columns and target sheet headers
+function normalizeHeader(h: string): string { return String(h || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function matchColumns(fileColumns: string[], sheetHeaders: string[]): { suggested: Array<{ file: string; sheet: string | null; score: number }>; isPerfect: boolean } {
+  const normSheet = sheetHeaders.map(h => ({ raw: h, norm: normalizeHeader(h) }));
+  const suggested: Array<{ file: string; sheet: string | null; score: number }> = [];
+  let allPerfect = true;
+  for (const f of fileColumns) {
+    const fNorm = normalizeHeader(f);
+    let best: { sheet: string | null; score: number } = { sheet: null, score: 0 };
+    for (const sh of normSheet) {
+      let score = 0;
+      if (fNorm === sh.norm) score = 1;
+      else if (fNorm && sh.norm && (fNorm.includes(sh.norm) || sh.norm.includes(fNorm))) score = 0.7;
+      else {
+        const a = new Set(fNorm.split(' ').filter(Boolean));
+        const b = new Set(sh.norm.split(' ').filter(Boolean));
+        const inter = [...a].filter(x => b.has(x)).length;
+        const union = new Set([...a, ...b]).size || 1;
+        score = inter / union; // jaccard
+      }
+      // Domain-specific gentle boosts
+      if (/fuel/.test(fNorm) && /fuel/.test(sh.norm)) score += 0.2;
+      if (/driver/.test(fNorm) && /driver/.test(sh.norm)) score += 0.2;
+      if (score > best.score) best = { sheet: sh.raw, score };
+    }
+    if (best.score < 0.85) allPerfect = false;
+    suggested.push({ file: f, sheet: best.sheet, score: Math.min(1, best.score) });
+  }
+  return { suggested, isPerfect: allPerfect };
+}
+
+// Build a small preview table using a suggested mapping
+function buildPreviewTable(rows: Array<Record<string, unknown>>, suggested: Array<{ file: string; sheet: string | null; score: number }>) {
+  const headers = ['Row', 'Field', 'Value'];
+  const preview: Array<{ row: number; updates: Record<string, unknown> }> = [];
+  const mapping: Record<string, string> = {};
+  suggested.forEach(m => { if (m.sheet) mapping[m.file] = m.sheet; });
+  const first = Math.min(30, rows.length);
+  for (let i = 0; i < first; i++) {
+    const r = rows[i] || {};
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) {
+      const target = mapping[k];
+      if (target) updates[target] = v;
+    }
+    preview.push({ row: i + 2, updates });
+  }
+  return { headers, rows: preview.flatMap(p => Object.entries(p.updates).map(([k, v]) => [String(p.row), k, String(v ?? '')])) };
 }
 
 function formatExtractionsAsMarkdown(extractions: Array<{ index: number; type: string; success: boolean; error?: string; extractedText?: string; textLength?: number }>): string {

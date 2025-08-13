@@ -496,6 +496,8 @@ export async function processMessage(
         const lower = recent.toLowerCase();
         if (/fuel\s+weekly\s+repo|fuel\s+weekly/.test(lower)) return 'fuel weekly repo (likely fuel costs or mileage)';
         if (/fuel|diesel|gas|mpg|mileage/.test(lower)) return 'fuel (sales, costs, or mileage)';
+        if (/driver|drivers/.test(lower)) return 'drivers or assignments';
+        if (/logbook/.test(lower)) return 'logbook entries';
         if (/sale|sales|revenue/.test(lower)) return 'sales or revenue';
         if (/expense|spend|cost/.test(lower)) return 'expenses or costs';
         if (/inventory|stock|sku/.test(lower)) return 'inventory or stock levels';
@@ -1123,16 +1125,42 @@ export async function processMessage(
     if (!response || !response.trim()) {
       try {
         const toolSummaries = (enhancedResponse || '').split('\n').map(s => s.trim()).filter(Boolean);
-        response = await composeGroundedReply({
-          userMessage: message,
-          qaAnswer: response && response.trim() ? response : undefined,
-          tables: normalizedTables,
-          charts,
-          insights,
-          toolSummaries
-        });
+        const ctxAny = context as any;
+        const noData = !ctxAny?.sheetData || Object.keys(ctxAny.sheetData || {}).length === 0;
+        const hasErr = Boolean(ctxAny?.error);
+        if (noData || hasErr) {
+          const guess = inferFromHistory();
+          const fallback = `I couldn’t access your sheet (${ctxAny?.error || 'no data'}). Based on "${String(message || '').slice(0, 120)}", maybe it’s about ${guess || 'fuel or logbook data'}? Try specifying columns or uploading a file.`;
+          response = fallback;
+          // Seed quick replies with helpful actions
+          try {
+            const actions = [
+              { text: 'Specify sheet: Fuel Weekly Repo?', action: 'set_sheet' },
+              { text: 'Upload file', action: 'upload' }
+            ];
+            const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+            quickReplies = [...baseQR, ...actions.map(a => a.text)].slice(0, 5);
+            ctxAny._uiActions = ctxAny._uiActions || [];
+            ctxAny._uiActions.push(...actions);
+          } catch {}
+          // If user asked to describe data, try to append a brief description from tools/history
+          if (intent === 'describe_data') {
+            try {
+              const description = toolResults.find((r: any) => r?.success && typeof r?.result === 'string')?.result;
+              if (description) response = `${response}\n${description}`.trim();
+            } catch {}
+          }
+        } else {
+          response = await composeGroundedReply({
+            userMessage: message,
+            qaAnswer: response && response.trim() ? response : undefined,
+            tables: normalizedTables,
+            charts,
+            insights,
+            toolSummaries
+          });
+        }
       } catch {
-        // Fallback to tool summaries if composition fails
         if (enhancedResponse && enhancedResponse.trim()) {
           response = enhancedResponse.trim();
         }
