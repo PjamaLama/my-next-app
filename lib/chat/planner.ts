@@ -3,7 +3,7 @@ import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
 type PlannerCtx = { headers: string[]; sheetSummary?: string; historySummary?: string; error?: string };
 export type PlannerPlan = {
-  intent: 'get_data' | 'aggregate' | 'update' | 'other';
+  intent: 'get_data' | 'aggregate' | 'update' | 'describe_data' | 'other';
   queryType: 'aggregate' | 'filter' | 'join' | 'text' | 'other';
   reasoning: string | null;
   targetColumn: string | null;
@@ -29,7 +29,7 @@ export const plannerPrompt = (message: string, ctx: PlannerCtx): string => {
   const headersList = headers.map(h => JSON.stringify(String(h))).join(', ');
   const sheetSummary = typeof ctx?.sheetSummary === 'string' && ctx.sheetSummary.trim() ? ctx.sheetSummary.trim() : '';
   const previousContext = typeof ctx?.historySummary === 'string' && ctx.historySummary.trim() ? ctx.historySummary.trim() : '';
-  // Diverse few-shot examples covering aggregate, filter, text, and join
+  // Diverse few-shot examples covering aggregate, filter, text, join, summary/description, and update chains
   const fewShot = `
 Example A (aggregate, clear numeric header):
 User: "sum up total sales by region"
@@ -70,6 +70,35 @@ Output: {"intent":"get_data","queryType":"aggregate","reasoning":"Fetch data, ag
   {"toolName":"aggregate","params":{"spec":{"groupBy":["Date"],"metrics":[{"op":"sum","col":"Sales"}]}},"dependsOn":[0]},
   {"toolName":"trend_analysis","params":{"from":"aggregate"},"dependsOn":[1],"fallback":{"toolName":"get_sheet_stats","params":{}}}
 ]}
+
+Example G (summary/description; proactive describe):
+User: "tell me about my sheet"
+Headers: ["Date","Category","Amount"]
+Reasoning: Summary-like request; data appears available.
+Output: {"intent":"describe_data","queryType":"text","reasoning":"Describe sheet using available headers and sample rows.","targetColumn":null,"clarifyQuestion":null,"tools":[{"name":"describe_sheet","args":{}}]}
+
+Example H (summary with sheet hint):
+User: "summarize fuel weekly"
+Headers: ["Week","Fuel","Miles","Cost"]
+Reasoning: Summary-like request with implicit sheet name.
+Output: {"intent":"describe_data","queryType":"text","reasoning":"Provide high-level overview.","targetColumn":null,"clarifyQuestion":null,"tools":[{"name":"describe_sheet","args":{"sheetName":"Fuel Weekly"}}]}
+
+Example I (update with files; proactive toolChain):
+User: "update with these receipts" (files attached)
+Headers: ["Date","Vendor","Amount","Category"]
+Reasoning: Update intent with incoming structured data.
+Output: {"intent":"update","queryType":"text","reasoning":"Load current sheet structure, extract structured rows from files, then preview update.","targetColumn":null,"clarifyQuestion":null,
+  "toolChain":[
+    {"toolName":"get_sheet_data","params":{}},
+    {"toolName":"extract_data_from_files","params":{}},
+    {"toolName":"update_sheet","params":{"transcript":"update with these receipts","preview":true},"dependsOn":[0,1]}
+  ]}
+
+Example J (update without files; map to headers):
+User: "add new fuel data"
+Headers: ["Date","Fuel","Amount"]
+Reasoning: Update: row append compatible with headers.
+Output: {"intent":"update","queryType":"text","reasoning":"Append new rows matching [Date,Fuel,Amount].","targetColumn":null,"clarifyQuestion":null,"tools":[{"name":"update_sheet","args":{"transcript":"add new fuel data","preview":true}}]}
 `;
 
   return `You are a STRICT planner for a spreadsheet assistant. Think step-by-step quietly, then output ONLY JSON.
@@ -82,11 +111,19 @@ Headers (the ONLY valid columns): [${headersList}]
 ${fewShot}
 
  Instructions:
+- Be proactive: for summary/description requests (e.g., "tell me about", "summarize", "what I did" based on data), if headers or sheet data summary are available, plan a describe action directly without clarifying. Use the "describe_sheet" tool when in doubt.
+- Only clarify if no data is accessible or the query is truly ambiguous.
+- Chain-of-thought (do not output):
+  1) Infer intent from User message and previousContext.
+  2) If summary-like, set intent="describe_data" and tools=[{"name":"describe_sheet","args":{}}] (include sheetName if apparent).
+  3) If data missing, set a concise clarifyQuestion but suggest a fallback assumption (e.g., "Assuming sheet 'Fuel Weekly Repo'...").
 - First classify "queryType" among [aggregate, filter, join, text, other]. Then set "intent" among [get_data, aggregate, update, other].
   - For aggregate: choose the best targetColumn from headers. Prefer headers containing ['sale','sales','amount','cost','price','revenue','total'] (case-insensitive). Boost confidence by +0.10 if a keyword is present. Compute confidence [0,1]. If score < 0.5 or no suitable header, set targetColumn to null and set clarifyQuestion to EXACTLY: "Which column contains the amounts? Options: [${headers.join(', ')}]" and set tools to []. If 0.5 <= score < 0.7, still pick the column but this will be treated as a best-guess.
 - For filter: extract a simple condition with fields {column, op, value}. Support ops: ">=", "<=", ">", "<", "==", "!=", "contains", "not_contains". If column not in headers, ask a clarification question.
 - For join: set join: {leftSheet, rightSheet, key}. If sheet names or key are missing, ask for clarification. Do not invent sheet names.
 - For text: pick the categorical column if obvious (e.g., 'Client', 'Category'). If ambiguous, ask for clarification.
+  - For updates: Step 1: Compare user request to sheetSummary (append if new rows match headers). Step 2: If files present, chain extract_data_from_files → match structures → update_sheet or apply_structured_rows if compatible. Prefer a toolChain like [{toolName: 'get_sheet_data'}, {toolName: 'extract_data_from_files'}, {toolName: 'update_sheet', params: {transcript: <message>, preview: true}, dependsOn: [0,1]}].
+  - For updates: If extracted file rows align with headers, prefer apply_structured_rows with {rows, startRow: currentRows+1}. If mismatch, include a brief clarifyQuestion or suggest a simple transform.
 - Only use headers as-is; do not invent or transform.
   - Return STRICT JSON with EXACT fields: { "intent", "queryType", "reasoning", "targetColumn", "targetColumnScore", "targetColumnReason", "clarifyQuestion", "condition", "join", "tools", "toolChain" }.
 - tools is an array of {"name": string, "args": object} chosen conservatively based on the queryType.
@@ -115,7 +152,7 @@ export async function generatePlan(message: string, ctxOrLegacy: PlannerCtx | st
     let cleaned = (text || '').trim();
     if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleaned);
-    const intent: PlannerPlan['intent'] = ['get_data', 'aggregate', 'update', 'other'].includes(parsed.intent)
+    const intent: PlannerPlan['intent'] = ['get_data', 'aggregate', 'update', 'describe_data', 'other'].includes(parsed.intent)
       ? parsed.intent
       : 'other';
     const queryType: PlannerPlan['queryType'] = ['aggregate', 'filter', 'join', 'text', 'other'].includes(parsed.queryType)
@@ -208,6 +245,26 @@ export async function generatePlan(message: string, ctxOrLegacy: PlannerCtx | st
         plan.clarifyQuestion = `Which column? I suggest ${suggestion}. Options: [${ctx.headers.join(', ')}]`;
       } else {
         plan.clarifyQuestion = `Which column contains the amounts? Options: [${ctx.headers.join(', ')}]`;
+      }
+    }
+    // Proactive behavior: for summary-like intents, ensure a describe tool is planned
+    if (plan.intent === 'describe_data' && (!Array.isArray(plan.tools) || plan.tools.length === 0)) {
+      plan.tools = [{ name: 'describe_sheet', args: {} }];
+    }
+
+    // Lower clarification threshold for non-aggregate: proceed with best guess if we have some context
+    if (plan.intent !== 'aggregate' && plan.clarifyQuestion) {
+      const hasSomeContext = (Array.isArray(ctx.headers) && ctx.headers.length > 0) || (typeof ctx.sheetSummary === 'string' && ctx.sheetSummary.trim().length > 0);
+      if (hasSomeContext) {
+        plan.clarifyQuestion = null;
+        if (!plan.tools || plan.tools.length === 0) {
+          // Default to fetching sheet data or describing sheet to ground the response
+          if (plan.intent === 'describe_data') {
+            plan.tools = [{ name: 'describe_sheet', args: {} }];
+          } else {
+            plan.tools = [{ name: 'get_sheet_data', args: {} }];
+          }
+        }
       }
     }
     // If a sheet access error was observed upstream, avoid proposing tools and ask a generic clarification

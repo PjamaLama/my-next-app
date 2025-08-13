@@ -62,6 +62,27 @@ export async function processMessage(
     } catch {}
     const debugEnabled = Boolean((context as any)?.debug);
     const lowerMessage = (message || '').toLowerCase();
+    const summaryIntentRegex = /(\btell\s+me\s+about\b|\bwhat\s+(?:is|are)\b|\bsummariz\w*\b|\boverview\s+of\b|\bdescribe\b|\bbased\s+on\s+the\s+data\b|\bwhat\s+i\s+did\b)/i;
+
+    // Quick helper to extract a probable sheet/tab name from free text (e.g., "fuel weekly repo")
+    const extractSheetNameFromMessage = (msg: string): string | undefined => {
+      try {
+        const m = String(msg || '');
+        // 1) Quoted names: "... \"Fuel Weekly Repo\" ..."
+        const q = m.match(/\"([^\"]{2,80})\"|\'([^\']{2,80})\'/);
+        if (q) return (q[1] || q[2] || '').trim();
+        // 2) Patterns like: overview of X, describe X, about X
+        const ofPat = m.match(/(?:overview\s+of|summary\s+of|describe|about)\s+(?:my\s+)?([a-z0-9 _\-()]{3,80})/i);
+        if (ofPat) return (ofPat[1] || '').trim();
+        // 3) Patterns like: my X sheet/data/repo
+        const myPat = m.match(/\bmy\s+([a-z0-9 _\-()]{3,80})\s+(?:sheet|tab|data|repo|report)\b/i);
+        if (myPat) return (myPat[1] || '').trim();
+        // 4) After the word 'of' at end: 'summarize ... of X'
+        const tailPat = m.match(/\bof\s+([a-z0-9 _\-()]{3,80})$/i);
+        if (tailPat) return (tailPat[1] || '').trim();
+      } catch {}
+      return undefined;
+    };
     let intent = 'chat';
     const suggestedTools: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
 
@@ -89,9 +110,82 @@ export async function processMessage(
       }
     }
 
+    // Helper to hydrate sheet data early and prepare summary for planner
+    const hydrateSheetData = async (ds: DataSource, sheetName: string, sampleRows: number = 50): Promise<{ headers: string[]; rowCount: number; summary: string }> => {
+      const ctxAny = context as any;
+      const headers = await ds.getHeaders();
+      const rows = await ds.getSampleRows(sampleRows);
+      const map: Record<string, string[][]> = {};
+      map[sheetName] = [headers || [], ...rows];
+      ctxAny.sheetData = map;
+      ctxAny._sheetHydratedAt = Date.now();
+      if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
+        ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+      }
+      const rowCount = Math.max(0, rows.length);
+      const summary = `Columns: ${(headers || []).join(', ')} · Rows: ${rowCount}`;
+      ctxAny._earlySheetSummary = summary;
+      return { headers, rowCount, summary };
+    };
+
+    // Infer missing sheet info from history/message, then attempt early hydration when possible
+    try {
+      const ctxAny = context as any;
+      if (!ctxAny.sheetName || !String(ctxAny.sheetName).trim()) {
+        // scan history for phrases like "sheet X"
+        try {
+          const items: ConversationHistoryItem[] = Array.isArray(ctxAny.conversationHistory) ? ctxAny.conversationHistory : [];
+          for (const it of items.slice().reverse()) {
+            const m = String(it.content || '').match(/\bsheet\s+([A-Za-z0-9 _\-()]{2,80})\b/i);
+            if (m && m[1]) { ctxAny.sheetName = m[1].trim(); break; }
+          }
+        } catch {}
+        if (!ctxAny.sheetName) {
+          const guess = extractSheetNameFromMessage(message);
+          if (guess) ctxAny.sheetName = guess;
+        }
+        if (ctxAny.sheetName && (!Array.isArray(ctxAny.sheetNames) || ctxAny.sheetNames.length === 0)) {
+          ctxAny.sheetNames = [ctxAny.sheetName];
+        }
+      }
+
+      if (!hasFiles && context?.spreadsheetId) {
+        const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || '';
+        if (sheetName) {
+          const scopedBase = (typeof window === 'undefined' && context && (ctxAny)._baseUrl)
+            ? String((ctxAny)._baseUrl)
+            : undefined;
+          const sessionKey = String((ctxAny.userId || ctxAny.sessionId || '') || '');
+          const earlyDS = new SheetDataSource(context.spreadsheetId, sheetName, scopedBase, sessionKey || undefined);
+          const alreadyHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
+          if (!alreadyHydrated) {
+            try {
+              await hydrateSheetData(earlyDS, sheetName, 50);
+            } catch (e: any) {
+              try { ctxAny.error = 'Failed to access sheet: ' + (e?.message || String(e)); } catch {}
+            }
+          }
+        }
+      }
+    } catch {}
+
     if (hasFiles) {
-      const isSheetRelated = lowerMessage.includes('add') || lowerMessage.includes('update') || lowerMessage.includes('insert') || lowerMessage.includes('sheet') || lowerMessage.includes('spreadsheet');
-      if (isSheetRelated) {
+      const indicatesUpdate = /\b(update\s+with|add\s+this\s+data|based\s+on\s+incoming\s+data)\b/i.test(lowerMessage) || lowerMessage.includes('update') || lowerMessage.includes('add');
+      if (indicatesUpdate) {
+        intent = 'update_data';
+        // 1) Load current structure first
+        try {
+          const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
+          const targetSheet = (context?.sheetName as string) || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
+          if (context?.spreadsheetId && targetSheet) {
+            suggestedTools.push({
+              id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              type: 'function',
+              function: { name: 'get_sheet_data', arguments: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: targetSheet }) }
+            });
+          }
+        } catch {}
+        // 2) Extract structured data from files
         suggestedTools.push({
           id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           type: 'function',
@@ -100,6 +194,22 @@ export async function processMessage(
             arguments: JSON.stringify({ transcript: message, fileCount: images.length, fileTypes: images.map(i => i.mimeType) })
           }
         });
+        // 3) Propose update with preview; pass headers hint if available
+        try {
+          const ctxAny = context as any;
+          const currentHeaders = Array.isArray(ctxAny.sheetHeaders) ? ctxAny.sheetHeaders : [];
+          suggestedTools.push({
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: message, preview: true, currentHeaders }) }
+          });
+        } catch {
+          suggestedTools.push({
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: message, preview: true }) }
+          });
+        }
       } else {
         suggestedTools.push({
           id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -111,6 +221,41 @@ export async function processMessage(
         });
       }
     } else {
+      // Upfront lightweight hydration when users mention sheet/data or summary-like intents
+      try {
+        const mentionsSheetOrData = /\bsheet\b|\bdata\b/i.test(lowerMessage) || summaryIntentRegex.test(lowerMessage);
+        const ctxAny = context as any;
+        const alreadyHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
+        if (mentionsSheetOrData && context?.spreadsheetId && !alreadyHydrated) {
+          const scopedBase = (typeof window === 'undefined' && context && (ctxAny)._baseUrl)
+            ? String((ctxAny)._baseUrl)
+            : undefined;
+          // Resolve a plausible sheet name
+          const candidateSheet = (ctxAny.sheetName && String(ctxAny.sheetName))
+            || (Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames[0])
+            || (Array.isArray(ctxAny.allSheetNames) && ctxAny.allSheetNames[0])
+            || '';
+          if (candidateSheet) {
+            try {
+              const sessionKey = String((ctxAny.userId || ctxAny.sessionId || '') || '');
+              const ds = new SheetDataSource(context.spreadsheetId, candidateSheet, scopedBase, sessionKey || undefined);
+              const headers = await ds.getHeaders();
+              const rows = await ds.getSampleRows(50);
+              if (Array.isArray(headers) && headers.length > 0) {
+                if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
+                  ctxAny.sheetHeaders = headers.map((h: any) => String(h ?? ''));
+                }
+              }
+              if (Array.isArray(rows)) {
+                const map: Record<string, string[][]> = {};
+                map[candidateSheet] = [headers || [], ...rows];
+                ctxAny.sheetData = map;
+                ctxAny._sheetHydratedAt = Date.now();
+              }
+            } catch {}
+          }
+        }
+      } catch {}
       // Detect bulk numeric column operations like: "add 100 to Cost per item", "decrease 5 from Price", "multiply Quantity by 2", "divide Total by 3"
       const msg = message || '';
       const addInc = msg.match(/\b(?:add|increase)\s+(-?\d+(?:\.\d+)?)\s+(?:to)\s+(?:all|every|the)\s+(.+?)(?:\s+(?:in|on)\s+(?:this|the)\s+(?:sheet|table))?$/i);
@@ -134,6 +279,29 @@ export async function processMessage(
             function: { name: 'bulk_update_column', arguments: JSON.stringify({ column: columnQuery.trim(), operation: op, amount }) }
           });
         }
+      } else if (/\b(update\s+with|add\s+this\s+data|based\s+on\s+incoming\s+data)\b/i.test(lowerMessage)) {
+        intent = 'update_data';
+        // 1) Load current structure
+        const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
+        const targetSheet = (context?.sheetName as string) || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
+        if (context?.spreadsheetId && targetSheet) {
+          if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('get_sheet_data')) {
+            suggestedTools.push({
+              id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              type: 'function',
+              function: { name: 'get_sheet_data', arguments: JSON.stringify({ spreadsheetId: context.spreadsheetId, sheetName: targetSheet }) }
+            });
+          }
+        }
+        // 2) Update with transcript (preview)
+        if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('update_sheet')) {
+          const currentHeaders = Array.isArray((context as any).sheetHeaders) ? (context as any).sheetHeaders : [];
+          suggestedTools.push({
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: { name: 'update_sheet', arguments: JSON.stringify({ transcript: message, preview: true, currentHeaders }) }
+          });
+        }
       } else if (lowerMessage.includes('add') || lowerMessage.includes('insert') || lowerMessage.includes('new')) {
         intent = 'add_data';
         if (!Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('update_sheet')) {
@@ -144,24 +312,23 @@ export async function processMessage(
           });
         }
       } else if (
-        lowerMessage.includes('tell me about') ||
-        lowerMessage.includes('what data') ||
-        lowerMessage.includes('describe sheet') ||
-        lowerMessage.includes('summary of sheet')
+        summaryIntentRegex.test(message) ||
+        lowerMessage.includes('overview of') ||
+        lowerMessage.includes('summarize') ||
+        lowerMessage.includes('describe') ||
+        lowerMessage.includes('based on the data') ||
+        lowerMessage.includes('what i did')
       ) {
         intent = 'describe_data';
-        const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
-        const targetSheet = (context?.sheetName as string) || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
-        if (context?.spreadsheetId && targetSheet) {
-          const canUse = !Array.isArray((context as any).availableTools) || (context as any).availableTools.includes('describe_sheet');
-          if (canUse) {
-            suggestedTools.push({
-              id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              type: 'function',
-              function: { name: 'describe_sheet', arguments: JSON.stringify({ sheetName: targetSheet, range: 'A1:Z50' }) }
-            });
+        const sheetNameGuess = (context as any)?.sheetName || extractSheetNameFromMessage(message);
+        suggestedTools.push({
+          id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'function',
+          function: {
+            name: 'describe_sheet',
+            arguments: JSON.stringify({ spreadsheetId: (context as any)?.spreadsheetId, sheetName: sheetNameGuess })
           }
-        }
+        });
       } else if (/\b[A-Z]{1,3}\d+\b/.test(message) && (lowerMessage.includes('set') || lowerMessage.includes('change') || lowerMessage.includes('update'))) {
         const cellMatch = message.match(/\b([A-Z]{1,3}\d+)\b/);
         const valueMatch = message.match(/to\s+(.+)$/i);
@@ -438,7 +605,8 @@ export async function processMessage(
           sheetSummary = `Sheet ${first}: ${hdrs.join(', ')} · ~${rowCount} rows`;
         }
       } catch {}
-      const plan: any = await generatePlan(`${message}\n\n(Recent context:)\n${historySummary}`, { headers: headersForPlanner, sheetSummary, historySummary, error: (context as any)?.error });
+      const earlySummary = (context as any)?._earlySheetSummary;
+      const plan: any = await generatePlan(`${message}\n\n(Recent context:)\n${historySummary}`, { headers: headersForPlanner, sheetSummary: earlySummary || sheetSummary, historySummary, error: (context as any)?.error });
       currentPlan = plan;
       // eslint-disable-next-line no-console
       console.log('[Planner] plan', plan);
@@ -532,6 +700,25 @@ export async function processMessage(
         }
         _chainCollected = collectedResults;
       }
+      // If update intent and we have sheet data, proactively add helper tools to compute merge/resolve mapping
+      try {
+        if (intent === 'update_data') {
+          const ctxAny = context as any;
+          const hasData = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
+          if (hasData) {
+            // Resolve commonly referenced columns (best-effort)
+            const headers = Array.isArray(ctxAny.sheetHeaders) ? ctxAny.sheetHeaders : [];
+            const likely = headers.find(h => /date|amount|total|fuel|vendor|category/i.test(String(h)));
+            if (likely) {
+              plannedToolCalls.unshift({
+                id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: 'function',
+                function: { name: 'resolve_column', arguments: JSON.stringify({ columnName: likely }) }
+              });
+            }
+          }
+        }
+      } catch {}
     } catch {
       plannedToolCalls = [];
     }
@@ -885,21 +1072,57 @@ export async function processMessage(
       if (add.length > 0) quickReplies = [...new Set([...(quickReplies || []), ...add])].slice(0, 5);
     } catch {}
 
-    // Fallback composition: if we have no hydrated data and an error exists, provide clear guidance and suppress raw tool errors unless explicitly executing a tool
+    // Fallback composition: if we have no hydrated data or an error, provide a proactive, contextual response
     try {
-      const dataObj = (context as any)?.sheetData as Record<string, unknown> | undefined;
+      const ctxAny = context as any;
+      const dataObj = ctxAny?.sheetData as Record<string, unknown> | undefined;
       const isEmptyData = !dataObj || Object.keys(dataObj).length === 0;
-      const hasCtxError = Boolean((context as any)?.error);
+      const hasCtxError = Boolean(ctxAny?.error);
       const wantsRawToolOutput = String(intent || '').toLowerCase() === 'execute_tool';
-      if (isEmptyData && hasCtxError && !wantsRawToolOutput) {
-        response = 'No sheet data loaded yet. Please verify your sheet access or specify details.';
+      if ((isEmptyData || hasCtxError) && !wantsRawToolOutput) {
+        const historySummary = summarizeHistory();
+        const nameGuess = (ctxAny.sheetName && String(ctxAny.sheetName)) || extractSheetNameFromMessage(message) || extractSheetNameFromMessage(historySummary) || '';
+
+        // Build proactive text
+        const base = hasCtxError
+          ? `I tried accessing your sheet but couldn't (error: ${String(ctxAny.error)}).`
+          : `I haven't loaded your sheet data yet.`;
+        const hint = nameGuess
+          ? ` Based on history, it seems like "${nameGuess}" — perhaps tracking dates or amounts.`
+          : '';
+
+        // If user intent is to update but we lack data, prefer a clear update-specific message
+        if (intent === 'update_data' && isEmptyData) {
+          response = 'To update, I need current sheet access. Describe the changes you want or upload files.';
+        } else {
+          response = `${base}${hint} Please provide more details or confirm the sheet name.`.trim();
+        }
         enhancedResponse = '';
-        const fallbackActions = ['Check sheet access', 'Specify sheet name'];
-        quickReplies = Array.isArray(quickReplies) ? [...quickReplies, ...fallbackActions] : fallbackActions;
-        const proactive = (context as any)?._proactiveSummary;
+
+        // Optionally try to generate a brief guess from history if not already present
+        try {
+          if (!ctxAny._proactiveSummary) {
+            const qa = await answerQuestionFromSheets(
+              `From this history, guess a concise 1-2 sentence summary of what the data likely tracks (do not assume access to the sheet):\n\n${historySummary}`,
+              (ctxAny.sheetData || {}) as any,
+              Array.isArray(ctxAny.sheetNames) ? (ctxAny.sheetNames as string[]) : []
+            );
+            if (qa && qa.answer) ctxAny._proactiveSummary = String(qa.answer);
+          }
+        } catch {}
+
+        const proactive = ctxAny?._proactiveSummary;
         if (typeof proactive === 'string' && proactive.trim()) {
           response = `${response}\n\n${proactive.trim()}`.trim();
         }
+
+        // Add helpful quick actions
+        const actions: string[] = [];
+        actions.push('Try accessing sheet again');
+        if (nameGuess) actions.push(`Specify sheet name: ${nameGuess}?`);
+        else actions.push('Specify sheet name');
+        if (intent === 'update_data') actions.push('Upload files to update');
+        quickReplies = Array.isArray(quickReplies) ? [...quickReplies, ...actions] : actions;
       }
     } catch {}
 
