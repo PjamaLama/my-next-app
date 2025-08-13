@@ -59,7 +59,30 @@ export async function answerQuestionFromSheets(
   hydratedSheetData: Record<string, string[][]>,
   selectedSheetNames: string[]
 ): Promise<QAResult> {
-  if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return null;
+  if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) {
+    // Proactive fallback when no data is available: infer intent/topic from message/history
+    try {
+      const lower = (message || '').toLowerCase();
+      const topics: Array<{ key: string; pattern: RegExp }> = [
+        { key: 'sales', pattern: /\b(sales|revenue|income|turnover)\b/i },
+        { key: 'costs', pattern: /\b(costs?|expense|spend)\b/i },
+        { key: 'drivers', pattern: /\b(drivers?|operator)\b/i },
+        { key: 'vehicles', pattern: /\b(vehicles?|truck|car|fleet)\b/i },
+        { key: 'fuel', pattern: /\b(fuel|diesel|petrol|gas|lit(er|re)s?)\b/i },
+        { key: 'inventory', pattern: /\b(inventory|stock)\b/i },
+        { key: 'orders', pattern: /\b(orders?|purchases?)\b/i },
+        { key: 'customers', pattern: /\b(customers?|clients?)\b/i },
+        { key: 'regions', pattern: /\b(regions?|areas?|states?|provinces?)\b/i },
+        { key: 'dates', pattern: /\b(date|timestamp|time|today|yesterday|last\s+week)\b/i },
+        { key: 'margin', pattern: /\b(margin|profit|markup)\b/i }
+      ];
+      const found = topics.find(t => t.pattern.test(lower));
+      const topic = found ? found.key : 'your sheet';
+      const answer = `I couldn’t load your sheet data. If it’s about ${topic}, try specifying a sheet name or column.`;
+      return { answer };
+    } catch {}
+    return { answer: `I couldn’t load your sheet data. Try specifying a sheet name or column.` };
+  }
 
   const lower = message.toLowerCase();
   const wantsSum = /(total|sum)\b/i.test(message);

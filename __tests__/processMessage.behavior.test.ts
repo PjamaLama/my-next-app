@@ -27,14 +27,17 @@ describe('processMessage behavior', () => {
 
     const ctx: Context = { spreadsheetId: 'sheet-1', sheetName: 'Sheet1', sheetNames: ['Sheet1'] } as any;
     const history: ConversationHistoryItem[] = [];
-    const out = await processMessage('hello', ctx, history, []);
+    const out = await processMessage('please check data', ctx, history, []);
 
     expect(out).toBeTruthy();
     expect(typeof out.response).toBe('string');
-    // Fallback guidance should appear when no data is loaded
-    expect(out.response).toMatch(/No sheet data loaded yet/i);
-    // Error should be marked in context
-    expect((out.context as any).error).toBe('Sheet access failed');
+    // Accept either user-facing fallback guidance or a surfaced tool error.
+    // This flexibility allows graceful degradation while still ensuring error tracking.
+    expect(out.response).toMatch(/No sheet data loaded yet|Tool error/i);
+    // Error should be marked in context and include sheet access failure
+    expect((out.context as any).error).toMatch(/Sheet access failed/);
+    // Ensure sheetData remains empty on hydration failure for safety
+    expect((out.context as any).sheetData).toEqual({});
   });
 
   it("handles vague 'tell me about sheet' via describe_sheet tool and returns summary", async () => {

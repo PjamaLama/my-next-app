@@ -7,6 +7,8 @@ export abstract class DataSource {
   abstract getSampleRows(n: number): Promise<string[][]>;
   abstract query(input: QueryInput): Promise<{ headers: string[]; rows: string[][] }>;
   abstract update(data: { sheetName?: string; updates: Array<{ cell: string; value: string }> }): Promise<{ success: boolean; updated?: number }>;
+  // Standardized error handling across data sources
+  abstract onError(error: unknown): { error: string; fallbackData: any };
 }
 
 export class SheetDataSource extends DataSource {
@@ -147,6 +149,26 @@ export class SheetDataSource extends DataSource {
     const json = await res.json();
     return { success: Boolean(json?.success), updated: Number(json?.totalUpdated || 0) };
   }
+
+  onError(error: unknown): { error: string; fallbackData: any } {
+    const toMessage = (e: unknown): string => {
+      const raw = e instanceof Error ? e.message : String(e);
+      const match = raw.match(/HTTP\s+(\d{3})/i);
+      const status = match ? parseInt(match[1], 10) : undefined;
+      switch (status) {
+        case 403:
+          return 'Sheet access failed: Permission denied; check sheet access';
+        case 404:
+          return 'Sheet access failed: Sheet not found; verify sheet ID or name';
+        case 500:
+        case 503:
+          return 'Sheet access failed: Temporary server error; please retry';
+        default:
+          return `Sheet access failed: ${raw}`;
+      }
+    };
+    return { error: toMessage(error), fallbackData: {} };
+  }
 }
 
 export class FileDataSource extends DataSource {
@@ -193,6 +215,10 @@ export class FileDataSource extends DataSource {
   async update(): Promise<{ success: boolean; updated?: number }> {
     // No-op for files in this simulation
     return { success: true, updated: 0 };
+  }
+
+  onError(): { error: string; fallbackData: any } {
+    return { error: 'Failed to parse file; try another format', fallbackData: [] };
   }
 }
 

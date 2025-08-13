@@ -313,6 +313,14 @@ export async function processMessage(
         try {
           const headers = await dataSource.getHeaders();
           const rows = await dataSource.getSampleRows(800); // at least 50 samples upfront
+
+          // Treat empty headers and rows as a failed hydration as well
+          const noHeaders = !Array.isArray(headers) || headers.length === 0;
+          const noRows = !Array.isArray(rows) || rows.length === 0;
+          if (noHeaders && noRows) {
+            throw new Error('No data returned from sheet');
+          }
+
           const map: Record<string, string[][]> = {};
           const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
           map[sheetName] = [headers, ...rows];
@@ -338,14 +346,52 @@ export async function processMessage(
             } catch {}
           }
         } catch (e) {
-          // Hydration failed: use cached data if available, log and continue
+          // Hydration failed: ensure sheetData is empty, use data source standardized error mapping, log, and enqueue a summary fallback
+          try {
+            if (!ctxAny.sheetData || typeof ctxAny.sheetData !== 'object') ctxAny.sheetData = {};
+            else ctxAny.sheetData = {};
+          } catch {}
           // eslint-disable-next-line no-console
-          console.warn('[processMessage] Early hydration failed (continuing)', e);
-          if (ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0) {
-            ctxAny._hydrationWarning = 'Using cached data due to error.';
-          } else {
-            try { ctxAny.error = 'Sheet access failed'; } catch {}
-          }
+          console.error('[processMessage] Hydration failed', e);
+          try {
+            const mapped = typeof (dataSource as any).onError === 'function' ? (dataSource as any).onError(e) : null;
+            if (mapped && mapped.error) {
+              ctxAny.error = mapped.error;
+              if (mapped.fallbackData != null) ctxAny.sheetData = mapped.fallbackData;
+            } else {
+              const msg = e instanceof Error ? e.message : String(e);
+              ctxAny.error = `Sheet access failed: ${msg}`;
+            }
+            ctxAny.hydrationNote = 'Failed to load data; attempting summary from available context';
+          } catch {}
+
+          // Proactively attempt a context-based summary so the user still gets value
+          try {
+            let historySummary = '';
+            try {
+              const items: ConversationHistoryItem[] = Array.isArray((context as any).conversationHistory) ? ((context as any).conversationHistory as ConversationHistoryItem[]) : [];
+              const joined = items.map(i => `${i.role}: ${i.content}`).join('\n');
+              historySummary = joined.length > 4000 ? joined.slice(-4000) : joined;
+            } catch {}
+            const fallbackPrompt = `No data loaded; describe what data might be available based on context or history.\n\n(Recent context:)\n${historySummary}\n\nSheet: ${String((context as any)?.spreadsheetId || '')}`;
+            const qa = await answerQuestionFromSheets(fallbackPrompt, (context as any).sheetData || {}, Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : []);
+            if (qa && qa.answer) {
+              try { (context as any)._proactiveSummary = String(qa.answer); } catch {}
+            }
+          } catch {}
+
+          // If we have minimal sheet metadata, enqueue a describe_sheet fallback so the user still gets a helpful summary
+          try {
+            const sheetNamesList = Array.isArray(context?.sheetNames) ? (context.sheetNames as string[]) : [];
+            const targetSheet = (context as any).sheetName || (sheetNamesList.length > 0 ? sheetNamesList[0] : undefined);
+            if (context?.spreadsheetId && targetSheet) {
+              suggestedTools.push({
+                id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: 'function',
+                function: { name: 'describe_sheet', arguments: JSON.stringify({ sheetName: targetSheet, range: 'A1:Z50' }) }
+              });
+            }
+          } catch {}
         }
       }
     } catch {}
@@ -504,6 +550,13 @@ export async function processMessage(
     const toolCallsToRun = plannedToolCalls.length > 0 ? plannedToolCalls : suggestedTools;
     for (const toolCall of toolCallsToRun) {
       const result = await executeToolCall(toolCall, context, images);
+      try {
+        if (result && (result as any).error) {
+          const ctxAny = context as any;
+          if (!Array.isArray(ctxAny.errors)) ctxAny.errors = [];
+          ctxAny.errors.push(String((result as any).error));
+        }
+      } catch {}
       toolResults.push(result);
       // eslint-disable-next-line no-console
       try { console.log('[Planner] tool result', { name: toolCall.function.name, success: result?.success }); } catch {}
@@ -820,7 +873,7 @@ export async function processMessage(
       }
     } catch {}
 
-    let quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
+    let quickReplies: any = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
     try {
       const hdrs = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
       const add: string[] = [];
@@ -830,6 +883,27 @@ export async function processMessage(
         if (salesLike) add.push('Compute total sales');
       }
       if (add.length > 0) quickReplies = [...new Set([...(quickReplies || []), ...add])].slice(0, 5);
+    } catch {}
+
+    // Fallback composition: if we have no hydrated data and an error exists, provide clear guidance and suppress raw tool errors unless explicitly executing a tool
+    try {
+      const dataObj = (context as any)?.sheetData as Record<string, unknown> | undefined;
+      const isEmptyData = !dataObj || Object.keys(dataObj).length === 0;
+      const hasCtxError = Boolean((context as any)?.error);
+      const wantsRawToolOutput = String(intent || '').toLowerCase() === 'execute_tool';
+      if (isEmptyData && hasCtxError && !wantsRawToolOutput) {
+        response = 'No sheet data loaded yet. Please verify your sheet access or specify details.';
+        enhancedResponse = '';
+        const fallbackActions = [
+          { text: 'Check sheet access', action: 'manual_input' },
+          { text: 'Specify sheet name', action: 'clarify_sheet' }
+        ];
+        if (Array.isArray(quickReplies)) {
+          quickReplies = [...quickReplies, ...fallbackActions];
+        } else {
+          quickReplies = fallbackActions;
+        }
+      }
     } catch {}
 
     // Normalize date formats across all tables before returning

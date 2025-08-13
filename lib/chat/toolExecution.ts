@@ -39,11 +39,35 @@ export async function executeToolCall(
             body: JSON.stringify({ toolCall, context, images })
           });
           if (resp.ok) return resp;
-          lastErr = new Error(`HTTP ${resp.status}`);
-        } catch (e) {
+
+          // Handle HTTP status-based retry strategy
+          const status = resp.status;
+          const err = new Error(`HTTP ${status}`);
+          // eslint-disable-next-line no-console
+          console.error(`Retry ${attempt} for ${toolCall.function.name}: ${err.message}`);
+
+          // Permanent failures: do not retry
+          if (status === 403 || status === 404) {
+            try { (context as any).error = `Permanent failure: ${status} - check sheet permissions or ID`; } catch {}
+            return resp; // exit immediately with this response
+          }
+
+          // Retry only 500/503 up to 3 attempts with 1s delay
+          if ((status === 500 || status === 503) && attempt < 3) {
+            await new Promise(r => setTimeout(r, 1000));
+            lastErr = err;
+            continue;
+          }
+
+          // Other non-OK statuses: no retry
+          lastErr = err;
+          return resp;
+        } catch (e: any) {
           lastErr = e;
+          // eslint-disable-next-line no-console
+          console.error(`Retry ${attempt} for ${toolCall.function.name}: ${e?.message || String(e)}`);
+          if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
         }
-        if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
       }
       throw lastErr || new Error('Unknown fetch error');
     };
@@ -75,8 +99,10 @@ export async function executeToolCall(
       console.error('[ToolExecution] HTTP error', { url, status: response.status, errorMessage, errorDetails });
       return {
         success: false,
+        error: errorMessage,
         result: `Error executing ${toolCall.function.name}: ${errorMessage}`,
         details: errorDetails ?? null,
+        data: null,
         toolId: toolCall.id
       };
     }
@@ -103,8 +129,10 @@ export async function executeToolCall(
     try { (context as any).error = 'Sheet access failed'; } catch {}
     return {
       success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
       result: `Error executing ${toolCall.function.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
       details: error instanceof Error ? (error.stack || error.message) : null,
+      data: null,
       toolId: toolCall.id
     };
   }
