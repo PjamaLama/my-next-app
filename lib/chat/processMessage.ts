@@ -368,15 +368,15 @@ export async function processMessage(
       console.warn('[processMessage] Header prefetch error (continuing without headers)', e);
     }
 
-    // Proactive auto-hydration: ensure headers and sample rows are available before planning
+    // Proactive auto-hydration: prefer cached context.sheetData; hydrate only if missing or stale
     try {
       const now = Date.now();
       const ctxAny = context as any;
-      const hasHydrated = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
+      const hasCached = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
       const lastHydration = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
       const isStale = now - lastHydration > 60_000;
       const canHydrate = Boolean(dataSource);
-      const shouldHydrate = Boolean(context?.spreadsheetId) && (!hasHydrated || isStale);
+      const shouldHydrate = Boolean(context?.spreadsheetId) && (!hasCached || isStale);
       if (canHydrate && shouldHydrate && dataSource) {
         try {
           const headers = await dataSource.getHeaders();
@@ -389,9 +389,9 @@ export async function processMessage(
             throw new Error('No data returned from sheet');
           }
 
-          const map: Record<string, string[][]> = {};
-          const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
-          map[sheetName] = [headers, ...rows];
+           const map: Record<string, string[][]> = hasCached ? (ctxAny.sheetData as Record<string, string[][]>) : {};
+           const sheetName = (context as any).sheetName || ((context as any).sheetNames?.[0]) || 'Sheet1';
+           map[sheetName] = [headers, ...rows];
           if (Object.keys(map).length > 0) {
             ctxAny.sheetData = map;
             ctxAny._sheetHydratedAt = now;
@@ -1116,39 +1116,45 @@ export async function processMessage(
       try {
         const toolSummaries = (enhancedResponse || '').split('\n').map(s => s.trim()).filter(Boolean);
         const ctxAny = context as any;
-        const noData = !ctxAny?.sheetData || Object.keys(ctxAny.sheetData || {}).length === 0;
+        const sheetName = (typeof ctxAny.sheetName === 'string' && ctxAny.sheetName.trim()) ? ctxAny.sheetName : (Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames[0]) || '';
+        const table = (ctxAny.sheetData && sheetName && Array.isArray(ctxAny.sheetData[sheetName])) ? (ctxAny.sheetData[sheetName] as string[][]) : [];
+        const hasAnyData = Array.isArray(table) && table.length > 0;
         const hasErr = Boolean(ctxAny?.error);
-        if (noData || hasErr) {
-          const guess = inferFromHistory();
-          const fallback = `No sheet data loaded yet. I couldn't load your sheet data (${ctxAny?.error || 'no data'}). Based on "${String(message || '').slice(0, 120)}", maybe it's about ${guess || 'fuel or logbook data'}? Try specifying columns or uploading a file.`;
-          response = fallback;
-          // Seed quick replies with helpful actions
+        if (!hasAnyData || hasErr) {
+          const base = `Couldn’t load data for '${sheetName}'${ctxAny?.error ? ': ' + String(ctxAny.error) : ''}. It might track fuel sales or clients. Specify columns or upload a file.`;
+          const fuelHint = sheetName && /fuel\s+weekly\s+repo/i.test(String(sheetName)) ? ' Is this about fuel sales?' : '';
+          response = `${base}${fuelHint}`.trim();
           try {
-            const actions = [
-              { text: 'Specify sheet: Fuel Weekly Repo?', action: 'set_sheet' },
+            ctxAny.quickReplies = [
+              { text: 'Check tab: Fuel Weekly Repo?', action: 'clarify_sheet' },
               { text: 'Upload file', action: 'upload' }
             ];
             const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
-            quickReplies = [...baseQR, ...actions.map(a => a.text)].slice(0, 5);
+            quickReplies = Array.from(new Set([...baseQR, 'Check tab: Fuel Weekly Repo?', 'Upload file'])).slice(0, 6);
             ctxAny._uiActions = ctxAny._uiActions || [];
-            ctxAny._uiActions.push(...actions);
+            ctxAny._uiActions.push({ text: 'Check tab: Fuel Weekly Repo?', action: 'clarify_sheet' }, { text: 'Upload file', action: 'upload' });
           } catch {}
-          // If user asked to describe data, try to append a brief description from tools/history
-          if (intent === 'describe_data') {
-            try {
-              const description = toolResults.find((r: any) => r?.success && typeof r?.result === 'string')?.result;
-              if (description) response = `${response}\n${description}`.trim();
-            } catch {}
+          if (describeText && describeText.trim()) {
+            response = `${response}\n${describeText.trim()}`.trim();
           }
         } else {
-          response = await composeGroundedReply({
+          const rowsOnly = table.slice(1);
+          response = `Your sheet (${sheetName}) has ${Math.max(0, rowsOnly.length)} rows.`;
+          if (describeText && describeText.trim()) {
+            response = `${response}\n${describeText.trim()}`.trim();
+          }
+          // Compose additional grounded reply if needed
+          const composed = await composeGroundedReply({
             userMessage: message,
-            qaAnswer: response && response.trim() ? response : undefined,
+            qaAnswer: response,
             tables: normalizedTables,
             charts,
             insights,
             toolSummaries
           });
+          if (composed && composed.trim() && composed !== response) {
+            response = composed;
+          }
         }
       } catch {
         if (enhancedResponse && enhancedResponse.trim()) {

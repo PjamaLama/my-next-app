@@ -83,14 +83,14 @@ Sheet format flags: sheetDataFormat=${String((context as any)?.sheetDataFormat |
 ${fewShot}
 
   Chain-of-thought (do not output):
-  Step 1: Check context.sheetDataFormat and isNonTabular to decide if the sheet is non-standard or text-like.
-  Step 2: For summary-like ("tell me about", "summarize", "what I did"), set intent="describe_data". If isNonTabular=true, plan tools=[{"name":"describe_sheet","args":{"mode":"text_summary"${(context as any)?.sheetName ? `,"sheetName":"${String((context as any).sheetName)}"` : ''}}}]. Otherwise plan tools=[{"name":"describe_sheet","args":{${(context as any)?.sheetName ? `"sheetName":"${String((context as any).sheetName)}"` : ''}}}].
-  Step 3: If tabular (isNonTabular=false), use headers/rows as usual to decide tools. For column/lookup queries like "who is the driver" or "which driver", search known headers for a likely match (e.g., contains "driver", "name"). Plan tools=[{"name":"get_column_stats","args":{"column":"<matched header>"}}]. If isNonTabular=true, prefer a text scan via tools=[{"name":"describe_sheet","args":{"mode":"text_summary"}}] or plan get_sheet_data with a wide range to support text analysis downstream.
+  Step 1: Be proactive. If the message includes "tell me about my data" or contains a probable sheet name (e.g., "Fuel Weekly Repo"), plan describe_sheet immediately with args { sheetName: context.sheetName (or detected), mode: context.isNonTabular ? "text_summary" : "tabular" }.
+  Step 2: For column/lookup queries like "who is the driver" or "which driver", scan context.sheetHeaders for likely matches (keywords: "driver", "name"). Plan tools=[{"name":"get_column_stats","args":{"column":"<matched header>"}}]. If isNonTabular=true, prefer tools=[{"name":"describe_sheet","args":{"mode":"text_summary"}}].
+  Step 3: If no headers are known, use context.sheetData when present or guess from conversationHistory to avoid clarifications. Only ask to clarify when there is no usable data and no helpful history.
   Step 4: For updates ("add", "update", "append"), set intent="update_data" and choose ONE of these paths:
     - If tabular (context.isNonTabular is false) AND headers available AND message contains field-like pairs (e.g., "client Stanley, 2000k seed"), PARSE the message into a single structured row using known headers when possible (map synonyms like "Sales"→"Amount"). Plan toolChain=[{"toolName":"apply_structured_rows","params":{"rows":[<parsedRow>],"startRow": (Array.isArray(context.sheetData?.[context.sheetName]) ? context.sheetData[context.sheetName].length + 1 : undefined)}}].
     - If non-tabular (context.isNonTabular is true), plan toolChain=[{"toolName":"update_sheet","params":{"text":${JSON.stringify(message)},"append":true}}].
     - If files are present, first plan extraction then structured apply when compatible: toolChain=[{"toolName":"get_sheet_data"}, ${hasFiles ? "{\"toolName\":\"extract_data_from_files\"}," : ''}{"toolName":"apply_structured_rows","dependsOn":[0${hasFiles ? ',1' : ''}]}].
-  Step 5: Only ask to clarify if there is no accessible data (no headers) AND no helpful history cues; otherwise include a best-guess tool.
+  Step 5: Only ask to clarify if there is no accessible data (no headers or sheetData) AND no helpful history cues; otherwise include a best-guess tool.
   
   Return STRICT JSON only, no prose, no code fences.`;
 }
