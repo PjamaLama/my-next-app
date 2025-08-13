@@ -2530,29 +2530,19 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     }
     // Auto-match incoming row keys to target sheet headers using case-insensitive exact or keyword contains
     let matchedAtLeastThreshold = false;
+    let remappedRows: Array<Record<string, unknown>> = Array.isArray(rows) ? [...rows] : [];
+    const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
+    const sheetHeaders = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
     try {
-      const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
-      const headers = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
-      if (activeSheet && headers.length > 0) {
+      if (activeSheet && sheetHeaders.length > 0) {
         const firstRow = rows[0] || {};
         const incomingKeys = Object.keys(firstRow);
         if (incomingKeys.length > 0) {
-          const { mapping, matchRatio } = matchColumns(incomingKeys, headers);
+          const { mapping, matchRatio, isPerfect } = matchColumns(incomingKeys, sheetHeaders);
           console.log('Mapped fields to headers: ', mapping);
-          matchedAtLeastThreshold = matchRatio >= 0.7;
-          if (!matchedAtLeastThreshold) {
-            // Build preview table with sheet headers and mapped values
-            const preview = buildHeaderPreviewTable(rows, mapping);
-            return res.status(200).json({
-              success: true,
-              result: 'Suggested update (using sheet columns): see preview. Confirm?',
-              details: { mapping, preview },
-              preview: true,
-              previewData: preview
-            });
-          }
-          // Remap rows to use exact sheet header names; drop unmapped keys
-          const remapped = rows.map((r) => {
+          matchedAtLeastThreshold = isPerfect || matchRatio >= 0.7;
+          // Remap rows to use exact sheet header names; drop unmapped keys for both preview and commit
+          remappedRows = rows.map((r) => {
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(r || {})) {
               const target = mapping[k];
@@ -2560,7 +2550,17 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
             }
             return out;
           });
-          (args as any).rows = remapped;
+          (args as any).rows = remappedRows;
+          if (!matchedAtLeastThreshold) {
+            const preview = {
+              headers: sheetHeaders,
+              rows: remappedRows.map(r => Object.entries(r).map(([k, v]) => ({ column: k, value: v }))),
+              message: 'Proposed update requires confirmation.',
+              action: 'confirm'
+            } as const;
+            try { console.log(`Preview for ${String((args as any)?.sheetName || activeSheet)}: `, preview); } catch {}
+            return res.status(200).json({ success: false, preview });
+          }
         }
       }
     } catch (e) {
@@ -2586,13 +2586,31 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     }
     const result = await ingestResp.json();
     if (!doCommit) {
-      return res.status(200).json({ success: true, result: `Preview only: ${Number(result.inserts || 0) + Number(result.updates || 0)} row(s) would be affected.`, details: result, preview: true });
+      const preview = {
+        headers: sheetHeaders,
+        rows: remappedRows.map(r => Object.entries(r).map(([k, v]) => ({ column: k, value: v }))),
+        message: 'Proposed update requires confirmation.',
+        action: 'confirm'
+      } as const;
+      try { console.log(`Preview for ${String((args as any)?.sheetName || activeSheet)}: `, preview); } catch {}
+      return res.status(200).json({ success: false, preview });
     }
     try {
-      const remappedRows = (args as any)?.rows || normalizedRows;
-      console.log(`Committed to ${String((args as any)?.sheetName || (context as any)?.sheetName || '')}: `, remappedRows);
+      console.log('Committed update: ', remappedRows);
     } catch {}
-    return res.status(200).json({ success: true, result: `Ingestion ${result.success ? 'succeeded' : 'failed'}. Inserts=${result.inserts}, Updates=${result.updates}.`, details: result });
+    // Fetch new row count for the active sheet
+    let newRowCount: number | undefined = undefined;
+    try {
+      const dataResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/get-sheet-data`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetName: (args as any)?.sheetName || activeSheet })
+      });
+      if (dataResp.ok) {
+        const payload = await dataResp.json();
+        const data = (payload?.data || []) as any[];
+        if (Array.isArray(data)) newRowCount = data.length;
+      }
+    } catch {}
+    return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: remappedRows, newRowCount });
   } catch (error) {
     console.error('apply_structured_rows error:', error);
     return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });
@@ -2691,7 +2709,7 @@ function buildPreviewTable(rows: Array<Record<string, unknown>>, suggested: Arra
 }
 
 // Simple, deterministic matcher: case-insensitive exact or keyword contains with domain synonyms
-function matchColumns(incomingKeys: string[], headers: string[]): { mapping: Record<string, string>, matchRatio: number } {
+function matchColumns(incomingKeys: string[], headers: string[]): { mapping: Record<string, string>, matchRatio: number, isPerfect: boolean } {
   const lowerHeaders = headers.map(h => String(h || ''));
   const headerLowerToRaw: Record<string, string> = {};
   lowerHeaders.forEach(h => { headerLowerToRaw[h.toLowerCase()] = h; });
@@ -2747,7 +2765,8 @@ function matchColumns(incomingKeys: string[], headers: string[]): { mapping: Rec
     }
   }
   const matchRatio = incomingKeys.length > 0 ? matched / incomingKeys.length : 0;
-  return { mapping, matchRatio };
+  const isPerfect = matchRatio >= 0.7;
+  return { mapping, matchRatio, isPerfect };
 }
 
 // Build preview with sheet headers as columns and mapped values per row
