@@ -179,6 +179,20 @@ export async function processMessage(
 
     // Helper to hydrate sheet data early and prepare summary for planner (robust range fallback)
     const hydrateSheetData = async (ds: DataSource, ctxAny: any): Promise<void> => {
+			// Prefer client-provided cache when available to avoid unnecessary server calls
+			try {
+				const cachedName = (ctxAny.sheetName && String(ctxAny.sheetName)) || 'Sheet1';
+				const cachedTable = ctxAny?.sheetData?.[cachedName];
+				if (Array.isArray(cachedTable) && cachedTable.length > 0) {
+					const headers = Array.isArray(cachedTable[0]) ? cachedTable[0] : [];
+					if (Array.isArray(headers) && headers.length > 0) {
+						ctxAny.sheetHeaders = headers;
+					}
+					ctxAny._sheetHydratedAt = Date.now();
+					ctxAny._hydrationSource = 'client_cache';
+					return;
+				}
+			} catch {}
       try {
 				const headers = await ds.getHeaders();
 				let rows = await (ds as any).getSampleRows(50);
@@ -1141,6 +1155,13 @@ export async function processMessage(
 					let errText = String(ctxAny?.error || '');
 					if (/404/.test(errText) && !/tab not found/i.test(errText)) errText += ' (tab not found)';
 					response = `Couldn’t load data: ${errText || 'Unknown error'}. Try checking the tab or uploading a file.`;
+					// If server hydration failed but client cache exists, surface cached rows info
+					try {
+						if (Array.isArray(table) && table.length > 1) {
+							const cachedRows = Math.max(0, table.slice(1).length);
+							response = `${response} Using cached data for ${sheetName}: ${cachedRows} rows.`.trim();
+						}
+					} catch {}
           try {
 						ctxAny.quickReplies = [
 							{ text: `Check tab: ${sheetName || 'Sheet1'}`, action: 'clarify_sheet' },
