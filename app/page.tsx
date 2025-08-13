@@ -1121,20 +1121,24 @@ export default function Home() {
       }
       
       // Call the chat API with enhanced context
+      const contextForChat = {
+        spreadsheetId: defaultSpreadsheetId,
+        sheetNames: selectedSheetNames,
+        sheetName: selectedSheetNames?.[0],
+        debug: true,
+        allSheetNames,
+        responsePrefs,
+        // Keep request small: server will hydrate sheets as needed
+        fileAnalysis: isFileAnalysisFresh(recentFileAnalysis) ? recentFileAnalysis : undefined,
+      };
+      console.log('🔍 [CHAT] Sending context:', contextForChat);
       const response = await fetch('/api/genkit-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: textToProcess,
           userIntent: userIntent,
-          context: {
-            spreadsheetId: defaultSpreadsheetId,
-            sheetNames: selectedSheetNames,
-            allSheetNames,
-            responsePrefs,
-            // Keep request small: server will hydrate sheets as needed
-            fileAnalysis: isFileAnalysisFresh(recentFileAnalysis) ? recentFileAnalysis : undefined,
-          },
+          context: contextForChat,
           conversationHistory: chatMessages.slice(-5),
           images: imageData // Include processed images
         }),

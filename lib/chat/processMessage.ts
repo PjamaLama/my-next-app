@@ -83,6 +83,74 @@ export async function processMessage(
       } catch {}
       return undefined;
     };
+
+    // New: extract a spreadsheetId from recent conversation history (URLs or explicit mentions)
+    const extractIdFromHistory = (history: ConversationHistoryItem[] | undefined): string | undefined => {
+      try {
+        const items = Array.isArray(history) ? history.slice().reverse() : [];
+        for (const it of items) {
+          const text = String(it?.content || '');
+          // Match Google Sheets URL pattern
+          const m1 = text.match(/https?:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+          if (m1 && m1[1]) return m1[1];
+          // Match explicit key-value like: spreadsheetId: ABC123
+          const m2 = text.match(/\bspreadsheetId\s*[:=]\s*([a-zA-Z0-9-_]{10,})/i);
+          if (m2 && m2[1]) return m2[1];
+        }
+      } catch {}
+      return undefined;
+    };
+
+    // New: robustly extract a sheet name from message and history; includes specific known names
+    const extractSheetName = (
+      msg: string,
+      history: ConversationHistoryItem[] | undefined
+    ): string | undefined => {
+      // Try quoted and heuristic parsing first
+      let name = extractSheetNameFromMessage(msg);
+      if (!name && Array.isArray(history)) {
+        for (const it of history.slice().reverse()) {
+          name = extractSheetNameFromMessage(String(it?.content || ''));
+          if (name) break;
+        }
+      }
+      // Known names fallback
+      if (!name) {
+        const combined = `${String(msg || '')}\n${(Array.isArray(history) ? history.map(h => String(h.content || '')).join('\n') : '')}`;
+        const m = combined.match(/(fuel\s+weekly\s+repo|logbook)/i);
+        if (m && m[1]) name = m[1];
+      }
+      return name?.trim() || undefined;
+    };
+
+    // New: validate and infer sheet context up front so hydration has a target
+    const inferSheetContext = (
+      msg: string,
+      ctx: any,
+      history: ConversationHistoryItem[] | undefined
+    ) => {
+      if (!ctx.spreadsheetId) {
+        ctx.spreadsheetId = extractIdFromHistory(history) || 'default-id';
+      }
+      if (!ctx.sheetName && Array.isArray(ctx.sheetNames) && ctx.sheetNames.length > 0) {
+        ctx.sheetName = ctx.sheetNames[0];
+      }
+      if (!ctx.sheetName) {
+        ctx.sheetName = extractSheetName(msg, history) || 'Sheet1';
+      }
+      if (!Array.isArray(ctx.sheetNames) || ctx.sheetNames.length === 0) {
+        if (ctx.sheetName) ctx.sheetNames = [ctx.sheetName];
+      }
+    };
+
+    // Invoke inference before any hydration logic
+    try {
+      const ctxAny = context as any;
+      inferSheetContext(message, ctxAny, conversationHistory);
+      if (!ctxAny.spreadsheetId || !ctxAny.sheetName) {
+        ctxAny.error = 'No valid sheet selected.';
+      }
+    } catch {}
     let intent = 'chat';
     const plannedOnlyToolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
 
