@@ -1692,7 +1692,14 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
               startRow = Math.max(2, (Array.isArray(arr) && arr.length > 0 ? arr.length + 1 : 2));
             }
           } catch {}
-          autoPreview = extractedRows.slice(0, Math.min(30, extractedRows.length)).map((r, i) => ({ row: startRow + i, updates: r }));
+          // Ensure Date field exists using current date from context when missing
+          const currentDate = typeof (context as any)?.currentDate === 'string' && (context as any).currentDate ? String((context as any).currentDate) : undefined;
+          const normalizedRows = extractedRows.map((r) => {
+            const hasDate = Object.keys(r || {}).some(k => /^date$/i.test(k));
+            if (!hasDate && currentDate) return { Date: currentDate, ...r } as Record<string, unknown>;
+            return r;
+          });
+          autoPreview = normalizedRows.slice(0, Math.min(30, normalizedRows.length)).map((r, i) => ({ row: startRow + i, updates: r }));
           appliedViaStructured = true;
           if (preview) {
             // Surface preview and suggestion for UI to confirm
@@ -1705,7 +1712,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
               const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ spreadsheetId, sheetNames: [sheetName], rows: extractedRows, dryRun: false, startRow })
+                body: JSON.stringify({ spreadsheetId, sheetNames: [sheetName], rows: normalizedRows, dryRun: false, startRow })
               });
               if (!ingestResp.ok) {
                 const txt = await ingestResp.text();
@@ -2557,8 +2564,15 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     }
 
     const doCommit = commit === undefined ? true : Boolean(commit);
+    // Normalize Date field using context.currentDate when missing
+    const currentDate = typeof (context as any)?.currentDate === 'string' && (context as any).currentDate ? String((context as any).currentDate) : undefined;
+    const normalizedRows = Array.isArray(rows) ? rows.map((r) => {
+      const hasDate = Object.keys(r || {}).some(k => /^date$/i.test(k));
+      if (!hasDate && currentDate) return { Date: currentDate, ...(r || {}) } as Record<string, unknown>;
+      return r as Record<string, unknown>;
+    }) : rows;
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows, dryRun: doCommit ? false : true, startRow })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows: normalizedRows, dryRun: doCommit ? false : true, startRow })
     });
     if (!ingestResp.ok) {
       const txt = await ingestResp.text();

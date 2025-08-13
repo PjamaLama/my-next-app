@@ -85,9 +85,9 @@ ${fewShot}
   Chain-of-thought (do not output):
   Update parsing guidance for update_data:
   Step 1: Parse the user's message into fields. Infer and normalize likely columns from free text (names, quantities, dates, locations, categories, notes).
-    - Use today's date if missing: 2025-08-13 (ISO: 2025-08-13).
-    - Example: "saw client victor in Hogwarts, sold 4000 rand of seed" → { Date: "2025-08-13", Client: "Victor", Location: "Hogwarts", Sales: 4000, Notes: "spoke about seed reports" }.
-    - Example: "add client victor" → { Date: "2025-08-13", Client: "Victor" }.
+    - Always include a Date field. If the message does not specify a date, use the current date: 08/13/2025 (format MM/DD/YYYY). Avoid placeholders like "X".
+    - Example: "saw client victor in Hogwarts, sold 4000 rand of seed" → { Date: "08/13/2025", Client: "Victor", Location: "Hogwarts", Sales: 4000, Notes: "spoke about seed reports" }.
+    - Example: "add client victor" → { Date: "08/13/2025", Client: "Victor" }.
   Step 2: Fuzzy-match parsed fields to context.sheetHeaders (e.g., "Sales"→"Amount", "Customer"→"Client"). Prefer exact header names when available; otherwise map to closest matches using synonyms.
   Step 3: Decide tool:
     - If the sheet is tabular (headers and rows are present), plan apply_structured_rows with { rows: [parsed_row] } (commit: true added elsewhere).

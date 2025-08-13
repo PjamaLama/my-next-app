@@ -53,6 +53,8 @@ export async function processMessage(
   images: ImageData[] = []
 ) {
   try {
+    // Provide a current date to all downstream logic and planner
+    try { (context as any).currentDate = '08/13/2025'; } catch {}
     // Initialize and append current user message to in-context history (keep last 5)
     try {
       const ctxAny = context as any;
