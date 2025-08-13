@@ -408,3 +408,119 @@ describe('processMessage planner/tool behavior - targeted scenarios', () => {
 });
 
 
+describe('processMessage non-standard sheets and errors', () => {
+  const setFetchMock = (impl: any) => { /* @ts-ignore */ global.fetch = jest.fn(impl); };
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  it('describes sheet and appends total rows when hydrated (6 rows)', async () => {
+    // Mock hydration with headers and 6 rows
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockResolvedValue(['Date', 'Driver', 'Amount']);
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockResolvedValue([
+      ['2024-01-01', 'Alice', '10'],
+      ['2024-01-02', 'Bob', '12'],
+      ['2024-01-03', 'Chris', '8'],
+      ['2024-01-04', 'Dana', '9'],
+      ['2024-01-05', 'Evan', '11'],
+      ['2024-01-06', 'Fran', '14'],
+    ]);
+
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    // Plan describe_sheet
+    jest.doMock('../lib/chat/planner', () => ({ generatePlan: async (_msg: string, _ctx: any) => ({ intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null }) }));
+
+    const toolCalls: string[] = [];
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        toolCalls.push(name);
+        if (name === 'describe_sheet') {
+          return { success: true, result: 'Your sheet tracks fuel data.' } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      },
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
+    const out = await run('tell me about my sheet', ctx, [], []);
+
+    expect(toolCalls).toContain('describe_sheet');
+    expect(out.response).toMatch(/tracks fuel data/i);
+    expect(out.response).toMatch(/Total rows:\s*6/i);
+  });
+
+  it('shows Total rows: 0 with quick replies when no rows', async () => {
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockResolvedValue(['Date', 'Driver', 'Amount']);
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockResolvedValue([]);
+
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    jest.doMock('../lib/chat/planner', () => ({ generatePlan: async (_msg: string, _ctx: any) => ({ intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null }) }));
+    jest.doMock('../lib/chat/toolExecution', () => ({ executeToolCall: async (toolCall: any) => ({ success: true, result: 'Your sheet tracks fuel data.' }) }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
+    const out = await run('tell me about my sheet', ctx, [], []);
+
+    expect(out.response).toMatch(/Total rows:\s*0/i);
+    expect(Array.isArray(out.quickReplies)).toBe(true);
+    const qr = (out.quickReplies as string[]).join(' | ');
+    expect(qr).toMatch(/Show raw data|Retry loading/i);
+  });
+
+  it('uses describe_sheet in text_summary mode for non-tabular sheets', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const toolCalls: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        toolCalls.push({ name, args });
+        if (name === 'describe_sheet') return { success: true, result: 'Your sheet contains notes about fuel and clients.' } as any;
+        return { success: true, result: `${name} ok` } as any;
+      },
+    }));
+
+    // Encourage describe_sheet and include explicit text_summary arg
+    jest.doMock('../lib/chat/planner', () => ({ generatePlan: async (_msg: string, _ctx: any) => ({ intent: 'describe_data', tools: [{ name: 'describe_sheet', args: { mode: 'text_summary' } }], toolChain: [], clarifyQuestion: null }) }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Notes', sheetNames: ['Notes'], isNonTabular: true };
+    const out = await run('tell me about my sheet', ctx, [], []);
+
+    const describe = toolCalls.find(t => t.name === 'describe_sheet');
+    expect(describe).toBeTruthy();
+    if (describe) expect(describe.args.mode).toBe('text_summary');
+    expect(out.response).toMatch(/contains notes.*fuel.*clients/i);
+  });
+
+  it('reports 404 clearly with quick replies', async () => {
+    jest.resetModules();
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockRejectedValue(new Error('404 Not Found'));
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockRejectedValue(new Error('404 Not Found'));
+    setFetchMock(async () => ({ ok: false, status: 404, json: async () => ({ success: false, error: 'HTTP 404', message: 'Sheet not found' }), text: async () => 'not found' }));
+
+    jest.doMock('../lib/chat/planner', () => ({ generatePlan: async () => ({ intent: 'other', tools: [], toolChain: [] }) }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'MissingTab', sheetNames: ['MissingTab'] };
+    const out = await run('show overview', ctx, [], []);
+
+    expect(out.response).toMatch(/not found/i);
+    expect(Array.isArray(out.quickReplies)).toBe(true);
+    const qr = (out.quickReplies as string[]).join(' | ');
+    expect(qr).toMatch(/Specify sheet name/i);
+    expect(qr).toMatch(/Upload file/i);
+  });
+});
+
+
