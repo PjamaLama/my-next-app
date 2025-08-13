@@ -177,65 +177,28 @@ export async function processMessage(
       }
     }
 
-    // Helper to hydrate sheet data early and prepare summary for planner (supports legacy and proactive signatures)
-    const hydrateSheetData = async (...args: any[]): Promise<{ headers?: string[]; rowCount?: number; summary?: string } | void> => {
+    // Helper to hydrate sheet data early and prepare summary for planner (robust range fallback)
+    const hydrateSheetData = async (ds: DataSource, ctxAny: any): Promise<void> => {
       try {
-      const ctxAny = context as any;
-        // Signature A: (dataSource, context)
-        if (args.length >= 2 && typeof args[1] === 'object' && args[1] && !Array.isArray(args[1])) {
-          const ds: DataSource = args[0] as any;
-          // TTL caching (10 minutes) to reuse hydration across sessions
-          const now = Date.now();
-          const lastAt = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
-          const fresh = now - lastAt < 10 * 60 * 1000;
-          const headers = fresh && Array.isArray(ctxAny.sheetHeaders) && ctxAny.sheetHeaders.length > 0
-            ? (ctxAny.sheetHeaders as string[])
-            : await ds.getHeaders();
-          const rows = fresh && ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0
-            ? (ctxAny.sheetData[(ctxAny.sheetName || 'Sheet1')] || []).slice(1)
-            : await ds.getSampleRows(100);
-          const name = (ctxAny.sheetName && String(ctxAny.sheetName)) || 'Sheet1';
-          const map: Record<string, string[][]> = {};
-          map[name] = [headers || [], ...rows];
-          ctxAny.sheetData = map;
-          ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
-          ctxAny._sheetHydratedAt = Date.now();
-          ctxAny._earlySheetSummary = `Columns: ${(headers || []).join(', ')} · Rows: ${Math.max(0, rows.length)}`;
-          return;
+        const headers = await ds.getHeaders();
+        let rows = await (ds as any).getSampleRows(50);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          rows = await (ds as any).getSampleRows(50, 'A1:Z100');
+          ctxAny.hydrationNote = 'No data in A2:Z50; tried wider range';
         }
-        // Signature B: (dataSource, sheetName, sampleRows)
-        const ds: DataSource = args[0] as any;
-        const sheetName: string = String(args[1] || 'Sheet1');
-        const sampleRows: number = Number(args[2] ?? 50);
-        const now = Date.now();
-        const lastAt = typeof ctxAny._sheetHydratedAt === 'number' ? ctxAny._sheetHydratedAt : 0;
-        const fresh = now - lastAt < 10 * 60 * 1000;
-        const headers = fresh && Array.isArray(ctxAny.sheetHeaders) && ctxAny.sheetHeaders.length > 0
-          ? (ctxAny.sheetHeaders as string[])
-          : await ds.getHeaders();
-        const rows = fresh && ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0
-          ? (ctxAny.sheetData[sheetName] || []).slice(1)
-          : await ds.getSampleRows(Math.max(100, sampleRows));
-      const map: Record<string, string[][]> = {};
-      map[sheetName] = [headers || [], ...rows];
-      ctxAny.sheetData = map;
-      ctxAny._sheetHydratedAt = Date.now();
-      if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
+        const name = (ctxAny.sheetName && String(ctxAny.sheetName)) || 'Sheet1';
+        const map: Record<string, string[][]> = {};
+        map[name] = [headers || [], ...(rows || [])];
+        ctxAny.sheetData = map;
         ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
-      }
-      const rowCount = Math.max(0, rows.length);
-      const summary = `Columns: ${(headers || []).join(', ')} · Rows: ${rowCount}`;
-      ctxAny._earlySheetSummary = summary;
-      return { headers, rowCount, summary };
+        ctxAny._sheetHydratedAt = Date.now();
+        ctxAny._earlySheetSummary = `Columns: ${(headers || []).join(', ')} · Rows: ${Math.max(0, (rows || []).length)}`;
       } catch (e: any) {
         try {
-          const ctxAny = context as any;
-          const name = String(ctxAny.sheetName || '');
-          let errMsg = `Failed to load sheet '${name}': ${e?.message || String(e)}`;
-          if (typeof e?.message === 'string' && /404/.test(e.message)) errMsg += ' (sheet not found)';
+          const name = String((ctxAny && ctxAny.sheetName) || '');
+          const errMsg = `Failed to load sheet '${name}': ${e?.message || String(e)}`;
           ctxAny.error = errMsg;
           ctxAny.sheetData = {};
-          // Queue helpful quick actions for the UI and replies
           try {
             ctxAny._uiActions = ctxAny._uiActions || [];
             ctxAny._uiActions.push({ text: 'Check sheet name', action: 'clarify_sheet' }, { text: 'Retry', action: 'retry_hydration' });

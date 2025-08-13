@@ -4,7 +4,7 @@ export type QueryInput =
 
 export abstract class DataSource {
   abstract getHeaders(): Promise<string[]>;
-  abstract getSampleRows(n: number): Promise<string[][]>;
+  abstract getSampleRows(n: number, range?: string): Promise<string[][]>;
   abstract query(input: QueryInput): Promise<{ headers: string[]; rows: string[][] }>;
   abstract update(data: { sheetName?: string; updates: Array<{ cell: string; value: string }> }): Promise<{ success: boolean; updated?: number }>;
   // Standardized error handling across data sources
@@ -57,13 +57,12 @@ export class SheetDataSource extends DataSource {
     return [];
   }
 
-  async getSampleRows(n: number): Promise<string[][]> {
-    // Strategy: fetch first 50 rows + up to 50 random rows if total > 100
-    const fetchRange = async (range: string): Promise<string[][]> => {
+  async getSampleRows(n: number, range?: string): Promise<string[][]> {
+    const fetchRange = async (r: string): Promise<string[][]> => {
       const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range }) } },
+          toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: r }) } },
           context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
         })
       });
@@ -77,44 +76,22 @@ export class SheetDataSource extends DataSource {
     };
 
     try {
-      const top = await fetchRange('A2:Z51');
-      // Attempt to determine total rows quickly by fetching a far range end
-      let totalRows = top.length + 1; // approximate
-      try {
-        const tail = await fetchRange('A1:Z20001');
-        totalRows = Array.isArray(tail) && tail.length > 0 ? tail.length : totalRows;
-      } catch {}
-      if (totalRows <= 100) {
-        return top.slice(0, Math.min(n, top.length));
+      const primaryRange = range || `A2:Z${n + 1}`;
+      let rows = await fetchRange(primaryRange);
+      if (!Array.isArray(rows) || rows.length === 0) {
+        try {
+          rows = await fetchRange('A1:Z1000');
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('[SheetDataSource] full sheet scan failed', err);
+          rows = [];
+        }
       }
-      // Random sample indices between 52 and totalRows (1-based sheet rows, excluding header)
-      const need = Math.max(0, Math.min(50, n - top.length));
-      const picks = new Set<number>();
-      while (picks.size < need) {
-        const idx = 2 + Math.floor(Math.random() * Math.max(1, totalRows - 1));
-        if (idx > 51) picks.add(idx);
-      }
-      // Build batched ranges in chunks of ~25
-      const ranges: string[] = Array.from(picks).map(i => `A${i}:Z${i}`);
-      const chunks: string[][][] = [];
-      for (let i = 0; i < ranges.length; i += 25) {
-        const group = ranges.slice(i, i + 25);
-        const minRow = Math.min(...group.map(r => parseInt(r.match(/A(\d+):/i)![1], 10)));
-        const maxRow = Math.max(...group.map(r => parseInt(r.match(/:(?:Z)(\d+)/i)![1], 10)));
-        const part = await fetchRange(`A${minRow}:Z${maxRow}`);
-        chunks.push(part);
-      }
-      const randoms = chunks.flat();
-      return [...top, ...randoms].slice(0, n);
+      return Array.isArray(rows) ? rows.slice(0, n) : [];
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[SheetDataSource] getSampleRows sampling fallback', e);
-      // Fallback to contiguous window if sampling fails
-      try {
-        return await fetchRange(`A2:Z${Math.max(2 + n, 50)}`);
-      } catch {
-        return [];
-      }
+      console.error('[SheetDataSource] getSampleRows failed', e);
+      return [];
     }
   }
 
@@ -214,7 +191,7 @@ export class FileDataSource extends DataSource {
     return this.first?.headers || [];
   }
 
-  async getSampleRows(n: number): Promise<string[][]> {
+  async getSampleRows(n: number, _range?: string): Promise<string[][]> {
     const rows = this.first?.rows || [];
     return rows.slice(0, n);
   }

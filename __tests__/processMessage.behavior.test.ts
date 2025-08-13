@@ -280,11 +280,130 @@ describe('processMessage transcripts - proactive summaries and updates', () => {
     const { processMessage: run } = require('../lib/chat/processMessage');
     const ctx: any = { spreadsheetId: 'sheet-1', conversationHistory: [{ role: 'user', content: 'track fuel weekly totals' }] };
     const out = await run('overview please', ctx, [], []);
-    expect(out.response).toMatch(/tried accessing your sheet|haven't loaded your sheet/i);
+    expect(out.response).toMatch(/tried accessing your sheet|haven't loaded your sheet|couldn['’]t load your sheet data|Sheet access failed/i);
     expect(out.response.toLowerCase()).toMatch(/fuel|weekly/);
     const qr = (out.quickReplies as string[]).join(' | ');
     expect(qr).toMatch(/Try accessing sheet again/);
     expect(qr).toMatch(/Specify sheet name/);
+  });
+});
+
+describe('processMessage planner/tool behavior - targeted scenarios', () => {
+  const setFetchMock = (impl: any) => { /* @ts-ignore */ global.fetch = jest.fn(impl); };
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  it('handles "tell me about my data" via describe_sheet with provided context', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const toolCalls: string[] = [];
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        toolCalls.push(name);
+        if (name === 'describe_sheet') {
+          return { success: true, result: 'Your sheet tracks fuel data with columns Date, Driver, Amount.' } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      },
+    }));
+
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async (_msg: string, _ctx: any) => ({ intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'summary' })
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'], sheetHeaders: ['Date','Driver','Amount'] };
+    const out = await run('tell me about my data', ctx, [], []);
+
+    expect(toolCalls).toContain('describe_sheet');
+    expect(out.response).toMatch(/tracks fuel data/i);
+    expect(out.response).toMatch(/Date,\s*Driver/i);
+  });
+
+  it('answers "who is the driver" by calling get_column_stats on Driver and listing unique values', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+    const toolCalls: string[] = [];
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        toolCalls.push(name);
+        if (name === 'get_column_stats') {
+          return { success: true, result: 'Unique values in Driver: Alice, Bob' } as any;
+        }
+        if (name === 'get_sheet_data') return { success: true, data: [['Date','Driver','Amount'], ['2024-01-01','Alice','10']] } as any;
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async (_msg: string, ctx: any) => ({ intent: 'get_data', tools: [{ name: 'get_column_stats', args: { column: 'Driver' } }], toolChain: [], clarifyQuestion: null, reasoning: 'column lookup' })
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'], sheetHeaders: ['Date','Driver','Amount'] };
+    const out = await run('who is the driver', ctx, [], []);
+
+    expect(toolCalls).toContain('get_column_stats');
+    expect(out.response).toMatch(/Unique values.*Alice.*Bob/i);
+  });
+
+  it('reports hydration 404 with actionable quick replies for sheet "Logbook"', async () => {
+    jest.resetModules();
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockRejectedValue(new Error('404 Not Found'));
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockRejectedValue(new Error('404 Not Found'));
+    setFetchMock(async () => ({ ok: false, status: 404, json: async () => ({}), text: async () => 'not found' }));
+
+    jest.doMock('../lib/chat/planner', () => ({ generatePlan: async () => ({ intent: 'other', tools: [], toolChain: [] }) }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Logbook', sheetNames: ['Logbook'] };
+    const out = await run('show data', ctx, [], []);
+    expect(typeof out.response).toBe('string');
+    expect(out.response).toMatch(/couldn['’]t (access your sheet|load your sheet data)|Failed to load sheet/i);
+    expect(out.response).toMatch(/Logbook/i);
+    expect(Array.isArray(out.quickReplies)).toBe(true);
+    const qr = (out.quickReplies as string[]).join(' | ');
+    expect(qr).toMatch(/Upload file|Specify sheet|Try accessing sheet again/i);
+  });
+
+  it('plans update chain for file upload with matching columns', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+    const toolCalls: string[] = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [],
+        toolChain: [
+          { toolName: 'get_sheet_data', params: {} },
+          { toolName: 'extract_data_from_files', params: {}, dependsOn: [0] },
+          { toolName: 'apply_structured_rows', params: {}, dependsOn: [0,1] },
+        ],
+        clarifyQuestion: null,
+        reasoning: 'update with files'
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        toolCalls.push(name);
+        if (name === 'get_sheet_data') return { success: true, data: [['Date','Fuel','Amount']] } as any;
+        if (name === 'extract_data_from_files') return { success: true, result: 'extracted ok', analyses: [{ index: 1, extractedData: { result: { extracted_rows: [{ Date: '2024-02-01', Fuel: 'Diesel', Amount: '12' }] } } }] } as any;
+        if (name === 'apply_structured_rows') return { success: true, result: 'ingestion ok' } as any;
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'], sheetHeaders: ['Date','Fuel','Amount'] };
+    const files = [{ name: 'file.csv', mimeType: 'text/csv', data: '...' }];
+    await run('add fuel data', ctx, [], files as any);
+    const order = toolCalls.join('>');
+    expect(/get_sheet_data>extract_data_from_files>apply_structured_rows/.test(order)).toBe(true);
   });
 });
 
