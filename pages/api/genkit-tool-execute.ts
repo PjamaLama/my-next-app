@@ -1624,7 +1624,7 @@ function formatAnalysesAsMarkdown(analyses: Array<{ index: number; type: string;
 
 async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
-    const { transcript, preview, forceCommit = false, minConfidence, minRowConfidence, approvedRows, approveAll } = args as any;
+    const { transcript, text, append, preview, forceCommit = false, minConfidence, minRowConfidence, approvedRows, approveAll } = args as any;
     const { spreadsheetId } = context;
     // Resolve sheet selection with sensible fallbacks
     const providedList = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
@@ -1636,7 +1636,10 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         ? fallbackSingle
         : (allSheetNames.length > 0 ? [allSheetNames[0]] : []));
 
-    if (!transcript) {
+    const effectiveTranscript = typeof transcript === 'string' && transcript.trim() ? transcript : (typeof text === 'string' ? text : '');
+    const wantsAppendText = append === true && (context as any)?.isNonTabular === true;
+
+    if (!effectiveTranscript) {
       return res.status(400).json({
         success: false,
         error: 'Transcript is required for sheet updates'
@@ -1700,8 +1703,38 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         }
       } catch {}
 
+      // For non-tabular sheets with append=true, append the text as a new line in the last row's next cell
+      if (wantsAppendText) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+          // Fetch current data to find last row length
+          const resp = await fetch(`${baseUrl}/api/get-sheet-data`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetName }) });
+          let nextRow = 2;
+          if (resp.ok) {
+            const json = await resp.json();
+            const data = (json?.data as string[][]) || [];
+            nextRow = Math.max(2, data.length + 1);
+          }
+          const { ensureSheetCapacity, escapeSheetName } = await import('@/lib/sheetUtils');
+          // Append into column A as a new row (text only)
+          await ensureSheetCapacity(spreadsheetId, sheetName, nextRow, 'A');
+          const sheets = await getGoogleSheetsClient();
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${escapeSheetName(sheetName)}!A${nextRow}`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: { values: [[effectiveTranscript]] }
+          });
+          totalExecuted += 1;
+          flowPreviews[sheetName] = [{ row: nextRow, updates: { A: effectiveTranscript } }];
+          continue;
+        } catch (e) {
+          console.warn('Non-tabular append failed, falling back to flow:', e);
+        }
+      }
+
       const result = await updateSheetFlow({
-        transcript,
+        transcript: effectiveTranscript,
         sheetId: spreadsheetId,
         sheetName: sheetName,
         commit: wantsManualApproval ? false : !preview,
@@ -2424,7 +2457,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { spreadsheetId, sheetNames, sheetName } = context as any;
-    const { rows, dryRun } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean };
+    const { rows, dryRun, startRow } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number };
     if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
       return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
     }
@@ -2432,7 +2465,7 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
       return res.status(400).json({ success: false, error: 'No structured rows provided' });
     }
 
-    // Auto-match incoming file columns to target sheet headers
+    // Auto-match incoming file columns to target sheet headers (fuzzy synonyms like 'Sales' -> 'Amount')
     try {
       const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
       const headers = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
@@ -2441,7 +2474,7 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
         const firstRow = rows[0] || {};
         const incomingKeys = Object.keys(firstRow);
         if (incomingKeys.length > 0) {
-          const { suggested, isPerfect } = matchColumns(incomingKeys, headers);
+          const { suggested, isPerfect } = matchColumnsWithSynonyms(incomingKeys, headers);
           if (!isPerfect) {
             const preview = buildPreviewTable(rows, suggested);
             return res.status(200).json({
@@ -2459,7 +2492,7 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     }
 
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows, dryRun: !!dryRun })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows, dryRun: !!dryRun, startRow })
     });
     if (!ingestResp.ok) {
       const txt = await ingestResp.text();
@@ -2496,6 +2529,47 @@ function matchColumns(fileColumns: string[], sheetHeaders: string[]): { suggeste
       // Domain-specific gentle boosts
       if (/fuel/.test(fNorm) && /fuel/.test(sh.norm)) score += 0.2;
       if (/driver/.test(fNorm) && /driver/.test(sh.norm)) score += 0.2;
+      if (score > best.score) best = { sheet: sh.raw, score };
+    }
+    if (best.score < 0.85) allPerfect = false;
+    suggested.push({ file: f, sheet: best.sheet, score: Math.min(1, best.score) });
+  }
+  return { suggested, isPerfect: allPerfect };
+}
+
+// Enhanced matcher with simple synonyms (e.g., 'Sales' -> 'Amount')
+function matchColumnsWithSynonyms(fileColumns: string[], sheetHeaders: string[]): { suggested: Array<{ file: string; sheet: string | null; score: number }>; isPerfect: boolean } {
+  const synonyms: Record<string, string[]> = {
+    amount: ['sales', 'revenue', 'total', 'amt', 'price', 'value'],
+    customer: ['client', 'buyer'],
+    vendor: ['seller', 'supplier'],
+  };
+  const expand = (norm: string): string[] => {
+    const base = [norm];
+    for (const [target, alts] of Object.entries(synonyms)) {
+      if (norm === target || alts.includes(norm)) base.push(target);
+    }
+    return Array.from(new Set(base));
+  };
+  const normSheet = sheetHeaders.map(h => ({ raw: h, norms: expand(normalizeHeader(h)) }));
+  const suggested: Array<{ file: string; sheet: string | null; score: number }>= [];
+  let allPerfect = true;
+  for (const f of fileColumns) {
+    const fNorms = expand(normalizeHeader(f));
+    let best: { sheet: string | null; score: number } = { sheet: null, score: 0 };
+    for (const sh of normSheet) {
+      let score = 0;
+      for (const fNorm of fNorms) {
+        if (sh.norms.includes(fNorm)) score = Math.max(score, 1);
+        else if (sh.norms.some(n => n.includes(fNorm) || fNorm.includes(n))) score = Math.max(score, 0.75);
+        else {
+          const a = new Set(fNorm.split(' ').filter(Boolean));
+          const b = new Set(sh.norms.flatMap(n => n.split(' ').filter(Boolean)));
+          const inter = [...a].filter(x => b.has(x)).length;
+          const union = new Set([...a, ...b]).size || 1;
+          score = Math.max(score, inter / union);
+        }
+      }
       if (score > best.score) best = { sheet: sh.raw, score };
     }
     if (best.score < 0.85) allPerfect = false;

@@ -183,29 +183,27 @@ export async function processMessage(
         const headers = await ds.getHeaders();
         let rows = await (ds as any).getSampleRows(50);
         if (!Array.isArray(rows) || rows.length === 0) {
-          rows = await (ds as any).getSampleRows(50, 'A1:Z100');
-          ctxAny.hydrationNote = 'No data in A2:Z50; tried wider range';
+          rows = await (ds as any).getSampleRows(100, 'A1:Z100');
+          ctxAny.hydrationNote = 'No data in standard range; scanned A1:Z100';
         }
+        ctxAny.sheetData = ctxAny.sheetData || {};
         const name = (ctxAny.sheetName && String(ctxAny.sheetName)) || 'Sheet1';
-        const map: Record<string, string[][]> = {};
-        map[name] = [headers || [], ...(rows || [])];
-        ctxAny.sheetData = map;
+        if ((Array.isArray(rows) && rows.length > 0) || (Array.isArray(headers) && headers.length > 0)) {
+          ctxAny.sheetData[name] = [headers || [], ...(rows || [])];
+        } else {
+          ctxAny.isNonTabular = true;
+        }
         ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
         ctxAny._sheetHydratedAt = Date.now();
-        ctxAny._earlySheetSummary = `Columns: ${(headers || []).join(', ')} · Rows: ${Math.max(0, (rows || []).length)}`;
       } catch (e: any) {
-        try {
-          const name = String((ctxAny && ctxAny.sheetName) || '');
-          const errMsg = `Failed to load sheet '${name}': ${e?.message || String(e)}`;
-          ctxAny.error = errMsg;
-          ctxAny.sheetData = {};
-          try {
-            ctxAny._uiActions = ctxAny._uiActions || [];
-            ctxAny._uiActions.push({ text: 'Check sheet name', action: 'clarify_sheet' }, { text: 'Retry', action: 'retry_hydration' });
-            ctxAny._pendingQuickActions = Array.isArray(ctxAny._pendingQuickActions) ? ctxAny._pendingQuickActions : [];
-            ctxAny._pendingQuickActions.push('Check sheet name', 'Retry');
-          } catch {}
-        } catch {}
+        const name = String((ctxAny && ctxAny.sheetName) || '');
+        ctxAny.error = `Failed to load '${name}': ${e?.message || String(e)}`;
+        if (typeof e?.message === 'string' && e.message.includes('404')) ctxAny.error += ' (tab not found)';
+        ctxAny.sheetData = {};
+        ctxAny.quickReplies = [
+          { text: 'Check tab name', action: 'clarify_sheet' },
+          { text: 'Retry', action: 'retry_hydration' }
+        ];
       }
     };
 

@@ -120,42 +120,38 @@ export class SheetDataSource extends DataSource {
 
   async getSampleRows(n: number, range?: string): Promise<string[][]> {
     const fetchRange = async (r: string): Promise<string[][]> => {
-      const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: r }) } },
-          context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, isNonTabular: Boolean(this.contextRef?.isNonTabular) }
-        })
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const table = json?.table;
-      if (Array.isArray(table?.rows)) return table.rows as string[][];
-      const data = json?.data;
-      if (Array.isArray(data) && data.length > 1) return data.slice(1) as string[][];
-      return [];
+      try {
+        const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: r }) } },
+            context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, isNonTabular: Boolean(this.contextRef?.isNonTabular) }
+          })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const table = json?.table;
+        if (Array.isArray(table?.rows)) return table.rows as string[][];
+        const data = json?.data;
+        if (Array.isArray(data) && data.length > 1) return data.slice(1) as string[][];
+        return [];
+      } catch {
+        return [];
+      }
     };
 
     try {
       const primaryRange = range || (this.contextRef?.isNonTabular ? 'A1:Z100' : `A2:Z${n + 1}`);
       let rows = await fetchRange(primaryRange);
       if (!Array.isArray(rows) || rows.length === 0) {
-        try {
-          rows = await fetchRange('A1:Z1000');
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error('[SheetDataSource] full sheet scan failed', err);
-          rows = [];
-        }
+        // Try a wider scan when first attempt yields nothing
+        rows = await fetchRange('A1:Z1000');
       }
       if (this.contextRef?.isNonTabular) {
-        // For non-tabular, return as-is (treat as lines for summarization elsewhere)
         return Array.isArray(rows) ? rows.slice(0, Math.min(100, rows.length)) : [];
       }
       return Array.isArray(rows) ? rows.slice(0, n) : [];
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[SheetDataSource] getSampleRows failed', e);
+    } catch {
       return [];
     }
   }
