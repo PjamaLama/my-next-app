@@ -2517,7 +2517,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
   }
 }
 
-// Apply structured rows through the centralized ingestion endpoint
+  // Apply structured rows through the centralized ingestion endpoint
 async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { spreadsheetId, sheetNames, sheetName } = context as any;
@@ -2528,51 +2528,46 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ success: false, error: 'No structured rows provided' });
     }
-
-    // Auto-match incoming file columns to target sheet headers (fuzzy synonyms like 'Sales' -> 'Amount')
+    // Auto-match incoming row keys to target sheet headers using case-insensitive exact or keyword contains
+    let matchedAtLeastThreshold = false;
     try {
       const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
       const headers = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
       if (activeSheet && headers.length > 0) {
-        // Detect key set from first row
         const firstRow = rows[0] || {};
         const incomingKeys = Object.keys(firstRow);
         if (incomingKeys.length > 0) {
-          const { suggested, isPerfect } = matchColumnsWithSynonyms(incomingKeys, headers);
-          // If not perfect, still return a suggested preview for client confirmation
-          if (!isPerfect) {
-            const preview = buildPreviewTable(rows, suggested);
+          const { mapping, matchRatio } = matchColumns(incomingKeys, headers);
+          console.log('Mapped fields to headers: ', mapping);
+          matchedAtLeastThreshold = matchRatio >= 0.7;
+          if (!matchedAtLeastThreshold) {
+            // Build preview table with sheet headers and mapped values
+            const preview = buildHeaderPreviewTable(rows, mapping);
             return res.status(200).json({
               success: true,
-              result: 'Columns don’t fully match. Suggested mapping provided. Confirm?',
-              details: { previewSuggestedMapping: suggested, preview },
+              result: 'Suggested update (using sheet columns): see preview. Confirm?',
+              details: { mapping, preview },
               preview: true,
               previewData: preview
             });
           }
-          // Perfect or good match: rewrite rows to header-aligned objects so ingestion aligns cleanly
-          try {
-            const mapping: Record<string, string> = {};
-            suggested.forEach(m => { if (m.sheet) mapping[m.file] = m.sheet; });
-            const remapped = rows.map((r) => {
-              const out: Record<string, unknown> = {};
-              for (const [k, v] of Object.entries(r || {})) {
-                const target = mapping[k] || k;
-                out[target] = v;
-              }
-              return out;
-            });
-            // Overwrite rows for ingestion
-            (args as any).rows = remapped;
-          } catch {}
+          // Remap rows to use exact sheet header names; drop unmapped keys
+          const remapped = rows.map((r) => {
+            const out: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(r || {})) {
+              const target = mapping[k];
+              if (target) out[target] = v;
+            }
+            return out;
+          });
+          (args as any).rows = remapped;
         }
       }
     } catch (e) {
-      // Continue without blocking if matching fails
       console.warn('apply_structured_rows matching warning:', e);
     }
 
-    const doCommit = commit === undefined ? true : Boolean(commit);
+    let doCommit = commit === undefined ? true : Boolean(commit);
     // Normalize Date field using context.currentDate when missing
     const currentDate = typeof (context as any)?.currentDate === 'string' && (context as any).currentDate ? String((context as any).currentDate) : undefined;
     const normalizedRows = Array.isArray(rows) ? rows.map((r) => {
@@ -2580,6 +2575,8 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
       if (!hasDate && currentDate) return { Date: currentDate, ...(r || {}) } as Record<string, unknown>;
       return r as Record<string, unknown>;
     }) : rows;
+    // If we matched at least 70%, treat as commit regardless of provided commit flag; otherwise previews returned earlier
+    if (matchedAtLeastThreshold) doCommit = true;
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows: normalizedRows, dryRun: doCommit ? false : true, startRow })
     });
@@ -2591,6 +2588,10 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     if (!doCommit) {
       return res.status(200).json({ success: true, result: `Preview only: ${Number(result.inserts || 0) + Number(result.updates || 0)} row(s) would be affected.`, details: result, preview: true });
     }
+    try {
+      const remappedRows = (args as any)?.rows || normalizedRows;
+      console.log(`Committed to ${String((args as any)?.sheetName || (context as any)?.sheetName || '')}: `, remappedRows);
+    } catch {}
     return res.status(200).json({ success: true, result: `Ingestion ${result.success ? 'succeeded' : 'failed'}. Inserts=${result.inserts}, Updates=${result.updates}.`, details: result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);
@@ -2687,6 +2688,78 @@ function buildPreviewTable(rows: Array<Record<string, unknown>>, suggested: Arra
     preview.push({ row: i + 2, updates });
   }
   return { headers, rows: preview.flatMap(p => Object.entries(p.updates).map(([k, v]) => [String(p.row), k, String(v ?? '')])) };
+}
+
+// Simple, deterministic matcher: case-insensitive exact or keyword contains with domain synonyms
+function matchColumns(incomingKeys: string[], headers: string[]): { mapping: Record<string, string>, matchRatio: number } {
+  const lowerHeaders = headers.map(h => String(h || ''));
+  const headerLowerToRaw: Record<string, string> = {};
+  lowerHeaders.forEach(h => { headerLowerToRaw[h.toLowerCase()] = h; });
+
+  const canonicalFromHeader = (h: string): string | null => {
+    const l = h.toLowerCase();
+    if (/(^|\b)vendor(s)?(\b|$)/.test(l)) return 'vendor';
+    if (/(^|\b)(town|city|location)(s)?(\b|$)/.test(l)) return 'town';
+    if (/(^|\b)(amount|cost|price|rand|rands|value)(s)?(\b|$)/.test(l)) return 'amount';
+    if (/(^|\b)(note|notes|report|reports)(\b|$)/.test(l)) return 'notes';
+    if (/(^|\b)(date|day)(\b|$)/.test(l)) return 'date';
+    return null;
+  };
+  const canonicalFromKey = (k: string): string | null => {
+    const l = k.toLowerCase();
+    if (/(client|customer|vendor|supplier|seller)/.test(l)) return 'vendor';
+    if (/(town|city|location|hogwarts)/.test(l)) return 'town';
+    if (/(sold|amount|rand|rands|cost|price|value)/.test(l)) return 'amount';
+    if (/(spoke|report|reports|note|notes)/.test(l)) return 'notes';
+    if (/(date|today|yesterday|day)/.test(l)) return 'date';
+    return null;
+  };
+
+  const headerCanon: Array<{ raw: string; lower: string; canon: string | null }> = lowerHeaders.map(h => ({ raw: h, lower: h.toLowerCase(), canon: canonicalFromHeader(h) }));
+
+  const mapping: Record<string, string> = {};
+  let matched = 0;
+  for (const key of incomingKeys) {
+    const kl = String(key || '').toLowerCase();
+    // Exact case-insensitive match
+    const exact = headerLowerToRaw[kl];
+    if (exact) {
+      mapping[key] = exact;
+      matched++;
+      continue;
+    }
+    // Canonical keyword match
+    const kCanon = canonicalFromKey(key);
+    if (kCanon) {
+      const target = headerCanon.find(h => h.canon === kCanon)?.raw;
+      if (target) {
+        mapping[key] = target;
+        matched++;
+        continue;
+      }
+    }
+    // Contains match either direction
+    const contains = headerCanon.find(h => h.lower.includes(kl) || kl.includes(h.lower))?.raw;
+    if (contains) {
+      mapping[key] = contains;
+      matched++;
+      continue;
+    }
+  }
+  const matchRatio = incomingKeys.length > 0 ? matched / incomingKeys.length : 0;
+  return { mapping, matchRatio };
+}
+
+// Build preview with sheet headers as columns and mapped values per row
+function buildHeaderPreviewTable(rows: Array<Record<string, unknown>>, mapping: Record<string, string>) {
+  const headers = Array.from(new Set(Object.values(mapping)));
+  const tableRows = rows.map(r => headers.map(h => {
+    // find source key that mapped to this header
+    const entry = Object.entries(mapping).find(([, target]) => target === h);
+    const sourceKey = entry ? entry[0] : undefined;
+    return sourceKey ? (r as any)[sourceKey] ?? '' : '';
+  }));
+  return { headers, rows: tableRows };
 }
 
 function formatExtractionsAsMarkdown(extractions: Array<{ index: number; type: string; success: boolean; error?: string; extractedText?: string; textLength?: number }>): string {
