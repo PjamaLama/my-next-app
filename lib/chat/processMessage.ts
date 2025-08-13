@@ -724,7 +724,33 @@ export async function processMessage(
       } catch {}
       toolResults.push(result);
       // eslint-disable-next-line no-console
-      try { console.log('[Planner] tool result', { name: toolCall.function.name, success: result?.success }); } catch {}
+      try {
+        console.log('[Planner] tool result', { name: toolCall.function.name, success: result?.success });
+        // Additional visibility for sheet updates
+        console.log(`Tool result for ${(context as any)?.sheetName || ''}: `, result);
+      } catch {}
+      // Handle explicit preview payloads from backend (commit not yet performed)
+      try {
+        if ((result as any)?.preview) {
+          response = 'Proposed update (using sheet columns):';
+          const ctxAny = context as any;
+          ctxAny.previewActions = (result as any).preview;
+          // Provide structured quick replies for UI and simple text fallbacks
+          ctxAny.quickReplies = [
+            { text: 'Commit', action: 'confirm_update' },
+            { text: 'Edit', action: 'edit_update' }
+          ];
+          const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+          quickReplies = Array.from(new Set([...baseQR, 'Commit', 'Edit'])).slice(0, 5);
+          // Stash pending call with commit=true so confirmation can re-run it
+          try {
+            const args = JSON.parse(toolCall.function.arguments || '{}');
+            (context as any)._lastUpdateToolCall = { name: toolCall.function.name, args: { ...args, commit: true } };
+          } catch {}
+          // Continue to next toolCall without marking error
+          continue;
+        }
+      } catch {}
       if (result.success) {
         const executedToolName = toolCall.function.name;
         if (executedToolName === 'extract_text_only') {
@@ -818,6 +844,24 @@ export async function processMessage(
             const isPreview = (result as any)?.preview === true || /preview/i.test(String(result?.result || ''));
             if (!isPreview) {
               didUpdateSheet = true;
+              // Post-commit: refresh hydration and craft deterministic success message
+              try {
+                const ctxAny = context as any;
+                const selectedName = (typeof ctxAny.sheetName === 'string' && ctxAny.sheetName.trim()) ? ctxAny.sheetName : (Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames[0]) || '';
+                if (selectedName && ctxAny.spreadsheetId) {
+                  const scopedBase = (typeof window === 'undefined' && ctxAny._baseUrl) ? String(ctxAny._baseUrl) : undefined;
+                  const ds = new SheetDataSource(ctxAny.spreadsheetId as any, selectedName, scopedBase, String((ctxAny.userId || ctxAny.sessionId || '') || ''), ctxAny);
+                  await hydrateSheetData(ds, ctxAny);
+                  const tbl = (ctxAny.sheetData?.[selectedName] as string[][]) || [];
+                  const totalRowsNow = Array.isArray(tbl) && tbl.length > 1 ? tbl.length - 1 : 0;
+                  const updatedRows = (result as any)?.updatedRows;
+                  if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+                    const first = updatedRows[0] || {};
+                    const parts = Object.entries(first).map(([k, v]) => `${k}: ${v}`);
+                    response = `Updated sheet: Added row with [${parts.join(', ')}]. Total rows: ${totalRowsNow}.`;
+                  }
+                }
+              } catch {}
             }
             if (typeof result.result === 'string' && result.result.trim()) {
               enhancedResponse += `\n${result.result.trim()}`;
@@ -889,7 +933,26 @@ export async function processMessage(
               ? (result as any).details
               : JSON.stringify((result as any).details))
           : '';
-        enhancedResponse += `\nTool error: ${result.result}${detailsText ? `\nDetails: ${detailsText}` : ''}`;
+        // If backend provided structured preview in an error-like shape, prefer that flow
+        if ((result as any)?.preview) {
+          try {
+            const ctxAny = context as any;
+            response = 'Proposed update (using sheet columns):';
+            ctxAny.previewActions = (result as any).preview;
+            ctxAny.quickReplies = [
+              { text: 'Commit', action: 'confirm_update' },
+              { text: 'Edit', action: 'edit_update' }
+            ];
+            const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+            quickReplies = Array.from(new Set([...baseQR, 'Commit', 'Edit'])).slice(0, 5);
+            try {
+              const args = JSON.parse(toolCall.function.arguments || '{}');
+              (context as any)._lastUpdateToolCall = { name: toolCall.function.name, args: { ...args, commit: true } };
+            } catch {}
+          } catch {}
+        } else {
+          enhancedResponse += `\nTool error: ${result.result}${detailsText ? `\nDetails: ${detailsText}` : ''}`;
+        }
       }
     }
 

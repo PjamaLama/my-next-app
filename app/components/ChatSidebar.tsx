@@ -9,6 +9,7 @@ import { useSheet } from "../providers/SheetProvider";
 import { useFirebase } from "../providers/FirebaseProvider";
 import { useDialog } from "../providers/DialogProvider";
 import SpreadsheetManagerModal from "./SpreadsheetManagerModal";
+import EditRowModal from "./EditRowModal";
 dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
@@ -25,6 +26,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; spreadsheetId: string; title?: string }>>([]);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalPreview, setModalPreview] = useState<any>(null);
 
   // Service account UI moved into SpreadsheetManagerModal
 
@@ -49,6 +52,28 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   }, [user]);
 
   // Adding spreadsheet handled inside SpreadsheetManagerModal
+  const handleModalSubmit = async (rowData: Array<{ column: string; value: unknown }>) => {
+    try {
+      const rows = [{ ...rowData.reduce((acc, cur) => { acc[cur.column] = cur.value; return acc; }, {} as Record<string, unknown>) }];
+      const toolCall = {
+        function: {
+          name: 'apply_structured_rows',
+          arguments: JSON.stringify({ rows, commit: true })
+        }
+      } as const;
+      await fetch('/api/genkit-tool-execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: (useSheet() as any).selectedSheetNames } })
+      });
+    } catch {}
+    setModalOpen(false);
+  };
+
+  const openEditModal = (preview: any) => {
+    setModalPreview(preview);
+    setModalOpen(true);
+  };
 
   const removeSpreadsheetOption = async (id: string, spreadsheetId?: string) => {
     if (!user || !id) return;
@@ -348,6 +373,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         </div>
       </div>
     <SpreadsheetManagerModal open={managerOpen} onClose={() => setManagerOpen(false)} />
+      <EditRowModal isOpen={modalOpen} onClose={() => setModalOpen(false)} preview={modalPreview} onSubmit={handleModalSubmit} />
     </div>
   );
 };
