@@ -74,7 +74,9 @@ export async function executeToolCall(
 
     const response = await withRetries();
     if (!response.ok) {
-      const contentType = response.headers.get('content-type');
+      const contentType = (response as any)?.headers && typeof (response as any).headers.get === 'function'
+        ? (response as any).headers.get('content-type')
+        : null;
       let errorMessage = `Tool execution failed: ${response.status}`;
       let errorDetails: unknown = undefined;
       if (contentType && contentType.includes('application/json')) {

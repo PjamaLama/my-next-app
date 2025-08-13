@@ -873,7 +873,7 @@ export async function processMessage(
       }
     } catch {}
 
-    let quickReplies: any = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
+    let quickReplies: string[] = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
     try {
       const hdrs = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
       const add: string[] = [];
@@ -894,14 +894,11 @@ export async function processMessage(
       if (isEmptyData && hasCtxError && !wantsRawToolOutput) {
         response = 'No sheet data loaded yet. Please verify your sheet access or specify details.';
         enhancedResponse = '';
-        const fallbackActions = [
-          { text: 'Check sheet access', action: 'manual_input' },
-          { text: 'Specify sheet name', action: 'clarify_sheet' }
-        ];
-        if (Array.isArray(quickReplies)) {
-          quickReplies = [...quickReplies, ...fallbackActions];
-        } else {
-          quickReplies = fallbackActions;
+        const fallbackActions = ['Check sheet access', 'Specify sheet name'];
+        quickReplies = Array.isArray(quickReplies) ? [...quickReplies, ...fallbackActions] : fallbackActions;
+        const proactive = (context as any)?._proactiveSummary;
+        if (typeof proactive === 'string' && proactive.trim()) {
+          response = `${response}\n\n${proactive.trim()}`.trim();
         }
       }
     } catch {}
