@@ -171,10 +171,11 @@ export async function processMessage(
     // Intercept confirmation/cancellation for pending previewed updates
     try {
       const lower = String(message || '').toLowerCase();
-      const isConfirm = /(confirm\s+update|apply\s+changes|yes,\s*apply|go\s*ahead)/i.test(lower);
+      const isConfirm = /(confirm\s+update|apply\s+changes|yes,\s*apply|go\s*ahead|^apply$)/i.test(lower.trim());
+      const isEdit = /^(edit|adjust|modify)$/i.test(lower.trim());
       const isCancel = /^(cancel|cancel\s+update|no|nevermind|never\s+mind)$/i.test(lower.trim());
       const pending = (context as any)._lastUpdateToolCall as { name: string; args: any } | undefined;
-      if (pending && (isConfirm || isCancel)) {
+      if (pending && (isConfirm || isCancel || isEdit)) {
         if (isCancel) {
           try { (context as any)._lastUpdateToolCall = undefined; } catch {}
           return {
@@ -184,6 +185,16 @@ export async function processMessage(
             toolResults: [],
             context,
             quickReplies: ['Show current sheet data', 'Preview updates']
+          };
+        }
+        if (isEdit) {
+          return {
+            response: 'Okay. What would you like to change before applying?',
+            toolCalls: [],
+            pendingToolCalls: [],
+            toolResults: [],
+            context,
+            quickReplies: ['Change amount', 'Change client', 'Cancel']
           };
         }
         // Re-run the pending tool with commit=true
@@ -766,10 +777,10 @@ export async function processMessage(
                 }
               }
               if (rows.length > 0) {
-                dataTables.push({ title: 'Applied updates (preview)', headers, rows, summary: `Showing ${rows.length} cell update(s)` });
+                dataTables.push({ title: 'Proposed update (preview)', headers, rows, summary: `Showing ${rows.length} cell update(s)` });
                 // Add conversational confirmation prompts
-                postQuickActions.push('Confirm update');
-                postQuickActions.push('Adjust mapping');
+                postQuickActions.push('Apply');
+                postQuickActions.push('Edit');
               }
             }
             // Suggested mapping preview support
@@ -778,8 +789,8 @@ export async function processMessage(
               const headers = ['File Column', 'Suggested Sheet Column', 'Confidence'];
               const rows = suggested.slice(0, 30).map((m: any) => [String(m.file || ''), String(m.sheet || ''), String(m.score != null ? Math.round(Number(m.score) * 100) + '%' : '')]);
               dataTables.push({ title: 'Suggested column mapping', headers, rows });
-              postQuickActions.push('Confirm update');
-              postQuickActions.push('Adjust mapping');
+              postQuickActions.push('Apply');
+              postQuickActions.push('Edit');
             }
           } catch {}
         } else if (
@@ -841,11 +852,11 @@ export async function processMessage(
             (context as any)._lastUpdateToolCall = { name: executedToolName, args: pendingArgs };
             // Ensure quick replies include confirm/cancel and add prompt in response
             const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
-            quickReplies = Array.from(new Set([...baseQR, 'Confirm update', 'Cancel'])).slice(0, 5);
+            quickReplies = Array.from(new Set([...baseQR, 'Apply', 'Edit', 'Cancel'])).slice(0, 5);
             const hasPreviewTable = Array.isArray((result as any)?.details?.preview?.rows) && ((result as any)?.details?.preview?.rows.length > 0);
             if (!enhancedResponse || !/Confirm to apply\?/i.test(enhancedResponse)) {
               const suffix = hasPreviewTable ? 'Preview shown.' : 'Preview ready.';
-              enhancedResponse = `${(enhancedResponse || '').trim()}\n${suffix} Confirm to apply?`.trim();
+              enhancedResponse = `${(enhancedResponse || '').trim()}\n${suffix} Confirm?`.trim();
             }
           }
         } catch {}
@@ -1136,6 +1147,22 @@ export async function processMessage(
       }
     } catch {}
 
+    // If an update failed, surface a clear failure message and actionable quick replies
+    try {
+      // Mark failure when any update tool returned error
+      const hasUpdateError = (toolResults || []).some((r: any) => {
+        const name = String(r?.tool || r?.name || '').toLowerCase();
+        const isUpdate = name.includes('update_sheet') || name.includes('apply_structured_rows');
+        return isUpdate && r && r.success === false;
+      });
+      if (hasUpdateError || (context as any)?.error) {
+        const err = String((context as any)?.error || '').trim();
+        response = `Update failed: ${err || 'Unknown error'}. Try again?`;
+        const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+        quickReplies = Array.from(new Set([...baseQR, 'Retry', 'Cancel'])).slice(0, 5);
+      }
+    } catch {}
+
     // Normalize date formats across all tables before returning
     let normalizedTables = dataTables.map(t => ({
       ...t,
@@ -1183,10 +1210,41 @@ export async function processMessage(
     // If we successfully updated sheets, prefer a deterministic confirmation over a generative reply
     if (didUpdateSheet) {
       try {
-        const sheets = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
-        const suffix = sheets.length > 0 ? ` in ${sheets.join(', ')}` : '';
-        const summary = (enhancedResponse || '').trim();
-        response = summary || `Applied updates${suffix}.`;
+        // If preview was returned, pivot response to confirmation flow
+        const hadPreview = /preview/i.test(enhancedResponse || '') || (Array.isArray((toolResults || []).map(x => (x as any)?.preview)) && (toolResults as any[]).some(x => (x as any)?.preview));
+        if (hadPreview) {
+          const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+          quickReplies = Array.from(new Set([...baseQR, 'Apply', 'Edit'])).slice(0, 5);
+          response = 'Proposed update shown. Confirm?';
+        } else {
+          // Refresh hydration to compute latest row count and ground the success message
+          try {
+            const ctxAny = context as any;
+            const scopedBase = (typeof window === 'undefined' && context && (ctxAny)._baseUrl)
+              ? String((ctxAny)._baseUrl)
+              : undefined;
+            const sheetName = (ctxAny.sheetName && String(ctxAny.sheetName)) || (Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames[0]) || '';
+            if (sheetName) {
+              const ds = new SheetDataSource(context.spreadsheetId as any, sheetName, scopedBase, String((ctxAny.userId || ctxAny.sessionId || '') || ''), context as any);
+              const headers = await ds.getHeaders();
+              const rows = await ds.getSampleRows(800);
+              ctxAny.sheetData = ctxAny.sheetData || {};
+              ctxAny.sheetData[sheetName] = [headers || [], ...(rows || [])];
+              ctxAny._sheetHydratedAt = Date.now();
+            }
+          } catch {}
+          const sheets = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
+          const suffix = sheets.length > 0 ? ` in ${sheets.join(', ')}` : '';
+          const selectedName = (context as any).sheetName || sheets[0];
+          let totalRowsNow = 0;
+          try {
+            const tbl = (context as any).sheetData?.[selectedName] as string[][];
+            if (Array.isArray(tbl) && tbl.length > 1) totalRowsNow = tbl.length - 1;
+          } catch {}
+          const summary = (enhancedResponse || '').trim();
+          const appliedMsg = summary ? `Updated sheet${suffix}: ${summary}` : `Updated sheet${suffix}.`;
+          response = `${appliedMsg}${Number.isFinite(totalRowsNow) ? ` Total rows now: ${totalRowsNow}.` : ''}`.trim();
+        }
       } catch {
         response = (enhancedResponse || '').trim() || 'Applied updates.';
       }

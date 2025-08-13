@@ -69,11 +69,40 @@ export class SheetDataSource extends DataSource {
     const jsonTen = await withRetries('A1:Z100');
     const rows10: string[][] = (jsonTen?.table?.rows as string[][])
       || (Array.isArray(jsonTen?.data) ? (jsonTen.data as string[][]) : []);
-    const detected = this.detectHeaders(rows10 || []);
-    if (Array.isArray(detected) && detected.length > 0) {
-      try { if (this.contextRef) this.contextRef.sheetDataFormat = 'non-standard'; } catch {}
-      return detected.map(h => String(h ?? ''));
+
+    // Heuristic: identify candidate header rows that are mostly non-numeric and have high uniqueness
+    const candidates: Array<{ index: number; values: string[] }>= [];
+    const limit = Math.min(10, Array.isArray(rows10) ? rows10.length : 0);
+    const toStr = (v: unknown) => String(v ?? '').trim();
+    for (let i = 0; i < limit; i++) {
+      const rawVals = (rows10[i] || []).map(toStr);
+      const vals = rawVals.length > 0 ? rawVals : [];
+      if (vals.length === 0) continue;
+      const nonEmpty = vals.filter(v => v !== '');
+      const nonEmptyRatio = nonEmpty.length / Math.max(1, vals.length);
+      const nonNumericRatio = nonEmpty.filter(v => !/^[-+]?\d{1,3}(,\d{3})*(\.\d+)?$|^[-+]?\d*(\.\d+)$/.test(v)).length / Math.max(1, nonEmpty.length);
+      const uniqRatio = (new Set(nonEmpty)).size / Math.max(1, nonEmpty.length);
+      if (nonEmptyRatio >= 0.5 && nonNumericRatio >= 0.6 && uniqRatio >= 0.7) {
+        candidates.push({ index: i, values: vals });
+      }
     }
+
+    if (candidates.length > 0) {
+      const chosen = candidates[0].values;
+      try { if (this.contextRef) this.contextRef.sheetDataFormat = 'non-standard'; } catch {}
+      // Updated heuristics: if there are any data rows and >1 headers, assume tabular
+      try {
+        if (this.contextRef) {
+          const hasAnyRows = Array.isArray(rows10) && rows10.length > 1;
+          if (hasAnyRows && chosen.filter(v => v !== '').length > 1) this.contextRef.isNonTabular = false;
+          // Ambiguity: multiple header-like rows → default to tabular
+          if (candidates.length > 1) this.contextRef.isNonTabular = false;
+        }
+      } catch {}
+      return chosen.map(h => String(h ?? ''));
+    }
+
+    // No structured header-like rows found → treat as non-tabular
     try { if (this.contextRef) this.contextRef.isNonTabular = true; } catch {}
     return [];
   }
