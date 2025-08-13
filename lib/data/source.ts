@@ -12,7 +12,7 @@ export abstract class DataSource {
 }
 
 export class SheetDataSource extends DataSource {
-  constructor(private readonly spreadsheetId: string, private readonly sheetName: string, private readonly baseUrl?: string, private readonly sessionKey?: string) {
+  constructor(private readonly spreadsheetId: string, private readonly sheetName: string, private readonly baseUrl?: string, private readonly sessionKey?: string, private readonly contextRef?: any) {
     super();
   }
 
@@ -25,15 +25,15 @@ export class SheetDataSource extends DataSource {
   }
 
   async getHeaders(): Promise<string[]> {
-    const withRetries = async (): Promise<any> => {
+    const withRetries = async (range: string): Promise<any> => {
       let lastErr: any = null;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: 'A1:Z1' }) } },
-              context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
+              toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range }) } },
+              context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, isNonTabular: Boolean(this.contextRef?.isNonTabular) }
             })
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -48,12 +48,73 @@ export class SheetDataSource extends DataSource {
       return null;
     };
 
-    const json = await withRetries();
-    const table = json?.table;
-    if (table?.headers && Array.isArray(table.headers)) return table.headers as string[];
-    if (Array.isArray(table?.rows) && Array.isArray(table.rows[0])) return table.rows[0] as string[];
-    const data = json?.data;
-    if (Array.isArray(data) && data[0]) return (Array.isArray(data[0]) ? data[0] : (data[0].values || [])) as string[];
+    // Try first row as headers
+    const jsonTop = await withRetries('A1:Z1');
+    const tableTop = jsonTop?.table;
+    let headers: string[] = [];
+    if (tableTop?.headers && Array.isArray(tableTop.headers)) headers = tableTop.headers as string[];
+    else if (Array.isArray(tableTop?.rows) && Array.isArray(tableTop.rows[0])) headers = tableTop.rows[0] as string[];
+    else {
+      const data = jsonTop?.data;
+      if (Array.isArray(data) && data[0]) headers = (Array.isArray(data[0]) ? data[0] : (data[0].values || [])) as string[];
+    }
+
+    const allBlank = !headers || headers.length === 0 || headers.every((h: any) => String(h ?? '').trim() === '');
+    if (!allBlank) return headers.map(h => String(h ?? ''));
+
+    // Non-standard layout: examine first 10 rows to detect headers
+    const jsonTen = await withRetries('A1:Z10');
+    const rows10: string[][] = (jsonTen?.table?.rows as string[][])
+      || (Array.isArray(jsonTen?.data) ? (jsonTen.data as string[][]) : []);
+    const detected = this.detectHeaders(rows10 || []);
+    if (Array.isArray(detected) && detected.length > 0) {
+      try { if (this.contextRef) this.contextRef.sheetDataFormat = 'non-standard'; } catch {}
+      return detected.map(h => String(h ?? ''));
+    }
+    try { if (this.contextRef) this.contextRef.isNonTabular = true; } catch {}
+    return [];
+  }
+
+  private detectHeaders(rows: string[][]): string[] {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    const limit = Math.min(10, rows.length);
+    type Scored = { index: number; score: number; values: string[] };
+    const scored: Scored[] = [];
+    const isMostlyNonNumeric = (vals: string[]): number => {
+      const total = vals.length || 1;
+      const nonNumeric = vals.filter(v => {
+        const s = String(v ?? '').trim();
+        if (!s) return false;
+        // consider numeric if fully numeric after stripping common characters
+        const numLike = /^[-+]?\d{1,3}(,\d{3})*(\.\d+)?$|^[-+]?\d*(\.\d+)$/.test(s);
+        return !numLike;
+      }).length;
+      return nonNumeric / total; // 0..1
+    };
+    const uniquenessRatio = (vals: string[]): number => {
+      const nonEmpty = vals.map(v => String(v ?? '').trim()).filter(Boolean);
+      const set = new Set(nonEmpty);
+      const total = nonEmpty.length || 1;
+      return set.size / total; // 0..1
+    };
+    for (let i = 0; i < limit; i++) {
+      const vals = (rows[i] || []).map(v => String(v ?? ''));
+      const nonEmptyRatio = vals.filter(v => String(v).trim() !== '').length / Math.max(1, vals.length);
+      const nonNum = isMostlyNonNumeric(vals);
+      const uniq = uniquenessRatio(vals);
+      // scoring: prefer non-empty, non-numeric, unique
+      const score = 0.5 * nonNum + 0.3 * uniq + 0.2 * nonEmptyRatio;
+      scored.push({ index: i, score, values: vals });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    const best = scored[0];
+    if (!best) return [];
+    // Require reasonable thresholds to consider as headers
+    const vals = best.values.map(v => String(v ?? '').trim());
+    const hasAny = vals.some(v => v !== '');
+    const nonNum = vals.filter(v => v && !/^[-+]?\d+(?:[.,]\d+)?$/.test(v)).length / Math.max(1, vals.length);
+    const uniq = (new Set(vals.filter(Boolean))).size / Math.max(1, vals.filter(Boolean).length);
+    if (hasAny && nonNum >= 0.6 && uniq >= 0.7) return vals;
     return [];
   }
 
@@ -63,7 +124,7 @@ export class SheetDataSource extends DataSource {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: r }) } },
-          context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName }
+          context: { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, isNonTabular: Boolean(this.contextRef?.isNonTabular) }
         })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -76,7 +137,7 @@ export class SheetDataSource extends DataSource {
     };
 
     try {
-      const primaryRange = range || `A2:Z${n + 1}`;
+      const primaryRange = range || (this.contextRef?.isNonTabular ? 'A1:Z100' : `A2:Z${n + 1}`);
       let rows = await fetchRange(primaryRange);
       if (!Array.isArray(rows) || rows.length === 0) {
         try {
@@ -86,6 +147,10 @@ export class SheetDataSource extends DataSource {
           console.error('[SheetDataSource] full sheet scan failed', err);
           rows = [];
         }
+      }
+      if (this.contextRef?.isNonTabular) {
+        // For non-tabular, return as-is (treat as lines for summarization elsewhere)
+        return Array.isArray(rows) ? rows.slice(0, Math.min(100, rows.length)) : [];
       }
       return Array.isArray(rows) ? rows.slice(0, n) : [];
     } catch (e) {

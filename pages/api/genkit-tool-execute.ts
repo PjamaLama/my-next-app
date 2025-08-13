@@ -488,7 +488,7 @@ async function handleSheetQuery(args: ToolArgs, context: Context, res: NextApiRe
     if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
       return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
     }
-    const target = spec.sheet || spec.sheetName || sheetNames[0];
+  const target = spec.sheet || spec.sheetName || sheetNames[0];
     // Top-K vector mode: delegate to internal get-sheet-data with topKQuery
     const maybeAny: any = spec as any;
     const isTopK = String(maybeAny?.mode || '').toLowerCase() === 'topk' || typeof maybeAny?.topKQuery === 'string' || typeof maybeAny?.queryText === 'string';
@@ -513,14 +513,30 @@ async function handleSheetQuery(args: ToolArgs, context: Context, res: NextApiRe
       }
     }
     const sheets = await getGoogleSheetsClient();
-    const escaped = target.includes(' ')? `'${target.replace(/'/g, "''")}'`: target;
-    const range = `${escaped}!A1:T2000`;
+  const escaped = target.includes(' ')? `'${target.replace(/'/g, "''")}'`: target;
+  const dynamicRange = (args as any)?.range as string | undefined;
+  const nonTabular = Boolean((context as any)?.isNonTabular);
+  const chosenRange = dynamicRange || (nonTabular ? 'A1:Z1000' : 'A1:T2000');
+  const range = `${escaped}!${chosenRange}`;
     const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
     const table = (resp.data.values || []) as string[][];
     const { headers, rows, summary } = executeSheetQuery(spec, table);
     return res.status(200).json({ success: true, result: summary || `Returned ${rows.length} row(s).`, table: { headers, rows } });
-  } catch (e) {
-    return res.status(500).json({ success: false, error: 'Failed to execute sheet query', details: e instanceof Error ? e.message : String(e) });
+  } catch (e: any) {
+    const msg = e?.message ? String(e.message) : String(e);
+    const codeFromErr = typeof e?.code === 'number' ? e.code : undefined;
+    const regex = /(403|404)/;
+    const match = msg.match(regex);
+    const inferred = match ? Number(match[1]) : undefined;
+    const status = codeFromErr || inferred || 500;
+    let message = 'Failed to execute sheet query';
+    if (status === 404 || /not found|unknown range|unable to parse range/i.test(msg)) {
+      message = 'Sheet not found';
+    } else if (status === 403 || /permission|forbidden|insufficient/i.test(msg)) {
+      message = 'Permission denied';
+    }
+    const httpStatus = status === 403 || status === 404 ? status : 500;
+    return res.status(httpStatus).json({ success: false, error: `HTTP ${httpStatus}`, message, details: msg });
   }
 }
 async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
@@ -1472,16 +1488,26 @@ async function handleGenerateReport(args: ToolArgs, context: Context, res: NextA
 async function handleDescribeSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { spreadsheetId } = (context || {}) as any;
-    const { sheetName: argSheetName, range: argRange } = (args || {}) as any;
+    const { sheetName: argSheetName, range: argRange, mode } = (args || {}) as any;
     const sheetNames = (context as any)?.sheetNames as string[] | undefined;
     const sheetName = argSheetName || (Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames[0] : null);
     if (!spreadsheetId || !sheetName) {
       return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required' });
     }
 
+    // Helper: flatten a sheet table to text
+    const flattenSheetData = (table?: string[][]): string => {
+      try {
+        if (!Array.isArray(table)) return '';
+        const lines = table.map(r => (Array.isArray(r) ? r.map(v => String(v ?? '')).join(' ') : '')).filter(Boolean);
+        const joined = lines.join('\n');
+        return joined.length > 20000 ? joined.slice(0, 20000) : joined;
+      } catch { return ''; }
+    };
+
     // Fetch a limited range for speed; prefer internal get-sheet-data endpoint
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    const range = typeof argRange === 'string' && argRange.trim() ? argRange : 'A1:Z50';
+    const range = typeof argRange === 'string' && argRange.trim() ? argRange : ((context as any)?.isNonTabular ? 'A1:Z100' : 'A1:Z50');
     let data: string[][] | null = null;
     try {
       const resp = await fetch(`${baseUrl}/api/get-sheet-data`, {
@@ -1519,10 +1545,42 @@ async function handleDescribeSheet(args: ToolArgs, context: Context, res: NextAp
     const apiKey = process.env.GOOGLE_GENAI_API_KEY;
     const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
 
-    // Build a compact textual context
+    // Special path: non-tabular sheets or explicit text summary mode
+    const isTextSummary = String(mode || '').toLowerCase() === 'text_summary' || Boolean((context as any)?.isNonTabular);
+    if (isTextSummary) {
+      try {
+        // Prefer context.sheetData when available for richer context
+        let tableFromCtx: string[][] | undefined = undefined;
+        try {
+          const map = (context as any)?.sheetData as Record<string, string[][]> | undefined;
+          if (map && typeof sheetName === 'string') tableFromCtx = map[sheetName];
+        } catch {}
+        const text = tableFromCtx && Array.isArray(tableFromCtx) && tableFromCtx.length > 0
+          ? flattenSheetData(tableFromCtx)
+          : flattenSheetData(data || []);
+        const prompt = `Summarize this sheet text: ${text}`;
+        let summary = '';
+        try {
+          const out = await ai.generate(prompt);
+          summary = String(out?.text || '').trim();
+        } catch {}
+        const fallbackText = text ? 'This sheet appears to contain notes or mixed text.' : 'No readable text found.';
+        return res.status(200).json({ success: true, result: summary || fallbackText, details: { sheetName, mode: 'text_summary' } });
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'Failed to summarize non-tabular sheet', details: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
+    // Build a compact textual context for tabular mode
     const columnsStr = headers.join(', ');
     const sampleStr = sampleRows.map(r => r.slice(0, headers.length).join(' | ')).join('\n');
-    const prompt = `You are describing a spreadsheet for a user. Be concise (1-3 sentences), natural, and specific.
+    const prompt = isTextSummary
+      ? `You are describing a sheet that may be non-tabular (notes or mixed content). Be concise (1-3 sentences), natural, and specific.
+Data (first ~100 rows, treat each row as text lines separated by commas):
+${(data || []).slice(0, 100).map(r => (r || []).join(', ')).join('\n')}
+
+Write a short overview capturing themes, entities, and topics (e.g., fuel, clients, drivers). Avoid listing too many details; focus on what the sheet is about.`
+      : `You are describing a spreadsheet for a user. Be concise (1-3 sentences), natural, and specific.
 Data:
 Sheet name: ${sheetName}
 Columns: ${columnsStr}
@@ -1538,11 +1596,11 @@ Write a short overview for a non-technical user. If it looks like a sales/financ
       text = String(out?.text || '').trim();
     } catch {}
 
-    const fallback = headers.length
-      ? `Sheet "${sheetName}" has columns: ${headers.join(', ')}. About ${approxCount} row(s).`
-      : `Sheet "${sheetName}" appears to be empty or unreadable.`;
+    const fallback = (headers.length
+        ? `Sheet "${sheetName}" has columns: ${headers.join(', ')}. About ${approxCount} row(s).`
+        : `Sheet "${sheetName}" appears to be empty or unreadable.`);
 
-    return res.status(200).json({ success: true, result: text || fallback, details: { sheetName, headers, approxCount, sampleCount: sampleRows.length } });
+    return res.status(200).json({ success: true, result: text || fallback, details: { sheetName, headers, approxCount, sampleCount: sampleRows.length, mode: 'tabular' } });
   } catch (e) {
     return res.status(500).json({ success: false, error: 'Failed to describe sheet', details: e instanceof Error ? e.message : String(e) });
   }
@@ -1798,16 +1856,25 @@ async function handleGetSheetData(args: ToolArgs, res: NextApiResponse) {
         });
       }
     } else {
+      const status = response.status;
       const errorText = await response.text();
       console.error('Get sheet data API error:', errorText);
       let details = errorText;
       if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
         details = 'Received HTML error page from internal API. Check server logs for details.';
       }
-      return res.status(500).json({
+      let message = 'Failed to retrieve sheet data';
+      if (status === 404 || /not found|unknown range/i.test(errorText)) {
+        message = 'Sheet not found';
+      } else if (status === 403 || /permission|forbidden|insufficient/i.test(errorText)) {
+        message = 'Permission denied';
+      }
+      const httpStatus = status === 403 || status === 404 ? status : 500;
+      return res.status(httpStatus).json({
         success: false,
-        error: 'Failed to retrieve sheet data',
-        details: details
+        error: `HTTP ${httpStatus}`,
+        message,
+        details
       });
     }
 

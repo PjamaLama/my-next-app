@@ -59,6 +59,17 @@ export async function answerQuestionFromSheets(
   hydratedSheetData: Record<string, string[][]>,
   selectedSheetNames: string[]
 ): Promise<QAResult> {
+  // Non-tabular support: if caller marks context as non-tabular, accept a conventionally attached raw text table under a special key
+  // Note: processMessage will still call this with (sheetData, sheetNames); for non-tabular, we attempt a text QA path when the table looks unstructured
+  const flattenSheetData = (table?: string[][]): string => {
+    try {
+      if (!Array.isArray(table)) return '';
+      const lines = table.map(r => (Array.isArray(r) ? r.map(v => String(v ?? '')).join(' ') : '')).filter(Boolean);
+      const joined = lines.join('\n');
+      return joined.length > 20000 ? joined.slice(0, 20000) : joined;
+    } catch { return ''; }
+  };
+
   if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) {
     // Proactive fallback when no data is available: infer intent/topic from message/history
     try {
@@ -96,6 +107,30 @@ export async function answerQuestionFromSheets(
   const sheetName = candidateNames.find((n) => lower.includes(normalizeToken(n))) || candidateNames[0];
   const table = hydratedSheetData[sheetName] || [];
   if (table.length === 0) return null;
+
+  // If the table seems non-tabular (e.g., very few columns or highly sparse), route to text QA using Gemini
+  try {
+    const looksNonTabular = table.length > 0 && (table[0]?.length ?? 0) <= 1;
+    if (looksNonTabular) {
+      const textBlob = flattenSheetData(table);
+      if (textBlob) {
+        const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+        const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+        const prompt = `You are answering questions over raw sheet text (notes/logs). Keep answers concise.
+Text:
+${textBlob}
+
+Question: ${message}
+Answer:`;
+        let ans = '';
+        try {
+          const out = await ai.generate(prompt);
+          ans = String(out?.text || '').trim();
+        } catch {}
+        if (ans) return { answer: ans };
+      }
+    }
+  } catch {}
   const shaped = structureForDisplay(table);
   const headers = shaped.headers;
   const rows = shaped.rows;

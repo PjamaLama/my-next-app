@@ -32,6 +32,11 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
   Headers: ["Date","Category","Amount"]
   Output: {"intent":"describe_data","tools":[{"name":"describe_sheet","args":{}}],"toolChain":[],"clarifyQuestion":null,"reasoning":"Summary-like request; describe the sheet."}
 
+  Example 1c (non-tabular summary):
+   User: "tell me about my sheet"
+   Context.isNonTabular = true
+   Output: {"intent":"describe_data","tools":[{"name":"describe_sheet","args":{"mode":"text_summary"}}],"toolChain":[],"clarifyQuestion":null,"reasoning":"Sheet looks non-tabular; request a text-based summary."}
+
   Example 2 (update with file; prefer apply_structured_rows when compatible):
   User: "add fuel data" (file attached)
   Headers: ["Date","Fuel","Amount","Category"]
@@ -58,13 +63,14 @@ User message: ${JSON.stringify(message)}
 Recent conversation (last 3):\n${historyText}
 Files attached: ${filesText}
 Known headers: [${headersList}]
+Sheet format flags: sheetDataFormat=${String((context as any)?.sheetDataFormat || '')}, isNonTabular=${Boolean((context as any)?.isNonTabular)}
 
 ${fewShot}
 
   Chain-of-thought (do not output):
-  Step 1: Analyze message and historySummary (the last 3 messages above) for intent: summary/describe, query, or update.
-  Step 2: For summary-like ("tell me about", "summarize", "what I did"), set intent="describe_data" and plan tools=[{"name":"describe_sheet","args":{${(context as any)?.sheetName ? `"sheetName":"${String((context as any).sheetName)}"` : ''}}}]. If the message mentions a specific sheet (e.g., "Fuel Weekly Repo"), include that sheetName.
-  Step 3: For column/lookup queries like "who is the driver" or "which driver", search known headers for a likely match (e.g., contains "driver" or looks like a person name column). Plan tools=[{"name":"get_column_stats","args":{"column":"<matched header>"}}].
+  Step 1: Check context.sheetDataFormat and isNonTabular to decide if the sheet is non-standard or text-like.
+  Step 2: For summary-like ("tell me about", "summarize", "what I did"), set intent="describe_data". If isNonTabular=true, plan tools=[{"name":"describe_sheet","args":{"mode":"text_summary"${(context as any)?.sheetName ? `,"sheetName":"${String((context as any).sheetName)}"` : ''}}}]. Otherwise plan tools=[{"name":"describe_sheet","args":{${(context as any)?.sheetName ? `"sheetName":"${String((context as any).sheetName)}"` : ''}}}].
+  Step 3: If tabular (isNonTabular=false), use headers/rows as usual to decide tools. For column/lookup queries like "who is the driver" or "which driver", search known headers for a likely match (e.g., contains "driver", "name"). Plan tools=[{"name":"get_column_stats","args":{"column":"<matched header>"}}]. If isNonTabular=true, prefer a text scan via tools=[{"name":"describe_sheet","args":{"mode":"text_summary"}}] or plan get_sheet_data with a wide range to support text analysis downstream.
   Step 4: For updates ("add this data", "update with", "append"), set intent="update_data" and plan tool-calls as follows:
     - Check headers from context.
     - If files present, chain extract_data_from_files to obtain structured rows.
