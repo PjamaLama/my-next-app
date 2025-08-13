@@ -951,7 +951,16 @@ export async function processMessage(
             } catch {}
           } catch {}
         } else {
-          enhancedResponse += `\nTool error: ${result.result}${detailsText ? `\nDetails: ${detailsText}` : ''}`;
+          // Compose a helpful failure with exact headers for retry
+          try {
+            const ctxAny = context as any;
+            const headersList = Array.isArray(ctxAny.sheetHeaders) ? (ctxAny.sheetHeaders as string[]).join(', ') : '';
+            response = `Failed: ${String((result as any)?.error || result?.result || 'Unknown error')}. Use exact columns: ${headersList}. Try again?`;
+            const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+            quickReplies = Array.from(new Set([...baseQR, 'Retry', 'Specify columns'])).slice(0, 5);
+          } catch {
+            enhancedResponse += `\nTool error: ${result.result}${detailsText ? `\nDetails: ${detailsText}` : ''}`;
+          }
         }
       }
     }
