@@ -246,7 +246,7 @@ export async function processMessage(
                   ctxAny.sheetHeaders = headers.map((h: any) => String(h ?? ''));
                 }
               }
-              if (Array.isArray(rows)) {
+              if (Array.isArray(rows) && ((Array.isArray(headers) && headers.length > 0) || rows.length > 0)) {
                 const map: Record<string, string[][]> = {};
                 map[candidateSheet] = [headers || [], ...rows];
                 ctxAny.sheetData = map;
