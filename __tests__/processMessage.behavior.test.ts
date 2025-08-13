@@ -575,6 +575,30 @@ describe('processMessage transcript fixes - cache and non-tabular updates', () =
     expect((out.quickReplies as any[]).length).toBeGreaterThan(0);
   });
 
+  it("when cache empty and server 400, reports 'invalid sheet configuration' with quick replies", async () => {
+    jest.resetModules();
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockRejectedValue(new Error('HTTP 400'));
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockRejectedValue(new Error('HTTP 400'));
+    // Mock internal fetch used by sheet_query to return 400
+    setFetchMock(async () => ({ ok: false, status: 400, json: async () => ({ success: false }), text: async () => 'bad request' }));
+
+    // Keep planner simple
+    jest.doMock('../lib/chat/planner', () => ({ generatePlan: async () => ({ intent: 'describe_data', tools: [], toolChain: [], clarifyQuestion: null }) }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
+    const out = await run('tell me about my data', ctx, [], []);
+
+    expect(typeof out.response).toBe('string');
+    expect(out.response.toLowerCase()).toMatch(/invalid sheet configuration|400|couldn['’]t load data/i);
+    // Quick replies should propose checking the tab and retry
+    expect(Array.isArray(out.quickReplies)).toBe(true);
+    const labels = (out.quickReplies as any[]).map((q: any) => (q?.text || q)).join(' | ');
+    expect(labels).toMatch(/Check tab/i);
+    expect(labels).toMatch(/Retry/i);
+  });
+
   it('parses update intent to structured rows and calls apply_structured_rows', async () => {
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
 
