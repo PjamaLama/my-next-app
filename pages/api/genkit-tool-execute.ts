@@ -2522,12 +2522,9 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
   // Added semantic remapping for user-friendly updates; infers to exact headers.
   try {
     const { spreadsheetId, sheetNames, sheetName } = context as any;
-    const { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
+    let { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
     if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
       return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
-    }
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return res.status(400).json({ success: false, error: 'No structured rows provided' });
     }
 
     const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
@@ -2542,6 +2539,45 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
         const hdrs = (resp.data.values?.[0] as string[]) || [];
         if (hdrs && hdrs.length > 0) sheetHeaders = hdrs.map((h) => String(h ?? ''));
       } catch {}
+    }
+
+    // If rows are missing, attempt inference from the latest user message and headers
+    if (!Array.isArray(rows) || rows.length === 0) {
+      try {
+        const history = Array.isArray((context as any).conversationHistory) ? ((context as any).conversationHistory as any[]) : [];
+        const lastUser = [...history].reverse().find((h: any) => String(h?.role || '') === 'user');
+        const userMsg = String(lastUser?.content || (args as any)?.text || '');
+        if (userMsg && sheetHeaders && sheetHeaders.length > 0) {
+          const { genkit } = await import('genkit');
+          const { googleAI, gemini15Flash } = await import('@genkit-ai/googleai');
+          const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+          if (apiKey) {
+            const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+            const prompt = `You are an AI planner for a Google Sheets assistant. Analyze the user's message and infer structured row updates.
+Key rules:
+- Map user-provided data to exact sheet headers from this list: ${sheetHeaders.join(', ')}.
+- Use common-sense mappings (e.g., client/vendor, location/town, cost/amount). Add current date to 'Date' if missing.
+- Return STRICT JSON only as {"rows": [ { ... } ] } with keys as exact headers.
+
+User message: ${userMsg}`;
+            const { text } = await ai.generate(prompt);
+            if (text) {
+              let cleaned = text.trim();
+              if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
+              const parsed = JSON.parse(cleaned);
+              if (parsed && Array.isArray(parsed.rows)) {
+                rows = parsed.rows as Array<Record<string, unknown>>;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[apply_structured_rows] Inference fallback failed:', e);
+      }
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ success: false, error: 'No structured rows provided by planner. Try “Preview updates” first or specify values to add.' });
     }
 
     // Build case-insensitive header lookup and semantic map

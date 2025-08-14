@@ -80,3 +80,35 @@ export const normalizeSpreadsheetId = (input: string): string => {
   }
   return trimmed;
 };
+
+// Lightweight helper to fetch a values range from Google Sheets API
+// Retries a couple times to reduce flakiness.
+export const getRange = async (
+  spreadsheetId: string,
+  range: string,
+  retries = 2
+): Promise<{ values?: any[][] }> => {
+  const log = createLogger('lib/googleSheets.getRange');
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= Math.max(1, retries + 1); attempt++) {
+    try {
+      const sheets = await getGoogleSheetsClient();
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+        majorDimension: 'ROWS'
+      });
+      const data = res.data || {};
+      return { values: (data as any).values };
+    } catch (e) {
+      lastErr = e;
+      log.warn(`getRange failed (attempt ${attempt}) for ${spreadsheetId} ${range}`, e as any);
+      if (attempt < Math.max(1, retries + 1)) {
+        const backoff = attempt * 500;
+        await new Promise(r => setTimeout(r, backoff));
+      }
+    }
+  }
+  log.error('getRange ultimately failed', lastErr as any);
+  throw new Error(`Failed to fetch range ${range}`);
+};

@@ -1,3 +1,5 @@
+import * as googleSheets from '@/lib/googleSheets';
+
 export type QueryInput =
   | { type: 'range'; sheetName?: string; range: string }
   | { type: 'filter'; column: string; op: '>=' | '<=' | '>' | '<' | '==' | '!=' | 'contains' | 'not_contains'; value: string };
@@ -25,93 +27,73 @@ export class SheetDataSource extends DataSource {
   }
 
   async getHeaders(): Promise<string[]> {
+    // Fixed header fetching to use first row only; sanitized invalid entries.
     // In test environment, avoid network calls; use provided headers when available
-    try {
-      if (typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID) {
-        const hdrs = Array.isArray(this.contextRef?.sheetHeaders) ? (this.contextRef.sheetHeaders as string[]) : [];
-        return hdrs.map(h => String(h ?? ''));
-      }
-    } catch {}
-    const withRetries = async (range: string): Promise<any> => {
-      let lastErr: any = null;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          const context = { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, sheetNames: [this.sheetName], isNonTabular: Boolean(this.contextRef?.isNonTabular) };
-          // eslint-disable-next-line no-console
-          console.log('[SheetDataSource.getHeaders] context:', context);
-          const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range }) } },
-              context
-            })
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return await res.json();
-        } catch (e) {
-          lastErr = e;
-          if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
-        }
-      }
+    const sanitize = (arr: any[]): string[] => (arr || [])
+      .map(h => String(h ?? '').trim())
+      .filter(h => h && h.length <= 100 && !/[^a-zA-Z0-9\s]/.test(h));
+
+    const assignContext = (headers: string[], raw: any[]) => {
       // eslint-disable-next-line no-console
-      console.warn('[SheetDataSource] getHeaders failed after retries', lastErr);
-      return null;
+      console.log('Fetched headers:', headers);
+      try { if (this.contextRef) (this.contextRef as any).sheetHeaders = headers.slice(); } catch {}
+      if (!headers.length) {
+        // eslint-disable-next-line no-console
+        console.warn(`No valid headers in ${this.sheetName}, got:`, raw);
+        try { if (this.contextRef) (this.contextRef as any)._clarifyHeaders = 'No valid headers found in the sheet. Please specify the column names.'; } catch {}
+      }
     };
 
-    // Try first row as headers
-    const jsonTop = await withRetries('A1:Z1');
-    const tableTop = jsonTop?.table;
-    let headers: string[] = [];
-    if (tableTop?.headers && Array.isArray(tableTop.headers)) headers = tableTop.headers as string[];
-    else if (Array.isArray(tableTop?.rows) && Array.isArray(tableTop.rows[0])) headers = tableTop.rows[0] as string[];
-    else {
-      const data = jsonTop?.data;
-      if (Array.isArray(data) && data[0]) headers = (Array.isArray(data[0]) ? data[0] : (data[0].values || [])) as string[];
-    }
-
-    const allBlank = !headers || headers.length === 0 || headers.every((h: any) => String(h ?? '').trim() === '');
-    if (!allBlank) return headers.map(h => String(h ?? ''));
-
-    // Non-standard layout: examine first 100 rows to detect headers
-    const jsonTen = await withRetries('A1:Z100');
-    const rows10: string[][] = (jsonTen?.table?.rows as string[][])
-      || (Array.isArray(jsonTen?.data) ? (jsonTen.data as string[][]) : []);
-
-    // Heuristic: identify candidate header rows that are mostly non-numeric and have high uniqueness
-    const candidates: Array<{ index: number; values: string[] }>= [];
-    const limit = Math.min(10, Array.isArray(rows10) ? rows10.length : 0);
-    const toStr = (v: unknown) => String(v ?? '').trim();
-    for (let i = 0; i < limit; i++) {
-      const rawVals = (rows10[i] || []).map(toStr);
-      const vals = rawVals.length > 0 ? rawVals : [];
-      if (vals.length === 0) continue;
-      const nonEmpty = vals.filter(v => v !== '');
-      const nonEmptyRatio = nonEmpty.length / Math.max(1, vals.length);
-      const nonNumericRatio = nonEmpty.filter(v => !/^[-+]?\d{1,3}(,\d{3})*(\.\d+)?$|^[-+]?\d*(\.\d+)$/.test(v)).length / Math.max(1, nonEmpty.length);
-      const uniqRatio = (new Set(nonEmpty)).size / Math.max(1, nonEmpty.length);
-      if (nonEmptyRatio >= 0.5 && nonNumericRatio >= 0.6 && uniqRatio >= 0.7) {
-        candidates.push({ index: i, values: vals });
+    const fetchViaTool = async (): Promise<string[]> => {
+      const context = { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, sheetNames: [this.sheetName], isNonTabular: Boolean(this.contextRef?.isNonTabular) } as any;
+      // eslint-disable-next-line no-console
+      console.log('[SheetDataSource.getHeaders] context:', context);
+      const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, range: 'A1:Z1' }) } },
+          context
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const jsonTop = await res.json();
+      const tableTop = jsonTop?.table;
+      let raw: any[] = [];
+      if (Array.isArray(tableTop?.headers)) raw = tableTop.headers as any[];
+      else if (Array.isArray(tableTop?.rows) && Array.isArray(tableTop.rows[0])) raw = tableTop.rows[0] as any[];
+      else if (Array.isArray(jsonTop?.data)) {
+        const d0 = jsonTop.data[0];
+        raw = Array.isArray(d0) ? d0 : (Array.isArray(d0?.values) ? d0.values : []);
       }
-    }
+      const headers = sanitize(raw);
+      assignContext(headers, raw);
+      return headers;
+    };
 
-    if (candidates.length > 0) {
-      const chosen = candidates[0].values;
-      try { if (this.contextRef) this.contextRef.sheetDataFormat = 'non-standard'; } catch {}
-      // Updated heuristics: if there are any data rows and >1 headers, assume tabular
-      try {
-        if (this.contextRef) {
-          const hasAnyRows = Array.isArray(rows10) && rows10.length > 1;
-          if (hasAnyRows && chosen.filter(v => v !== '').length > 1) this.contextRef.isNonTabular = false;
-          // Ambiguity: multiple header-like rows → default to tabular
-          if (candidates.length > 1) this.contextRef.isNonTabular = false;
-        }
-      } catch {}
-      return chosen.map(h => String(h ?? ''));
-    }
+    try {
+      // In tests: prefer provided context headers; otherwise use tool endpoint (tests mock it)
+      if (typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID) {
+        const provided = Array.isArray(this.contextRef?.sheetHeaders) ? sanitize(this.contextRef.sheetHeaders as any[]) : [];
+        if (provided.length) return provided;
+        try { return await fetchViaTool(); } catch { return []; }
+      }
+    } catch {}
 
-    // No structured header-like rows found → treat as non-tabular
-    try { if (this.contextRef) this.contextRef.isNonTabular = true; } catch {}
-    return [];
+    // Normal runtime: use Google Sheets API first, then fall back to tool endpoint
+    try {
+      const rangeA1 = `${this.sheetName}!A1:Z1`;
+      const sheetData = await googleSheets.getRange(this.spreadsheetId, rangeA1);
+      const raw = (sheetData?.values?.[0] || []) as any[];
+      const headers = sanitize(raw);
+      assignContext(headers, raw);
+      if (headers.length) return headers;
+      // Fallback to tool
+      try { return await fetchViaTool(); } catch { return []; }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[SheetDataSource.getHeaders] Failed to fetch first row headers via Google Sheets API', e);
+      try { return await fetchViaTool(); } catch { return []; }
+    }
   }
 
   private detectHeaders(rows: string[][]): string[] {

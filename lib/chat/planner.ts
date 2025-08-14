@@ -12,6 +12,17 @@ export type PlannerPlan = {
 
 // Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
 
+// Enhanced to infer mappings from natural language to exact headers; handles invalid headers.
+export const semanticMap: Record<string, string> = {
+  client: 'Vendor',
+  saw: 'Vendor',
+  sold: 'Fuel Cost in Rands',
+  amount: 'Fuel Cost in Rands',
+  location: 'TOWN VISITED',
+  town: 'TOWN VISITED',
+  notes: 'Notes',
+};
+
 function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean): string {
   // Preserve placeholders in the template, but also include resolved context for grounding and tests
   const headers: string[] = Array.isArray((context as any)?.sheetHeaders)
@@ -23,28 +34,33 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     : Array.isArray((context as any)?.sheetData)
       ? ((context as any).sheetData as unknown[]).slice(0, 3)
       : [];
-  const hydratedContextResolved = JSON.stringify({ headers, sampleRows });
+  const hydratedContextResolved = JSON.stringify({ sheetHeaders: headers, headers, sampleRows });
+  const semanticMapResolved = JSON.stringify(semanticMap);
 
-	// Enabled semantic inference for mappings; no user JSON required.
-	const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message and plan the best actions.
-	Key rules:
+  // Enabled semantic inference for mappings; no user JSON required.
+  const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message to update a sheet and map data to exact column headers.
+Key rules:
 
-	For update requests, set intent to 'update_data'.
-	Infer and map user-provided data to exact sheet headers from {hydratedContext} (e.g., map 'client' or 'saw' to 'Vendor', 'sold amount' to 'Fuel Cost in Rands', 'location' to 'TOWN VISITED', add current date to 'Date' if missing, notes to 'Notes'). Use common-sense mappings (client/vendor, location/town, cost/amount), but always output keys as exact sheet headers.
-	Generate structured rows internally: Produce an array of row objects with keys as exact sheet headers and inferred values. Do not ask the user for JSON—do the mapping yourself.
-	Use 'apply_structured_rows' tool with params including the inferred rows, dryRun: true for preview. For tabular updates, this is the only valid tool.
-	If mapping is ambiguous or missing fields, add concise 'clarify' prompts (e.g., 'Which column for the sales amount?').
-	Output JSON: intent, tools (with 'apply_structured_rows' and inferred rows in params), toolChain, clarify.
+- Set intent to 'update_data' for any update request.
+- Fetch exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'Vendor', 'TOWN VISITED', 'Fuel Cost in Rands', 'Notes']).
+- Infer user inputs to headers using simple rules: 'client'/'saw' → 'Vendor', 'sold'/'amount' → 'Fuel Cost in Rands', 'location'/'town' → 'TOWN VISITED', notes → 'Notes', add current date (MM/DD/YYYY) to 'Date' if missing.
+- Generate a row object with exact header keys and inferred values. Do not require JSON input—map natural language internally.
+- Use 'apply_structured_rows' with params: {rows: [inferred row], dryRun: true}.
+- If headers are empty or invalid, clarify: 'No valid headers found. Please specify columns like Date, Vendor, etc.'
+- If mapping fails, clarify: 'Could not map [unmapped terms]. Available columns: {sheetHeaders}. Please clarify.'
+- Output JSON: intent, tools (with 'apply_structured_rows' and rows), toolChain, clarify.
 
-	User message: {userMessage}
-	Sheet context: {hydratedContext} // Use headers and samples for accurate inference.`;
+User message: {userMessage}
+Sheet context: {hydratedContext}
+Semantic map: {semanticMap}`;
 
   // Compatibility block: include resolved values so models and tests see concrete content
   const compatibility = `
 
 User message (resolved): ${JSON.stringify(message)}
 Headers: [${headersList}]
-Sheet context (resolved): ${hydratedContextResolved}`;
+Sheet context (resolved): ${hydratedContextResolved}
+Semantic map (resolved): ${semanticMapResolved}`;
 
   return template + compatibility;
 }
