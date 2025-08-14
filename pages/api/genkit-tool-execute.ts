@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 // Removed deprecated updateSheetFlow for cleaner update path.
 import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
+import { handleAnalyzeImages as handleAnalyzeImagesLite, handleExtractDataFromImages as handleExtractDataFromImagesLite, handleExtractTextOnly as handleExtractTextOnlyLite } from '@/lib/api-tools/fileAnalysis';
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
@@ -75,40 +76,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       toolCall = { function: { name, arguments: argsString } } as any;
     }
 
-    // Validate file sizes before processing
-    if (images && images.length > 0) {
-      console.log(`API: ${images.length} images/files included`);
-      
-      const maxFileSize = 8 * 1024 * 1024; // 8MB limit for individual files
-      const totalSizeLimit = 20 * 1024 * 1024; // 20MB total limit
-      let totalSize = 0;
-      
-      for (let i = 0; i < images.length; i++) {
-        const image = images[i];
-        const fileSize = Math.ceil((image.data.length * 3) / 4); // Approximate base64 size
-        
-        if (fileSize > maxFileSize) {
-          return res.status(413).json({
-            error: 'File too large',
-            details: `File ${i + 1} exceeds the 8MB limit. Please compress or resize your file.`,
-            fileIndex: i,
-            fileSize: `${(fileSize / 1024 / 1024).toFixed(1)}MB`,
-            maxSize: '8MB'
-          });
-        }
-        
-        totalSize += fileSize;
-      }
-      
-      if (totalSize > totalSizeLimit) {
-        return res.status(413).json({
-          error: 'Total file size too large',
-          details: `Combined file size (${(totalSize / 1024 / 1024).toFixed(1)}MB) exceeds the 20MB limit. Please reduce the number or size of files.`,
-          totalSize: `${(totalSize / 1024 / 1024).toFixed(1)}MB`,
-          maxTotalSize: '20MB'
-        });
-      }
-    }
+    // Upstream endpoints handle file-size limits; skip local file size validation here
 
     if (!toolCall || !toolCall.function) {
       return res.status(400).json({ error: 'Valid tool call is required' });
@@ -135,27 +103,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`API: Images types:`, images?.map((img: ImageData) => img.mimeType) || []);
     console.log(`API: Gemini API key provided:`, !!apiKey);
 
-    // Simple retry wrapper for transient errors
-    const withRetries = async <T>(fn: () => Promise<T>, label: string): Promise<T> => {
-      const max = 3;
-      let attempt = 0;
-      let delay = 500;
-      // Helper to detect transient
-      const isTransient = (err: unknown) => {
-        const s = String(err instanceof Error ? (err.message || err) : err).toLowerCase();
-        return /timeout|timed out|econnreset|temporar|unavailable|502|503|504|rate limit|too many/i.test(s);
-      };
-      while (true) {
-        try {
-          return await fn();
-        } catch (e) {
-          attempt++;
-          if (attempt >= max || !isTransient(e)) throw e;
-          await new Promise(r => setTimeout(r, delay));
-          delay = Math.min(delay * 2, 4000);
-        }
-      }
-    };
+    // Simplified error handling: rely on single try/catch blocks per case
 
     switch (name) {
       case 'aggregate': {
@@ -172,10 +120,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const sheets = await getGoogleSheetsClient();
           const escaped = targetSheet.includes(' ')? `'${targetSheet.replace(/'/g, "''")}'`: targetSheet;
           const targetRange = range ? `${escaped}!${String(range)}` : `${escaped}!A1:T2000`;
-          const resp = await withRetries(
-            () => sheets.spreadsheets.values.get({ spreadsheetId, range: targetRange, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }),
-            'sheets.values.get'
-          );
+          const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: targetRange, valueRenderOption: 'FORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
           const values = (resp.data.values || []) as string[][];
           if (!values || values.length === 0) {
             return res.status(200).json({ success: true, result: 'No data found in range', details: { rows: 0 } });
@@ -309,6 +254,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(500).json({ success: false, error: 'Failed trend analysis', details: e instanceof Error ? e.message : String(e) });
         }
       }
+      // Optional data tools (can be removed if not referenced by planner)
       case 'sheet_query':
         return await handleSheetQuery(args, context, res);
       case 'convert_unstructured_sheet':
@@ -316,21 +262,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'get_sheet_data':
         try {
-          return await withRetries(() => handleGetSheetData(args, res), 'get_sheet_data');
+          return await handleGetSheetData(args, res);
         } catch (e) {
           return res.status(500).json({ success: false, error: 'Failed to get sheet data', details: e instanceof Error ? e.message : String(e) });
         }
 
       case 'get_sheet_stats':
         try {
-          return await withRetries(() => handleGetSheetStats(args, res), 'get_sheet_stats');
+          return await handleGetSheetStats(args, res);
         } catch (e) {
           return res.status(500).json({ success: false, error: 'Failed to get sheet stats', details: e instanceof Error ? e.message : String(e) });
         }
 
       case 'get_column_stats':
         try {
-          return await withRetries(() => handleGetColumnStats(args, res), 'get_column_stats');
+          return await handleGetColumnStats(args, res);
         } catch (e) {
           return res.status(500).json({ success: false, error: 'Failed to get column stats', details: e instanceof Error ? e.message : String(e) });
         }
@@ -387,14 +333,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'analyze_images':
       case 'analyze_files':
-        return await handleAnalyzeImages(args, images, apiKey!, res);
+        return await handleAnalyzeImagesLite(args, images, apiKey!, res);
 
       case 'extract_data_from_images':
       case 'extract_data_from_files':
-        return await handleExtractDataFromImages(args, context, images, apiKey!, res);
+        return await handleExtractDataFromImagesLite(args, context, images, apiKey!, res);
 
       case 'extract_text_only':
-        return await handleExtractTextOnly(args, images, res);
+        return await handleExtractTextOnlyLite(args, images, res);
 
       case 'generate_report':
         return await handleGenerateReport(args, context, res);

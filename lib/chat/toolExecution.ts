@@ -23,65 +23,17 @@ export async function executeToolCall(
   images: ImageData[] = []
 ) {
   try {
-    // Skipped resolve_column for updates to reduce errors.
-    const toolName = String(toolCall?.function?.name || '').toLowerCase();
-    const currentIntent = String((context as any)?.intent || '').toLowerCase();
-    if (toolName === 'resolve_column' && currentIntent === 'update_data') {
-      // eslint-disable-next-line no-console
-      console.log('Skipped tool:', toolCall.function.name);
-      return { success: false, clarify: 'No query needed for updates.' } as any;
-    }
-
     // Prefer a request-scoped base URL passed via context when running server-side
     const scopedBase = (typeof window === 'undefined' && context && (context as any)._baseUrl)
       ? String((context as any)._baseUrl)
       : undefined;
     const baseUrl = scopedBase || resolveBaseUrl();
     const url = `${baseUrl}/api/genkit-tool-execute`;
-    const withRetries = async (): Promise<Response> => {
-      let lastErr: any = null;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ toolCall, context, images })
-          });
-          if (resp.ok) return resp;
-
-          // Handle HTTP status-based retry strategy
-          const status = resp.status;
-          const err = new Error(`HTTP ${status}`);
-          // eslint-disable-next-line no-console
-          console.error(`Retry ${attempt} for ${toolCall.function.name}: ${err.message}`);
-
-          // Permanent failures: do not retry
-          if (status === 403 || status === 404) {
-            try { (context as any).error = `Permanent failure: ${status} - check sheet permissions or ID`; } catch {}
-            return resp; // exit immediately with this response
-          }
-
-          // Retry only 500/503 up to 3 attempts with 1s delay
-          if ((status === 500 || status === 503) && attempt < 3) {
-            await new Promise(r => setTimeout(r, 1000));
-            lastErr = err;
-            continue;
-          }
-
-          // Other non-OK statuses: no retry
-          lastErr = err;
-          return resp;
-        } catch (e: any) {
-          lastErr = e;
-          // eslint-disable-next-line no-console
-          console.error(`Retry ${attempt} for ${toolCall.function.name}: ${e?.message || String(e)}`);
-          if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-      throw lastErr || new Error('Unknown fetch error');
-    };
-
-    const response = await withRetries();
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toolCall, context, images })
+    });
     if (!response.ok) {
       const contentType = (response as any)?.headers && typeof (response as any).headers.get === 'function'
         ? (response as any).headers.get('content-type')

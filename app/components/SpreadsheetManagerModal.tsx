@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { useFirebase } from "../providers/FirebaseProvider";
 import { useSheet } from "../providers/SheetProvider";
-import SheetSetupHelper from "./SheetSetupHelper";
 
 interface SpreadsheetManagerModalProps {
   open: boolean;
@@ -13,20 +12,8 @@ interface SpreadsheetManagerModalProps {
 const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open, onClose }) => {
   const { user } = useFirebase();
   const { setDefaultSpreadsheetId } = useSheet();
-  const [serviceAccountEmail, setServiceAccountEmail] = useState<string>("");
-  const [serviceAccountChecked, setServiceAccountChecked] = useState(false);
   const [newSheetId, setNewSheetId] = useState("");
   const [addingSheet, setAddingSheet] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    if (serviceAccountChecked) return;
-    fetch('/api/get-service-account')
-      .then(res => res.ok ? res.json() : Promise.reject())
-      .then(data => { if (data?.email) setServiceAccountEmail(data.email); })
-      .catch(() => {})
-      .finally(() => setServiceAccountChecked(true));
-  }, [open, serviceAccountChecked]);
 
   const normalizeSheetId = (input: string): string => {
     const trimmed = (input || '').trim();
@@ -106,9 +93,7 @@ const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open,
             </div>
           </div>
 
-          <div className="mt-3">
-            <SheetSetupHelper serviceAccountEmail={serviceAccountEmail} initialOpen={false} />
-          </div>
+          {/* Setup helper removed to keep modal lightweight and generic */}
         </div>
         <div className="px-4 py-3 flex items-center justify-end gap-2 border-t border-white/10 bg-black/20 rounded-b-2xl">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm border border-white/10 text-white/80 hover:bg-white/10">Done</button>

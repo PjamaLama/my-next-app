@@ -268,7 +268,7 @@ export default function Home() {
   
   // Removed message filter UI
   
-  // Removed n8n session tracking; Genkit flow handles updates synchronously
+  
   
   // User context and preferences system
   // const [userContext, setUserContext] = useState<{
@@ -1303,7 +1303,7 @@ export default function Home() {
     } catch (error) {
       console.error('Chat processing error:', error);
       
-      // Simplified error message (n8n integration removed)
+      
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       
       setSendResult(`Error: ${errorMessage}`);

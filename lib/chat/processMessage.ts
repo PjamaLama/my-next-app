@@ -217,9 +217,11 @@ export async function processMessage(
     // Intercept confirmation/cancellation for pending previewed updates
     try {
       const lower = String(message || '').toLowerCase();
-      const isConfirm = /(confirm\s+update|apply\s+changes|yes,\s*apply|go\s*ahead|^apply$)/i.test(lower.trim());
+      // Include 'approve' as a confirmation trigger so typing "Approve" commits the pending update
+      const isConfirm = /(confirm\s+update|apply\s+changes|yes,\s*apply|go\s*ahead|^apply$|^approve$|approve\s+(it|changes))$/i.test(lower.trim());
       const isEdit = /^(edit|adjust|modify)$/i.test(lower.trim());
-      const isCancel = /^(cancel|cancel\s+update|no|nevermind|never\s+mind)$/i.test(lower.trim());
+      // Treat 'reject' as a cancellation trigger in addition to 'cancel'
+      const isCancel = /^(cancel|cancel\s+update|no|nevermind|never\s+mind|reject|decline)$/i.test(lower.trim());
       const pending = (context as any)._lastUpdateToolCall as { name: string; args: any } | undefined;
       if (pending && (isConfirm || isCancel || isEdit)) {
         if (isCancel) {
@@ -921,11 +923,14 @@ export async function processMessage(
                     // Added clear commit success message for user feedback.
                     try {
                       const addedCount = updatedRows.length;
-                      const clientSeenValues = updatedRows
-                        .map((r: any) => String((r || {})['CLIENT SEEN'] ?? ''))
-                        .filter((s: string) => s.trim().length > 0);
-                      const namesText = clientSeenValues.length > 0 ? `, including ${clientSeenValues.join(', ')}` : '';
-                      const successLine = `Added ${addedCount} row(s) to ${selectedName}${namesText}.`;
+                      const allKeys: string[] = Array.from(new Set<string>(updatedRows.flatMap((r: any) => Object.keys(r || {}))));
+                      const sampleKeys = allKeys.slice(0, 3);
+                      const sample = sampleKeys
+                        .map((k) => `${k}: ${String((updatedRows[0] || {})[k] ?? '')}`)
+                        .filter((s) => /\S/.test(s))
+                        .join(', ');
+                      const sampleText = sample ? ` (e.g., ${sample})` : '';
+                      const successLine = `Added ${addedCount} row(s) to ${selectedName}${sampleText}.`;
                       response = response && response.trim() ? `${response}\n${successLine}` : successLine;
                     } catch {}
                   }
@@ -1015,21 +1020,11 @@ export async function processMessage(
                 rows = dataArr.slice(1);
               }
               if (headers.length > 0 && Array.isArray(rows) && rows.length > 0) {
-                const idxName = headers.indexOf('CLIENT SEEN');
-                const idxTown = headers.indexOf('TOWN');
-                const idxSales = headers.indexOf('SALES MADE');
                 const parts: string[] = [];
                 for (const r of rows.slice(0, 3)) {
                   const arr = Array.isArray(r) ? (r as any[]) : [];
-                  const name = idxName >= 0 ? String(arr[idxName] ?? '').trim() : '';
-                  const town = idxTown >= 0 ? String(arr[idxTown] ?? '').trim() : '';
-                  const sales = idxSales >= 0 ? String(arr[idxSales] ?? '').trim() : '';
-                  const fragment = [
-                    name ? name : undefined,
-                    town ? `in ${town}` : undefined,
-                    sales ? `sales ${sales}` : undefined
-                  ].filter(Boolean).join(' ');
-                  if (fragment) parts.push(fragment);
+                  const nonEmpty = arr.map(v => String(v ?? '').trim()).filter(Boolean).slice(0, 3);
+                  if (nonEmpty.length > 0) parts.push(nonEmpty.join(' · '));
                 }
                 if (parts.length > 0) {
                   const insight = `Recent entries: ${parts.join('; ')}.`;

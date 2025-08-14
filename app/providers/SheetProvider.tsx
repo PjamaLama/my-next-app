@@ -98,27 +98,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           }
         }
-
-        for (const name of names) {
-          try {
-            const dataRes = await fetch('/api/get-sheet-data', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: name })
-            });
-            const dataJson = await dataRes.json();
-            if (cancelled) return;
-            setSheetDataCache(prev => ({ ...prev, [name]: dataJson.data || [] }));
-            if (dataJson.structure) {
-              const { isStructured, confidence, issues, detectedHeaderRowIndex, blocks } = dataJson.structure;
-              setSheetStructureCache(prev => ({ ...prev, [name]: { isStructured, confidence, issues, detectedHeaderRowIndex, blocks } }));
-              if (Array.isArray(blocks) && blocks.length > 0) {
-                setChosenBlockBySheet(prev => ({ ...prev, [name]: null }));
-              }
-            }
-          } catch (e) {
-            console.warn('Prefetch sheet data failed for', name, e);
-          }
-        }
+        // Mark prefetched once names are loaded; sheet data will be fetched on demand
         if (!cancelled) setSheetsPrefetched(true);
       } catch (e) {
         console.warn('Prefetch sheet names failed', e);

@@ -1,6 +1,5 @@
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
-import dayjs from 'dayjs';
 import { Context, ConversationHistoryItem } from './types';
 
 export type PlannerPlan = {
@@ -11,16 +10,10 @@ export type PlannerPlan = {
   clarifyQuestion: string | null;
 };
 
-// Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
-// Removed resolve_column from updates for simplicity.
-// Removed resolve_column; improved dynamic inference for all sheet headers.
-// Added multi-row inference for natural language inputs.
-// Improved field parsing for accurate column mapping.
-// Added row-based insights for conversational describe_data responses.
-// Enabled file data to generate proposed rows like text inputs.
-// Added rule-based field mapping for consistent inference.
-// Added sheet selection guard for clarity.
-// Standardized Date format for consistency.
+// Lightweight planner:
+// - Focus on intent detection and tool planning
+// - For updates, enforce a single-path using apply_structured_rows with dryRun: true
+// - No sheet-specific rules or hard-coded mappings
 
 function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean): string {
   // Preserve placeholders in the template, but also include resolved context for grounding and tests
@@ -50,75 +43,19 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
         .join('\n')
     : '';
 
-  // Updated prompt content per product requirements
-  // Refined intent rules for better conversational tool inference.
-  // Added safeguard for incomplete inference to prompt clarification simply.
-  // Added history awareness for better conversationalism and intent accuracy.
-  // Improved to handle multi-row inference elegantly from natural language.
-  const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message to update a sheet and map data to exact column headers.
-  Key rules:
+  // Lightweight prompt content focusing on intent and planning without sheet-specific rules
+  const template = `You are an AI planner for a Google Sheets assistant.
+  Decide the user's intent: 'update_data', 'describe_data', 'get_data', or 'other'.
 
-  Set intent to 'update_data' for any update request.
-  Use exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'CLIENT SEEN', 'TOWN', 'CLIENT CALLED', 'PHONE NUMBER', 'DETAILS OF VISIT', 'SALES MADE']).
-  Dynamically infer user inputs to headers using natural language understanding and context:
+  Principles:
+  - Use exact column headers from {hydratedContext.sheetHeaders}. Do not assume synonyms.
+  - For updates, plan a single tool only: { name: 'apply_structured_rows', args: { spreadsheetId, sheetName, rows, dryRun: true } }.
+  - Do not include 'resolve_column' or any other tools for updates. toolChain must be empty for updates.
+  - If spreadsheetId or sheetName is missing, set clarifyQuestion accordingly and do not produce rows.
+  - If you cannot confidently form rows from the message and context, set clarifyQuestion asking the user to specify column-value pairs.
+  - For describe/get requests, you may include a toolChain (e.g., get_sheet_data → aggregate), or leave it empty.
 
-  Rule-based field mapping (apply first, before using the LLM):
-  - Names (e.g., 'Sarah') → 'CLIENT SEEN'
-  - Locations (e.g., 'Howick') → 'TOWN'
-  - Numbers (e.g., '3000') → 'SALES MADE'
-  - Sentences/notes → 'DETAILS OF VISIT'
-  Use the LLM only when these rules are ambiguous or insufficient to determine the correct column.
-
-  Names or entities (e.g., 'francois') map to 'CLIENT SEEN' or similar.
-  Locations (e.g., 'Howick') map to 'TOWN' or location-like columns.
-  Monetary or numeric values (e.g., '3000k seed') map to 'SALES MADE' or amount-like columns.
-  Descriptive text (e.g., 'spoke about seed changes') map to 'DETAILS OF VISIT' or note-like columns.
-  Clean field values: strip boilerplate phrases like 'add to my sheet', 'please add', 'log this' from free-text; do not include them in 'DETAILS OF VISIT'.
-  Parse names cautiously: if phrasing like "Sarah in Hogwarts Today" occurs, map 'Sarah' to 'CLIENT SEEN' and 'Hogwarts Today' to 'TOWN'.
-  Ensure location-like fragments (tokens after 'in', 'at', 'to') are assigned to 'TOWN', not 'CLIENT SEEN'.
-  Add current date (MM/DD/YYYY) to 'Date' if missing.
-  Always format 'Date' as MM/DD/YYYY for all inferred rows (normalize any provided dates to this format, zero-pad month/day).
-  If the message implies multiple entries (e.g., "saw sarah and john"), generate separate rows for each entity while sharing common fields (e.g., Date and TOWN).
-  If values like amounts are mentioned in a sequence (e.g., "sold 3000 and 2000"), align them by order to the corresponding entities to form separate rows.
-
-  If the inferred row has fewer than 2 non-empty fields besides 'Date', set clarify to: "Incomplete data inferred. Please provide more details for columns like CLIENT SEEN, TOWN, etc." and avoid producing rows.
-
-  Use conversation history to disambiguate intent. Consider {conversationHistory} explicitly:
-  - If history includes recent updates (e.g., prior turns added rows or applied changes), prioritize intent: 'update_data'.
-  - If history mentions phrases like 'tell me', 'describe', 'what is', or 'overview', lean toward intent: 'describe_data'.
-  - When history shows an ongoing flow, ground your inference on prior turns.
-
-  Sheet selection:
-  - If {hydratedContext.sheetNames} has multiple options and {hydratedContext.sheetName} is missing or ambiguous, set clarify: "Which sheet to update? Options: [{hydratedContext.sheetNames}]" and do not produce rows until clarified.
-
-  Examples for intent:
-  - Input: "tell me about the sheet" → intent: 'describe_data', tools: [{ name: 'sheet_query', args: {} }], toolChain: []
-  - Input: "what's in fuel weekly repo" → intent: 'describe_data', tools: [{ name: 'sheet_query', args: {} }], toolChain: []
-  - Input: "add john in howick sales 2000" → intent: 'update_data', tools: [{ name: 'apply_structured_rows', args: { rows: [...], dryRun: true } }], toolChain: []
-  - Input: "update client francois to 3000" → intent: 'update_data', tools: [{ name: 'apply_structured_rows', args: { rows: [...], dryRun: true } }], toolChain: []
-  - Parsing example: "add to my sheet Sarah in Hogwarts Today, sold 3000" → rows: [{Date: '08/14/2025', CLIENT SEEN: 'Sarah', TOWN: 'Hogwarts Today', SALES MADE: '3000'}]
-  - Multi-row example: "saw sarah and john in Lesotho, sold 3000 and 2000" → rows: [{Date: '08/14/2025', CLIENT SEEN: 'Sarah', TOWN: 'Lesotho', SALES MADE: '3000'}, {Date: '08/14/2025', CLIENT SEEN: 'John', TOWN: 'Lesotho', SALES MADE: '2000'}]
-
-  Keyword guidance:
-  - Words like 'add', 'insert', 'update', 'change', 'log', 'record' → intent: 'update_data'
-  - Phrases like 'tell me about', 'what is', 'show', 'list', 'overview', 'describe' → intent: 'describe_data' or 'get_data'
-
-  For 'describe_data' intent, include conversational insights from recent rows:
-  - Summarize up to 3 rows from {hydratedContext.sheetDataSample} with phrasing like: "Recent clients include [names], with sales like [values] in [towns]".
-  - Prefer concise natural language over raw tables unless explicitly asked.
-
-  File uploads and extracted text:
-  - If files or extracted text are present (e.g., in context like {hydratedContext.fileDataSample} or images), parse them like text prompts to infer rows.
-  - Convert extracted phrases to rows using exact headers from {hydratedContext.sheetHeaders}. Infer CLIENT SEEN, TOWN, SALES MADE, DETAILS OF VISIT, Date.
-  - Example: "victor in Hogwarts, 4000 rand" → {Date: '08/14/2025', CLIENT SEEN: 'Victor', TOWN: 'Hogwarts', SALES MADE: '4000'}
-
-
-  Generate one or more row objects with exact header keys and inferred values (e.g., [{Date: '08/14/2025', CLIENT SEEN: 'Francois', TOWN: 'Howick', SALES MADE: '3000', DETAILS OF VISIT: 'spoke about seed industry changes'}]).
-  Use only 'apply_structured_rows' with params: {spreadsheetId: {hydratedContext.spreadsheetId}, sheetName: {hydratedContext.sheetName}, rows: [ ...inferred rows as array of objects ... ], dryRun: true}.
-  Do not include 'resolve_column' in tools or toolChain. For 'update_data' intent, tools MUST be exactly one item 'apply_structured_rows' and toolChain MUST be [] (empty array).
-  If spreadsheetId or sheetName is missing, clarify: 'Please specify the sheet to update.'
-  If any input cannot be mapped, clarify: 'Could not map some terms to columns: {unmapped terms}. Available: {sheetHeaders}. Please clarify which columns to use.'
-  Output JSON: intent, tools (only 'apply_structured_rows' with rows), toolChain (empty), clarify.
+  Output JSON with: intent, tools, toolChain, clarifyQuestion, and reasoning.
 
   Conversation history: {conversationHistory}
   User message: {userMessage}
@@ -135,83 +72,7 @@ Conversation history (resolved): ${historyText}`;
   return template + compatibility;
 }
 
-function normalizeCapitalization(input: string): string {
-  if (!input) return input;
-  return input
-    .split(/\s+/)
-    .map((w) => (w.length === 0 ? w : w[0].toUpperCase() + w.slice(1).toLowerCase()))
-    .join(' ');
-}
-
-function inferRowFromMessage(message: string, headers: string[]): Record<string, unknown> {
-  const inferred: Record<string, unknown> = {};
-  const lowerCasedMessage = String(message || '').toLowerCase();
-
-  // Date: always set if header exists
-  if (headers.includes('Date')) {
-    inferred['Date'] = dayjs().format('MM/DD/YYYY');
-  }
-
-  // CLIENT SEEN / name-like extraction
-  if (headers.includes('CLIENT SEEN')) {
-    const nameAfterVerb = lowerCasedMessage.match(/\b(?:saw|met|with|visited|speak(?:ing)?\s+to|spoke\s+to|client)\s+([a-z][a-z\-\s']{1,60})/i);
-    if (nameAfterVerb) {
-      inferred['CLIENT SEEN'] = normalizeCapitalization(nameAfterVerb[1].trim());
-    } else {
-      // Fallback: single capitalized token that looks like a name
-      const properName = message.match(/\b([A-Z][a-z]{2,})(?:\s+[A-Z][a-z]{2,})?/);
-      if (properName) {
-        inferred['CLIENT SEEN'] = properName[0].trim();
-      }
-    }
-  }
-
-  // TOWN / location-like extraction
-  if (headers.includes('TOWN')) {
-    const townMatch = lowerCasedMessage.match(/\b(?:in|at|to)\s+([a-z][a-z\-\s']{1,60})/i);
-    if (townMatch) {
-      inferred['TOWN'] = normalizeCapitalization(townMatch[1].trim());
-    }
-  }
-
-  // CLIENT CALLED
-  if (headers.includes('CLIENT CALLED')) {
-    const calledMatch = lowerCasedMessage.match(/\b(?:called|phoned|telephoned|phone\s*call)\b/i);
-    if (calledMatch) {
-      inferred['CLIENT CALLED'] = 'Yes';
-    }
-  }
-
-  // PHONE NUMBER
-  if (headers.includes('PHONE NUMBER')) {
-    const phoneMatch = message.match(/(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4}/);
-    if (phoneMatch) {
-      inferred['PHONE NUMBER'] = phoneMatch[0].replace(/\s+/g, ' ').trim();
-    }
-  }
-
-  // SALES MADE / numeric or monetary extraction
-  if (headers.includes('SALES MADE')) {
-    const salesMatch = lowerCasedMessage.match(/\b(\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?k?\b/);
-    if (salesMatch) {
-      const raw = (salesMatch[0] || '').toLowerCase();
-      const hasK = /k$/.test(raw);
-      const numeric = (salesMatch[1] || '').replace(/,/g, '');
-      // Keep example behavior: strip 'k' rather than multiply
-      const value = numeric;
-      inferred['SALES MADE'] = value;
-    }
-  }
-
-  // DETAILS OF VISIT / note-like text
-  if (headers.includes('DETAILS OF VISIT')) {
-    // Heuristic: prefer fragments after verbs like 'spoke about', 'discussed', 'notes'
-    const detailsMatch = message.match(/(?:spoke\s+about|discussed|regarding|re|notes?:?)\s+([^.;\n]+)[.;\n]?/i);
-    inferred['DETAILS OF VISIT'] = detailsMatch ? detailsMatch[1].trim() : message;
-  }
-
-  return inferred;
-}
+// No hard-coded extraction helpers; rely on the model and caller context for mapping.
 
 export async function generatePlan(
   message: string,
@@ -303,23 +164,14 @@ export async function generatePlan(
       }
     } catch {}
 
-    // Ensure apply_structured_rows carries spreadsheetId, sheetName, and rows. If missing rows, infer best-effort from message.
+    // Ensure apply_structured_rows carries spreadsheetId and sheetName; do not synthesize rows here.
     try {
       const spreadsheetId = (context as any)?.spreadsheetId;
       const sheetName = (context as any)?.sheetName;
-      const headers: string[] = Array.isArray((context as any)?.sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
-
       const ensureParams = (params: any): any => {
         const updated: any = { ...(params || {}) };
         if (spreadsheetId) updated.spreadsheetId = spreadsheetId;
         if (sheetName) updated.sheetName = sheetName;
-        // rows handling
-        if (!Array.isArray(updated.rows) || updated.rows.length === 0) {
-          const inferred = inferRowFromMessage(message, headers);
-          if (Object.keys(inferred).length > 0) {
-            updated.rows = [inferred];
-          }
-        }
         updated.dryRun = true;
         return updated;
       };

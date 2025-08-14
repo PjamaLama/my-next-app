@@ -1,11 +1,7 @@
 import { getGoogleSheetsClient, normalizeSpreadsheetId } from '@/lib/googleSheets';
-import { findLastDataRow } from '@/lib/sheetUtils';
-import { getCachedHeaders, setCachedHeaders } from '@/lib/sheetHeaderCache';
-import { analyzeSheetStructure, detectHeaderRow, detectTableBlocks } from '@/lib/sheetStructure';
-import { ensureHeaderVectors } from '@/lib/sheetVectorIndex';
+import { escapeSheetName } from '@/lib/sheetUtils';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createLogger } from '@/lib/logger';
-import { embedTexts } from '@/lib/embeddings';
 
 // Response cache (extendable to Redis). Use 5-minute TTL and include session/user keys if provided
 const RESPONSE_TTL_MS = 5 * 60 * 1000;
@@ -25,21 +21,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { spreadsheetId: rawSpreadsheetId, sheetName, range, tailRows, sessionKey } = req.body;
     const spreadsheetId = normalizeSpreadsheetId(rawSpreadsheetId);
 
-    // Vector top-K query branch (bypasses cache)
-    if (req.body && req.body.topKQuery) {
-      try {
-        const qText: string = String(req.body.topKQuery || '');
-        const [qVec] = await embedTexts([qText]);
-        const topK: number = typeof req.body.topK === 'number' ? req.body.topK : 5;
-        const { queryRowVectors } = require('../../lib/sheetVectorStore');
-        const scored = await queryRowVectors(spreadsheetId, qVec, topK);
-        return res.status(200).json({ success: true, rows: scored });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return res.status(500).json({ success: false, error: 'Vector query failed', details: msg });
-      }
-    }
-
     // Serve from cache if fresh
     const key = cacheKey(
       spreadsheetId,
@@ -53,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json(cached.payload);
     }
 
-    log.debug('Params', { spreadsheetId, sheetName, range: range || 'auto' });
+    log.debug('Params', { spreadsheetId, sheetName, range: range || 'tail' });
 
     if (!spreadsheetId) {
       log.warn('Missing spreadsheetId');
@@ -79,23 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
 
-    // Helper function to escape sheet names for Google Sheets API
-    const escapeSheetName = (name: string) => {
-      // If the sheet name contains spaces, special characters, or starts with a digit,
-      // wrap it in single quotes and escape any existing single quotes
-      if (/[^A-Za-z0-9_]/.test(name) || /^[0-9]/.test(name)) {
-        return `'${name.replace(/'/g, "''")}'`;
-      }
-      return name;
-    };
-
-    let finalRange: string;
-    
-    if (range) {
-      // If a specific range is provided, use it
-      finalRange = `${escapeSheetName(sheetName)}!${range}`;
-      log.debug('Using provided range', finalRange);
-    } else {
+    if (!range) {
       // Get the actual sheet dimensions first
       try {
         log.debug('Getting sheet dimensions for', sheetName);
@@ -140,9 +105,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
         
         const endColumn = getColumnLetter(columnCount);
-        
-        // Use the actual dimensions, but cap at reasonable limits
-        const maxRow = Math.min(rowCount, 1000);
         const escapedSheetName = escapeSheetName(sheetName);
         
         // Bottom-biased strategies when requesting recent rows
@@ -155,14 +117,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // Try different range strategies based on sheet size
         const baseStrategies = [
-          // 1. Use actual dimensions
-          `${escapedSheetName}!A1:${endColumn}${maxRow}`,
-          // 2. Use just the columns with all rows
+          // Use just the columns with all rows as a safe fallback
           `${escapedSheetName}!A:${endColumn}`,
-          // 3. Conservative range
-          `${escapedSheetName}!A1:${endColumn}100`,
-          // 4. Very safe range
-          `${escapedSheetName}!A1:T50`
         ];
         const strategies = [...tailStrategies, ...baseStrategies];
         const tailSet = new Set(tailStrategies);
@@ -182,66 +138,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             log.debug('Strategy success', strategy, 'rows', response.data.values?.length || 0);
 
-            // Prepare values and headers
-            let values = (response.data.values || []) as string[][];
-            const usedTail = tail > 0 && tailSet.has(strategy);
+            // Prepare values and headers (tail-only window)
+            const values = (response.data.values || []) as string[][];
             let headers: string[] = [];
-
-            if (usedTail) {
-              // Fetch the real header row separately when using bottom window
-              try {
-                const headerResp = await sheets.spreadsheets.values.get({
-                  spreadsheetId,
-                  range: `${escapedSheetName}!1:1`,
-                  valueRenderOption: 'FORMATTED_VALUE',
-                  dateTimeRenderOption: 'FORMATTED_STRING',
-                });
-                headers = (headerResp.data.values?.[0] as string[]) || [];
-              } catch (e) {
-                log.warn('Failed to fetch header row for tail window, falling back to detection', e);
-              }
-            }
-
-            if (headers.length === 0 && values.length > 0) {
-              // Detect header row from the retrieved chunk
-              const headerDetect = detectHeaderRow(values as string[][]);
-              const headerRowIdx = Math.max(0, headerDetect.rowIndex);
-              headers = (values[headerRowIdx] as string[]) || [];
-              // Trim values to data rows
-              values = values.slice(headerRowIdx + 1);
-            }
-
-            // If a recent window is requested, slice to last N rows
-            if (tail > 0) {
-              values = values.slice(-tail);
-            }
-
-            // Update header cache and vectors (best-effort)
             try {
-              const lastRow = findLastDataRow([headers, ...values]);
-              setCachedHeaders(spreadsheetId, sheetName, headers, lastRow);
-              await ensureHeaderVectors(spreadsheetId, sheetName, headers, values);
+              const headerResp = await sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `${escapedSheetName}!1:1`,
+                valueRenderOption: 'FORMATTED_VALUE',
+                dateTimeRenderOption: 'FORMATTED_STRING',
+              });
+              headers = (headerResp.data.values?.[0] as string[]) || [];
             } catch {}
 
-            // Always include structure analysis so UI can flag unstructured sheets
-            let structure = null;
-            try {
-              const table = [headers, ...values] as string[][];
-              const meta = analyzeSheetStructure(table);
-              // inject detected header row info and blocks for clients
-              const headerDetect = detectHeaderRow(table);
-              const blocks = detectTableBlocks(table).map(b => ({
-                headerRowIndex: b.headerRowIndex,
-                startRowIndex: b.startRowIndex,
-                endRowIndex: b.endRowIndex,
-                score: b.score
-              }));
-              structure = { ...meta, detectedHeaderRowIndex: headerDetect.rowIndex, blocks };
-            } catch (e) {
-              log.warn('Structure analysis failed', e);
-            }
+            const tailCount = typeof tailRows === 'number' && tailRows > 0 ? tailRows : 0;
+            const sliced = tailCount > 0 ? values.slice(-tailCount) : values;
 
-            const payload = { data: [headers, ...values], structure };
+            const payload = { data: [headers, ...sliced] };
             responseCache.set(key, { at: Date.now(), payload });
             return res.status(200).json(payload);
             
