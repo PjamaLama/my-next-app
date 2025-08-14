@@ -52,27 +52,51 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   }, [user]);
 
   // Adding spreadsheet handled inside SpreadsheetManagerModal
+  // Wired Edit for user modifications before commit; keeps flow elegant.
   const handleModalSubmit = async (rowData: Array<{ column: string; value: unknown }>) => {
     try {
-      const rows = [{ ...rowData.reduce((acc, cur) => { acc[cur.column] = cur.value; return acc; }, {} as Record<string, unknown>) }];
+      const rowObj = rowData.reduce((acc, cur) => { (acc as any)[cur.column] = cur.value; return acc; }, {} as Record<string, unknown>);
       const toolCall = {
         function: {
           name: 'apply_structured_rows',
-          arguments: JSON.stringify({ rows, commit: true })
+          arguments: JSON.stringify({ rows: [rowObj], commit: true })
         }
       } as const;
-      await fetch('/api/genkit-tool-execute', {
+      const resp = await fetch('/api/genkit-tool-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: (useSheet() as any).selectedSheetNames } })
+        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames } })
       });
+      // Re-hydrate after apply
+      const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
+      if (resp.ok && defaultSpreadsheetId && activeSheet) {
+        const dataRes = await fetch('/api/get-sheet-data', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: activeSheet })
+        });
+        const json = await dataRes.json();
+        if (json && json.data) setSheetDataCache((prev) => ({ ...prev, [activeSheet]: json.data }));
+        await notify({ title: 'Success', description: 'Update applied.', tone: 'success' });
+      }
     } catch {}
     setModalOpen(false);
   };
 
   const openEditModal = (preview: any) => {
-    setModalPreview(preview);
-    setModalOpen(true);
+    // Normalize preview into { headers, rows: Array<{column,value}>[] }
+    try {
+      const headers: string[] = Array.isArray(preview?.headers) ? preview.headers : [];
+      const rows2D: any[] = Array.isArray(preview?.rows) ? preview.rows : [];
+      const first = Array.isArray(rows2D) && rows2D.length > 0 ? rows2D[0] : [];
+      const rows: Array<Array<{ column: string; value: unknown }>> = headers.length > 0
+        ? [headers.map((h, i) => ({ column: h, value: String(first?.[i] ?? '') }))]
+        : [];
+      setModalPreview({ headers, rows, message: preview?.message });
+      setModalOpen(true);
+    } catch {
+      setModalPreview(preview);
+      setModalOpen(true);
+    }
   };
 
   // Simplified Approve to commit changes and re-hydrate sheet.
