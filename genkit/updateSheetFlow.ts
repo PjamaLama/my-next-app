@@ -253,7 +253,33 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
       });
     }
 
-    const promptText = buildSheetUpdatePrompt({
+    // New strict prompt to always output structured previews for updates (preserve placeholders)
+    const structuredPreviewTemplate = `You are processing a sheet update request. Always attempt to structure the update as rows with exact column matches to the target sheet.
+Rules:
+
+Hydrate and use the full sheet headers from context. Map user-provided data keys to exact sheet column names (e.g., if user says 'Full Name', map to 'Name' if that's the header).
+Generate output as an array of row objects where each key is an exact sheet column name, and values are the proposed updates. Only include changed or new rows; do not show the entire sheet.
+For previews: Set mode to 'dryRun' and return a JSON with 'previewTable': {headers: [exact columns], rows: [array of proposed row arrays]}.
+Validate data: Cross-check against current sheet values for consistency (e.g., no invalid dates, numbers). If mismatch, suggest clarifications.
+If structured rows can't be formed, fallback to cell-level actions but still format as a table (e.g., columns: 'Row Index', 'Column', 'New Value').
+
+Input: {userRequest}
+Sheet headers: {sheetHeaders}
+Current data sample: {sampleRows}`;
+
+    // Resolved values to ground the placeholders for the model, while keeping placeholders intact upstream
+    const resolvedUserRequest = JSON.stringify(cleanedTranscript);
+    const resolvedSheetHeaders = JSON.stringify(headers);
+    const resolvedSampleRows = JSON.stringify(rowsOnly.slice(0, 5));
+
+    const promptText = `${structuredPreviewTemplate}
+
+Input (resolved): ${resolvedUserRequest}
+Sheet headers (resolved): ${resolvedSheetHeaders}
+Current data sample (resolved): ${resolvedSampleRows}
+
+---
+Legacy prompt (for compatibility):\n${buildSheetUpdatePrompt({
       transcript: cleanedTranscript,
       sheetName,
       lastDataRow,
@@ -269,7 +295,7 @@ export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow',
       timezone,
       matchingRowForToday,
       sheetDataCsv: csvData,
-    });
+    })}`;
 
     // Create multiple AI operations for fallback using inline prompt
     const aiOperations = aiConfigs.map(config =>

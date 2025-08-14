@@ -99,13 +99,7 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     datasets: (c.datasets || []).map(d => ({ label: d.label, data: (d.data || []).slice(0, 8) }))
   }));
 
-  const system = [
-    'You are a helpful spreadsheet assistant.',
-    'Ground your answer ONLY in the provided context (qaAnswer, tables, charts, insights, tool summaries).',
-    'If information is missing from the context, say you do not have enough information.',
-    'Keep it concise, conversational, and specific. Avoid markdown tables unless asked.',
-    'If the user intent suggests data updates, suggest "Preview updates" or "Apply changes" as next steps.'
-  ].join(' ');
+  const system = '';
 
   const contextJson = JSON.stringify({
     qaAnswer: qaAnswer || null,
@@ -120,13 +114,41 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     ? '\nPrioritize the charts in your answer. Suggest interactive options like zoom or filter. Keep text minimal; if visuals suffice, keep the answer to one sentence.'
     : '';
 
-  const prompt = `${system}${visualsHint}
+  // Prepare a lightweight sheet context from available tables for grounding
+  const sheetContext = (() => {
+    if (compactTables.length > 0) {
+      return {
+        headers: compactTables[0].headers || [],
+        sampleRows: compactTables[0].rows || []
+      };
+    }
+    return { headers: [], sampleRows: [] };
+  })();
+
+  // Exact template to steer composition to structured update previews
+  const compositionTemplate = `Compose a helpful assistant reply based on tool results, QA, tables, and charts.
+Key instructions for updates:
+
+If tool results include previews from 'apply_structured_rows' or 'update_sheet', format them as a structured data table in the response.
+The table must show ONLY the proposed updates/additions, with columns matching the exact sheet headers (no extras or mismatches).
+Structure: Use 'dataTables' array in output, with each table having {title: 'Proposed Sheet Updates', headers: [exact sheet columns], rows: [array of proposed rows]}.
+Add instructional text: "Here's the proposed updates in a table format. Review and click 'Approve' to add to the sheet, or 'Edit' to modify."
+Ground on hydrated context: Ensure data in the table is accurate by validating against sheet samples (e.g., format dates/numbers correctly using parseDateFlexible/parseDecimal).
+If no perfect mapping, clarify: "I couldn't match all columns exactly—please confirm or provide more details."
+
+Tool results: {toolSummaries}
+Context: {sheetContext}`;
+
+  const prompt = `${compositionTemplate}
 
 User message:
 ${userMessage}
 
 Context (ground truth JSON):
 ${contextJson}
+
+Tool results (resolved): ${JSON.stringify(toolSummaries)}
+Sheet context (resolved): ${JSON.stringify(sheetContext)}
 
 Write a short, friendly answer grounded in the context.`;
 
