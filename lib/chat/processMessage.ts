@@ -709,6 +709,7 @@ export async function processMessage(
     let describeText: string | null = null;
     let didUpdateSheet = false;
     const dataTables: StructuredTable[] = [];
+    let hasProposedUpdateTable: boolean = false;
     let response = '';
     const postQuickActions: string[] = [];
     // Hoist quickReplies so we can modify them during tool processing (e.g., preview confirmations)
@@ -732,21 +733,22 @@ export async function processMessage(
       } catch {}
       // Handle explicit preview payloads from backend (commit not yet performed)
       try {
-        if ((result as any)?.preview) {
-          response = 'Proposed update (using sheet columns):';
+				if ((result as any)?.preview) {
+					response = 'Proposed update (using sheet columns):';
           const ctxAny = context as any;
           ctxAny.previewActions = (result as any).preview;
           // Render a data table in chat using the preview
           try {
             const pv = (result as any).preview;
-            if (pv && Array.isArray(pv.headers) && Array.isArray(pv.rows)) {
+                if (pv && Array.isArray(pv.headers) && Array.isArray(pv.rows)) {
               const headers = pv.headers as string[];
               const rows: string[][] = (pv.rows as Array<Array<{ column: string; value: unknown }>>)
                 .map((row) => headers.map((h) => {
                   const cell = row.find((c: any) => String(c.column) === h);
                   return String(cell ? cell.value ?? '' : '');
                 }));
-              dataTables.push({ title: 'Proposed update', headers, rows, summary: pv.message || 'Confirm to apply' });
+                  dataTables.push({ title: 'Proposed Sheet Updates', headers, rows });
+                  try { hasProposedUpdateTable = true; } catch {}
             }
           } catch {}
           // Provide structured quick replies for UI and simple text fallbacks
@@ -819,23 +821,24 @@ export async function processMessage(
               ? Object.keys(flowPreview)
               : [];
             const previews = sheets.length > 0 ? sheets.flatMap((name: string) => (flowPreview as any)[name]) : ((result as any).preview || (result as any).details?.preview || []);
-            if (Array.isArray(previews) && previews.length > 0) {
-              const headers = ['Row', 'Field', 'Value'];
-              const rows: string[][] = [];
-              for (const p of previews.slice(0, 30)) {
-                const rowIndex = p.row ?? p.targetRow ?? '';
-                const updates = p.updates || {};
-                for (const [k, v] of Object.entries(updates)) {
-                  rows.push([String(rowIndex), String(k), String(v ?? '')]);
-                }
-              }
-              if (rows.length > 0) {
-                dataTables.push({ title: 'Proposed update (preview)', headers, rows, summary: `Showing ${rows.length} cell update(s)` });
-                // Add conversational confirmation prompts
-                postQuickActions.push('Apply');
-                postQuickActions.push('Edit');
-              }
-            }
+				if (Array.isArray(previews) && previews.length > 0) {
+					// Build exact sheet headers from context when available
+					const ctxAny = context as any;
+					const sheetHeaders: string[] = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders : (Array.isArray(ctxAny?.sheetData?.[ctxAny?.sheetName || '']) ? (ctxAny.sheetData[ctxAny.sheetName][0] || []) : []);
+					const headers = Array.isArray(sheetHeaders) && sheetHeaders.length > 0 ? sheetHeaders : Object.keys(previews[0]?.updates || {});
+					const rows: string[][] = [];
+					for (const p of previews.slice(0, 200)) {
+						const updates = p.updates || {};
+						const row = headers.map(h => String((updates as any)[h] ?? ''));
+						if (row.some(v => v !== '')) rows.push(row);
+					}
+					if (rows.length > 0) {
+						dataTables.push({ title: 'Proposed Sheet Updates', headers, rows });
+						// Add conversational confirmation prompts
+						postQuickActions.push('Apply');
+						postQuickActions.push('Edit');
+					}
+				}
             // Suggested mapping preview support
             const suggested = (result as any).details?.previewSuggestedMapping;
             if (Array.isArray(suggested) && suggested.length > 0) {
@@ -1266,6 +1269,13 @@ export async function processMessage(
       ...t,
       rows: normalizeDateColumns(t.headers, t.rows)
     }));
+    // If a proposed updates table exists, prefer showing only that table to avoid noise
+    try {
+      const idx = normalizedTables.findIndex(t => /proposed sheet updates/i.test(String(t.title)));
+      if (idx >= 0) {
+        normalizedTables = [normalizedTables[idx]];
+      }
+    } catch {}
 
     // If user wanted charts/graphs and did not explicitly ask for table/data view, suppress tables unless they came from file uploads
     try {
