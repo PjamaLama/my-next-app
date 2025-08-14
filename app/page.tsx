@@ -25,6 +25,7 @@ import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import RecentActivity from './components/RecentActivity';
 import SheetChipSelector from './components/SheetChipSelector';
+import EditRowModal from './components/EditRowModal';
 // Dialog not used on landing to avoid provider coupling issues
 import dynamic from 'next/dynamic';
 
@@ -2195,47 +2196,37 @@ export default function Home() {
                             {/* Sticky quick action bar (always visible while scrolling) */}
                             <div className="sticky bottom-0 right-0 w-full">
                               <div className="pointer-events-none bg-gradient-to-t from-black/40 to-transparent px-2 pt-6 pb-2">
-                                <div className="pointer-events-auto flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => addExtractedTableToSheet(message.id, tIdx, { headers: t.headers, rows: t.rows, title: t.title })}
-                                    className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
-                                    title={`Map and add this extracted data${selectedSheetNames?.length ? ` to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}` : ''}`}
-                                  >
-                                    {tableActionState[`${message.id}_${tIdx}`] === 'loading' ? (
-                                      <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
-                                    ) : tableActionState[`${message.id}_${tIdx}`] === 'done' ? (
-                                      <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                                    ) : (
-                                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12"/></svg>
-                                    )}
-                                    <span>
-                                      {tableActionState[`${message.id}_${tIdx}`] === 'done' ? 'Added' : (
-                                        selectedSheetNames && selectedSheetNames.length > 0
-                                          ? `Add extracted data to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}`
-                                          : 'Add extracted data'
-                                      )}
-                                    </span>
-                                  </button>
-                                    {/* When table title indicates a proposed update, show Commit/Edit actions */}
-                                    {t.title && /Proposed update/i.test(t.title) && (
-                                      <>
+                                    <div className="pointer-events-auto flex items-center justify-end gap-2">
+                                      {/* Updated buttons to Approve/Reject/Edit; Edit opens modal for changes before commit. */}
+                                      {t.title && /Proposed Sheet Updates/i.test(String(t.title)) ? (
+                                        <>
+                                          <button className="bg-green-500 text-white px-4 py-2 mr-2 rounded" onClick={() => handleCommitFromTable(t.headers, t.rows)}>Approve</button>
+                                          <button className="bg-red-500 text-white px-4 py-2 mr-2 rounded" onClick={() => setSendResult('Update canceled.')}>Reject</button>
+                                          <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary)}>Edit</button>
+                                        </>
+                                      ) : (
                                         <button
-                                          onClick={() => handleCommitFromTable(t.headers, t.rows)}
+                                          onClick={() => addExtractedTableToSheet(message.id, tIdx, { headers: t.headers, rows: t.rows, title: t.title })}
                                           className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
-                                          title="Commit proposed update"
+                                          title={`Map and add this extracted data${selectedSheetNames?.length ? ` to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}` : ''}`}
                                         >
-                                          Commit
+                                          {tableActionState[`${message.id}_${tIdx}`] === 'loading' ? (
+                                            <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
+                                          ) : tableActionState[`${message.id}_${tIdx}`] === 'done' ? (
+                                            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                                          ) : (
+                                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12"/></svg>
+                                          )}
+                                          <span>
+                                            {tableActionState[`${message.id}_${tIdx}`] === 'done' ? 'Added' : (
+                                              selectedSheetNames && selectedSheetNames.length > 0
+                                                ? `Add extracted data to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}`
+                                                : 'Add extracted data'
+                                            )}
+                                          </span>
                                         </button>
-                                        <button
-                                          onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary)}
-                                          className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-sky-400/40 bg-sky-600 hover:bg-sky-700 text-white shadow"
-                                          title="Edit proposed update"
-                                        >
-                                          Edit
-                                        </button>
-                                      </>
-                                    )}
-                                </div>
+                                      )}
+                                    </div>
                               </div>
                             </div>
                           </div>
@@ -2546,11 +2537,11 @@ export default function Home() {
                   )}
                   {Array.isArray(previewModal.rows) && previewModal.rows.length > 0 ? (
                     <table className="min-w-full text-[12px]">
+                      {/* Removed confidence UI for simplicity; focus on exact previews. */}
                       <thead>
                         <tr className="bg-white/5">
                           <th className="px-3 py-2 text-left">Row</th>
                           <th className="px-3 py-2 text-left">Updates</th>
-                          <th className="px-3 py-2 text-left">Confidence</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2563,9 +2554,6 @@ export default function Home() {
                                   <div key={k} className="flex items-center gap-2"><span className="text-white/60">{k}:</span> <span className="text-white/90">{String(v)}</span></div>
                                 ))}
                               </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              <span className={`${r.confidence >= 0.8 ? 'text-emerald-300' : r.confidence >= 0.5 ? 'text-yellow-300' : 'text-red-300'}`}>{Math.round(r.confidence * 100)}%</span>
                             </td>
                           </tr>
                         ))}

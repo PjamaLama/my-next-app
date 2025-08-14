@@ -1,6 +1,8 @@
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
+// Cleaned up; tables built in processMessage, not here.
+
 type ComposeTable = { title?: string; headers: string[]; rows: string[][]; summary?: string };
 type ComposeChart = { kind: 'bar' | 'line' | 'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }> };
 
@@ -11,7 +13,6 @@ type ComposeInput = {
   charts?: ComposeChart[];
   insights?: string[];
   toolSummaries?: string[];
-  // Optional planning and results context for pre-answer validation
   plan?: any;
   toolResults?: any[];
 };
@@ -30,7 +31,7 @@ function buildClarifyUnparsedMessage(column: string, total: number, unparsed: nu
 }
 
 export async function composeGroundedReply(input: ComposeInput): Promise<string> {
-  const { userMessage, qaAnswer, tables = [], charts = [], insights = [], toolSummaries = [], plan, toolResults } = input;
+  const { userMessage, qaAnswer, tables = [], insights = [], toolSummaries = [], plan, toolResults } = input;
 
   // Prefer QA summary if available
   try {
@@ -86,79 +87,31 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
 
-  const compactTables = tables.slice(0, 2).map(t => ({
-    title: t.title || 'Table',
-    headers: (t.headers || []).slice(0, 6),
-    rows: (t.rows || []).slice(0, 5).map(r => (r || []).slice(0, 6)),
-    summary: t.summary || ''
-  }));
-  const compactCharts = charts.slice(0, 2).map(c => ({
-    kind: c.kind,
-    title: c.title || '',
-    labels: (c.labels || []).slice(0, 8),
-    datasets: (c.datasets || []).map(d => ({ label: d.label, data: (d.data || []).slice(0, 8) }))
-  }));
+  // Determine if a preview exists (by title only; table rendering handled elsewhere)
+  const hasPreview = Array.isArray(tables) && tables.some(t => /Proposed Sheet Updates/i.test(String(t.title)));
 
-  const system = '';
+  const contextBits: string[] = [];
+  if (Array.isArray(toolSummaries) && toolSummaries.length > 0) {
+    contextBits.push(`Tool results: ${toolSummaries.slice(0, 5).join('; ')}`);
+  }
+  if (Array.isArray(insights) && insights.length > 0) {
+    contextBits.push(`Insights: ${insights.slice(0, 3).join('; ')}`);
+  }
 
-  const contextJson = JSON.stringify({
-    qaAnswer: qaAnswer || null,
-    toolSummaries,
-    tables: compactTables,
-    charts: compactCharts,
-    insights: insights.slice(0, 5)
-  });
+  const prefix = qaAnswer && qaAnswer.trim() ? `Base answer: ${qaAnswer.trim()}` : '';
+  const previewHint = hasPreview ? `\nHere's the proposed updates. Review and approve, reject, or edit.` : '';
 
-  // If charts are present, prioritize visuals and suggest interactivity
-  const visualsHint = (compactCharts && compactCharts.length > 0)
-    ? '\nPrioritize the charts in your answer. Suggest interactive options like zoom or filter. Keep text minimal; if visuals suffice, keep the answer to one sentence.'
-    : '';
-
-  // Prepare a lightweight sheet context from available tables for grounding
-  const sheetContext = (() => {
-    if (compactTables.length > 0) {
-      return {
-        headers: compactTables[0].headers || [],
-        sampleRows: compactTables[0].rows || []
-      };
-    }
-    return { headers: [], sampleRows: [] };
-  })();
-
-  // Exact template to steer composition to structured update previews
-  const compositionTemplate = `Compose a helpful assistant reply based on tool results, QA, tables, and charts.
-Key instructions for updates:
-
-If tool results include previews from 'apply_structured_rows' or 'update_sheet', format them as a structured data table in the response.
-The table must show ONLY the proposed updates/additions, with columns matching the exact sheet headers (no extras or mismatches).
-Structure: Use 'dataTables' array in output, with each table having {title: 'Proposed Sheet Updates', headers: [exact sheet columns], rows: [array of proposed rows]}.
-Add instructional text: "Here's the proposed updates in a table format. Review and click 'Approve' to add to the sheet, or 'Edit' to modify."
-Ground on hydrated context: Ensure data in the table is accurate by validating against sheet samples (e.g., format dates/numbers correctly using parseDateFlexible/parseDecimal).
-If no perfect mapping, clarify: "I couldn't match all columns exactly—please confirm or provide more details."
-
-Tool results: {toolSummaries}
-Context: {sheetContext}`;
-
-  const prompt = `${compositionTemplate}
-
-User message:
-${userMessage}
-
-Context (ground truth JSON):
-${contextJson}
-
-Tool results (resolved): ${JSON.stringify(toolSummaries)}
-Sheet context (resolved): ${JSON.stringify(sheetContext)}
-
-Write a short, friendly answer grounded in the context.`;
+  const prompt = [
+    'Compose a helpful, concise assistant reply grounded only in the provided context. Avoid fabricating data.',
+    'If there\'s a preview of updates, include this exact sentence: "Here\'s the proposed updates. Review and approve, reject, or edit."',
+    prefix,
+    contextBits.join('\n'),
+    `User: ${userMessage}`
+  ].filter(Boolean).join('\n\n');
 
   const { text } = await ai.generate(prompt);
   const out = (text || '').trim();
-  if (compactCharts.length > 0) {
-    // If visuals suffice, we keep this succinct
-    return out.split('\n').slice(0, 2).join('\n') || 'See the chart above.';
-  }
-  return out || 'I analyzed your data.';
+  return (out + previewHint).trim() || 'I analyzed your data.';
 }
 
 

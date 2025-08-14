@@ -24,6 +24,19 @@ const EditRowModal: React.FC<EditRowModalProps> = ({ isOpen, onClose, preview, o
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            // Basic onSave wiring: submit edited row to tool execute API
+            try {
+              const rows = [{ ...rowData.reduce((acc, cur) => { (acc as any)[cur.column] = cur.value; return acc; }, {} as Record<string, unknown>) }];
+              fetch('/api/genkit-tool-execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  toolCall: { function: { name: 'apply_structured_rows', arguments: JSON.stringify({ rows, commit: true }) } },
+                  context: (window as any)?.__APP_CONTEXT__ || {},
+                  images: []
+                })
+              }).catch(() => {});
+            } catch {}
             onSubmit(rowData);
           }}
         >

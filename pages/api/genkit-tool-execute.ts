@@ -2518,7 +2518,8 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 }
 
   // Apply structured rows through the centralized ingestion endpoint
-async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
+  async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
+  // Simplified to exact matching only; no synonyms.
   try {
     const { spreadsheetId, sheetNames, sheetName } = context as any;
     const { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
@@ -2528,111 +2529,79 @@ async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: 
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ success: false, error: 'No structured rows provided' });
     }
-    // Auto-match incoming row keys to target sheet headers using case-insensitive exact or keyword contains
-    let matchedAtLeastThreshold = false;
-    let remappedRows: Array<Record<string, unknown>> = Array.isArray(rows) ? [...rows] : [];
+
     const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
-    let sheetHeaders = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
-    try {
-      // Ensure we are using actual header row (not data mistaken as headers)
-      const isProbablyHeaderRow = (arr: string[]): boolean => {
-        if (!Array.isArray(arr) || arr.length === 0) return false;
-        const alphaCount = arr.filter((c) => /[A-Za-z]/.test(String(c || '')) && String(c || '').trim().length > 0).length;
-        return alphaCount >= Math.max(1, Math.ceil(arr.length * 0.5));
-      };
-      if (activeSheet) {
-        if (!(sheetHeaders && sheetHeaders.length > 0 && isProbablyHeaderRow(sheetHeaders))) {
-          try {
-            const sheets = await getGoogleSheetsClient();
-            const escaped = escapeSheetName(String(activeSheet));
-            const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1` });
-            const hdrs = (resp.data.values?.[0] as string[]) || [];
-            if (hdrs && hdrs.length > 0) sheetHeaders = hdrs.map((h) => String(h ?? ''));
-          } catch {}
-        }
-      }
-      if (activeSheet && sheetHeaders.length > 0) {
-        const firstRow = rows[0] || {};
-        const incomingKeys = Object.keys(firstRow);
-        if (incomingKeys.length > 0) {
-          const { mapping, matchRatio, isPerfect } = matchColumns(incomingKeys, sheetHeaders);
-          console.log('Mapped fields to headers: ', mapping);
-          // Commit only when all incoming keys exactly match existing headers
-          matchedAtLeastThreshold = isPerfect;
-          // Remap rows to use exact sheet header names; drop unmapped keys for both preview and commit
-          remappedRows = rows.map((r) => {
-            const out: Record<string, unknown> = {};
-            for (const [k, v] of Object.entries(r || {})) {
-              const target = mapping[k];
-              if (target) out[target] = v;
-            }
-            return out;
-          });
-          (args as any).rows = remappedRows;
-          if (!matchedAtLeastThreshold) {
-            const preview = {
-              headers: sheetHeaders,
-              rows: remappedRows.map(r => Object.entries(r).map(([k, v]) => ({ column: k, value: v }))),
-              message: 'Proposed update requires confirmation.',
-              action: 'confirm'
-            } as const;
-            try { console.log(`Preview for ${String((args as any)?.sheetName || activeSheet)}: `, preview); } catch {}
-            return res.status(200).json({ success: false, preview });
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('apply_structured_rows matching warning:', e);
+    let sheetHeaders: string[] = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
+
+    // Fallback: fetch headers from the sheet if not present in context
+    if ((!sheetHeaders || sheetHeaders.length === 0) && activeSheet) {
+      try {
+        const sheets = await getGoogleSheetsClient();
+        const escaped = escapeSheetName(String(activeSheet));
+        const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1` });
+        const hdrs = (resp.data.values?.[0] as string[]) || [];
+        if (hdrs && hdrs.length > 0) sheetHeaders = hdrs.map((h) => String(h ?? ''));
+      } catch {}
     }
 
-    let doCommit = commit === true;
-    // Normalize Date field using context.currentDate when missing
-    const currentDate = typeof (context as any)?.currentDate === 'string' && (context as any).currentDate ? String((context as any).currentDate) : undefined;
-    const normalizedRows = Array.isArray(remappedRows) ? remappedRows.map((r) => {
-      const hasDate = Object.keys(r || {}).some(k => /^date$/i.test(k));
-      if (!hasDate && currentDate) return { Date: currentDate, ...(r || {}) } as Record<string, unknown>;
-      return r as Record<string, unknown>;
-    }) : remappedRows;
-    // Do not auto-commit based on match ratio; require explicit commit
+    // Validate: all incoming keys must match a header exactly (case-insensitive)
+    const lowerHeadersSet = new Set((sheetHeaders || []).map(h => String(h || '').toLowerCase()));
+    const proposedKeys = Array.from(new Set(rows.flatMap(r => Object.keys(r || {}))));
+    const unknownKeys = proposedKeys.filter(k => !lowerHeadersSet.has(String(k || '').toLowerCase()));
+    if (unknownKeys.length > 0) {
+      const msg = `Unknown headers: [${unknownKeys.join(', ')}]. Use exact columns: [${(sheetHeaders || []).join(', ')}]`;
+      return res.status(400).json({ success: false, error: msg });
+    }
+
+    // Map rows to exact headers; include only headers with empty string for unmatched
+    const lowerToHeader: Record<string, string> = {};
+    (sheetHeaders || []).forEach(h => { lowerToHeader[String(h || '').toLowerCase()] = String(h || ''); });
+    const mappedRows: Array<Record<string, unknown>> = rows.map(r => {
+      const out: Record<string, unknown> = {};
+      for (const h of (sheetHeaders || [])) {
+        const keyLower = String(h || '').toLowerCase();
+        // find value from incoming row using case-insensitive exact key
+        let value: unknown = '';
+        for (const [k, v] of Object.entries(r || {})) {
+          if (String(k || '').toLowerCase() === keyLower) { value = v; break; }
+        }
+        out[lowerToHeader[keyLower]] = value;
+      }
+      return out;
+    });
+
+    console.log('Mapped rows:', mappedRows);
+
+    const doCommit = commit === true && dryRun !== true;
+    if (!doCommit) {
+      return res.status(200).json({
+        success: false,
+        preview: {
+          headers: sheetHeaders,
+          rows: mappedRows,
+          message: 'Proposed update requires confirmation.',
+          action: 'confirm'
+        }
+      });
+    }
+
+    // Commit via ingestion endpoint (no preview dedupe/fuzzy here)
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetNames, rows: normalizedRows, dryRun: doCommit ? false : true, startRow })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spreadsheetId, sheetNames, rows: mappedRows, dryRun: false, startRow })
     });
     if (!ingestResp.ok) {
       const txt = await ingestResp.text();
       throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
     }
     const result = await ingestResp.json();
-    if (!doCommit) {
-      const preview = {
-        headers: sheetHeaders,
-        rows: remappedRows.map(r => Object.entries(r).map(([k, v]) => ({ column: k, value: v }))),
-        message: 'Proposed update requires confirmation.',
-        action: 'confirm'
-      } as const;
-      try { console.log(`Preview for ${String((args as any)?.sheetName || activeSheet)}: `, preview); } catch {}
-      return res.status(200).json({ success: false, preview });
-    }
-    try {
-      console.log('Committed update: ', remappedRows);
-    } catch {}
-    // Fetch new row count for the active sheet
-    let newRowCount: number | undefined = undefined;
-    try {
-      const dataResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/get-sheet-data`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spreadsheetId, sheetName: (args as any)?.sheetName || activeSheet })
-      });
-      if (dataResp.ok) {
-        const payload = await dataResp.json();
-        const data = (payload?.data || []) as any[];
-        if (Array.isArray(data)) newRowCount = data.length;
-      }
-    } catch {}
-    return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: remappedRows, newRowCount });
+    return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: mappedRows, result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);
     return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });
   }
-}
+ }
 
 // Best-effort column matcher between incoming file columns and target sheet headers
 function normalizeHeader(h: string): string { return String(h || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }

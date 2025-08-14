@@ -46,6 +46,19 @@ function extractHeadersFromTool(toolRes: any): string[] {
   return [];
 }
 
+// Single preview builder for exact proposed changes only.
+function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): StructuredTable | null {
+  const headers: string[] = (Array.isArray(sheetHeaders) && sheetHeaders.length > 0)
+    ? sheetHeaders
+    : (Array.isArray(preview?.headers) ? (preview.headers as string[]) : []);
+  if (!Array.isArray(headers) || headers.length === 0 || !Array.isArray(preview?.rows)) return null;
+  const rows: string[][] = (preview.rows as any[]).map((rowObj: any) => {
+    const obj = (rowObj && typeof rowObj === 'object' && !Array.isArray(rowObj)) ? rowObj : {};
+    return headers.map((h) => String((obj as any)[h] ?? ''));
+  });
+  return { title: 'Proposed Sheet Updates', headers, rows } as StructuredTable;
+}
+
 export async function processMessage(
   message: string,
   context: Context,
@@ -737,27 +750,19 @@ export async function processMessage(
 					response = 'Proposed update (using sheet columns):';
           const ctxAny = context as any;
           ctxAny.previewActions = (result as any).preview;
-          // Render a data table in chat using the preview
-          try {
-            const pv = (result as any).preview;
-                if (pv && Array.isArray(pv.headers) && Array.isArray(pv.rows)) {
-              const headers = pv.headers as string[];
-              const rows: string[][] = (pv.rows as Array<Array<{ column: string; value: unknown }>>)
-                .map((row) => headers.map((h) => {
-                  const cell = row.find((c: any) => String(c.column) === h);
-                  return String(cell ? cell.value ?? '' : '');
-                }));
-                  dataTables.push({ title: 'Proposed Sheet Updates', headers, rows });
-                  try { hasProposedUpdateTable = true; } catch {}
-            }
-          } catch {}
+          // Render a single proposed updates table
+          const pv = (result as any).preview;
+          const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
+          const table = buildProposedUpdatesTable(pv, sheetHeaders);
+          if (table) { dataTables.push(table); hasProposedUpdateTable = true; }
           // Provide structured quick replies for UI and simple text fallbacks
           ctxAny.quickReplies = [
-            { text: 'Commit', action: 'confirm_update' },
+            { text: 'Approve', action: 'confirm_update' },
+            { text: 'Reject', action: 'reject_update' },
             { text: 'Edit', action: 'edit_update' }
           ];
           const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
-          quickReplies = Array.from(new Set([...baseQR, 'Commit', 'Edit'])).slice(0, 5);
+          quickReplies = Array.from(new Set([...baseQR, 'Approve', 'Reject', 'Edit'])).slice(0, 5);
           // Stash pending call with commit=true so confirmation can re-run it
           try {
             const args = JSON.parse(toolCall.function.arguments || '{}');
@@ -813,7 +818,7 @@ export async function processMessage(
             enhancedResponse += `\n${result.result.trim()}`;
           }
           didUpdateSheet = true;
-          // If update_sheet returned a preview of what was written, render it as a data table
+          // If update_sheet returned a preview of what was written, render it as a single proposed updates table
           try {
             const flowPreview = (result as any).flowPreview;
             // Support single or multi-sheet responses
@@ -821,32 +826,17 @@ export async function processMessage(
               ? Object.keys(flowPreview)
               : [];
             const previews = sheets.length > 0 ? sheets.flatMap((name: string) => (flowPreview as any)[name]) : ((result as any).preview || (result as any).details?.preview || []);
-				if (Array.isArray(previews) && previews.length > 0) {
-					// Build exact sheet headers from context when available
-					const ctxAny = context as any;
-					const sheetHeaders: string[] = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders : (Array.isArray(ctxAny?.sheetData?.[ctxAny?.sheetName || '']) ? (ctxAny.sheetData[ctxAny.sheetName][0] || []) : []);
-					const headers = Array.isArray(sheetHeaders) && sheetHeaders.length > 0 ? sheetHeaders : Object.keys(previews[0]?.updates || {});
-					const rows: string[][] = [];
-					for (const p of previews.slice(0, 200)) {
-						const updates = p.updates || {};
-						const row = headers.map(h => String((updates as any)[h] ?? ''));
-						if (row.some(v => v !== '')) rows.push(row);
-					}
-					if (rows.length > 0) {
-						dataTables.push({ title: 'Proposed Sheet Updates', headers, rows });
-						// Add conversational confirmation prompts
-						postQuickActions.push('Apply');
-						postQuickActions.push('Edit');
-					}
-				}
-            // Suggested mapping preview support
-            const suggested = (result as any).details?.previewSuggestedMapping;
-            if (Array.isArray(suggested) && suggested.length > 0) {
-              const headers = ['File Column', 'Suggested Sheet Column', 'Confidence'];
-              const rows = suggested.slice(0, 30).map((m: any) => [String(m.file || ''), String(m.sheet || ''), String(m.score != null ? Math.round(Number(m.score) * 100) + '%' : '')]);
-              dataTables.push({ title: 'Suggested column mapping', headers, rows });
-              postQuickActions.push('Apply');
-              postQuickActions.push('Edit');
+				if (previews) {
+              const ctxAny = context as any;
+              const sheetHeaders: string[] = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders : (Array.isArray(ctxAny?.sheetData?.[ctxAny?.sheetName || '']) ? (ctxAny.sheetData[ctxAny.sheetName][0] || []) : []);
+              const pv = Array.isArray(previews) ? { headers: sheetHeaders, rows: previews.map((p: any) => p.updates || {}) } : previews;
+              const table = buildProposedUpdatesTable(pv, sheetHeaders);
+              if (table && table.rows.length > 0) {
+                dataTables.push(table);
+                postQuickActions.push('Approve');
+                postQuickActions.push('Reject');
+                postQuickActions.push('Edit');
+              }
             }
           } catch {}
         } else if (
@@ -858,7 +848,7 @@ export async function processMessage(
           executedToolName === 'apply_structured_rows'
         ) {
           if (executedToolName === 'apply_structured_rows') {
-            const isPreview = (result as any)?.preview === true || /preview/i.test(String(result?.result || ''));
+            const isPreview = Boolean((result as any)?.preview);
             if (!isPreview) {
               didUpdateSheet = true;
               // Post-commit: refresh hydration and craft deterministic success message
@@ -955,13 +945,18 @@ export async function processMessage(
           try {
             const ctxAny = context as any;
             response = 'Proposed update (using sheet columns):';
-            ctxAny.previewActions = (result as any).preview;
+            const pv = (result as any).preview;
+            const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
+            const table = buildProposedUpdatesTable(pv, sheetHeaders);
+            if (table) { dataTables.push(table); hasProposedUpdateTable = true; }
+            ctxAny.previewActions = pv;
             ctxAny.quickReplies = [
-              { text: 'Commit', action: 'confirm_update' },
+              { text: 'Approve', action: 'confirm_update' },
+              { text: 'Reject', action: 'reject_update' },
               { text: 'Edit', action: 'edit_update' }
             ];
             const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
-            quickReplies = Array.from(new Set([...baseQR, 'Commit', 'Edit'])).slice(0, 5);
+            quickReplies = Array.from(new Set([...baseQR, 'Approve', 'Reject', 'Edit'])).slice(0, 5);
             try {
               const args = JSON.parse(toolCall.function.arguments || '{}');
               (context as any)._lastUpdateToolCall = { name: toolCall.function.name, args: { ...args, commit: true } };
