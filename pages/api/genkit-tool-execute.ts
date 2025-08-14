@@ -2519,7 +2519,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
   // Apply structured rows through the centralized ingestion endpoint
   async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
-  // Removed resolve_column dependency; uses planner-provided rows directly.
+  // Ensured valid rows with non-Date values; removed resolve_column dependency.
   try {
     const argSpreadsheetId = (args as any)?.spreadsheetId;
     const argSheetName = (args as any)?.sheetName;
@@ -2529,21 +2529,24 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
     const sheetName = argSheetName || (context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames?.[0] : undefined);
 
     if (!spreadsheetId || !sheetName || !Array.isArray(rows) || rows.length === 0) {
-      const missing: string[] = [];
-      if (!spreadsheetId) missing.push('spreadsheetId');
-      if (!sheetName) missing.push('sheetName');
-      if (!rows || rows.length === 0) missing.push('rows');
-      return res.status(400).json({ success: false, error: `Missing required params: ${missing.join(', ')}` });
+      const missingParts: string[] = [];
+      if (!spreadsheetId) missingParts.push('spreadsheetId');
+      if (!sheetName) missingParts.push('sheetName');
+      if (!rows || rows.length === 0) missingParts.push('rows');
+      return res.status(200).json({
+        success: false,
+        error: `Missing required params: ${missingParts.join(' ')}`,
+        clarify: 'Please specify the sheet and data to update.'
+      });
     }
 
     // Load headers from API (prefer context cache if available)
     let sheetHeaders: string[] = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
     if (!sheetHeaders || sheetHeaders.length === 0) {
       try {
-        const sheets = await getGoogleSheetsClient();
         const escaped = escapeSheetName(String(sheetName));
-        const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!A1:Z1` });
-        const hdrs = (resp.data.values?.[0] as string[]) || [];
+        const data = await (await import('@/lib/googleSheets')).getRange(spreadsheetId, `${escaped}!A1:Z1`);
+        const hdrs = (data?.values?.[0] as string[]) || [];
         sheetHeaders = (hdrs || []).map(h => String(h ?? '').trim()).filter(h => h && h.length <= 100);
       } catch {}
     }
@@ -2551,50 +2554,50 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       return res.status(200).json({ success: false, error: 'No valid headers found', clarify: 'Please specify column names.' });
     }
 
-    // Build case-insensitive header lookup and semantic remap restricted to existing headers
+    // Removed semantic mapping; validates planner-provided rows for generalized sheets.
     const headerSet = new Set(sheetHeaders);
-    const lowerToHeader: Record<string, string> = {};
-    sheetHeaders.forEach(h => { lowerToHeader[String(h).toLowerCase()] = String(h); });
-    const semanticMap: Record<string, string> = {
-      client: 'Vendor',
-      saw: 'Vendor',
-      sold: 'Fuel Cost in Rands',
-      amount: 'Fuel Cost in Rands',
-      location: 'TOWN VISITED',
-      town: 'TOWN VISITED',
-      notes: 'Notes',
-    };
+    const inputRows = Array.isArray(rows) ? rows : [];
 
-    const remappedRows: Array<Record<string, unknown>> = (rows || []).map((row) => {
-      const out: Record<string, unknown> = {};
-      Object.keys(row || {}).forEach((k) => {
-        const keyLower = String(k).toLowerCase();
-        const mapped = semanticMap[keyLower] || (lowerToHeader[keyLower] ?? k);
-        if (headerSet.has(mapped)) out[mapped] = (row as any)[k];
+    // Validate unmapped keys from the original rows
+    const unmappedKeys = Array.from(new Set(inputRows.flatMap((row: any) => Object.keys(row || {}).filter((k) => !headerSet.has(k)))));
+    if (unmappedKeys.length > 0) {
+      return res.status(200).json({
+        success: false,
+        error: `Could not map fields: [${unmappedKeys.join(', ')}]. Available: [${sheetHeaders.join(', ')}]`,
+        clarify: 'Please clarify which columns to use.'
       });
-      if (headerSet.has('Date') && out['Date'] == null) out['Date'] = new Date().toLocaleDateString('en-US');
-      return out;
-    });
-
-    // Validate remappedRows: at least one non-empty value across non-Date headers
-    const hasValidData = remappedRows.some(r => sheetHeaders.some(h => h !== 'Date' && String((r as any)[h] ?? '').trim() !== ''));
-    if (!hasValidData) {
-      return res.status(400).json({ success: false, error: 'No valid data found in provided rows. Please include values for known columns.' });
     }
 
-    // Check for any keys not in headers (should be none due to filtering), but keep defensive
-    const badKeys = Array.from(new Set(remappedRows.flatMap(r => Object.keys(r)))).filter(k => !headerSet.has(k));
-    if (badKeys.length > 0) {
-      return res.status(200).json({ success: false, error: `Could not map fields: [${badKeys.join(', ')}]. Available: [${sheetHeaders.join(', ')}]`, clarify: 'Please clarify column names.' });
+    // Accept only exact-header keys and add Date if missing
+    const validRows: Array<Record<string, unknown>> = inputRows
+      .map((row: any) => {
+        const newRow: Record<string, unknown> = {};
+        sheetHeaders.forEach((h) => {
+          if (row[h] !== undefined) newRow[h] = String(row[h]).trim();
+        });
+        if (newRow['Date'] == null && headerSet.has('Date')) newRow['Date'] = new Date().toLocaleDateString('en-US');
+        // Ensure at least one non-Date value exists
+        const numKeys = Object.keys(newRow).length;
+        const hasNonDate = numKeys > (newRow['Date'] ? 1 : 0);
+        return hasNonDate ? newRow : null;
+      })
+      .filter((r): r is Record<string, unknown> => Boolean(r));
+
+    if (!validRows.length) {
+      return res.status(200).json({
+        success: false,
+        error: 'No valid data found in provided rows. Please include values for known columns.',
+        clarify: `Available columns: [${sheetHeaders.join(', ')}]. Please specify values for columns like CLIENT SEEN, TOWN, SALES MADE, or DETAILS OF VISIT.`
+      });
     }
 
     // Debug log
     // eslint-disable-next-line no-console
-    console.log('Handled rows:', remappedRows);
+    console.log('Processed rows:', validRows);
 
     const doCommit = commit === true && dryRun !== true;
     if (!doCommit) {
-      const rows2D = remappedRows.map(r => sheetHeaders.map(h => String((r as any)[h] ?? '')));
+      const rows2D = validRows.map(r => sheetHeaders.map(h => String((r as any)[h] ?? '')));
       return res.status(200).json({
         success: false,
         preview: {
@@ -2610,14 +2613,14 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spreadsheetId, sheetNames: [sheetName], rows: remappedRows, dryRun: false, startRow })
+      body: JSON.stringify({ spreadsheetId, sheetNames: [sheetName], rows: validRows, dryRun: false, startRow })
     });
     if (!ingestResp.ok) {
       const txt = await ingestResp.text();
       throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
     }
     const result = await ingestResp.json();
-    return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: remappedRows, result });
+    return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: validRows, result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);
     return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });

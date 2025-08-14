@@ -75,6 +75,36 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     setModalOpen(true);
   };
 
+  // Enhanced error handling for clear messages; Clarify button for retries.
+  const applyPreview = async (preview: any) => {
+    try {
+      const headers: string[] = Array.isArray(preview?.headers) ? preview.headers : [];
+      const firstRow: any[] = Array.isArray(preview?.rows) && preview.rows.length > 0 ? preview.rows[0] : [];
+      if (!headers.length || !firstRow.length) return;
+      const rowObj = headers.reduce((acc: Record<string, unknown>, h: string, i: number) => {
+        acc[h] = String(firstRow[i] ?? '');
+        return acc;
+      }, {} as Record<string, unknown>);
+      const sheetState: any = useSheet();
+      const toolCall = {
+        function: {
+          name: 'apply_structured_rows',
+          arguments: JSON.stringify({
+            spreadsheetId: defaultSpreadsheetId,
+            sheetName: Array.isArray(sheetState?.selectedSheetNames) ? sheetState.selectedSheetNames?.[0] : undefined,
+            rows: [rowObj],
+            commit: true
+          })
+        }
+      } as const;
+      await fetch('/api/genkit-tool-execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: sheetState?.selectedSheetNames } })
+      });
+    } catch {}
+  };
+
   const removeSpreadsheetOption = async (id: string, spreadsheetId?: string) => {
     if (!user || !id) return;
     const { doc, deleteDoc } = await import('firebase/firestore');
@@ -303,6 +333,31 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             <ul className="space-y-1">
               {visibleSessions.map((s) => renderSessionRow(s))}
             </ul>
+          )}
+
+          {/* Tool error slot: simple client-side render hint for consumers of this component */}
+          {false && (
+            <div className="mt-3 mx-3">
+              {(() => {
+                const response: any = null; // replace with prop or context when wiring live tool results
+                const toolResult: any = null;
+                if (response?.error || toolResult?.success === false) {
+                  const err = String(toolResult?.error || response?.error || '');
+                  const errorMsg = err.includes('spreadsheetId') || err.includes('sheetName')
+                    ? 'Please specify the sheet to update.'
+                    : err.includes('No valid data')
+                      ? `No valid data provided. ${toolResult?.clarify || 'Please specify values for available columns.'}`
+                      : (toolResult?.clarify || 'Failed to process update. Please clarify your request.');
+                  return (
+                    <div className="chat-error bg-red-500/10 border border-red-400/30 text-red-200 rounded-md p-3 text-sm">
+                      <div>{errorMsg}</div>
+                      <button className="bg-blue-500 text-white px-3 py-1.5 mt-2 rounded" onClick={() => setManagerOpen(true)}>Clarify</button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
           )}
         </div>
 

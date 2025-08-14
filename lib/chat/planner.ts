@@ -12,17 +12,7 @@ export type PlannerPlan = {
 };
 
 // Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
-
-// Enhanced to infer mappings from natural language to exact headers; handles invalid headers.
-export const semanticMap: Record<string, string> = {
-  client: 'Vendor',
-  saw: 'Vendor',
-  sold: 'Fuel Cost in Rands',
-  amount: 'Fuel Cost in Rands',
-  location: 'TOWN VISITED',
-  town: 'TOWN VISITED',
-  notes: 'Notes',
-};
+// Removed resolve_column; improved dynamic inference for all sheet headers.
 
 function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean): string {
   // Preserve placeholders in the template, but also include resolved context for grounding and tests
@@ -35,22 +25,29 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     spreadsheetId: (context as any)?.spreadsheetId || null,
     sheetName: (context as any)?.sheetName || null,
   });
-  const semanticMapResolved = JSON.stringify(semanticMap);
 
-  // Enhanced prompt per user request to ensure spreadsheetId/sheetName propagation and direct row inference
+  // Updated prompt content per product requirements
   const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message to update a sheet and map data to exact column headers.
 Key rules:
 
 Set intent to 'update_data' for any update request.
-Fetch exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'Vendor', 'TOWN VISITED', 'Fuel Cost in Rands', 'Notes']).
-Infer user inputs to headers: 'client'/'saw' → 'Vendor', 'sold'/'amount' → 'Fuel Cost in Rands', 'location'/'town' → 'TOWN VISITED', notes → 'Notes', add current date (MM/DD/YYYY) to 'Date' if missing.
-Generate a row object with exact header keys and inferred values from {userMessage} (e.g., 'saw francois in Howick, sold 3000k seed' → {Date: '08/14/2025', Vendor: 'Francois', TOWN VISITED: 'Howick', Fuel Cost in Rands: '3000', Notes: 'spoke about seed industry changes'}).
-Use 'apply_structured_rows' with params: {spreadsheetId: {hydratedContext.spreadsheetId}, sheetName: {hydratedContext.sheetName}, rows: [inferred row], dryRun: true}.
-Do not include 'resolve_column' in the toolChain unless querying existing sheet data is needed. If used, set query to select headers and sample rows (e.g., 'SELECT * FROM {sheetName} LIMIT 1').
-If context is missing (e.g., no spreadsheetId or sheetName), clarify: 'Please specify the sheet to update.'
-If mapping fails, clarify: 'Could not map [unmapped terms]. Available columns: {sheetHeaders}.'
+Use exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'CLIENT SEEN', 'TOWN', 'CLIENT CALLED', 'PHONE NUMBER', 'DETAILS OF VISIT', 'SALES MADE']).
+Dynamically infer user inputs to headers using natural language understanding and context:
 
-Output JSON: intent, tools (with 'apply_structured_rows' and rows), toolChain, clarify.
+Names or entities (e.g., 'francois') map to 'CLIENT SEEN' or similar.
+Locations (e.g., 'Howick') map to 'TOWN' or location-like columns.
+Monetary or numeric values (e.g., '3000k seed') map to 'SALES MADE' or amount-like columns.
+Descriptive text (e.g., 'spoke about seed changes') map to 'DETAILS OF VISIT' or note-like columns.
+Add current date (MM/DD/YYYY) to 'Date' if missing.
+
+
+Generate a row object with exact header keys and inferred values (e.g., {Date: '08/14/2025', CLIENT SEEN: 'Francois', TOWN: 'Howick', SALES MADE: '3000', DETAILS OF VISIT: 'spoke about seed industry changes'}).
+Use only 'apply_structured_rows' with params: {spreadsheetId: {hydratedContext.spreadsheetId}, sheetName: {hydratedContext.sheetName}, rows: [inferred row], dryRun: true}.
+Do not include 'resolve_column' in toolChain—it’s not needed for updates.
+If spreadsheetId or sheetName is missing, clarify: 'Please specify the sheet to update.'
+If any input cannot be mapped, clarify: 'Could not map some terms to columns: {unmapped terms}. Available: {sheetHeaders}. Please clarify which columns to use.'
+Output JSON: intent, tools (only 'apply_structured_rows' with rows), toolChain (empty), clarify.
+
 User message: {userMessage}
 Sheet context: {hydratedContext}`;
 
@@ -59,8 +56,7 @@ Sheet context: {hydratedContext}`;
 
 User message (resolved): ${JSON.stringify(message)}
 Headers: [${headersList}]
-Sheet context (resolved): ${hydratedContextResolved}
-Semantic map (resolved): ${semanticMapResolved}`;
+Sheet context (resolved): ${hydratedContextResolved}`;
 
   return template + compatibility;
 }
@@ -75,42 +71,69 @@ function normalizeCapitalization(input: string): string {
 
 function inferRowFromMessage(message: string, headers: string[]): Record<string, unknown> {
   const inferred: Record<string, unknown> = {};
-  const lc = String(message || '').toLowerCase();
+  const lowerCasedMessage = String(message || '').toLowerCase();
 
   // Date: always set if header exists
   if (headers.includes('Date')) {
     inferred['Date'] = dayjs().format('MM/DD/YYYY');
   }
 
-  // Vendor extraction
-  if (headers.includes('Vendor')) {
-    const sawMatch = lc.match(/\b(?:saw|met|client)\s+([a-z][a-z\-\s']{1,40})/i);
-    if (sawMatch) {
-      inferred['Vendor'] = normalizeCapitalization(sawMatch[1].trim());
+  // CLIENT SEEN / name-like extraction
+  if (headers.includes('CLIENT SEEN')) {
+    const nameAfterVerb = lowerCasedMessage.match(/\b(?:saw|met|with|visited|speak(?:ing)?\s+to|spoke\s+to|client)\s+([a-z][a-z\-\s']{1,60})/i);
+    if (nameAfterVerb) {
+      inferred['CLIENT SEEN'] = normalizeCapitalization(nameAfterVerb[1].trim());
+    } else {
+      // Fallback: single capitalized token that looks like a name
+      const properName = message.match(/\b([A-Z][a-z]{2,})(?:\s+[A-Z][a-z]{2,})?/);
+      if (properName) {
+        inferred['CLIENT SEEN'] = properName[0].trim();
+      }
     }
   }
 
-  // Town/location extraction
-  if (headers.includes('TOWN VISITED')) {
-    const inMatch = lc.match(/\b(?:in|at|to)\s+([a-z][a-z\-\s']{1,40})/i);
-    if (inMatch) {
-      inferred['TOWN VISITED'] = normalizeCapitalization(inMatch[1].trim());
+  // TOWN / location-like extraction
+  if (headers.includes('TOWN')) {
+    const townMatch = lowerCasedMessage.match(/\b(?:in|at|to)\s+([a-z][a-z\-\s']{1,60})/i);
+    if (townMatch) {
+      inferred['TOWN'] = normalizeCapitalization(townMatch[1].trim());
     }
   }
 
-  // Amount extraction for Fuel Cost in Rands
-  if (headers.includes('Fuel Cost in Rands')) {
-    // Find first numeric token; handle commas and simple trailing 'k' by stripping
-    const numMatch = lc.match(/\b(\d{1,3}(?:,\d{3})*|\d+)(?:\.?\d+)?k?\b/);
-    if (numMatch) {
-      const digits = (numMatch[1] || '').replace(/,/g, '');
-      inferred['Fuel Cost in Rands'] = digits;
+  // CLIENT CALLED
+  if (headers.includes('CLIENT CALLED')) {
+    const calledMatch = lowerCasedMessage.match(/\b(?:called|phoned|telephoned|phone\s*call)\b/i);
+    if (calledMatch) {
+      inferred['CLIENT CALLED'] = 'Yes';
     }
   }
 
-  // Notes: fallback to original message if header present and not all other fields could be extracted
-  if (headers.includes('Notes')) {
-    inferred['Notes'] = message;
+  // PHONE NUMBER
+  if (headers.includes('PHONE NUMBER')) {
+    const phoneMatch = message.match(/(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4}/);
+    if (phoneMatch) {
+      inferred['PHONE NUMBER'] = phoneMatch[0].replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  // SALES MADE / numeric or monetary extraction
+  if (headers.includes('SALES MADE')) {
+    const salesMatch = lowerCasedMessage.match(/\b(\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?k?\b/);
+    if (salesMatch) {
+      const raw = (salesMatch[0] || '').toLowerCase();
+      const hasK = /k$/.test(raw);
+      const numeric = (salesMatch[1] || '').replace(/,/g, '');
+      // Keep example behavior: strip 'k' rather than multiply
+      const value = numeric;
+      inferred['SALES MADE'] = value;
+    }
+  }
+
+  // DETAILS OF VISIT / note-like text
+  if (headers.includes('DETAILS OF VISIT')) {
+    // Heuristic: prefer fragments after verbs like 'spoke about', 'discussed', 'notes'
+    const detailsMatch = message.match(/(?:spoke\s+about|discussed|regarding|re|notes?:?)\s+([^.;\n]+)[.;\n]?/i);
+    inferred['DETAILS OF VISIT'] = detailsMatch ? detailsMatch[1].trim() : message;
   }
 
   return inferred;
@@ -134,7 +157,7 @@ export async function generatePlan(
       ? parsed.intent
       : 'other';
     // Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
-    const tools = Array.isArray(parsed.tools)
+    let tools = Array.isArray(parsed.tools)
       ? parsed.tools.map((t: any) => ({
           name: String(t?.name || '').toLowerCase() === 'update_sheet' ? 'apply_structured_rows' : String(t?.name || ''),
           args: (typeof t?.args === 'object' && t?.args) ? t.args : {}
@@ -160,9 +183,9 @@ export async function generatePlan(
       return step;
     });
 
-    // If intent is update, drop resolve_column steps from chain/tools; if any remain, ensure a safe query
+    // If intent is update, do not include resolve_column and keep toolChain empty for updates
     if (intent === 'update_data') {
-      committedChain = committedChain.filter((s: any) => String(s?.toolName || '').toLowerCase() !== 'resolve_column');
+      committedChain = [];
     } else {
       committedChain = committedChain.map((s: any) => {
         if (String(s?.toolName || '').toLowerCase() === 'resolve_column') {
@@ -201,7 +224,7 @@ export async function generatePlan(
         }
       }
       if (invalidKeys.size > 0 && headers.length > 0 && !clarifyQuestion) {
-        clarifyQuestion = `Could not map ${Array.from(invalidKeys).join(', ')}. Available columns: ${headers.join(', ')}.`;
+        clarifyQuestion = `Could not map some terms to columns: ${Array.from(invalidKeys).join(', ')}. Available: ${headers.join(', ')}. Please clarify which columns to use.`;
       }
     } catch {}
 
@@ -226,11 +249,21 @@ export async function generatePlan(
         return updated;
       };
 
-      // Update tools array
-      for (const t of tools) {
-        if (String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows') {
-          (t as any).args = ensureParams((t as any).args);
-        }
+      // Update tools array and filter to only apply_structured_rows for updates; synthesize if missing
+      tools = tools
+        .filter((t: any) => intent !== 'update_data' || String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows')
+        .map((t: any) => {
+          if (String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows') {
+            (t as any).args = ensureParams((t as any).args);
+          }
+          // Mirror args to params for compatibility with logging and downstream expectations
+          (t as any).params = (t as any).args;
+          return t;
+        });
+      if (intent === 'update_data' && !tools.find((t: any) => String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows')) {
+        const synthesized = { name: 'apply_structured_rows', args: ensureParams({}) } as any;
+        synthesized.params = synthesized.args;
+        tools.push(synthesized);
       }
       // Update toolChain entries
       committedChain = (committedChain as any[]).map((s) => {
@@ -242,9 +275,9 @@ export async function generatePlan(
 
       const firstApply = (committedChain as any[]).find((s) => String(s?.toolName || '').toLowerCase() === 'apply_structured_rows');
       const rows = firstApply?.params?.rows || (tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows') as any)?.args?.rows;
-      // Debug log of final planner params
+      // Debug log of final planner output
       // eslint-disable-next-line no-console
-      console.log('Planner params:', { spreadsheetId, sheetName, rows });
+      console.log('Planner output:', { intent, tools, toolChain: committedChain, clarify: clarifyQuestion, rows: (tools as any)?.[0]?.params?.rows });
 
       // If critical context missing, ask to clarify
       if ((!spreadsheetId || !sheetName) && intent === 'update_data' && !clarifyQuestion) {

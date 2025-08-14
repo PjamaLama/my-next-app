@@ -47,19 +47,36 @@ function extractHeadersFromTool(toolRes: any): string[] {
 }
 
 // Unified preview table to use exact headers; suppresses invalid data.
-function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): StructuredTable | null {
+// Fixed to ensure row data in preview table; handles empty rows with clarification.
+// Ensured dynamic row data in preview table; handles empty rows with clarification.
+function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): StructuredTable & { clarify?: string } {
   const headers: string[] = (Array.isArray(sheetHeaders) && sheetHeaders.length > 0)
     ? sheetHeaders
     : (Array.isArray(preview?.headers) ? (preview.headers as string[]) : []);
   if (!Array.isArray(headers) || headers.length === 0) {
-    return { title: 'Proposed Sheet Updates', headers: [], rows: [], summary: undefined, meta: { clarify: 'No valid headers found. Please specify column names.' } } as any;
+    const clarify = 'No valid headers found. Please specify column names.';
+    return { title: 'Proposed Sheet Updates', headers: [], rows: [], clarify, meta: { clarify } } as any;
   }
   const srcRows = Array.isArray(preview?.rows) ? (preview.rows as any[]) : [];
-  const rows: string[][] = srcRows.map((rowObj: any) => {
-    const obj = (rowObj && typeof rowObj === 'object' && !Array.isArray(rowObj)) ? rowObj : {};
-    return headers.map((h) => String((obj as any)[h] ?? ''));
-  });
-  return { title: 'Proposed Sheet Updates', headers, rows } as StructuredTable;
+  let rows: string[][] = [];
+  if (srcRows.length > 0) {
+    if (Array.isArray(srcRows[0])) {
+      // rows already 2D arrays; coerce width to headers length
+      rows = (srcRows as any[]).map((arr: any) => {
+        const a = Array.isArray(arr) ? arr : [];
+        return headers.map((_, i) => String(a[i] ?? ''));
+      });
+    } else if (typeof srcRows[0] === 'object' && srcRows[0] !== null) {
+      // rows are objects keyed by headers
+      rows = srcRows.map((obj: any) => headers.map((h) => String((obj as any)[h] ?? '')));
+    }
+  }
+  const allEmpty = rows.length > 0 ? rows.every(r => r.every(cell => !String(cell || '').trim())) : true;
+  if (!Array.isArray(rows) || rows.length === 0 || allEmpty) {
+    const clarify = String(preview?.clarify || `No valid data provided. Please specify values for columns: ${headers.join(', ')}`);
+    return { title: 'Proposed Sheet Updates', headers, rows: [], clarify, meta: { clarify } } as any;
+  }
+  return { title: 'Proposed Sheet Updates', headers, rows } as any;
 }
 
 export async function processMessage(
@@ -757,9 +774,11 @@ export async function processMessage(
           const pv = (result as any).preview;
           const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
           const table = buildProposedUpdatesTable(pv, sheetHeaders);
-          if (table && Array.isArray(table.rows) && table.rows.length > 0) {
+          // eslint-disable-next-line no-console
+          console.log('Preview table:', table);
+          if (Array.isArray((table as any).rows) && (table as any).rows.length > 0) {
             dataTables.length = 0; // keep only the unified proposed updates table
-            dataTables.push(table);
+            dataTables.push(table as any);
             hasProposedUpdateTable = true;
           } else if ((table as any)?.meta?.clarify) {
             const clarify = String((table as any).meta.clarify);
@@ -837,21 +856,28 @@ export async function processMessage(
               ? Object.keys(flowPreview)
               : [];
             const previews = sheets.length > 0 ? sheets.flatMap((name: string) => (flowPreview as any)[name]) : ((result as any).preview || (result as any).details?.preview || []);
-				if (previews) {
+				if (previews && Array.isArray(previews)) {
               const ctxAny = context as any;
               const sheetHeaders: string[] = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders : (Array.isArray(ctxAny?.sheetData?.[ctxAny?.sheetName || '']) ? (ctxAny.sheetData[ctxAny.sheetName][0] || []) : []);
-              const pv = Array.isArray(previews) ? { headers: sheetHeaders, rows: previews.map((p: any) => p.updates || {}) } : previews;
-              const table = buildProposedUpdatesTable(pv, sheetHeaders);
-              if (table && table.rows.length > 0) {
-                dataTables.length = 0;
-                dataTables.push(table);
+              const table = buildProposedUpdatesTable(previews[0], sheetHeaders);
+              // eslint-disable-next-line no-console
+              console.log('Generated table:', table);
+              if (Array.isArray(table.rows) && table.rows.length > 0) {
+                dataTables.length = 0; // keep only this table
+                dataTables.push(table as any);
                 postQuickActions.push('Approve');
                 postQuickActions.push('Reject');
                 postQuickActions.push('Edit');
-              } else if ((table as any)?.meta?.clarify) {
-                const clarify = String((table as any).meta.clarify);
-                const ctxAny = context as any;
-                ctxAny._clarifyHeaders = clarify;
+                if (!(context as any)._lastUpdateToolCall) {
+                  try { (context as any)._lastUpdateToolCall = previews[0]; } catch {}
+                }
+              } else {
+                dataTables.length = 0;
+                const clarify = (table as any)?.clarify || (table as any)?.meta?.clarify;
+                if (clarify) {
+                  const ctxAny2 = context as any;
+                  ctxAny2._clarifyHeaders = String(clarify);
+                }
               }
             }
           } catch {}
@@ -890,11 +916,21 @@ export async function processMessage(
               enhancedResponse += `\n${result.result.trim()}`;
             }
             // If preview with inferred rows is present, render proposed updates table only
-            if (isPreview && (result as any)?.preview && Array.isArray((result as any)?.preview?.rows)) {
+            if (isPreview && (result as any)?.preview) {
               const pv = (result as any).preview;
               const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
               const table = buildProposedUpdatesTable(pv, sheetHeaders);
-              if (table && table.rows.length > 0) { dataTables.length = 0; dataTables.push(table); hasProposedUpdateTable = true; }
+              // eslint-disable-next-line no-console
+              console.log('Generated table:', table);
+              if (Array.isArray(table.rows) && table.rows.length > 0) {
+                dataTables.length = 0; dataTables.push(table as any); hasProposedUpdateTable = true;
+              } else {
+                const clarify = (table as any)?.clarify || (table as any)?.meta?.clarify;
+                if (clarify) {
+                  const ctxAny2 = context as any;
+                  ctxAny2._clarifyHeaders = String(clarify);
+                }
+              }
             }
           }
           if (typeof result.result === 'string' && result.result.trim()) {
