@@ -23,6 +23,15 @@ export async function executeToolCall(
   images: ImageData[] = []
 ) {
   try {
+    // Simplified by skipping resolve_column in updates; not needed for row creation.
+    const toolName = String(toolCall?.function?.name || '').toLowerCase();
+    const currentIntent = String((context as any)?.intent || '').toLowerCase();
+    if (toolName === 'resolve_column' && currentIntent === 'update_data') {
+      // eslint-disable-next-line no-console
+      console.log('Skipped unnecessary tool:', toolName);
+      return { success: false, clarify: 'No query needed for updates.', result: 'Skipped resolve_column for update flow', toolId: toolCall.id } as any;
+    }
+
     // Prefer a request-scoped base URL passed via context when running server-side
     const scopedBase = (typeof window === 'undefined' && context && (context as any)._baseUrl)
       ? String((context as any)._baseUrl)

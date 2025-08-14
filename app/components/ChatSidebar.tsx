@@ -18,10 +18,10 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false }) => {
-  const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, ensureSession } = useChat();
+  const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, ensureSession, setChatMessages, appendMessage } = useChat();
   const { user } = useFirebase();
-  const { defaultSpreadsheetId, setDefaultSpreadsheetId } = useSheet();
-  const { confirm } = useDialog();
+  const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
+  const { confirm, notify } = useDialog();
   const [creating, setCreating] = useState(false);
   const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; spreadsheetId: string; title?: string }>>([]);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
@@ -75,33 +75,69 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     setModalOpen(true);
   };
 
+  // Simplified Approve to commit changes and re-hydrate sheet.
   // Enhanced error handling for clear messages; Clarify button for retries.
   const applyPreview = async (preview: any) => {
     try {
       const headers: string[] = Array.isArray(preview?.headers) ? preview.headers : [];
-      const firstRow: any[] = Array.isArray(preview?.rows) && preview.rows.length > 0 ? preview.rows[0] : [];
-      if (!headers.length || !firstRow.length) return;
-      const rowObj = headers.reduce((acc: Record<string, unknown>, h: string, i: number) => {
-        acc[h] = String(firstRow[i] ?? '');
-        return acc;
-      }, {} as Record<string, unknown>);
-      const sheetState: any = useSheet();
+      const rows2D: any[] = Array.isArray(preview?.rows) ? preview.rows : [];
+      if (!headers.length || !rows2D.length) return;
+      const rowObjs: Array<Record<string, unknown>> = rows2D.map((r: any[]) => {
+        const obj: Record<string, unknown> = {};
+        headers.forEach((h, i) => { obj[h] = String(r?.[i] ?? ''); });
+        return obj;
+      });
       const toolCall = {
         function: {
           name: 'apply_structured_rows',
-          arguments: JSON.stringify({
-            spreadsheetId: defaultSpreadsheetId,
-            sheetName: Array.isArray(sheetState?.selectedSheetNames) ? sheetState.selectedSheetNames?.[0] : undefined,
-            rows: [rowObj],
-            commit: true
-          })
+          arguments: JSON.stringify({ rows: rowObjs, commit: true })
         }
       } as const;
-      await fetch('/api/genkit-tool-execute', {
+      const resp = await fetch('/api/genkit-tool-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: sheetState?.selectedSheetNames } })
+        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames } })
       });
+      // Re-hydrate current sheet on success
+      try {
+        const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
+        if (resp.ok && defaultSpreadsheetId && activeSheet) {
+          const dataRes = await fetch('/api/get-sheet-data', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: activeSheet })
+          });
+          const json = await dataRes.json();
+          if (json && json.data) setSheetDataCache((prev) => ({ ...prev, [activeSheet]: json.data }));
+          await notify({ title: 'Success', description: 'Update applied.', tone: 'success' });
+        }
+      } catch {}
+    } catch {}
+  };
+
+  // Elegant Reject handling: clears pending update without re-calling tools.
+  const rejectPreview = async () => {
+    try {
+      // Remove any preview tables titled 'Proposed Sheet Updates' from recent messages
+      setChatMessages((prev) => {
+        const next = prev.map((m) => {
+          if (Array.isArray((m as any).tables) && (m as any).tables.length > 0) {
+            const remaining = (m as any).tables.filter((t: any) => String(t?.title || '').toLowerCase() !== 'proposed sheet updates');
+            if (remaining.length !== (m as any).tables.length) {
+              return { ...m, tables: remaining } as any;
+            }
+          }
+          return m;
+        });
+        return next;
+      });
+      await notify({ title: 'Canceled', description: 'Update canceled.', tone: 'info' });
+      await appendMessage({
+        id: `local_${Date.now()}`,
+        role: 'assistant',
+        content: 'Update canceled.',
+        timestamp: new Date(),
+        messageType: 'ai_response'
+      } as any);
     } catch {}
   };
 

@@ -25,38 +25,52 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     spreadsheetId: (context as any)?.spreadsheetId || null,
     sheetName: (context as any)?.sheetName || null,
   });
+  // Build a compact conversation history string for grounding
+  const historyText = Array.isArray(history)
+    ? history
+        .slice(-6)
+        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${String(m.content || '').slice(0, 400)}`)
+        .join('\n')
+    : '';
 
   // Updated prompt content per product requirements
+  // Added history awareness for better conversationalism and intent accuracy.
+  // Improved to handle multi-row inference elegantly from natural language.
   const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message to update a sheet and map data to exact column headers.
-Key rules:
+  Key rules:
 
-Set intent to 'update_data' for any update request.
-Use exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'CLIENT SEEN', 'TOWN', 'CLIENT CALLED', 'PHONE NUMBER', 'DETAILS OF VISIT', 'SALES MADE']).
-Dynamically infer user inputs to headers using natural language understanding and context:
+  Set intent to 'update_data' for any update request.
+  Use exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'CLIENT SEEN', 'TOWN', 'CLIENT CALLED', 'PHONE NUMBER', 'DETAILS OF VISIT', 'SALES MADE']).
+  Dynamically infer user inputs to headers using natural language understanding and context:
 
-Names or entities (e.g., 'francois') map to 'CLIENT SEEN' or similar.
-Locations (e.g., 'Howick') map to 'TOWN' or location-like columns.
-Monetary or numeric values (e.g., '3000k seed') map to 'SALES MADE' or amount-like columns.
-Descriptive text (e.g., 'spoke about seed changes') map to 'DETAILS OF VISIT' or note-like columns.
-Add current date (MM/DD/YYYY) to 'Date' if missing.
+  Names or entities (e.g., 'francois') map to 'CLIENT SEEN' or similar.
+  Locations (e.g., 'Howick') map to 'TOWN' or location-like columns.
+  Monetary or numeric values (e.g., '3000k seed') map to 'SALES MADE' or amount-like columns.
+  Descriptive text (e.g., 'spoke about seed changes') map to 'DETAILS OF VISIT' or note-like columns.
+  Add current date (MM/DD/YYYY) to 'Date' if missing.
+  If the message implies multiple entries (e.g., "saw sarah and john"), generate separate rows for each entity while sharing common fields (e.g., Date and TOWN).
+
+  Use conversation history to disambiguate intent: if history or the message indicates adding/updating data (e.g., 'add to sheet', 'insert', 'log'), set intent to 'update_data'. If it asks to describe/tell/show/explain, set intent to 'get_data' or 'describe_data' as appropriate. When history shows an ongoing flow, ground your inference on prior turns.
 
 
-Generate a row object with exact header keys and inferred values (e.g., {Date: '08/14/2025', CLIENT SEEN: 'Francois', TOWN: 'Howick', SALES MADE: '3000', DETAILS OF VISIT: 'spoke about seed industry changes'}).
-Use only 'apply_structured_rows' with params: {spreadsheetId: {hydratedContext.spreadsheetId}, sheetName: {hydratedContext.sheetName}, rows: [inferred row], dryRun: true}.
-Do not include 'resolve_column' in toolChain—it’s not needed for updates.
-If spreadsheetId or sheetName is missing, clarify: 'Please specify the sheet to update.'
-If any input cannot be mapped, clarify: 'Could not map some terms to columns: {unmapped terms}. Available: {sheetHeaders}. Please clarify which columns to use.'
-Output JSON: intent, tools (only 'apply_structured_rows' with rows), toolChain (empty), clarify.
+  Generate one or more row objects with exact header keys and inferred values (e.g., [{Date: '08/14/2025', CLIENT SEEN: 'Francois', TOWN: 'Howick', SALES MADE: '3000', DETAILS OF VISIT: 'spoke about seed industry changes'}]).
+  Use only 'apply_structured_rows' with params: {spreadsheetId: {hydratedContext.spreadsheetId}, sheetName: {hydratedContext.sheetName}, rows: [ ...inferred rows as array of objects ... ], dryRun: true}.
+  Do not include 'resolve_column' in toolChain. For 'update_data' intent, toolChain MUST be [] (empty array) and must never contain 'resolve_column'.
+  If spreadsheetId or sheetName is missing, clarify: 'Please specify the sheet to update.'
+  If any input cannot be mapped, clarify: 'Could not map some terms to columns: {unmapped terms}. Available: {sheetHeaders}. Please clarify which columns to use.'
+  Output JSON: intent, tools (only 'apply_structured_rows' with rows), toolChain (empty), clarify.
 
-User message: {userMessage}
-Sheet context: {hydratedContext}`;
+  Conversation history: {conversationHistory}
+  User message: {userMessage}
+  Sheet context: {hydratedContext}`;
 
   // Compatibility block: include resolved values so models and tests see concrete content
   const compatibility = `
 
 User message (resolved): ${JSON.stringify(message)}
 Headers: [${headersList}]
-Sheet context (resolved): ${hydratedContextResolved}`;
+Sheet context (resolved): ${hydratedContextResolved}
+Conversation history (resolved): ${historyText}`;
 
   return template + compatibility;
 }
@@ -183,6 +197,7 @@ export async function generatePlan(
       return step;
     });
 
+    // Removed resolve_column for updates to simplify flow.
     // If intent is update, do not include resolve_column and keep toolChain empty for updates
     if (intent === 'update_data') {
       committedChain = [];
