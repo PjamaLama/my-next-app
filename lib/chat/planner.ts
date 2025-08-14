@@ -25,20 +25,19 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
       : [];
   const hydratedContextResolved = JSON.stringify({ headers, sampleRows });
 
-  const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message and plan the best actions.
-  Key rules:
-  
-  For any request involving updating, editing, adding, or modifying sheet data (e.g., add rows, update cells, change values), set intent to 'update_data'.
-  Always prioritize structured, tabular outputs: If the update can be represented as rows with keys matching sheet columns exactly, use the 'apply_structured_rows' tool. This tool generates previews as row objects that must map perfectly to existing sheet headers.
-  For tabular updates, the only valid tool is 'apply_structured_rows' (do not pick any other update tool).
-  For all updates, enforce a preview-first flow: Set tool parameters to include 'dryRun: true' or equivalent to generate a proposed data table without committing changes.
-  Mapping requirement: map user-provided keys to exact column names from context.sheetHeaders. Do not use synonyms or fuzzy matching. If exact mapping is not possible for any field, add a concise clarify prompt asking the user to provide values keyed by the exact column names.
-  Ensure the plan includes dependency on hydrating full sheet context first (via SheetDataSource) to get exact headers and current data for accurate mapping and deduplication.
-  If the update data isn't fully specified, add a 'clarify' prompt to ask for missing details before proceeding.
-  Output format: JSON with keys: intent (update_data for edits), tools (array with 'apply_structured_rows' only), toolChain (for dependencies like sheet_query first), clarify (optional prompts).
-  
-  User message: {userMessage}
-  Sheet context: {hydratedContext}  // Include current headers and sample rows for grounding`;
+	// Enabled semantic inference for mappings; no user JSON required.
+	const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message and plan the best actions.
+	Key rules:
+
+	For update requests, set intent to 'update_data'.
+	Infer and map user-provided data to exact sheet headers from {hydratedContext} (e.g., map 'client' or 'saw' to 'Vendor', 'sold amount' to 'Fuel Cost in Rands', 'location' to 'TOWN VISITED', add current date to 'Date' if missing, notes to 'Notes'). Use common-sense mappings (client/vendor, location/town, cost/amount), but always output keys as exact sheet headers.
+	Generate structured rows internally: Produce an array of row objects with keys as exact sheet headers and inferred values. Do not ask the user for JSON—do the mapping yourself.
+	Use 'apply_structured_rows' tool with params including the inferred rows, dryRun: true for preview. For tabular updates, this is the only valid tool.
+	If mapping is ambiguous or missing fields, add concise 'clarify' prompts (e.g., 'Which column for the sales amount?').
+	Output JSON: intent, tools (with 'apply_structured_rows' and inferred rows in params), toolChain, clarify.
+
+	User message: {userMessage}
+	Sheet context: {hydratedContext} // Use headers and samples for accurate inference.`;
 
   // Compatibility block: include resolved values so models and tests see concrete content
   const compatibility = `

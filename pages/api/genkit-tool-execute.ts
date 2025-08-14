@@ -2519,7 +2519,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
   // Apply structured rows through the centralized ingestion endpoint
   async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
-  // Simplified to exact matching only; no synonyms.
+  // Added semantic remapping for user-friendly updates; infers to exact headers.
   try {
     const { spreadsheetId, sheetNames, sheetName } = context as any;
     const { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
@@ -2544,28 +2544,85 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       } catch {}
     }
 
-    // Validate: all incoming keys must match a header exactly (case-insensitive)
-    const lowerHeadersSet = new Set((sheetHeaders || []).map(h => String(h || '').toLowerCase()));
-    const proposedKeys = Array.from(new Set(rows.flatMap(r => Object.keys(r || {}))));
-    const unknownKeys = proposedKeys.filter(k => !lowerHeadersSet.has(String(k || '').toLowerCase()));
-    if (unknownKeys.length > 0) {
-      const msg = `Unknown headers: [${unknownKeys.join(', ')}]. Use exact columns: [${(sheetHeaders || []).join(', ')}]`;
+    // Build case-insensitive header lookup and semantic map
+    const lowerToHeader: Record<string, string> = {};
+    (sheetHeaders || []).forEach(h => { lowerToHeader[String(h || '').toLowerCase()] = String(h || ''); });
+    const headerLowerSet = new Set(Object.keys(lowerToHeader));
+    const semanticMap: Record<string, string> = {
+      client: 'Vendor',
+      saw: 'Vendor',
+      sold: 'Fuel Cost in Rands',
+      sales: 'Fuel Cost in Rands',
+      amount: 'Fuel Cost in Rands',
+      location: 'TOWN VISITED',
+      town: 'TOWN VISITED',
+      notes: 'Notes',
+    };
+
+    // Remap rows: apply case-insensitive header match first, else semantic mapping; add Date if present in headers and missing
+    const remapLog: Array<Record<string, string>> = [];
+    const remappedRowsObjs: Array<Record<string, unknown>> = rows.map(row => {
+      const nextRow: Record<string, unknown> = {};
+      const thisLog: Record<string, string> = {};
+      for (const [k, v] of Object.entries(row || {})) {
+        const lowerK = String(k || '').toLowerCase();
+        // direct header match (case-insensitive)
+        if (headerLowerSet.has(lowerK)) {
+          const exact = lowerToHeader[lowerK];
+          nextRow[exact] = v;
+          if (exact !== k) thisLog[k] = exact;
+          continue;
+        }
+        // semantic mapping → only accept if it maps to an existing header
+        const mappedCandidate = semanticMap[lowerK];
+        if (mappedCandidate && headerLowerSet.has(String(mappedCandidate).toLowerCase())) {
+          const exact = lowerToHeader[String(mappedCandidate).toLowerCase()];
+          nextRow[exact] = v;
+          thisLog[k] = exact;
+          continue;
+        }
+        // leave as-is for now; will validate later
+        nextRow[k] = v;
+      }
+
+      // Add current date if a Date header exists and it's missing
+      const dateHeaderLower = (sheetHeaders || []).find(h => String(h).toLowerCase() === 'date') ? 'date' : null;
+      if (dateHeaderLower) {
+        const exactDateHeader = lowerToHeader[dateHeaderLower];
+        const hasDate = Object.keys(nextRow).some(key => String(key).toLowerCase() === 'date');
+        if (!hasDate) nextRow[exactDateHeader] = new Date().toLocaleDateString('en-US');
+      }
+
+      if (Object.keys(thisLog).length > 0) remapLog.push(thisLog);
+      return nextRow;
+    });
+
+    // Validate after remap: any keys not present in headers are considered unmatched
+    const unmatchedKeys = Array.from(new Set(remappedRowsObjs.flatMap(r => Object.keys(r)))).filter(k => !headerLowerSet.has(String(k).toLowerCase()));
+    if (unmatchedKeys.length > 0) {
+      const suggestions: string[] = [];
+      for (const k of unmatchedKeys) {
+        const lowerK = String(k).toLowerCase();
+        const s = semanticMap[lowerK];
+        if (s && headerLowerSet.has(String(s).toLowerCase())) suggestions.push(`${k} -> ${lowerToHeader[String(s).toLowerCase()]}`);
+      }
+      const msg = suggestions.length > 0
+        ? `Could not map all fields. Suggested: ${suggestions.join(', ')}. Please clarify.`
+        : `Could not map all fields: [${unmatchedKeys.join(', ')}]. Please clarify which sheet columns to use. Available: [${(sheetHeaders || []).join(', ')}].`;
       return res.status(400).json({ success: false, error: msg });
     }
 
-    // Map rows to exact headers; include only headers with empty string for unmatched
-    const lowerToHeader: Record<string, string> = {};
-    (sheetHeaders || []).forEach(h => { lowerToHeader[String(h || '').toLowerCase()] = String(h || ''); });
-    const mappedRows: Array<Record<string, unknown>> = rows.map(r => {
+    // Normalize to exact header objects including all headers (missing -> empty string)
+    const mappedRows: Array<Record<string, unknown>> = remappedRowsObjs.map(r => {
       const out: Record<string, unknown> = {};
       for (const h of (sheetHeaders || [])) {
-        const keyLower = String(h || '').toLowerCase();
-        // find value from incoming row using case-insensitive exact key
+        const lowerH = String(h).toLowerCase();
+        const exact = lowerToHeader[lowerH];
         let value: unknown = '';
-        for (const [k, v] of Object.entries(r || {})) {
-          if (String(k || '').toLowerCase() === keyLower) { value = v; break; }
+        for (const [k, v] of Object.entries(r)) {
+          if (String(k).toLowerCase() === lowerH) { value = v; break; }
         }
-        out[lowerToHeader[keyLower]] = value;
+        out[exact] = value;
       }
       return out;
     });
@@ -2574,6 +2631,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
     const doCommit = commit === true && dryRun !== true;
     if (!doCommit) {
+      if (remapLog.length > 0) console.log('[apply_structured_rows] Remapped keys:', remapLog);
       return res.status(200).json({
         success: false,
         preview: {
