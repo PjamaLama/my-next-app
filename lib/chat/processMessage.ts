@@ -47,6 +47,7 @@ function extractHeadersFromTool(toolRes: any): string[] {
 }
 
 // Single preview builder for exact proposed changes only.
+// Integrated inferred mappings; shows proposed table with best-fit data.
 function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): StructuredTable | null {
   const headers: string[] = (Array.isArray(sheetHeaders) && sheetHeaders.length > 0)
     ? sheetHeaders
@@ -750,7 +751,7 @@ export async function processMessage(
 					response = 'Proposed update (using sheet columns):';
           const ctxAny = context as any;
           ctxAny.previewActions = (result as any).preview;
-          // Render a single proposed updates table
+          // Render a single proposed updates table using inferred rows if available
           const pv = (result as any).preview;
           const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
           const table = buildProposedUpdatesTable(pv, sheetHeaders);
@@ -873,6 +874,13 @@ export async function processMessage(
             if (typeof result.result === 'string' && result.result.trim()) {
               enhancedResponse += `\n${result.result.trim()}`;
             }
+            // If preview with inferred rows is present, render proposed updates table only
+            if (isPreview && (result as any)?.preview && Array.isArray((result as any)?.preview?.rows)) {
+              const pv = (result as any).preview;
+              const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
+              const table = buildProposedUpdatesTable(pv, sheetHeaders);
+              if (table) { dataTables.push(table); hasProposedUpdateTable = true; }
+            }
           }
           if (typeof result.result === 'string' && result.result.trim()) {
             enhancedResponse += `\n${result.result.trim()}`;
@@ -963,13 +971,21 @@ export async function processMessage(
             } catch {}
           } catch {}
         } else {
-          // Compose a helpful failure with exact headers for retry
+          // Compose a helpful failure with exact headers for retry; suppress any JSON demands
           try {
             const ctxAny = context as any;
             const headersList = Array.isArray(ctxAny.sheetHeaders) ? (ctxAny.sheetHeaders as string[]).join(', ') : '';
-            response = `Failed: ${String((result as any)?.error || result?.result || 'Unknown error')}. Use exact columns: ${headersList}. Try again?`;
-            const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
-            quickReplies = Array.from(new Set([...baseQR, 'Retry', 'Specify columns'])).slice(0, 5);
+            const errMsg = String((result as any)?.error || result?.result || 'Unknown error');
+            const mappingIssue = /unknown headers|could not map all fields/i.test(errMsg);
+            if (mappingIssue) {
+              response = `I couldn't confidently map some fields to your sheet columns (${headersList}). Which columns should these refer to?`;
+              const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+              quickReplies = Array.from(new Set([...baseQR, 'Specify columns', 'Preview updates', 'Cancel'])).slice(0, 5);
+            } else {
+              response = `Failed: ${errMsg}. Try again?`;
+              const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+              quickReplies = Array.from(new Set([...baseQR, 'Retry', 'Specify sheet name'])).slice(0, 5);
+            }
           } catch {
             enhancedResponse += `\nTool error: ${result.result}${detailsText ? `\nDetails: ${detailsText}` : ''}`;
           }
@@ -990,7 +1006,7 @@ export async function processMessage(
       const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
       const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
       const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
-      if (hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
+      if (!hasProposedUpdateTable && hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
         const historySummary = summarizeHistory();
         const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}\n\nIf query is vague, provide a high-level overview of the data.`, hydratedForQA, selectedForQA);
         if (qa) {
@@ -1014,7 +1030,7 @@ export async function processMessage(
     const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
     const wantsExplicitDataView2 = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
     const suppressTablesForCharts2 = wantCharts && !wantsExplicitDataView2;
-    if (!hasFiles && !suppressTablesForCharts2 && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView2)) {
+    if (!hasProposedUpdateTable && !hasFiles && !suppressTablesForCharts2 && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView2)) {
       try {
         const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
         if (smart.length > 0) dataTables.push(...smart);
@@ -1051,8 +1067,9 @@ export async function processMessage(
         }
       }
 
-      // Build exactly one table per uploaded file (when available)
+      // Build exactly one table per uploaded file (when available); skip if we already have a proposed updates preview
       for (let i = 0; i < (images?.length || 0); i++) {
+        if (hasProposedUpdateTable) break;
         const fileName = images?.[i]?.name;
 
         // Prefer structured rows from analyses
