@@ -714,27 +714,7 @@ export async function processMessage(
         }
         _chainCollected = collectedResults;
       }
-      // If update intent and we have sheet data, proactively add helper tools to compute merge/resolve mapping
-      try {
-        if (intent === 'update_data') {
-          const ctxAny = context as any;
-          const hasData = ctxAny.sheetData && Object.keys(ctxAny.sheetData).length > 0;
-          if (hasData) {
-            // Resolve commonly referenced columns (best-effort)
-            const headers: string[] = Array.isArray(ctxAny.sheetHeaders)
-              ? (ctxAny.sheetHeaders as string[]).map((x: any) => String(x ?? ''))
-              : [];
-            const likely = headers.find((h: string) => /date|amount|total|fuel|vendor|category/i.test(h));
-            if (likely) {
-              plannedToolCalls.unshift({
-                id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                type: 'function',
-                function: { name: 'resolve_column', arguments: JSON.stringify({ columnName: likely }) }
-              });
-            }
-          }
-        }
-      } catch {}
+      // Removed resolve_column helper injection for updates; not needed and can cause errors without full params
     } catch {
       plannedToolCalls = [];
     }
@@ -1559,11 +1539,20 @@ export async function processMessage(
       }
     } catch {}
 
+    // Sanitize tool results: mark preview payloads as success so UI doesn't show generic failure toast
+    const toolResultsForUi = (toolResults || []).map((r: any) => {
+      try {
+        if (r && r.preview) {
+          return { ...r, success: true, result: r.result || 'Preview ready', details: r.preview };
+        }
+      } catch {}
+      return r;
+    });
     const out: any = {
       response: isFileOnly ? '' : (response || ''),
       toolCalls: [],
       pendingToolCalls: [],
-      toolResults,
+      toolResults: toolResultsForUi,
       context,
       sheetsUsed: selectedSheetNames,
       quickReplies,
