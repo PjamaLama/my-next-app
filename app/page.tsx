@@ -1597,12 +1597,14 @@ export default function Home() {
   };
 
   // Commit from a rendered table (headers:string[], rows:string[][])
-  const handleCommitFromTable = async (headers: string[], tableRows: string[][]) => {
+  const handleCommitFromTable = async (headers: string[], tableRows: string[][], messageId?: string, tableIndex?: number) => {
     try {
       if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
         setSendResult('Select a spreadsheet and sheet first.');
         return;
       }
+      const key = messageId != null && tableIndex != null ? `${messageId}_${tableIndex}_approve` : undefined;
+      if (key) setTableActionState(prev => ({ ...prev, [key]: 'loading' }));
       const rows = tableRows.map((r) => {
         const obj: Record<string, unknown> = {};
         headers.forEach((h, i) => { obj[h] = r[i] ?? ''; });
@@ -1618,10 +1620,29 @@ export default function Home() {
         body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames }, images: [] })
       });
       const data = await resp.json();
-      if (resp.ok && data?.success) setSendResult(data.message || data.result || 'Update applied.');
-      else setSendResult(data?.error || data?.result || 'Apply failed');
+      if (resp.ok && data?.success) {
+        setSendResult(data.message || data.result || 'Update applied.');
+        // Re-hydrate current sheet on success to reflect changes immediately
+        try {
+          const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
+          if (defaultSpreadsheetId && activeSheet) {
+            const dataRes = await fetch('/api/get-sheet-data', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: activeSheet })
+            });
+            const json = await dataRes.json();
+            if (json && json.data) setSheetDataCache((prev) => ({ ...prev, [activeSheet]: json.data }));
+          }
+        } catch {}
+        if (key) setTableActionState(prev => ({ ...prev, [key]: 'done' }));
+      } else {
+        setSendResult(data?.error || data?.result || 'Apply failed');
+        if (key) setTableActionState(prev => ({ ...prev, [key]: 'idle' }));
+      }
     } catch {
       setSendResult('Apply failed');
+      const key = messageId != null && tableIndex != null ? `${messageId}_${tableIndex}_approve` : undefined;
+      if (key) setTableActionState(prev => ({ ...prev, [key]: 'idle' }));
     }
   };
 
@@ -2200,7 +2221,16 @@ export default function Home() {
                                       {/* Updated buttons to Approve/Reject/Edit; Edit opens modal for changes before commit. */}
                                       {t.title && /Proposed Sheet Updates/i.test(String(t.title)) ? (
                                         <>
-                                          <button className="bg-green-500 text-white px-4 py-2 mr-2 rounded" onClick={() => handleCommitFromTable(t.headers, t.rows)}>Approve</button>
+                                          <button
+                                            className="bg-green-500 text-white px-4 py-2 mr-2 rounded inline-flex items-center gap-2"
+                                            onClick={() => handleCommitFromTable(t.headers, t.rows, message.id, tIdx)}
+                                            disabled={tableActionState[`${message.id}_${tIdx}_approve`] === 'loading'}
+                                          >
+                                            {tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? (
+                                              <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
+                                            ) : null}
+                                            <span>{tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? 'Applying...' : 'Approve'}</span>
+                                          </button>
                                           <button className="bg-red-500 text-white px-4 py-2 mr-2 rounded" onClick={() => setSendResult('Update canceled.')}>Reject</button>
                                           <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary)}>Edit</button>
                                         </>
