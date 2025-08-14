@@ -18,7 +18,7 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false }) => {
-  const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, ensureSession, setChatMessages, appendMessage } = useChat();
+  const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, ensureSession, setChatMessages, appendMessage, chatMessages } = useChat();
   const { user } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();
@@ -180,6 +180,39 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const sortedSessions = useMemo(() => sessions, [sessions]);
   // Show all sessions, even if untitled, to avoid hiding active chats before AI title generation
   const visibleSessions = useMemo(() => sortedSessions, [sortedSessions]);
+
+  // Simple UI for clarifications to maintain conversational flow.
+  const clarifyText = useMemo(() => {
+    try {
+      const lastAssistants = [...(chatMessages || [])].reverse().filter(m => m.role === 'assistant');
+      for (const m of lastAssistants.slice(0, 5)) {
+        const c = String(m.content || '');
+        if (/Incomplete data inferred|Please provide more details|Please specify|Which columns|Could not map/i.test(c)) return c;
+      }
+    } catch {}
+    return '';
+  }, [chatMessages]);
+  const hasClarify = Boolean(clarifyText && clarifyText.trim());
+  const handleProvideDetails = async () => {
+    const hint = 'Provide more details (e.g., CLIENT SEEN, TOWN, SALES MADE, DETAILS OF VISIT):';
+    // Prompt the user for more details and append as a user message
+    const text = typeof window !== 'undefined' ? window.prompt(hint) : '';
+    if (text && text.trim()) {
+      await appendMessage({
+        id: `local_${Date.now()}`,
+        role: 'user',
+        content: text.trim(),
+        timestamp: new Date(),
+        messageType: 'text'
+      } as any);
+      try {
+        // Hint main app to focus/send via a custom event if it listens
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('chat:provide-details', { detail: { text: text.trim() } }));
+        }
+      } catch {}
+    }
+  };
 
   const handleCreate = async () => {
     setCreating(true);
@@ -393,6 +426,18 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             <ul className="space-y-1">
               {visibleSessions.map((s) => renderSessionRow(s))}
             </ul>
+          )}
+
+          {/* Clarification inline banner */}
+          {hasClarify && (
+            <div className="mx-3 mt-3 p-3 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-100 text-sm">
+              <div>{clarifyText}</div>
+              <div className="mt-2">
+                <button onClick={handleProvideDetails} className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs">
+                  Provide More Details
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Tool error slot: simple client-side render hint for consumers of this component */}

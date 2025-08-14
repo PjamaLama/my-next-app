@@ -312,7 +312,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'sheet_query':
         return await handleSheetQuery(args, context, res);
       case 'update_sheet':
-        return await handleUpdateSheet(args, context, res);
+        // Consolidated legacy update to single simple path: apply_structured_rows.
+        try {
+          const normalizedArgs = { ...(args as any), dryRun: true, commit: false };
+          return await handleApplyStructuredRows(normalizedArgs as any, context, res);
+        } catch (e) {
+          return res.status(500).json({ success: false, error: 'Failed to route update_sheet', details: e instanceof Error ? e.message : String(e) });
+        }
       case 'convert_unstructured_sheet':
         return await handleConvertSheet(args, res);
 

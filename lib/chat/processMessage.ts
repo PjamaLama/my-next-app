@@ -48,6 +48,7 @@ function extractHeadersFromTool(toolRes: any): string[] {
 
 // Unified preview table to use exact headers; suppresses invalid data.
 // Ensured complete row data in preview table; clarifies for incomplete rows.
+// Simplified to support multi-row tables elegantly.
 function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): StructuredTable & { clarify?: string } {
   const headers: string[] = (Array.isArray(sheetHeaders) && sheetHeaders.length > 0)
     ? sheetHeaders
@@ -84,7 +85,8 @@ function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): Struc
     const clarify = String(preview?.clarify || `No valid data provided. Please specify values for columns: ${headers.join(', ')}`);
     return { title: 'Proposed Sheet Updates', headers, rows: [], clarify, meta: { clarify } } as any;
   }
-  return { title: 'Proposed Sheet Updates', headers, rows } as any;
+  const title = rows.length > 1 ? 'Proposed Sheet Updates (Multiple Rows)' : 'Proposed Sheet Updates';
+  return { title, headers, rows } as any;
 }
 
 export async function processMessage(
@@ -836,6 +838,24 @@ export async function processMessage(
             enhancedResponse += `\n${result.result.trim()}`;
           }
           didUpdateSheet = true;
+          // Elegant re-hydration post-commit to keep context fresh without complexity.
+          try {
+            const isPreview = Boolean((result as any)?.preview);
+            if (!isPreview) {
+              const ctxAny = context as any;
+              const selectedName = (typeof ctxAny.sheetName === 'string' && ctxAny.sheetName.trim()) ? ctxAny.sheetName : (Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames[0]) || '';
+              if (selectedName && ctxAny.spreadsheetId) {
+                const scopedBase = (typeof window === 'undefined' && ctxAny._baseUrl) ? String(ctxAny._baseUrl) : undefined;
+                const ds = new SheetDataSource(ctxAny.spreadsheetId as any, selectedName, scopedBase, String((ctxAny.userId || ctxAny.sessionId || '') || ''), ctxAny);
+                await hydrateSheetData(ds, ctxAny);
+                const tbl = (ctxAny.sheetData?.[selectedName] as string[][]) || [];
+                const totalRowsNow = Array.isArray(tbl) && tbl.length > 1 ? tbl.length - 1 : 0;
+                if (!response || !response.trim()) {
+                  response = `Updated sheet: Total rows now ${totalRowsNow}.`;
+                }
+              }
+            }
+          } catch {}
           // If update_sheet returned a preview of what was written, render it as a single proposed updates table
           try {
             const flowPreview = (result as any).flowPreview;

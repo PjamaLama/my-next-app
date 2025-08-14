@@ -34,6 +34,8 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     : '';
 
   // Updated prompt content per product requirements
+  // Refined intent rules for better conversational tool inference.
+  // Added safeguard for incomplete inference to prompt clarification simply.
   // Added history awareness for better conversationalism and intent accuracy.
   // Improved to handle multi-row inference elegantly from natural language.
   const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message to update a sheet and map data to exact column headers.
@@ -50,7 +52,19 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
   Add current date (MM/DD/YYYY) to 'Date' if missing.
   If the message implies multiple entries (e.g., "saw sarah and john"), generate separate rows for each entity while sharing common fields (e.g., Date and TOWN).
 
+  If the inferred row has fewer than 2 non-empty fields besides 'Date', set clarify to: "Incomplete data inferred. Please provide more details for columns like CLIENT SEEN, TOWN, etc." and avoid producing rows.
+
   Use conversation history to disambiguate intent: if history or the message indicates adding/updating data (e.g., 'add to sheet', 'insert', 'log'), set intent to 'update_data'. If it asks to describe/tell/show/explain, set intent to 'get_data' or 'describe_data' as appropriate. When history shows an ongoing flow, ground your inference on prior turns.
+
+  Examples for intent:
+  - Input: "tell me about the sheet" → intent: 'describe_data', tools: [{ name: 'sheet_query', args: {} }], toolChain: []
+  - Input: "what's in fuel weekly repo" → intent: 'describe_data', tools: [{ name: 'sheet_query', args: {} }], toolChain: []
+  - Input: "add john in howick sales 2000" → intent: 'update_data', tools: [{ name: 'apply_structured_rows', args: { rows: [...], dryRun: true } }], toolChain: []
+  - Input: "update client francois to 3000" → intent: 'update_data', tools: [{ name: 'apply_structured_rows', args: { rows: [...], dryRun: true } }], toolChain: []
+
+  Keyword guidance:
+  - Words like 'add', 'insert', 'update', 'change', 'log', 'record' → intent: 'update_data'
+  - Phrases like 'tell me about', 'what is', 'show', 'list', 'overview', 'describe' → intent: 'describe_data' or 'get_data'
 
 
   Generate one or more row objects with exact header keys and inferred values (e.g., [{Date: '08/14/2025', CLIENT SEEN: 'Francois', TOWN: 'Howick', SALES MADE: '3000', DETAILS OF VISIT: 'spoke about seed industry changes'}]).
