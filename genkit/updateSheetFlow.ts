@@ -122,6 +122,9 @@ const applyGrammarFixes = (text: string): string => {
 export const updateSheetFlow = aiConfigs[0].config.defineFlow('updateSheetFlow', async (input: UpdateSheetInput): Promise<UpdateSheetOutput> => {
   try {
     console.log('UpdateSheetFlow called with:', input);
+    // Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
+    // Deprecation note: updateSheetFlow is kept for backward compatibility but will route
+    // structured (row-like) updates to the centralized apply_structured_rows ingestion handler.
     
     // Ensure sheetName is provided
     const { transcript, sheetId, sheetName, commit = false } = input;
@@ -318,15 +321,57 @@ Legacy prompt (for compatibility):\n${buildSheetUpdatePrompt({
       if (parsed && parsed.actions && Array.isArray(parsed.actions)) {
         console.log(`Successfully parsed ${parsed.actions.length} actions`);
         
-        // Build a dry-run preview grouped by row with confidence and reasons
+        // If the actions can be summarized as structured rows, redirect to apply_structured_rows
         try {
-          const headerLetters = (idx: number) => {
-            let n = idx + 1, s = '';
-            while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
-            return s;
-          };
+          // Detect row-like structure: group updateCell actions by row and map to header keys
+          const byRow = new Map<number, Record<string, string>>();
           const colCount = headers.length;
-          const previews: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }> = [];
+          for (const action of parsed.actions as Array<{ type: string; row: number; column: string; value?: string }>) {
+            if (action.type !== 'updateCell') continue;
+            const m = String(action.column || '').match(/^[A-Z]+$/);
+            if (!m) continue;
+            const colIndex = action.column.split('').reduce((acc: number, ch: string) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1;
+            if (colIndex < 0 || colIndex >= colCount) continue;
+            const header = headers[colIndex];
+            const rowObj = byRow.get(action.row) || {};
+            rowObj[header] = String(action.value ?? '');
+            byRow.set(action.row, rowObj);
+          }
+          const groupedRows = Array.from(byRow.values());
+          const isStructured = groupedRows.length > 0 && groupedRows.every(obj => Object.keys(obj).every(k => headers.includes(k)));
+          if (isStructured) {
+            const rowsForIngest = groupedRows;
+            // Build simple preview in {headers, rows} without confidence scores
+            const orderedHeaders = headers;
+            const tableRows = rowsForIngest.map(obj => orderedHeaders.map(h => String((obj as any)[h] ?? '')));
+            const previewTable = { headers: orderedHeaders, rows: tableRows };
+            if (!commit) {
+              return { actions: [], previewTable, success: true } as any;
+            }
+            try {
+              const startRow = Math.max(2, rowsOnly.length + headerRowIdx + 2);
+              const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spreadsheetId: sheetId, sheetNames: [sheetName], rows: rowsForIngest, dryRun: false, startRow })
+              });
+              if (!ingestResp.ok) {
+                const txt = await ingestResp.text();
+                throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
+              }
+              const result = await ingestResp.json();
+              return { actions: [], success: true, executedActions: Number(result?.inserts || 0) + Number(result?.updates || 0) } as any;
+            } catch (e) {
+              console.warn('Deprecation redirect to apply_structured_rows failed, continuing with legacy flow:', e);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to detect/redirect structured actions:', e);
+        }
+
+        // Build a dry-run preview grouped by row (legacy path). We will still return simple previews to caller.
+        try {
+          const colCount = headers.length;
           const byRow = new Map<number, Record<string, string>>();
           for (const action of parsed.actions as Array<{ type: string; row: number; column: string; value?: string }>) {
             if (action.type !== 'updateCell') continue;
@@ -339,20 +384,12 @@ Legacy prompt (for compatibility):\n${buildSheetUpdatePrompt({
             obj[hdr] = String(action.value ?? '');
             byRow.set(action.row, obj);
           }
-          for (const [row, obj] of byRow.entries()) {
-            // Heuristic confidence: date parse success, numeric columns parse success
-            let votes = 0, total = 1;
-            for (const [k, v] of Object.entries(obj)) {
-              total++;
-              const t = columnTypes[k] || 'string';
-              if (t === 'date' && parseDateFlexible(v)) votes++;
-              else if (t === 'number' && parseDecimal(v) != null) votes++;
-              else if (t === 'string' && v.trim().length > 0) votes += 0.5;
-            }
-            const confidence = Math.max(0.1, Math.min(1, votes / total));
-            previews.push({ row, updates: obj, confidence });
-          }
-          (parsed as UpdateSheetOutput).preview = previews.sort((a, b) => a.row - b.row);
+          // Return simple table preview: {headers, rows}
+          const orderedHeaders = headers;
+          const tableRows = Array.from(byRow.values()).map(obj => orderedHeaders.map(h => String((obj as any)[h] ?? '')));
+          const legacyPreview = Array.from(byRow.entries()).sort((a,b)=>a[0]-b[0]).map(([row, updates]) => ({ row, updates }));
+          (parsed as any).preview = legacyPreview;
+          (parsed as any).previewTable = { headers: orderedHeaders, rows: tableRows };
         } catch (e) {
           console.warn('Failed to build preview from actions:', e);
         }
