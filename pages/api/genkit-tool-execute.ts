@@ -2519,187 +2519,105 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
   // Apply structured rows through the centralized ingestion endpoint
   async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
-  // Fixed to remap inferred keys to exact headers; handles invalid headers.
+  // Removed resolve_column dependency; uses planner-provided rows directly.
   try {
-    const { spreadsheetId, sheetNames, sheetName } = context as any;
+    const argSpreadsheetId = (args as any)?.spreadsheetId;
+    const argSheetName = (args as any)?.sheetName;
     let { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
-    if (!spreadsheetId || !Array.isArray(sheetNames) || sheetNames.length === 0) {
-      return res.status(400).json({ success: false, error: 'Spreadsheet ID and at least one sheet name are required' });
+
+    const spreadsheetId = argSpreadsheetId || (context as any)?.spreadsheetId;
+    const sheetName = argSheetName || (context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames?.[0] : undefined);
+
+    if (!spreadsheetId || !sheetName || !Array.isArray(rows) || rows.length === 0) {
+      const missing: string[] = [];
+      if (!spreadsheetId) missing.push('spreadsheetId');
+      if (!sheetName) missing.push('sheetName');
+      if (!rows || rows.length === 0) missing.push('rows');
+      return res.status(400).json({ success: false, error: `Missing required params: ${missing.join(', ')}` });
     }
 
-    const activeSheet = (Array.isArray(sheetNames) && sheetNames.length > 0) ? sheetNames[0] : (sheetName || undefined);
+    // Load headers from API (prefer context cache if available)
     let sheetHeaders: string[] = Array.isArray((context as any).sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
-
-    // Fallback: fetch headers from the sheet if not present in context
-    if ((!sheetHeaders || sheetHeaders.length === 0) && activeSheet) {
+    if (!sheetHeaders || sheetHeaders.length === 0) {
       try {
         const sheets = await getGoogleSheetsClient();
-        const escaped = escapeSheetName(String(activeSheet));
-        const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!1:1` });
+        const escaped = escapeSheetName(String(sheetName));
+        const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escaped}!A1:Z1` });
         const hdrs = (resp.data.values?.[0] as string[]) || [];
-        if (hdrs && hdrs.length > 0) sheetHeaders = hdrs.map((h) => String(h ?? ''));
+        sheetHeaders = (hdrs || []).map(h => String(h ?? '').trim()).filter(h => h && h.length <= 100);
       } catch {}
     }
-
-    // If headers are invalid or missing, return a clarification error early
     if (!Array.isArray(sheetHeaders) || sheetHeaders.length === 0) {
-      return res.status(200).json({
-        success: false,
-        error: 'No valid headers found in the sheet.',
-        clarify: 'No valid headers found. Please specify columns like Date, Vendor, etc.'
-      });
+      return res.status(200).json({ success: false, error: 'No valid headers found', clarify: 'Please specify column names.' });
     }
 
-    // If rows are missing, attempt inference from the latest user message and headers
-    if (!Array.isArray(rows) || rows.length === 0) {
-      try {
-        const history = Array.isArray((context as any).conversationHistory) ? ((context as any).conversationHistory as any[]) : [];
-        const lastUser = [...history].reverse().find((h: any) => String(h?.role || '') === 'user');
-        const userMsg = String(lastUser?.content || (args as any)?.text || '');
-        if (userMsg && sheetHeaders && sheetHeaders.length > 0) {
-          const { genkit } = await import('genkit');
-          const { googleAI, gemini15Flash } = await import('@genkit-ai/googleai');
-          const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-          if (apiKey) {
-            const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
-            const prompt = `You are an AI planner for a Google Sheets assistant. Analyze the user's message and infer structured row updates.
-Key rules:
-- Map user-provided data to exact sheet headers from this list: ${sheetHeaders.join(', ')}.
-- Use common-sense mappings (e.g., client/vendor, location/town, cost/amount). Add current date to 'Date' if missing.
-- Return STRICT JSON only as {"rows": [ { ... } ] } with keys as exact headers.
-
-User message: ${userMsg}`;
-            const { text } = await ai.generate(prompt);
-            if (text) {
-              let cleaned = text.trim();
-              if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
-              const parsed = JSON.parse(cleaned);
-              if (parsed && Array.isArray(parsed.rows)) {
-                rows = parsed.rows as Array<Record<string, unknown>>;
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[apply_structured_rows] Inference fallback failed:', e);
-      }
-    }
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return res.status(400).json({ success: false, error: 'No structured rows provided by planner. Try “Preview updates” first or specify values to add.' });
-    }
-
-    // Build case-insensitive header lookup and semantic map
+    // Build case-insensitive header lookup and semantic remap restricted to existing headers
+    const headerSet = new Set(sheetHeaders);
     const lowerToHeader: Record<string, string> = {};
-    (sheetHeaders || []).forEach(h => { lowerToHeader[String(h || '').toLowerCase()] = String(h || ''); });
-    const headerLowerSet = new Set(Object.keys(lowerToHeader));
+    sheetHeaders.forEach(h => { lowerToHeader[String(h).toLowerCase()] = String(h); });
     const semanticMap: Record<string, string> = {
       client: 'Vendor',
       saw: 'Vendor',
       sold: 'Fuel Cost in Rands',
-      sales: 'Fuel Cost in Rands',
       amount: 'Fuel Cost in Rands',
       location: 'TOWN VISITED',
       town: 'TOWN VISITED',
       notes: 'Notes',
     };
 
-    // Remap rows: apply case-insensitive header match first, else semantic mapping; add Date if present in headers and missing
-    const remapLog: Array<Record<string, string>> = [];
-    const remappedRowsObjs: Array<Record<string, unknown>> = rows.map(row => {
-      const nextRow: Record<string, unknown> = {};
-      const thisLog: Record<string, string> = {};
-      for (const [k, v] of Object.entries(row || {})) {
-        const lowerK = String(k || '').toLowerCase();
-        // direct header match (case-insensitive)
-        if (headerLowerSet.has(lowerK)) {
-          const exact = lowerToHeader[lowerK];
-          nextRow[exact] = v;
-          if (exact !== k) thisLog[k] = exact;
-          continue;
-        }
-        // semantic mapping → only accept if it maps to an existing header
-        const mappedCandidate = semanticMap[lowerK];
-        if (mappedCandidate && headerLowerSet.has(String(mappedCandidate).toLowerCase())) {
-          const exact = lowerToHeader[String(mappedCandidate).toLowerCase()];
-          nextRow[exact] = v;
-          thisLog[k] = exact;
-          continue;
-        }
-        // leave as-is for now; will validate later
-        nextRow[k] = v;
-      }
-
-      // Add current date if a Date header exists and it's missing
-      const dateHeaderLower = (sheetHeaders || []).find(h => String(h).toLowerCase() === 'date') ? 'date' : null;
-      if (dateHeaderLower) {
-        const exactDateHeader = lowerToHeader[dateHeaderLower];
-        const hasDate = Object.keys(nextRow).some(key => String(key).toLowerCase() === 'date');
-        if (!hasDate) nextRow[exactDateHeader] = new Date().toLocaleDateString('en-US');
-      }
-
-      if (Object.keys(thisLog).length > 0) remapLog.push(thisLog);
-      return nextRow;
-    });
-    // eslint-disable-next-line no-console
-    console.log('Remapped rows:', remappedRowsObjs);
-
-    // Validate after remap: any keys not present in headers are considered unmatched
-    const unmatchedKeys = Array.from(new Set(remappedRowsObjs.flatMap(r => Object.keys(r)))).filter(k => !headerLowerSet.has(String(k).toLowerCase()));
-    if (unmatchedKeys.length > 0) {
-      const available = (sheetHeaders || []).join(', ');
-      return res.status(200).json({
-        success: false,
-        error: `Could not map all fields: [${unmatchedKeys.join(', ')}]. Available: [${available}]`,
-        clarify: 'Please specify correct column names.'
-      });
-    }
-
-    // Normalize to exact header objects including all headers (missing -> empty string)
-    const mappedRows: Array<Record<string, unknown>> = remappedRowsObjs.map(r => {
+    const remappedRows: Array<Record<string, unknown>> = (rows || []).map((row) => {
       const out: Record<string, unknown> = {};
-      for (const h of (sheetHeaders || [])) {
-        const lowerH = String(h).toLowerCase();
-        const exact = lowerToHeader[lowerH];
-        let value: unknown = '';
-        for (const [k, v] of Object.entries(r)) {
-          if (String(k).toLowerCase() === lowerH) { value = v; break; }
-        }
-        out[exact] = value;
-      }
+      Object.keys(row || {}).forEach((k) => {
+        const keyLower = String(k).toLowerCase();
+        const mapped = semanticMap[keyLower] || (lowerToHeader[keyLower] ?? k);
+        if (headerSet.has(mapped)) out[mapped] = (row as any)[k];
+      });
+      if (headerSet.has('Date') && out['Date'] == null) out['Date'] = new Date().toLocaleDateString('en-US');
       return out;
     });
 
-    console.log('Mapped rows:', mappedRows);
+    // Validate remappedRows: at least one non-empty value across non-Date headers
+    const hasValidData = remappedRows.some(r => sheetHeaders.some(h => h !== 'Date' && String((r as any)[h] ?? '').trim() !== ''));
+    if (!hasValidData) {
+      return res.status(400).json({ success: false, error: 'No valid data found in provided rows. Please include values for known columns.' });
+    }
+
+    // Check for any keys not in headers (should be none due to filtering), but keep defensive
+    const badKeys = Array.from(new Set(remappedRows.flatMap(r => Object.keys(r)))).filter(k => !headerSet.has(k));
+    if (badKeys.length > 0) {
+      return res.status(200).json({ success: false, error: `Could not map fields: [${badKeys.join(', ')}]. Available: [${sheetHeaders.join(', ')}]`, clarify: 'Please clarify column names.' });
+    }
+
+    // Debug log
+    // eslint-disable-next-line no-console
+    console.log('Handled rows:', remappedRows);
 
     const doCommit = commit === true && dryRun !== true;
     if (!doCommit) {
-      if (remapLog.length > 0) console.log('[apply_structured_rows] Remapped keys:', remapLog);
-      // Build 2D preview rows matrix in exact header order
-      const previewRows = remappedRowsObjs.map(r => (sheetHeaders || []).map(h => String((r as any)[h] ?? '')));
+      const rows2D = remappedRows.map(r => sheetHeaders.map(h => String((r as any)[h] ?? '')));
       return res.status(200).json({
         success: false,
         preview: {
           headers: sheetHeaders,
-          rows: previewRows,
+          rows: rows2D,
           message: 'Proposed update requires confirmation.',
           action: 'confirm'
         }
       });
     }
 
-    // Commit via ingestion endpoint (no preview dedupe/fuzzy here)
+    // Commit via ingestion endpoint
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spreadsheetId, sheetNames, rows: mappedRows, dryRun: false, startRow })
+      body: JSON.stringify({ spreadsheetId, sheetNames: [sheetName], rows: remappedRows, dryRun: false, startRow })
     });
     if (!ingestResp.ok) {
       const txt = await ingestResp.text();
       throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
     }
     const result = await ingestResp.json();
-    return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: mappedRows, result });
+    return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: remappedRows, result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);
     return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });

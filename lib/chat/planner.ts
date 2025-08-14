@@ -1,5 +1,6 @@
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
+import dayjs from 'dayjs';
 import { Context, ConversationHistoryItem } from './types';
 
 export type PlannerPlan = {
@@ -29,30 +30,29 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     ? ((context as any).sheetHeaders as string[])
     : [];
   const headersList = headers.map((h) => JSON.stringify(String(h))).join(', ');
-  const sampleRows = Array.isArray((context as any)?.sheetRows)
-    ? ((context as any).sheetRows as unknown[]).slice(0, 3)
-    : Array.isArray((context as any)?.sheetData)
-      ? ((context as any).sheetData as unknown[]).slice(0, 3)
-      : [];
-  const hydratedContextResolved = JSON.stringify({ sheetHeaders: headers, headers, sampleRows });
+  const hydratedContextResolved = JSON.stringify({
+    sheetHeaders: headers,
+    spreadsheetId: (context as any)?.spreadsheetId || null,
+    sheetName: (context as any)?.sheetName || null,
+  });
   const semanticMapResolved = JSON.stringify(semanticMap);
 
-  // Enabled semantic inference for mappings; no user JSON required.
+  // Enhanced prompt per user request to ensure spreadsheetId/sheetName propagation and direct row inference
   const template = `You are an AI planner for a Google Sheets assistant. Analyze the user's message to update a sheet and map data to exact column headers.
 Key rules:
 
-- Set intent to 'update_data' for any update request.
-- Fetch exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'Vendor', 'TOWN VISITED', 'Fuel Cost in Rands', 'Notes']).
-- Infer user inputs to headers using simple rules: 'client'/'saw' → 'Vendor', 'sold'/'amount' → 'Fuel Cost in Rands', 'location'/'town' → 'TOWN VISITED', notes → 'Notes', add current date (MM/DD/YYYY) to 'Date' if missing.
-- Generate a row object with exact header keys and inferred values. Do not require JSON input—map natural language internally.
-- Use 'apply_structured_rows' with params: {rows: [inferred row], dryRun: true}.
-- If headers are empty or invalid, clarify: 'No valid headers found. Please specify columns like Date, Vendor, etc.'
-- If mapping fails, clarify: 'Could not map [unmapped terms]. Available columns: {sheetHeaders}. Please clarify.'
-- Output JSON: intent, tools (with 'apply_structured_rows' and rows), toolChain, clarify.
+Set intent to 'update_data' for any update request.
+Fetch exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'Vendor', 'TOWN VISITED', 'Fuel Cost in Rands', 'Notes']).
+Infer user inputs to headers: 'client'/'saw' → 'Vendor', 'sold'/'amount' → 'Fuel Cost in Rands', 'location'/'town' → 'TOWN VISITED', notes → 'Notes', add current date (MM/DD/YYYY) to 'Date' if missing.
+Generate a row object with exact header keys and inferred values from {userMessage} (e.g., 'saw francois in Howick, sold 3000k seed' → {Date: '08/14/2025', Vendor: 'Francois', TOWN VISITED: 'Howick', Fuel Cost in Rands: '3000', Notes: 'spoke about seed industry changes'}).
+Use 'apply_structured_rows' with params: {spreadsheetId: {hydratedContext.spreadsheetId}, sheetName: {hydratedContext.sheetName}, rows: [inferred row], dryRun: true}.
+Do not include 'resolve_column' in the toolChain unless querying existing sheet data is needed. If used, set query to select headers and sample rows (e.g., 'SELECT * FROM {sheetName} LIMIT 1').
+If context is missing (e.g., no spreadsheetId or sheetName), clarify: 'Please specify the sheet to update.'
+If mapping fails, clarify: 'Could not map [unmapped terms]. Available columns: {sheetHeaders}.'
 
+Output JSON: intent, tools (with 'apply_structured_rows' and rows), toolChain, clarify.
 User message: {userMessage}
-Sheet context: {hydratedContext}
-Semantic map: {semanticMap}`;
+Sheet context: {hydratedContext}`;
 
   // Compatibility block: include resolved values so models and tests see concrete content
   const compatibility = `
@@ -63,6 +63,57 @@ Sheet context (resolved): ${hydratedContextResolved}
 Semantic map (resolved): ${semanticMapResolved}`;
 
   return template + compatibility;
+}
+
+function normalizeCapitalization(input: string): string {
+  if (!input) return input;
+  return input
+    .split(/\s+/)
+    .map((w) => (w.length === 0 ? w : w[0].toUpperCase() + w.slice(1).toLowerCase()))
+    .join(' ');
+}
+
+function inferRowFromMessage(message: string, headers: string[]): Record<string, unknown> {
+  const inferred: Record<string, unknown> = {};
+  const lc = String(message || '').toLowerCase();
+
+  // Date: always set if header exists
+  if (headers.includes('Date')) {
+    inferred['Date'] = dayjs().format('MM/DD/YYYY');
+  }
+
+  // Vendor extraction
+  if (headers.includes('Vendor')) {
+    const sawMatch = lc.match(/\b(?:saw|met|client)\s+([a-z][a-z\-\s']{1,40})/i);
+    if (sawMatch) {
+      inferred['Vendor'] = normalizeCapitalization(sawMatch[1].trim());
+    }
+  }
+
+  // Town/location extraction
+  if (headers.includes('TOWN VISITED')) {
+    const inMatch = lc.match(/\b(?:in|at|to)\s+([a-z][a-z\-\s']{1,40})/i);
+    if (inMatch) {
+      inferred['TOWN VISITED'] = normalizeCapitalization(inMatch[1].trim());
+    }
+  }
+
+  // Amount extraction for Fuel Cost in Rands
+  if (headers.includes('Fuel Cost in Rands')) {
+    // Find first numeric token; handle commas and simple trailing 'k' by stripping
+    const numMatch = lc.match(/\b(\d{1,3}(?:,\d{3})*|\d+)(?:\.?\d+)?k?\b/);
+    if (numMatch) {
+      const digits = (numMatch[1] || '').replace(/,/g, '');
+      inferred['Fuel Cost in Rands'] = digits;
+    }
+  }
+
+  // Notes: fallback to original message if header present and not all other fields could be extracted
+  if (headers.includes('Notes')) {
+    inferred['Notes'] = message;
+  }
+
+  return inferred;
 }
 
 export async function generatePlan(
@@ -89,7 +140,7 @@ export async function generatePlan(
           args: (typeof t?.args === 'object' && t?.args) ? t.args : {}
         }))
       : [];
-    const toolChain = Array.isArray(parsed.toolChain)
+    let toolChain = Array.isArray(parsed.toolChain)
       ? parsed.toolChain.map((s: any) => ({
           toolName: String(s?.toolName || ''),
           params: (typeof s?.params === 'object' && s?.params) ? s.params : {},
@@ -97,7 +148,8 @@ export async function generatePlan(
         }))
       : [];
     // Enforce single-tool path + preview-first: rewrite update_sheet->apply_structured_rows and set dryRun
-    const committedChain = toolChain.map((step: { toolName: string; params: Record<string, unknown>; dependsOn?: number[] }) => {
+    // Fixed context propagation for spreadsheetId, sheetName; bypassed resolve_column for updates.
+    let committedChain = toolChain.map((step: { toolName: string; params: Record<string, unknown>; dependsOn?: number[] }) => {
       const name = String(step.toolName || '').toLowerCase();
       if (name === 'update_sheet') {
         return { ...step, toolName: 'apply_structured_rows', params: { ...(step.params || {}), dryRun: true, commit: false } };
@@ -107,6 +159,19 @@ export async function generatePlan(
       }
       return step;
     });
+
+    // If intent is update, drop resolve_column steps from chain/tools; if any remain, ensure a safe query
+    if (intent === 'update_data') {
+      committedChain = committedChain.filter((s: any) => String(s?.toolName || '').toLowerCase() !== 'resolve_column');
+    } else {
+      committedChain = committedChain.map((s: any) => {
+        if (String(s?.toolName || '').toLowerCase() === 'resolve_column') {
+          const sheetName = String((context as any)?.sheetName || 'Sheet1');
+          return { ...s, params: { ...(s.params || {}), query: `SELECT * FROM ${sheetName} LIMIT 1` } };
+        }
+        return s;
+      });
+    }
 
     // Post-parse enforcement: if apply_structured_rows contains unmapped keys (not in exact headers), request clarification
     let clarifyQuestion: string | null = typeof parsed.clarifyQuestion === 'string' ? parsed.clarifyQuestion : (typeof (parsed as any).clarify === 'string' ? (parsed as any).clarify : null);
@@ -136,7 +201,54 @@ export async function generatePlan(
         }
       }
       if (invalidKeys.size > 0 && headers.length > 0 && !clarifyQuestion) {
-        clarifyQuestion = `I could not map some fields to exact sheet columns (${Array.from(invalidKeys).join(', ')}). Please provide the update as row objects using only these exact headers: ${headers.join(', ')}.`;
+        clarifyQuestion = `Could not map ${Array.from(invalidKeys).join(', ')}. Available columns: ${headers.join(', ')}.`;
+      }
+    } catch {}
+
+    // Ensure apply_structured_rows carries spreadsheetId, sheetName, and rows. If missing rows, infer best-effort from message.
+    try {
+      const spreadsheetId = (context as any)?.spreadsheetId;
+      const sheetName = (context as any)?.sheetName;
+      const headers: string[] = Array.isArray((context as any)?.sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
+
+      const ensureParams = (params: any): any => {
+        const updated: any = { ...(params || {}) };
+        if (spreadsheetId) updated.spreadsheetId = spreadsheetId;
+        if (sheetName) updated.sheetName = sheetName;
+        // rows handling
+        if (!Array.isArray(updated.rows) || updated.rows.length === 0) {
+          const inferred = inferRowFromMessage(message, headers);
+          if (Object.keys(inferred).length > 0) {
+            updated.rows = [inferred];
+          }
+        }
+        updated.dryRun = true;
+        return updated;
+      };
+
+      // Update tools array
+      for (const t of tools) {
+        if (String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows') {
+          (t as any).args = ensureParams((t as any).args);
+        }
+      }
+      // Update toolChain entries
+      committedChain = (committedChain as any[]).map((s) => {
+        if (String(s?.toolName || '').toLowerCase() === 'apply_structured_rows') {
+          return { ...s, params: ensureParams(s.params) };
+        }
+        return s;
+      });
+
+      const firstApply = (committedChain as any[]).find((s) => String(s?.toolName || '').toLowerCase() === 'apply_structured_rows');
+      const rows = firstApply?.params?.rows || (tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows') as any)?.args?.rows;
+      // Debug log of final planner params
+      // eslint-disable-next-line no-console
+      console.log('Planner params:', { spreadsheetId, sheetName, rows });
+
+      // If critical context missing, ask to clarify
+      if ((!spreadsheetId || !sheetName) && intent === 'update_data' && !clarifyQuestion) {
+        clarifyQuestion = 'Please specify the sheet to update.';
       }
     } catch {}
 

@@ -46,14 +46,16 @@ function extractHeadersFromTool(toolRes: any): string[] {
   return [];
 }
 
-// Single preview builder for exact proposed changes only.
-// Integrated inferred mappings; shows proposed table with best-fit data.
+// Unified preview table to use exact headers; suppresses invalid data.
 function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): StructuredTable | null {
   const headers: string[] = (Array.isArray(sheetHeaders) && sheetHeaders.length > 0)
     ? sheetHeaders
     : (Array.isArray(preview?.headers) ? (preview.headers as string[]) : []);
-  if (!Array.isArray(headers) || headers.length === 0 || !Array.isArray(preview?.rows)) return null;
-  const rows: string[][] = (preview.rows as any[]).map((rowObj: any) => {
+  if (!Array.isArray(headers) || headers.length === 0) {
+    return { title: 'Proposed Sheet Updates', headers: [], rows: [], summary: undefined, meta: { clarify: 'No valid headers found. Please specify column names.' } } as any;
+  }
+  const srcRows = Array.isArray(preview?.rows) ? (preview.rows as any[]) : [];
+  const rows: string[][] = srcRows.map((rowObj: any) => {
     const obj = (rowObj && typeof rowObj === 'object' && !Array.isArray(rowObj)) ? rowObj : {};
     return headers.map((h) => String((obj as any)[h] ?? ''));
   });
@@ -755,7 +757,15 @@ export async function processMessage(
           const pv = (result as any).preview;
           const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
           const table = buildProposedUpdatesTable(pv, sheetHeaders);
-          if (table) { dataTables.push(table); hasProposedUpdateTable = true; }
+          if (table && Array.isArray(table.rows) && table.rows.length > 0) {
+            dataTables.length = 0; // keep only the unified proposed updates table
+            dataTables.push(table);
+            hasProposedUpdateTable = true;
+          } else if ((table as any)?.meta?.clarify) {
+            const clarify = String((table as any).meta.clarify);
+            const ctxAny = context as any;
+            ctxAny._clarifyHeaders = clarify;
+          }
           // Provide structured quick replies for UI and simple text fallbacks
           ctxAny.quickReplies = [
             { text: 'Approve', action: 'confirm_update' },
@@ -833,10 +843,15 @@ export async function processMessage(
               const pv = Array.isArray(previews) ? { headers: sheetHeaders, rows: previews.map((p: any) => p.updates || {}) } : previews;
               const table = buildProposedUpdatesTable(pv, sheetHeaders);
               if (table && table.rows.length > 0) {
+                dataTables.length = 0;
                 dataTables.push(table);
                 postQuickActions.push('Approve');
                 postQuickActions.push('Reject');
                 postQuickActions.push('Edit');
+              } else if ((table as any)?.meta?.clarify) {
+                const clarify = String((table as any).meta.clarify);
+                const ctxAny = context as any;
+                ctxAny._clarifyHeaders = clarify;
               }
             }
           } catch {}
@@ -879,7 +894,7 @@ export async function processMessage(
               const pv = (result as any).preview;
               const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
               const table = buildProposedUpdatesTable(pv, sheetHeaders);
-              if (table) { dataTables.push(table); hasProposedUpdateTable = true; }
+              if (table && table.rows.length > 0) { dataTables.length = 0; dataTables.push(table); hasProposedUpdateTable = true; }
             }
           }
           if (typeof result.result === 'string' && result.result.trim()) {
@@ -956,7 +971,7 @@ export async function processMessage(
             const pv = (result as any).preview;
             const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
             const table = buildProposedUpdatesTable(pv, sheetHeaders);
-            if (table) { dataTables.push(table); hasProposedUpdateTable = true; }
+            if (table && table.rows.length > 0) { dataTables.length = 0; dataTables.push(table); hasProposedUpdateTable = true; }
             ctxAny.previewActions = pv;
             ctxAny.quickReplies = [
               { text: 'Approve', action: 'confirm_update' },
