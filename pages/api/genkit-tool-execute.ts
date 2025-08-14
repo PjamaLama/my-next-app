@@ -2519,7 +2519,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
   // Apply structured rows through the centralized ingestion endpoint
   async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
-  // Added semantic remapping for user-friendly updates; infers to exact headers.
+  // Fixed to remap inferred keys to exact headers; handles invalid headers.
   try {
     const { spreadsheetId, sheetNames, sheetName } = context as any;
     let { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
@@ -2539,6 +2539,15 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
         const hdrs = (resp.data.values?.[0] as string[]) || [];
         if (hdrs && hdrs.length > 0) sheetHeaders = hdrs.map((h) => String(h ?? ''));
       } catch {}
+    }
+
+    // If headers are invalid or missing, return a clarification error early
+    if (!Array.isArray(sheetHeaders) || sheetHeaders.length === 0) {
+      return res.status(200).json({
+        success: false,
+        error: 'No valid headers found in the sheet.',
+        clarify: 'No valid headers found. Please specify columns like Date, Vendor, etc.'
+      });
     }
 
     // If rows are missing, attempt inference from the latest user message and headers
@@ -2632,20 +2641,18 @@ User message: ${userMsg}`;
       if (Object.keys(thisLog).length > 0) remapLog.push(thisLog);
       return nextRow;
     });
+    // eslint-disable-next-line no-console
+    console.log('Remapped rows:', remappedRowsObjs);
 
     // Validate after remap: any keys not present in headers are considered unmatched
     const unmatchedKeys = Array.from(new Set(remappedRowsObjs.flatMap(r => Object.keys(r)))).filter(k => !headerLowerSet.has(String(k).toLowerCase()));
     if (unmatchedKeys.length > 0) {
-      const suggestions: string[] = [];
-      for (const k of unmatchedKeys) {
-        const lowerK = String(k).toLowerCase();
-        const s = semanticMap[lowerK];
-        if (s && headerLowerSet.has(String(s).toLowerCase())) suggestions.push(`${k} -> ${lowerToHeader[String(s).toLowerCase()]}`);
-      }
-      const msg = suggestions.length > 0
-        ? `Could not map all fields. Suggested: ${suggestions.join(', ')}. Please clarify.`
-        : `Could not map all fields: [${unmatchedKeys.join(', ')}]. Please clarify which sheet columns to use. Available: [${(sheetHeaders || []).join(', ')}].`;
-      return res.status(400).json({ success: false, error: msg });
+      const available = (sheetHeaders || []).join(', ');
+      return res.status(200).json({
+        success: false,
+        error: `Could not map all fields: [${unmatchedKeys.join(', ')}]. Available: [${available}]`,
+        clarify: 'Please specify correct column names.'
+      });
     }
 
     // Normalize to exact header objects including all headers (missing -> empty string)
@@ -2668,11 +2675,13 @@ User message: ${userMsg}`;
     const doCommit = commit === true && dryRun !== true;
     if (!doCommit) {
       if (remapLog.length > 0) console.log('[apply_structured_rows] Remapped keys:', remapLog);
+      // Build 2D preview rows matrix in exact header order
+      const previewRows = remappedRowsObjs.map(r => (sheetHeaders || []).map(h => String((r as any)[h] ?? '')));
       return res.status(200).json({
         success: false,
         preview: {
           headers: sheetHeaders,
-          rows: mappedRows,
+          rows: previewRows,
           message: 'Proposed update requires confirmation.',
           action: 'confirm'
         }
