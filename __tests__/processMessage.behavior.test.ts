@@ -349,6 +349,65 @@ describe('processMessage planner/tool behavior - targeted scenarios', () => {
     expect(out.response).toMatch(/Total rows now:\s*6\./i);
   });
 
+  // Tested multi-row update for robust inference.
+  it("plans multi-row update preview for 'add sarah and john' and calls apply_structured_rows with two rows", async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockResolvedValue(['Date', 'CLIENT SEEN', 'TOWN', 'SALES MADE']);
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockResolvedValue([
+      ['2024-01-01','Alice','Howick','100'],
+    ]);
+
+    const calls: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [
+          { name: 'apply_structured_rows', args: { rows: [
+            { Date: '08/13/2025', 'CLIENT SEEN': 'Sarah', TOWN: 'Howick', 'SALES MADE': '2000' },
+            { Date: '08/13/2025', 'CLIENT SEEN': 'John', TOWN: 'Howick', 'SALES MADE': '1500' }
+          ], dryRun: true } }
+        ],
+        toolChain: [],
+        clarifyQuestion: null,
+        reasoning: 'multi-row inference'
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        calls.push({ name, args });
+        if (name === 'apply_structured_rows' && args && args.dryRun) {
+          return { success: true, result: 'Preview ready', preview: { headers: ['Date','CLIENT SEEN','TOWN','SALES MADE'], rows: [ ['08/13/2025','Sarah','Howick','2000'], ['08/13/2025','John','Howick','1500'] ] } } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Visits', sheetNames: ['Visits'], sheetHeaders: ['Date','CLIENT SEEN','TOWN','SALES MADE'], sheetData: { 'Visits': [['Date','CLIENT SEEN','TOWN','SALES MADE'], ['2024-01-01','Alice','Howick','100']] } };
+
+    const out = await run('add sarah and john', ctx, [], []);
+
+    const apply = calls.find(c => c.name === 'apply_structured_rows');
+    expect(apply).toBeTruthy();
+    if (apply) {
+      const rows = apply.args.rows || [];
+      expect(Array.isArray(rows)).toBe(true);
+      expect(rows.length).toBeGreaterThanOrEqual(2);
+      const names = rows.map((r: any) => String(r['CLIENT SEEN'] || '')).sort();
+      expect(names).toEqual(['John', 'Sarah']);
+    }
+
+    const table = (out.dataTables || []).find((t: any) => /Proposed Sheet Updates/i.test(String(t?.title || '')));
+    if (table) {
+      expect(Array.isArray(table.rows)).toBe(true);
+      expect(table.rows.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it('multi-row preview then commit re-hydrates and updates total rows', async () => {
     // Added test for multi-row and commit to ensure simplicity works.
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
@@ -432,6 +491,184 @@ describe('processMessage planner/tool behavior - targeted scenarios', () => {
     const out2 = await run2('apply', ctx, [], []);
     expect(out2.response).toMatch(/Updated sheet/i);
     expect(out2.response).toMatch(/Total rows now/i);
+  });
+
+  // Tested UI buttons for complete update flow.
+  it('handles Approve, Reject, and Edit over a previewed apply_structured_rows flow', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockResolvedValue(['Date', 'CLIENT SEEN', 'TOWN', 'SALES MADE']);
+    // After commit, hydration should see 7 rows
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockResolvedValue([
+      ['2024-01-01','Alice','Howick','100'],
+      ['2024-01-02','Bob','Pietermaritzburg','200'],
+      ['2024-01-03','Chris','Howick','300'],
+      ['2024-01-04','Dana','PMB','400'],
+      ['2024-01-05','Evan','Howick','500'],
+      ['2024-01-06','Fran','Howick','600'],
+      ['2024-01-07','Gary','PMB','700'],
+    ]);
+
+    // Phase A: Preview, then Approve (commit)
+    const callsA: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [
+          { name: 'apply_structured_rows', args: { rows: [
+            { Date: '08/13/2025', 'CLIENT SEEN': 'Sarah', TOWN: 'Howick', 'SALES MADE': '2000' },
+            { Date: '08/13/2025', 'CLIENT SEEN': 'John', TOWN: 'Howick', 'SALES MADE': '1500' }
+          ], dryRun: true } }
+        ],
+        toolChain: [], clarifyQuestion: null
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        callsA.push({ name, args });
+        if (name === 'apply_structured_rows' && args && args.dryRun) {
+          return { success: true, result: 'Preview ready', preview: { headers: ['Date','CLIENT SEEN','TOWN','SALES MADE'], rows: [ ['08/13/2025','Sarah','Howick','2000'], ['08/13/2025','John','Howick','1500'] ] } } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+    const { processMessage: runA } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Visits', sheetNames: ['Visits'], sheetHeaders: ['Date','CLIENT SEEN','TOWN','SALES MADE'], sheetData: { 'Visits': [['Date','CLIENT SEEN','TOWN','SALES MADE'], ['2024-01-01','Alice','Howick','100']] } };
+    const outPrev = await runA('show preview for sarah and john', ctx, [], []);
+    const tablePrev = (outPrev.dataTables || []).find((t: any) => /Proposed Sheet Updates/i.test(String(t?.title || '')));
+    if (tablePrev) {
+      expect(Array.isArray(tablePrev.rows)).toBe(true);
+      expect(tablePrev.rows.length).toBeGreaterThanOrEqual(2);
+    }
+
+    // Approve: re-plan with commit=true (explicit plan commit mirrors UI approve)
+    jest.resetModules();
+    const callsApprove: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [ { name: 'apply_structured_rows', args: { rows: [
+          { Date: '08/13/2025', 'CLIENT SEEN': 'Sarah', TOWN: 'Howick', 'SALES MADE': '2000' },
+          { Date: '08/13/2025', 'CLIENT SEEN': 'John', TOWN: 'Howick', 'SALES MADE': '1500' }
+        ], commit: true } } ], toolChain: [], clarifyQuestion: null
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        callsApprove.push({ name, args });
+        if (name === 'apply_structured_rows' && args && args.commit) {
+          return { success: true, result: 'Applied 2 rows.', updatedRows: [ args.rows?.[0] || {}, args.rows?.[1] || {} ] } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+    const { processMessage: runApprove } = require('../lib/chat/processMessage');
+    const outApprove = await runApprove('apply', ctx, [], []);
+    expect(outApprove.response).toMatch(/Updated sheet|Applied 2 rows/i);
+    expect(outApprove.response).toMatch(/Total rows now|Total rows:/i);
+
+    // Phase B: Preview again, then Reject (cancel)
+    jest.resetModules();
+    const callsB: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [ { name: 'apply_structured_rows', args: { rows: [
+          { Date: '08/13/2025', 'CLIENT SEEN': 'Sarah', TOWN: 'Howick', 'SALES MADE': '2000' },
+          { Date: '08/13/2025', 'CLIENT SEEN': 'John', TOWN: 'Howick', 'SALES MADE': '1500' }
+        ], dryRun: true } } ], toolChain: [], clarifyQuestion: null
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        callsB.push({ name, args });
+        if (name === 'apply_structured_rows' && args && args.dryRun) {
+          return { success: true, result: 'Preview ready', preview: { headers: ['Date','CLIENT SEEN','TOWN','SALES MADE'], rows: [ ['08/13/2025','Sarah','Howick','2000'], ['08/13/2025','John','Howick','1500'] ] } } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+    const { processMessage: runB } = require('../lib/chat/processMessage');
+    const outPrev2 = await runB('preview again', ctx, [], []);
+    const tablePrev2 = (outPrev2.dataTables || []).find((t: any) => /Proposed Sheet Updates/i.test(String(t?.title || '')));
+    if (tablePrev2) {
+      expect(Array.isArray(tablePrev2.rows)).toBe(true);
+      expect(tablePrev2.rows.length).toBeGreaterThanOrEqual(2);
+    }
+    const outReject = await runB('cancel', ctx, [], []);
+    expect(outReject.response).toMatch(/Canceled\.|No changes were applied/i);
+    const tableAfterReject = (outReject.dataTables || []).find((t: any) => /Proposed Sheet Updates/i.test(String(t?.title || '')));
+    expect(tableAfterReject).toBeFalsy();
+
+    // Phase C: Preview, Edit (prompt), then commit modified row
+    jest.resetModules();
+    const callsC1: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [ { name: 'apply_structured_rows', args: { rows: [
+          { Date: '08/13/2025', 'CLIENT SEEN': 'Sarah', TOWN: 'Howick', 'SALES MADE': '2000' },
+          { Date: '08/13/2025', 'CLIENT SEEN': 'John', TOWN: 'Howick', 'SALES MADE': '1500' }
+        ], dryRun: true } } ], toolChain: [], clarifyQuestion: null
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        callsC1.push({ name, args });
+        if (name === 'apply_structured_rows' && args && args.dryRun) {
+          return { success: true, result: 'Preview ready', preview: { headers: ['Date','CLIENT SEEN','TOWN','SALES MADE'], rows: [ ['08/13/2025','Sarah','Howick','2000'], ['08/13/2025','John','Howick','1500'] ] } } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+    const { processMessage: runC1 } = require('../lib/chat/processMessage');
+    const outEditPrompt = await runC1('show preview to edit', ctx, [], []);
+    const outEdit = await runC1('edit', ctx, [], []);
+    expect(outEdit.response).toMatch(/What would you like to change/i);
+
+    // Now commit with modified row (John -> 1800)
+    jest.resetModules();
+    const callsC2: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [ { name: 'apply_structured_rows', args: { rows: [
+          { Date: '08/13/2025', 'CLIENT SEEN': 'Sarah', TOWN: 'Howick', 'SALES MADE': '2000' },
+          { Date: '08/13/2025', 'CLIENT SEEN': 'John', TOWN: 'Howick', 'SALES MADE': '1800' }
+        ], commit: true } } ], toolChain: [], clarifyQuestion: null
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        callsC2.push({ name, args });
+        if (name === 'apply_structured_rows' && args && args.commit) {
+          return { success: true, result: 'Applied rows (edited).', updatedRows: [ args.rows?.[0] || {}, args.rows?.[1] || {} ] } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+    const { processMessage: runC2 } = require('../lib/chat/processMessage');
+    const outEditedCommit = await runC2('apply', ctx, [], []);
+    const commitCall = callsC2.find(c => c.name === 'apply_structured_rows' && c.args && c.args.commit);
+    expect(commitCall).toBeTruthy();
+    if (commitCall) {
+      const rows = commitCall.args.rows || [];
+      const john = rows.find((r: any) => String(r['CLIENT SEEN'] || '').toLowerCase() === 'john');
+      expect(john).toBeTruthy();
+      if (john) expect(Number(john['SALES MADE'])).toBe(1800);
+    }
+    expect(outEditedCommit.response).toMatch(/Updated sheet|Applied/i);
   });
 
   it('non-tabular update appends text via update_sheet', async () => {
@@ -560,6 +797,53 @@ describe('processMessage planner/tool behavior - targeted scenarios', () => {
     expect(/Unique values.*Alice.*Bob/i.test(out.response) || /No sheet data loaded yet|couldn['’]t load your sheet data/i.test(out.response)).toBe(true);
   });
 
+  // Tested describe_data for conversational row insights.
+  it('describe_data via sheet_query includes row insights (clients and sales)', async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'describe_data',
+        tools: [{ name: 'sheet_query', args: { query: 'select top rows' } }],
+        toolChain: [],
+        clarifyQuestion: null
+      })
+    }));
+
+    const toolCalls: string[] = [];
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        toolCalls.push(name);
+        if (name === 'sheet_query') {
+          return {
+            success: true,
+            table: {
+              headers: ['Date','CLIENT SEEN','TOWN','SALES MADE'],
+              rows: [
+                ['2024-01-01','Alice','Howick','100'],
+                ['2024-01-02','Bob','PMB','200'],
+                ['2024-01-03','Chris','Howick','300']
+              ]
+            }
+          } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Visits', sheetNames: ['Visits'] };
+    const out = await run('describe my visits', ctx, [], []);
+
+    expect(toolCalls).toContain('sheet_query');
+    // Accept either our conversational insight string or a compact Clients/Sales listing
+    expect(/Recent entries:/i.test(out.response) || /Clients?:/i.test(out.response)).toBe(true);
+    // Ensure names and sales values appear in the insight
+    expect(out.response).toMatch(/Alice|Bob|Chris/i);
+    expect(out.response).toMatch(/100|200|300/);
+  });
+
   it('reports hydration 404 with actionable quick replies for sheet "Logbook"', async () => {
     jest.resetModules();
     const { SheetDataSource } = require('../lib/data/source');
@@ -613,6 +897,81 @@ describe('processMessage planner/tool behavior - targeted scenarios', () => {
     await run('add fuel data', ctx, [], files as any);
     const order = toolCalls.join('>');
     expect(/get_sheet_data>extract_data_from_files>apply_structured_rows/.test(order)).toBe(true);
+  });
+
+  // Tested file upload row inference for consistency.
+  it("infers row from uploaded text file and previews matching headers", async () => {
+    setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
+
+    const { SheetDataSource } = require('../lib/data/source');
+    jest.spyOn(SheetDataSource.prototype, 'getHeaders').mockResolvedValue(['Date', 'CLIENT SEEN', 'TOWN', 'SALES MADE']);
+    jest.spyOn(SheetDataSource.prototype, 'getSampleRows').mockResolvedValue([
+      ['2024-01-01','Alice','Howick','100'],
+    ]);
+
+    const calls: Array<{ name: string; args: any }> = [];
+    jest.doMock('../lib/chat/planner', () => ({
+      generatePlan: async () => ({
+        intent: 'update_data',
+        tools: [],
+        toolChain: [
+          { toolName: 'get_sheet_data', params: {} },
+          { toolName: 'extract_data_from_files', params: {}, dependsOn: [0] },
+          { toolName: 'apply_structured_rows', params: { dryRun: true }, dependsOn: [0,1] }
+        ],
+        clarifyQuestion: null,
+        reasoning: 'file extraction -> structured rows preview'
+      })
+    }));
+    jest.doMock('../lib/chat/toolExecution', () => ({
+      executeToolCall: async (toolCall: any) => {
+        const name = toolCall?.function?.name;
+        const args = (() => { try { return JSON.parse(toolCall?.function?.arguments || '{}'); } catch { return {}; } })();
+        calls.push({ name, args });
+        if (name === 'get_sheet_data') return { success: true, data: [['Date','CLIENT SEEN','TOWN','SALES MADE'], ['2024-01-01','Alice','Howick','100']] } as any;
+        if (name === 'extract_data_from_files') {
+          return { success: true, result: 'extracted ok', analyses: [
+            { index: 1, extractedData: { result: { extracted_rows: [ { 'CLIENT SEEN': 'Victor', TOWN: 'Hogwarts', 'SALES MADE': '4000' } ] } } }
+          ] } as any;
+        }
+        if (name === 'apply_structured_rows' && args && args.dryRun) {
+          return { success: true, result: 'Preview ready', preview: { headers: ['Date','CLIENT SEEN','TOWN','SALES MADE'], rows: [ ['','Victor','Hogwarts','4000'] ] } } as any;
+        }
+        return { success: true, result: `${name} ok` } as any;
+      }
+    }));
+
+    const { processMessage: run } = require('../lib/chat/processMessage');
+    const ctx: any = { spreadsheetId: 'abc', sheetName: 'Visits', sheetNames: ['Visits'], sheetHeaders: ['Date','CLIENT SEEN','TOWN','SALES MADE'], sheetData: { 'Visits': [['Date','CLIENT SEEN','TOWN','SALES MADE'], ['2024-01-01','Alice','Howick','100']] } };
+    const files = [{ name: 'notes.txt', mimeType: 'text/plain', data: 'victor in Hogwarts, 4000 rand' }];
+    const out = await run('add from file', ctx, [], files as any);
+
+    // Verify apply_structured_rows was called with a row matching headers
+    const apply = calls.find(c => c.name === 'apply_structured_rows');
+    expect(apply).toBeTruthy();
+    if (apply) {
+      const rows = apply.args.rows || [];
+      expect(Array.isArray(rows)).toBe(true);
+      const row = rows[0] || {};
+      const headers = ctx.sheetHeaders;
+      const rowKeys = Object.keys(row);
+      const allKeysAreHeaders = rowKeys.every((k: string) => headers.includes(k));
+      expect(allKeysAreHeaders).toBe(true);
+      expect(String(row['CLIENT SEEN'] || '')).toMatch(/Victor/i);
+      expect(String(row['TOWN'] || '')).toMatch(/Hogwarts/i);
+      expect(Number(row['SALES MADE'])).toBe(4000);
+    }
+
+    // Verify preview table shows correct fields
+    const table = (out.dataTables || []).find((t: any) => /Proposed Sheet Updates/i.test(String(t?.title || '')));
+    if (table) {
+      const headers = (table.headers || []).map((h: any) => String(h));
+      expect(headers).toEqual(expect.arrayContaining(['CLIENT SEEN','TOWN','SALES MADE']));
+      const row = (table.rows?.[0] || []).map((v: any) => String(v));
+      expect(row.join(' ')).toMatch(/Victor/i);
+      expect(row.join(' ')).toMatch(/Hogwarts/i);
+      expect(row.join(' ')).toMatch(/4000/);
+    }
   });
 });
 

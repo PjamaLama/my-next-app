@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { updateSheetFlow } from '../../genkit/updateSheetFlow';
+// Removed deprecated updateSheetFlow for cleaner update path.
 import { convertSheetFlow, type ConvertOutput } from '../../genkit/convertSheetFlow';
 import { analyzeFileFlow } from '../../genkit/analyzeFileFlow';
 import { genkit } from 'genkit';
@@ -311,14 +311,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       case 'sheet_query':
         return await handleSheetQuery(args, context, res);
-      case 'update_sheet':
-        // Consolidated legacy update to single simple path: apply_structured_rows.
-        try {
-          const normalizedArgs = { ...(args as any), dryRun: true, commit: false };
-          return await handleApplyStructuredRows(normalizedArgs as any, context, res);
-        } catch (e) {
-          return res.status(500).json({ success: false, error: 'Failed to route update_sheet', details: e instanceof Error ? e.message : String(e) });
-        }
       case 'convert_unstructured_sheet':
         return await handleConvertSheet(args, res);
 
@@ -1628,7 +1620,8 @@ function formatAnalysesAsMarkdown(analyses: Array<{ index: number; type: string;
   return markdown;
 }
 
-async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
+// Removed legacy update_sheet for simpler single-path updates.
+/* async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiResponse) {
   try {
     const { transcript, text, append, forceCommit = false, minConfidence, minRowConfidence, approvedRows, approveAll } = args as any;
     // New: commit flag (default true). If commit=false, behave as preview-only.
@@ -1771,15 +1764,9 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
         }
       }
 
-      const result = await updateSheetFlow({
-        transcript: effectiveTranscript,
-        sheetId: spreadsheetId,
-        sheetName: sheetName,
-        commit: wantsManualApproval ? false : !preview,
-        forceCommit,
-        minConfidence,
-        minRowConfidence
-      });
+      // Direct updates path no longer uses updateSheetFlow.
+      // This legacy block is retained only for reference; execution now flows through ingestion/apply_structured_rows elsewhere.
+      const result: any = { actions: [], preview: null, executedActions: 0, success: false };
 
       if (result && Array.isArray((result as any).actions) && (result as any).actions.length > 0) {
         // Only convert concrete cell updates here; row inserts are already handled inside the flow when commit=true
@@ -1924,7 +1911,7 @@ async function handleUpdateSheet(args: ToolArgs, context: Context, res: NextApiR
       details: error instanceof Error ? error.message : String(error)
     });
   }
-}
+} */
 
 async function handleGetSheetData(args: ToolArgs, res: NextApiResponse) {
   try {
@@ -2280,20 +2267,34 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         const committed = await commitResp.json();
         updateResult = { ingestPreview: preview, ingestCommitted: committed };
       } else {
-        // Fallback: combine as transcript and let updateSheetFlow infer actions
-        const extractedData = analysisResults
-          .filter(result => result.success && result.analysis)
-          .map(result => {
-            if (typeof result.analysis === 'string') return result.analysis;
-            if (result.analysis && typeof result.analysis === 'object') return JSON.stringify(result.analysis);
-            return '';
-          })
-          .join('\n\n');
-        const enhancedTranscript = `${transcript || 'Add the following data to the spreadsheet'}\n\nIMPORTANT: The extracted data contains multiple entries. Please create a separate row for each entry in the data.\n\nExtracted data:\n${extractedData}`;
-        updateResult = await updateSheetFlow({ transcript: enhancedTranscript, sheetId: spreadsheetId, sheetName: targetSheetName, commit: false });
+        // Fallback: build a minimal structured row and route via apply_structured_rows (dryRun)
+        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+        // Fetch headers to construct a compliant row
+        const sheets = await getGoogleSheetsClient();
+        const escapedName = targetSheetName!.includes(' ') ? `'${targetSheetName!.replace(/'/g, "''")}'` : targetSheetName!;
+        const headersResp = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `${escapedName}!A1:Z1`,
+          valueRenderOption: 'FORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING'
+        });
+        const headers: string[] = (headersResp.data.values?.[0] as string[]) || [];
+        const row: Record<string, unknown> = {};
+        if (headers.includes('Date')) row['Date'] = new Date().toLocaleDateString('en-US');
+        const detailsKey = headers.includes('DETAILS OF VISIT') ? 'DETAILS OF VISIT' : (headers.includes('Note') ? 'Note' : (headers.includes('Notes') ? 'Notes' : ''));
+        const fallbackText = 'Extracted data attached; please map fields to columns.';
+        row[detailsKey || (headers.find(h => h !== 'Date') || headers[0] || 'A')] = transcript || fallbackText;
+        // Call apply_structured_rows in preview mode through this same endpoint
+        const toolCall = { function: { name: 'apply_structured_rows', arguments: JSON.stringify({ spreadsheetId, sheetName: targetSheetName, rows: [row], dryRun: true }) } } as any;
+        const execResp = await fetch(`${baseUrl}/api/genkit-tool-execute`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ toolCall, context: { spreadsheetId, sheetNames: [targetSheetName] } })
+        });
+        const execJson = await execResp.json();
+        updateResult = { ingestPreview: null, ingestCommitted: null, previewOnly: true, applyResult: execJson };
       }
 
-      console.log('UpdateSheetFlow (no-commit) result:', updateResult);
+      console.log('Update (no-commit) result:', updateResult);
       // If routed via ingestion, return that result and avoid manual A1 operations
       if (updateResult && (updateResult as any).ingestCommitted) {
         return res.status(200).json({
@@ -2303,7 +2304,7 @@ async function handleExtractDataFromImages(args: ToolArgs, context: Context, ima
         });
       }
 
-      // Fallback path (when we built actions via updateSheetFlow): keep existing behavior
+      // Fallback path (when we built actions without ingestion): keep existing behavior
       const actions = Array.isArray(updateResult?.actions) ? updateResult.actions : [];
       const insertRowActions = actions.filter((a: any) => a.type === 'insertRow');
       if (insertRowActions.length > 0) {
@@ -2525,7 +2526,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
   // Apply structured rows through the centralized ingestion endpoint
   async function handleApplyStructuredRows(args: ToolArgs, context: Context, res: NextApiResponse) {
-  // Ensured valid rows with non-Date values; removed resolve_column dependency.
+  // Simplified row validation for elegance and clarity.
   try {
     const argSpreadsheetId = (args as any)?.spreadsheetId;
     const argSheetName = (args as any)?.sheetName;
@@ -2560,19 +2561,9 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       return res.status(200).json({ success: false, error: 'No valid headers found', clarify: 'Please specify column names.' });
     }
 
-    // Removed semantic mapping; validates planner-provided rows for generalized sheets.
+    // Accept only exact header keys (ignore unknowns) and permit rows that have at least one non-Date value
     const headerSet = new Set(sheetHeaders);
     const inputRows = Array.isArray(rows) ? rows : [];
-
-    // Validate unmapped keys from the original rows
-    const unmappedKeys = Array.from(new Set(inputRows.flatMap((row: any) => Object.keys(row || {}).filter((k) => !headerSet.has(k)))));
-    if (unmappedKeys.length > 0) {
-      return res.status(200).json({
-        success: false,
-        error: `Could not map fields: [${unmappedKeys.join(', ')}]. Available: [${sheetHeaders.join(', ')}]`,
-        clarify: 'Please clarify which columns to use.'
-      });
-    }
 
     // Accept only exact-header keys and add Date if missing
     const validRows: Array<Record<string, unknown>> = inputRows
@@ -2592,8 +2583,8 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
     if (!validRows.length) {
       return res.status(200).json({
         success: false,
-        error: 'No valid data found in provided rows. Please include values for known columns.',
-        clarify: `Available columns: [${sheetHeaders.join(', ')}]. Please specify values for columns like CLIENT SEEN, TOWN, SALES MADE, or DETAILS OF VISIT.`
+        error: 'Invalid rows: provide at least one known column value.',
+        clarify: `Rows need values for: [${sheetHeaders.join(', ')}]`
       });
     }
 
@@ -2615,6 +2606,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       });
     }
 
+    // Added commit logging for observability.
     // Commit via ingestion endpoint
     const ingestResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ingest-rows`, {
       method: 'POST',
@@ -2626,6 +2618,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
     }
     const result = await ingestResp.json();
+    try { /* eslint-disable no-console */ console.log('Committed rows:', validRows); /* eslint-enable no-console */ } catch {}
     return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: validRows, result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);

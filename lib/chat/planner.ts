@@ -12,7 +12,15 @@ export type PlannerPlan = {
 };
 
 // Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
+// Removed resolve_column from updates for simplicity.
 // Removed resolve_column; improved dynamic inference for all sheet headers.
+// Added multi-row inference for natural language inputs.
+// Improved field parsing for accurate column mapping.
+// Added row-based insights for conversational describe_data responses.
+// Enabled file data to generate proposed rows like text inputs.
+// Added rule-based field mapping for consistent inference.
+// Added sheet selection guard for clarity.
+// Standardized Date format for consistency.
 
 function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean): string {
   // Preserve placeholders in the template, but also include resolved context for grounding and tests
@@ -20,10 +28,19 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     ? ((context as any).sheetHeaders as string[])
     : [];
   const headersList = headers.map((h) => JSON.stringify(String(h))).join(', ');
+  const sheetDataSample = Array.isArray((context as any)?.sheetData)
+    ? ((context as any).sheetData as any[]).slice(0, 3)
+    : [];
+  const fileDataSample = Array.isArray((context as any)?.fileData)
+    ? ((context as any).fileData as any[]).slice(0, 3)
+    : [];
   const hydratedContextResolved = JSON.stringify({
     sheetHeaders: headers,
     spreadsheetId: (context as any)?.spreadsheetId || null,
     sheetName: (context as any)?.sheetName || null,
+    sheetNames: (context as any)?.sheetNames || [],
+    fileDataSample,
+    sheetDataSample,
   });
   // Build a compact conversation history string for grounding
   const historyText = Array.isArray(history)
@@ -45,31 +62,60 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
   Use exact headers from {hydratedContext.sheetHeaders} (e.g., ['Date', 'CLIENT SEEN', 'TOWN', 'CLIENT CALLED', 'PHONE NUMBER', 'DETAILS OF VISIT', 'SALES MADE']).
   Dynamically infer user inputs to headers using natural language understanding and context:
 
+  Rule-based field mapping (apply first, before using the LLM):
+  - Names (e.g., 'Sarah') → 'CLIENT SEEN'
+  - Locations (e.g., 'Howick') → 'TOWN'
+  - Numbers (e.g., '3000') → 'SALES MADE'
+  - Sentences/notes → 'DETAILS OF VISIT'
+  Use the LLM only when these rules are ambiguous or insufficient to determine the correct column.
+
   Names or entities (e.g., 'francois') map to 'CLIENT SEEN' or similar.
   Locations (e.g., 'Howick') map to 'TOWN' or location-like columns.
   Monetary or numeric values (e.g., '3000k seed') map to 'SALES MADE' or amount-like columns.
   Descriptive text (e.g., 'spoke about seed changes') map to 'DETAILS OF VISIT' or note-like columns.
+  Clean field values: strip boilerplate phrases like 'add to my sheet', 'please add', 'log this' from free-text; do not include them in 'DETAILS OF VISIT'.
+  Parse names cautiously: if phrasing like "Sarah in Hogwarts Today" occurs, map 'Sarah' to 'CLIENT SEEN' and 'Hogwarts Today' to 'TOWN'.
+  Ensure location-like fragments (tokens after 'in', 'at', 'to') are assigned to 'TOWN', not 'CLIENT SEEN'.
   Add current date (MM/DD/YYYY) to 'Date' if missing.
+  Always format 'Date' as MM/DD/YYYY for all inferred rows (normalize any provided dates to this format, zero-pad month/day).
   If the message implies multiple entries (e.g., "saw sarah and john"), generate separate rows for each entity while sharing common fields (e.g., Date and TOWN).
+  If values like amounts are mentioned in a sequence (e.g., "sold 3000 and 2000"), align them by order to the corresponding entities to form separate rows.
 
   If the inferred row has fewer than 2 non-empty fields besides 'Date', set clarify to: "Incomplete data inferred. Please provide more details for columns like CLIENT SEEN, TOWN, etc." and avoid producing rows.
 
-  Use conversation history to disambiguate intent: if history or the message indicates adding/updating data (e.g., 'add to sheet', 'insert', 'log'), set intent to 'update_data'. If it asks to describe/tell/show/explain, set intent to 'get_data' or 'describe_data' as appropriate. When history shows an ongoing flow, ground your inference on prior turns.
+  Use conversation history to disambiguate intent. Consider {conversationHistory} explicitly:
+  - If history includes recent updates (e.g., prior turns added rows or applied changes), prioritize intent: 'update_data'.
+  - If history mentions phrases like 'tell me', 'describe', 'what is', or 'overview', lean toward intent: 'describe_data'.
+  - When history shows an ongoing flow, ground your inference on prior turns.
+
+  Sheet selection:
+  - If {hydratedContext.sheetNames} has multiple options and {hydratedContext.sheetName} is missing or ambiguous, set clarify: "Which sheet to update? Options: [{hydratedContext.sheetNames}]" and do not produce rows until clarified.
 
   Examples for intent:
   - Input: "tell me about the sheet" → intent: 'describe_data', tools: [{ name: 'sheet_query', args: {} }], toolChain: []
   - Input: "what's in fuel weekly repo" → intent: 'describe_data', tools: [{ name: 'sheet_query', args: {} }], toolChain: []
   - Input: "add john in howick sales 2000" → intent: 'update_data', tools: [{ name: 'apply_structured_rows', args: { rows: [...], dryRun: true } }], toolChain: []
   - Input: "update client francois to 3000" → intent: 'update_data', tools: [{ name: 'apply_structured_rows', args: { rows: [...], dryRun: true } }], toolChain: []
+  - Parsing example: "add to my sheet Sarah in Hogwarts Today, sold 3000" → rows: [{Date: '08/14/2025', CLIENT SEEN: 'Sarah', TOWN: 'Hogwarts Today', SALES MADE: '3000'}]
+  - Multi-row example: "saw sarah and john in Lesotho, sold 3000 and 2000" → rows: [{Date: '08/14/2025', CLIENT SEEN: 'Sarah', TOWN: 'Lesotho', SALES MADE: '3000'}, {Date: '08/14/2025', CLIENT SEEN: 'John', TOWN: 'Lesotho', SALES MADE: '2000'}]
 
   Keyword guidance:
   - Words like 'add', 'insert', 'update', 'change', 'log', 'record' → intent: 'update_data'
   - Phrases like 'tell me about', 'what is', 'show', 'list', 'overview', 'describe' → intent: 'describe_data' or 'get_data'
 
+  For 'describe_data' intent, include conversational insights from recent rows:
+  - Summarize up to 3 rows from {hydratedContext.sheetDataSample} with phrasing like: "Recent clients include [names], with sales like [values] in [towns]".
+  - Prefer concise natural language over raw tables unless explicitly asked.
+
+  File uploads and extracted text:
+  - If files or extracted text are present (e.g., in context like {hydratedContext.fileDataSample} or images), parse them like text prompts to infer rows.
+  - Convert extracted phrases to rows using exact headers from {hydratedContext.sheetHeaders}. Infer CLIENT SEEN, TOWN, SALES MADE, DETAILS OF VISIT, Date.
+  - Example: "victor in Hogwarts, 4000 rand" → {Date: '08/14/2025', CLIENT SEEN: 'Victor', TOWN: 'Hogwarts', SALES MADE: '4000'}
+
 
   Generate one or more row objects with exact header keys and inferred values (e.g., [{Date: '08/14/2025', CLIENT SEEN: 'Francois', TOWN: 'Howick', SALES MADE: '3000', DETAILS OF VISIT: 'spoke about seed industry changes'}]).
   Use only 'apply_structured_rows' with params: {spreadsheetId: {hydratedContext.spreadsheetId}, sheetName: {hydratedContext.sheetName}, rows: [ ...inferred rows as array of objects ... ], dryRun: true}.
-  Do not include 'resolve_column' in toolChain. For 'update_data' intent, toolChain MUST be [] (empty array) and must never contain 'resolve_column'.
+  Do not include 'resolve_column' in tools or toolChain. For 'update_data' intent, tools MUST be exactly one item 'apply_structured_rows' and toolChain MUST be [] (empty array).
   If spreadsheetId or sheetName is missing, clarify: 'Please specify the sheet to update.'
   If any input cannot be mapped, clarify: 'Could not map some terms to columns: {unmapped terms}. Available: {sheetHeaders}. Please clarify which columns to use.'
   Output JSON: intent, tools (only 'apply_structured_rows' with rows), toolChain (empty), clarify.

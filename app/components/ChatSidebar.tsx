@@ -28,6 +28,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const [managerOpen, setManagerOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPreview, setModalPreview] = useState<any>(null);
+  const [isApplying, setIsApplying] = useState(false);
 
   // Service account UI moved into SpreadsheetManagerModal
 
@@ -82,10 +83,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     setModalOpen(false);
   };
 
+  // Connected Edit button to modal for row editing.
   const openEditModal = (preview: any) => {
-    // Normalize preview into { headers, rows: Array<{column,value}>[] }
+    // Normalize preview into { headers, rows: Array<{column,value}>[] } with sheet header fallback
     try {
-      const headers: string[] = Array.isArray(preview?.headers) ? preview.headers : [];
+      const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
+      const cachedHeaders: string[] = activeSheet && (window as any)?.__sheetDataCache && Array.isArray((window as any).__sheetDataCache?.[activeSheet]) && (window as any).__sheetDataCache[activeSheet].length > 0
+        ? ((window as any).__sheetDataCache[activeSheet][0] as string[])
+        : [];
+      const headers: string[] = Array.isArray(preview?.headers) && preview.headers.length > 0 ? preview.headers : cachedHeaders;
       const rows2D: any[] = Array.isArray(preview?.rows) ? preview.rows : [];
       const first = Array.isArray(rows2D) && rows2D.length > 0 ? rows2D[0] : [];
       const rows: Array<Array<{ column: string; value: unknown }>> = headers.length > 0
@@ -99,24 +105,48 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     }
   };
 
+  // Allow external UI (e.g., table actions) to trigger this modal via a custom event
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      try {
+        const detail = (ev as CustomEvent).detail;
+        if (detail && detail.preview) openEditModal(detail.preview);
+      } catch {}
+    };
+    try { window.addEventListener('chat:open-edit-modal' as any, handler as any); } catch {}
+    return () => { try { window.removeEventListener('chat:open-edit-modal' as any, handler as any); } catch {} };
+  }, [selectedSheetNames]);
+
   // Simplified Approve to commit changes and re-hydrate sheet.
   // Enhanced error handling for clear messages; Clarify button for retries.
+  // Wired Approve for committing updates with confirmation.
+  // Prevented double commits with simple UI state.
   const applyPreview = async (preview: any) => {
     try {
+      if (isApplying) return;
+      setIsApplying(true);
       const headers: string[] = Array.isArray(preview?.headers) ? preview.headers : [];
       const rows2D: any[] = Array.isArray(preview?.rows) ? preview.rows : [];
-      if (!headers.length || !rows2D.length) return;
-      const rowObjs: Array<Record<string, unknown>> = rows2D.map((r: any[]) => {
+      const rowObjs: Array<Record<string, unknown>> = headers.length && rows2D.length ? rows2D.map((r: any[]) => {
         const obj: Record<string, unknown> = {};
         headers.forEach((h, i) => { obj[h] = String(r?.[i] ?? ''); });
         return obj;
-      });
-      const toolCall = {
-        function: {
-          name: 'apply_structured_rows',
-          arguments: JSON.stringify({ rows: rowObjs, commit: true })
+      }) : [];
+
+      // Prefer committing the exact pending tool call captured during preview, if available
+      let toolCall: { function: { name: string; arguments: string } } = { function: { name: 'apply_structured_rows', arguments: JSON.stringify({ rows: rowObjs, commit: true }) } };
+      try {
+        const pending: any = typeof window !== 'undefined' ? (window as any).__lastUpdateToolCall : undefined;
+        if (pending && typeof pending.name === 'string') {
+          const existingArgs = (pending && pending.args && typeof pending.args === 'object') ? pending.args : {};
+          toolCall = {
+            function: {
+              name: pending.name,
+              arguments: JSON.stringify({ ...existingArgs, commit: true })
+            }
+          };
         }
-      } as const;
+      } catch {}
       const resp = await fetch('/api/genkit-tool-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -132,13 +162,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           });
           const json = await dataRes.json();
           if (json && json.data) setSheetDataCache((prev) => ({ ...prev, [activeSheet]: json.data }));
-          await notify({ title: 'Success', description: 'Update applied.', tone: 'success' });
+          // Determine how many rows were added from the pending call or constructed rows
+          let addedCount = Array.isArray((() => { try { const a = JSON.parse(toolCall.function.arguments || '{}'); return a?.rows; } catch { return undefined; } })())
+            ? (() => { try { const a = JSON.parse(toolCall.function.arguments || '{}'); return (Array.isArray(a?.rows) ? a.rows.length : 0); } catch { return 0; } })()
+            : (Array.isArray(rowObjs) ? rowObjs.length : 0);
+          if (!Number.isFinite(addedCount as any)) addedCount = 0;
+          await notify({ title: 'Success', description: `Update applied, added ${addedCount} row(s).`, tone: 'success' });
         }
       } catch {}
     } catch {}
+    finally { setIsApplying(false); }
   };
 
-  // Elegant Reject handling: clears pending update without re-calling tools.
+  // Simplified Reject to clear table and context elegantly.
   const rejectPreview = async () => {
     try {
       // Remove any preview tables titled 'Proposed Sheet Updates' from recent messages
@@ -154,6 +190,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         });
         return next;
       });
+      // Clear any pending update tool call stored on the client
+      try {
+        if (typeof window !== 'undefined') {
+          (window as any).__lastUpdateToolCall = undefined;
+        }
+        (globalThis as any).__lastUpdateToolCall = undefined;
+      } catch {}
       await notify({ title: 'Canceled', description: 'Update canceled.', tone: 'info' });
       await appendMessage({
         id: `local_${Date.now()}`,
@@ -428,13 +471,25 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             </ul>
           )}
 
-          {/* Clarification inline banner */}
+		  {/* Simplified clarification UI for user-friendly retries. */}
+		  {/* Clarification inline banner */}
           {hasClarify && (
             <div className="mx-3 mt-3 p-3 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-100 text-sm">
-              <div>{clarifyText}</div>
+				  <div>{(() => {
+					  try {
+						  const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
+						  const headers: string[] = activeSheet && (window as any)?.__sheetDataCache && Array.isArray((window as any).__sheetDataCache?.[activeSheet]) && (window as any).__sheetDataCache[activeSheet].length > 0
+							  ? ((window as any).__sheetDataCache[activeSheet][0] as string[])
+							  : [];
+						  if (headers.length > 0) {
+							  return `Couldn’t map terms. Use columns: [${headers.join(', ')}].`;
+						  }
+					  } catch {}
+					  return clarifyText;
+				  })()}</div>
               <div className="mt-2">
-                <button onClick={handleProvideDetails} className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs">
-                  Provide More Details
+					  <button onClick={handleProvideDetails} className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs">
+						  Clarify
                 </button>
               </div>
             </div>
@@ -466,7 +521,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           )}
         </div>
 
-        {/* Spreadsheets manager header (list stays below) */}
+          {/* Spreadsheets manager header (list stays below) */}
         <div className="mt-2 mx-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
           {/* Manager header */}
           <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-b border-white/10">

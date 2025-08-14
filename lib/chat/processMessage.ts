@@ -10,6 +10,7 @@ import { composeGroundedReply } from './replyComposer';
 import { generatePlan } from './planner';
 import { DataSource, SheetDataSource, FileDataSource } from '../data/source';
 
+// Enhanced describe_data with specific row insights for better conversationalism.
 // Helper: robustly extract headers from diverse tool response shapes
 function extractHeadersFromTool(toolRes: any): string[] {
   try {
@@ -901,6 +902,7 @@ export async function processMessage(
             const isPreview = Boolean((result as any)?.preview);
             if (!isPreview) {
               didUpdateSheet = true;
+              // Added post-commit re-hydration for fresh data.
               // Post-commit: refresh hydration and craft deterministic success message
               try {
                 const ctxAny = context as any;
@@ -916,7 +918,20 @@ export async function processMessage(
                     const first = updatedRows[0] || {};
                     const parts = Object.entries(first).map(([k, v]) => `${k}: ${v}`);
                     response = `Updated sheet: Added row with [${parts.join(', ')}]. Total rows: ${totalRowsNow}.`;
+                    // Added clear commit success message for user feedback.
+                    try {
+                      const addedCount = updatedRows.length;
+                      const clientSeenValues = updatedRows
+                        .map((r: any) => String((r || {})['CLIENT SEEN'] ?? ''))
+                        .filter((s: string) => s.trim().length > 0);
+                      const namesText = clientSeenValues.length > 0 ? `, including ${clientSeenValues.join(', ')}` : '';
+                      const successLine = `Added ${addedCount} row(s) to ${selectedName}${namesText}.`;
+                      response = response && response.trim() ? `${response}\n${successLine}` : successLine;
+                    } catch {}
                   }
+                  // Always append a clear post-commit summary for the UI
+                  const suffix = `Updated sheet, now has ${totalRowsNow} rows.`;
+                  response = response && response.trim() ? `${response}\n${suffix}` : suffix;
                 }
               } catch {}
             }
@@ -944,6 +959,12 @@ export async function processMessage(
           if (typeof result.result === 'string' && result.result.trim()) {
             enhancedResponse += `\n${result.result.trim()}`;
           }
+          // Expose last update tool call globally for the client to commit via Approve
+          try {
+            if (executedToolName === 'apply_structured_rows') {
+              (globalThis as any).__lastUpdateToolCall = { name: executedToolName, args: JSON.parse(toolCall.function.arguments || '{}') };
+            }
+          } catch {}
           // If we fetched sheet data, merge directly into context.sheetData for immediate QA/composer grounding
           if (executedToolName === 'get_sheet_data' && (result as any).data && Array.isArray((result as any).data)) {
             try {
@@ -979,6 +1000,44 @@ export async function processMessage(
               describeText = result.result.trim();
             }
           }
+        } else if (executedToolName === 'sheet_query') {
+          // Enhanced describe_data with specific row insights for better conversationalism.
+          try {
+            if (intent === 'describe_data') {
+              let headers: string[] = [];
+              let rows: any[] = [];
+              if (result && (result as any).table && Array.isArray((result as any).table.headers) && Array.isArray((result as any).table.rows)) {
+                headers = ((result as any).table.headers as any[]).map((h: any) => String(h ?? ''));
+                rows = (result as any).table.rows as any[];
+              } else if (Array.isArray((result as any).data) && Array.isArray((result as any).data[0])) {
+                const dataArr = (result as any).data as any[];
+                headers = (dataArr[0] as any[]).map((h: any) => String(h ?? ''));
+                rows = dataArr.slice(1);
+              }
+              if (headers.length > 0 && Array.isArray(rows) && rows.length > 0) {
+                const idxName = headers.indexOf('CLIENT SEEN');
+                const idxTown = headers.indexOf('TOWN');
+                const idxSales = headers.indexOf('SALES MADE');
+                const parts: string[] = [];
+                for (const r of rows.slice(0, 3)) {
+                  const arr = Array.isArray(r) ? (r as any[]) : [];
+                  const name = idxName >= 0 ? String(arr[idxName] ?? '').trim() : '';
+                  const town = idxTown >= 0 ? String(arr[idxTown] ?? '').trim() : '';
+                  const sales = idxSales >= 0 ? String(arr[idxSales] ?? '').trim() : '';
+                  const fragment = [
+                    name ? name : undefined,
+                    town ? `in ${town}` : undefined,
+                    sales ? `sales ${sales}` : undefined
+                  ].filter(Boolean).join(' ');
+                  if (fragment) parts.push(fragment);
+                }
+                if (parts.length > 0) {
+                  const insight = `Recent entries: ${parts.join('; ')}.`;
+                  response = response && response.trim() ? `${response}\n${insight}`.trim() : insight;
+                }
+              }
+            }
+          } catch {}
         }
         // If this was a preview-only result for an update tool, store pending call for confirmation flow
         try {
@@ -1048,6 +1107,16 @@ export async function processMessage(
           } catch {
             enhancedResponse += `\nTool error: ${result.result}${detailsText ? `\nDetails: ${detailsText}` : ''}`;
           }
+          // Added file-specific clarification for failed mappings.
+          try {
+            const hasImageFiles = Array.isArray(images) && images.length > 0;
+            const hdrs: string[] = Array.isArray((context as any)?.sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
+            const hinted = hasImageFiles && hdrs.length > 0 && /map|mapped|match|columns|unknown headers|could not map/i.test(String((result as any)?.error || result?.result || ''));
+            if (hinted) {
+              const extra = `File data didn’t match columns: [${hdrs.join(', ')}]. Please clarify values.`;
+              response = response && response.trim() ? `${response}\n${extra}` : extra;
+            }
+          } catch {}
         }
       }
     }
