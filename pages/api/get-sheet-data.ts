@@ -5,7 +5,7 @@ import { createLogger } from '@/lib/logger';
 
 // Response cache (extendable to Redis). Use 5-minute TTL and include session/user keys if provided
 const RESPONSE_TTL_MS = 5 * 60 * 1000;
-type CacheEntry = { at: number; payload: { data: unknown; structure: unknown } };
+type CacheEntry = { at: number; payload: { data: unknown; structure?: unknown } };
 const responseCache = new Map<string, CacheEntry>();
 const cacheKey = (spreadsheetId: string, sheetName: string, range?: string, sessionKey?: string) => `${sessionKey || 'anon'}::${spreadsheetId}::${sheetName}::${range || 'auto'}`;
 
@@ -59,6 +59,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return [];
       }
     };
+
+    // Explicit range override: return exactly the requested range
+    if (typeof range === 'string' && range.trim()) {
+      try {
+        const escaped = escapeSheetName(sheetName);
+        const finalRange = `${escaped}!${range}`;
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: finalRange,
+          valueRenderOption: 'FORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING',
+        });
+        const payload = { data: (response.data.values || []) as string[][] };
+        responseCache.set(key, { at: Date.now(), payload });
+        return res.status(200).json(payload);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes('Unable to parse range') || msg.includes('not found')) {
+          const availableSheets = await getAvailableSheetNames(spreadsheetId);
+          return res.status(404).json({
+            error: `Sheet "${sheetName}" not found in spreadsheet`,
+            details: msg,
+            availableSheets,
+            requestedSheet: sheetName,
+            suggestion: availableSheets.length > 0 ? `Try using "${availableSheets[0]}" instead` : 'No sheets available',
+            requestId
+          });
+        }
+        return res.status(500).json({ error: 'Failed to fetch range', details: msg, requestId });
+      }
+    }
 
     if (!range) {
       // Get the actual sheet dimensions first
@@ -237,13 +268,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             log.debug('Fallback success', fallback, 'rows', response.data.values?.length || 0);
             const values = response.data.values || [];
-            let structure = null;
-            try {
-              structure = analyzeSheetStructure(values as string[][]);
-            } catch (e) {
-              log.warn('Structure analysis failed', e);
-            }
-            const payload = { data: values, structure };
+            const payload = { data: values };
             responseCache.set(key, { at: Date.now(), payload });
             return res.status(200).json(payload);
             
@@ -279,46 +304,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // This should not be reached due to early returns above, but kept for explicit range case
-    log.debug('Final explicit range', finalRange);
-    
-    try {
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: finalRange,
-        valueRenderOption: 'FORMATTED_VALUE',
-        dateTimeRenderOption: 'FORMATTED_STRING',
-      });
-
-      log.debug('Final success', finalRange, 'rows', response.data.values?.length || 0);
-      const data = response.data.values || [];
-      let structure = null;
-      try {
-        structure = analyzeSheetStructure(data);
-      } catch (e) {
-        log.warn('Structure analysis failed', e);
-      }
-      const payload = { data, structure };
-      responseCache.set(key, { at: Date.now(), payload });
-      res.status(200).json(payload);
-    } catch (finalError: unknown) {
-      const finalErrorMsg = finalError instanceof Error ? finalError.message : String(finalError);
-      
-      // Check if this is a sheet not found error
-      if (finalErrorMsg.includes('Unable to parse range') || finalErrorMsg.includes('not found')) {
-        const availableSheets = await getAvailableSheetNames(spreadsheetId);
-        return res.status(404).json({ 
-          error: `Sheet "${sheetName}" not found in spreadsheet`,
-          details: finalErrorMsg,
-          availableSheets: availableSheets,
-          requestedSheet: sheetName,
-          suggestion: availableSheets.length > 0 ? `Try using "${availableSheets[0]}" instead` : 'No sheets available',
-          requestId
-        });
-      }
-      
-      throw finalError; // Re-throw if it's not a sheet not found error
-    }
+    // Unreachable: explicit range handled above
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
