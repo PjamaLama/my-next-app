@@ -98,14 +98,27 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     contextBits.push(`Insights: ${insights.slice(0, 3).join('; ')}`);
   }
 
+  // Attempt to derive a minimal sheet context for grounding (headers of preview table if present)
+  const previewTable = Array.isArray(tables) ? tables.find(t => /Proposed Sheet Updates/i.test(String(t.title))) : undefined;
+  const sheetContext = previewTable ? `Headers: ${previewTable.headers.join(', ')}` : '';
+
   const prefix = qaAnswer && qaAnswer.trim() ? `Base answer: ${qaAnswer.trim()}` : '';
-  const previewHint = hasPreview ? `\nHere's the proposed updates. Review and approve, reject, or edit.` : '';
+  // Updated to support inferred mappings; no JSON demands in replies.
+  const previewHint = hasPreview
+    ? `\nBased on your request, I've mapped it to the sheet like this. Approve, edit, or reject?\nHere's the proposed updates in a table. Review and click 'Approve' to add, 'Edit' to modify, or 'Reject' to cancel.`
+    : '';
 
   const prompt = [
-    'Compose a helpful, concise assistant reply grounded only in the provided context. Avoid fabricating data.',
-    'If there\'s a preview of updates, include this exact sentence: "Here\'s the proposed updates. Review and approve, reject, or edit."',
+    'Compose a helpful assistant reply based on tool results, QA, tables, and charts. Be concise and grounded; do not fabricate.',
+    'Key instructions for updates:',
+    '- For previews, briefly explain the inferred mappings (e.g., "Mapped \"client Francois\" to Vendor, \"sold 3000k\" to Fuel Cost in Rands, \"Howick\" to TOWN VISITED, notes to Notes").',
+    "- Do not ask for JSON or exact formats—assume inference worked.",
+    "- If mapping was ambiguous, include clarification questions.",
+    "- Include this instructional text when a preview exists: Here's the proposed updates in a table. Review and click 'Approve' to add, 'Edit' to modify, or 'Reject' to cancel.",
+    'Ground on context for accuracy.',
     prefix,
     contextBits.join('\n'),
+    (sheetContext ? `Context: ${sheetContext}` : ''),
     `User: ${userMessage}`
   ].filter(Boolean).join('\n\n');
 
