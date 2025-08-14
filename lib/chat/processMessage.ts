@@ -47,8 +47,7 @@ function extractHeadersFromTool(toolRes: any): string[] {
 }
 
 // Unified preview table to use exact headers; suppresses invalid data.
-// Fixed to ensure row data in preview table; handles empty rows with clarification.
-// Ensured dynamic row data in preview table; handles empty rows with clarification.
+// Ensured complete row data in preview table; clarifies for incomplete rows.
 function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): StructuredTable & { clarify?: string } {
   const headers: string[] = (Array.isArray(sheetHeaders) && sheetHeaders.length > 0)
     ? sheetHeaders
@@ -72,7 +71,16 @@ function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): Struc
     }
   }
   const allEmpty = rows.length > 0 ? rows.every(r => r.every(cell => !String(cell || '').trim())) : true;
-  if (!Array.isArray(rows) || rows.length === 0 || allEmpty) {
+  const today = new Date().toLocaleDateString('en-US');
+  const onlyDateDefaults = rows.length > 0
+    ? rows.every(r => r.every((cell, idx) => {
+        const val = String(cell || '').trim();
+        if (!val) return true; // treat empty as ignorable
+        const isDateCol = String(headers[idx]) === 'Date';
+        return isDateCol && val === today; // only default Date present
+      }))
+    : false;
+  if (!Array.isArray(rows) || rows.length === 0 || allEmpty || onlyDateDefaults) {
     const clarify = String(preview?.clarify || `No valid data provided. Please specify values for columns: ${headers.join(', ')}`);
     return { title: 'Proposed Sheet Updates', headers, rows: [], clarify, meta: { clarify } } as any;
   }
