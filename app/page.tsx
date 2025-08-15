@@ -151,14 +151,16 @@ export default function Home() {
   const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3>(1);
 
   // Initialize onboarding for new users without a connected spreadsheet
+  // Wait for spreadsheets to load before deciding whether to show onboarding
   useEffect(() => {
     if (!user) { setShowOnboarding(false); return; }
+    if (spreadsheetsLoading) { return; } // Wait for spreadsheets to finish loading
     if (defaultSpreadsheetId) { setShowOnboarding(false); return; }
     try {
       const done = typeof window !== 'undefined' ? localStorage.getItem('onboardingDone') === '1' : false;
       setShowOnboarding(!done);
     } catch { setShowOnboarding(true); }
-  }, [user, defaultSpreadsheetId]);
+  }, [user, defaultSpreadsheetId, spreadsheetsLoading]);
 
   // Advance to Step 2 after a spreadsheet is connected
   useEffect(() => {
@@ -1918,8 +1920,18 @@ export default function Home() {
       <PWAInstaller />
       <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] p-0 overflow-hidden">
         <div className="w-full max-w-none mx-0 space-y-6 sm:space-y-8 pb-0 sm:pb-0 pt-0">
-          {/* Only show a lightweight nudge if no spreadsheet is selected and onboarding is not showing */}
-          {chatMessages.length === 0 && !defaultSpreadsheetId && !showOnboarding && (
+          {/* Show loading state while spreadsheets are being fetched */}
+          {spreadsheetsLoading && (
+            <div className="mx-3 sm:mx-4 mt-4 mb-2 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600"></div>
+                <span className="text-sm">Loading your spreadsheets...</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Only show a lightweight nudge if no spreadsheet is selected, onboarding is not showing, and spreadsheets have finished loading */}
+          {chatMessages.length === 0 && !defaultSpreadsheetId && !showOnboarding && !spreadsheetsLoading && (
             <div className="mx-3 sm:mx-4 mt-4 mb-2 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
               <p className="text-sm mb-2">No spreadsheet connected yet.</p>
               <p className="text-xs opacity-80 mb-3">Paste a Google Sheets URL or ID to connect, then you can select sheets and start updating.</p>
