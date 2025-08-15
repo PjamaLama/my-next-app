@@ -2,6 +2,37 @@ import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 import { Context, ConversationHistoryItem } from './types';
 
+// Helper function to detect if a row likely matches existing data
+function detectExistingRow(row: Record<string, unknown>, headers: string[], sheetData: string[][]): boolean {
+  try {
+    // Look for key identifying fields that might indicate an existing row
+    const keyFields = ['Date', 'date', 'ID', 'id', 'Name', 'name', 'Client', 'client', 'Vehicle', 'vehicle', 'Reg#', 'reg#'];
+    
+    for (const keyField of keyFields) {
+      if (row[keyField] !== undefined) {
+        const value = String(row[keyField] || '').trim();
+        if (value) {
+          // Check if this value exists in the sheet data
+          const headerIndex = headers.findIndex(h => h === keyField);
+          if (headerIndex >= 0) {
+            // Look through existing rows for a match
+            for (let i = 1; i < sheetData.length; i++) { // Skip header row
+              const existingValue = String(sheetData[i]?.[headerIndex] || '').trim();
+              if (existingValue === value) {
+                return true; // Found a match, this is likely an update
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    return false; // No clear match found, treat as new row
+  } catch {
+    return false; // On error, default to new row
+  }
+}
+
 export type PlannerPlan = {
   intent: 'describe_data' | 'update_data' | 'get_data' | 'other';
   reasoning: string | null;
@@ -50,6 +81,7 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
   Principles:
   - Use exact column headers from {hydratedContext.sheetHeaders}. Do not assume synonyms.
   - For updates, plan a single tool only: { name: 'apply_structured_rows', args: { spreadsheetId, sheetName, rows, dryRun: true } }.
+  - For updates to existing rows, identify row by primary key or unique value (from sheetConfig). Plan as apply_structured_rows with partial rows (only changed cells), and note "updating existing row" in reasoning.
   - Do not include 'resolve_column' or any other tools for updates. toolChain must be empty for updates.
   - If spreadsheetId or sheetName is missing, set clarifyQuestion accordingly and do not produce rows.
   - If you cannot confidently form rows from the message and context, set clarifyQuestion asking the user to specify column-value pairs.
@@ -202,6 +234,45 @@ export async function generatePlan(
 
       const firstApply = (committedChain as any[]).find((s) => String(s?.toolName || '').toLowerCase() === 'apply_structured_rows');
       const rows = firstApply?.params?.rows || (tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows') as any)?.args?.rows;
+      
+      // Analyze rows to determine if they should be updates or additions
+      if (intent === 'update_data' && Array.isArray(rows) && rows.length > 0) {
+        try {
+          const sheetData = (context as any)?.sheetData;
+          const sheetHeaders = (context as any)?.sheetHeaders;
+          
+          if (Array.isArray(sheetData) && Array.isArray(sheetHeaders)) {
+            // Mark rows as updates if they likely match existing data
+            const enhancedRows = rows.map((row: any) => {
+              if (typeof row === 'object' && row !== null) {
+                // Check if this row likely matches an existing row
+                const isUpdate = detectExistingRow(row, sheetHeaders, sheetData);
+                return { ...row, operation: isUpdate ? 'update' : 'add' };
+              }
+              return row;
+            });
+            
+            // Update the rows in tools and toolChain
+            tools = tools.map((t: any) => {
+              if (String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows') {
+                return { ...t, args: { ...(t as any).args, rows: enhancedRows } };
+              }
+              return t;
+            });
+            
+            committedChain = (committedChain as any[]).map((s) => {
+              if (String(s?.toolName || '').toLowerCase() === 'apply_structured_rows') {
+                return { ...s, params: { ...s.params, rows: enhancedRows } };
+              }
+              return s;
+            });
+          }
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.warn('Failed to analyze rows for update/add detection:', error);
+        }
+      }
+      
       // Debug log of final planner output
       // eslint-disable-next-line no-console
       console.log('Planner output:', { intent, tools, toolChain: committedChain, clarify: clarifyQuestion, rows: (tools as any)?.[0]?.params?.rows });

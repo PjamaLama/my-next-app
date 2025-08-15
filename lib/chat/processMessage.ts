@@ -58,36 +58,61 @@ function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): Struc
     const clarify = 'No valid headers found. Please specify column names.';
     return { title: 'Proposed Sheet Updates', headers: [], rows: [], clarify, meta: { clarify } } as any;
   }
+  
+  // Add Action column to headers
+  const headersWithAction = ['Action', ...headers];
+  
   const srcRows = Array.isArray(preview?.rows) ? (preview.rows as any[]) : [];
   let rows: string[][] = [];
+  
   if (srcRows.length > 0) {
     if (Array.isArray(srcRows[0])) {
       // rows already 2D arrays; coerce width to headers length
       rows = (srcRows as any[]).map((arr: any) => {
         const a = Array.isArray(arr) ? arr : [];
-        return headers.map((_, i) => String(a[i] ?? ''));
+        const rowData = headers.map((_, i) => String(a[i] ?? ''));
+        // Add Action column - assume 'Add' for now (will be enhanced by planner)
+        return ['Add', ...rowData];
       });
     } else if (typeof srcRows[0] === 'object' && srcRows[0] !== null) {
-      // rows are objects keyed by headers
-      rows = srcRows.map((obj: any) => headers.map((h) => String((obj as any)[h] ?? '')));
+      // Check if rows have operation field (new structure)
+      if (srcRows[0].operation && srcRows[0].data) {
+        // New structure with operation field
+        rows = srcRows.map((obj: any) => {
+          const operation = String(obj.operation || 'add').toLowerCase() === 'update' ? 'Update' : 'Add';
+          const rowData = Array.isArray(obj.data) ? obj.data : [];
+          // Ensure rowData has same length as headers, pad with empty strings if needed
+          const paddedData = headers.map((_, i) => String(rowData[i] ?? ''));
+          return [operation, ...paddedData];
+        });
+      } else {
+        // Legacy structure - rows are objects keyed by headers
+        rows = srcRows.map((obj: any) => {
+          const rowData = headers.map((h) => String((obj as any)[h] ?? ''));
+          return ['Add', ...rowData];
+        });
+      }
     }
   }
-  const allEmpty = rows.length > 0 ? rows.every(r => r.every(cell => !String(cell || '').trim())) : true;
+  
+  const allEmpty = rows.length > 0 ? rows.every(r => r.slice(1).every(cell => !String(cell || '').trim())) : true;
   const today = new Date().toLocaleDateString('en-US');
   const onlyDateDefaults = rows.length > 0
-    ? rows.every(r => r.every((cell, idx) => {
+    ? rows.every(r => r.slice(1).every((cell, idx) => {
         const val = String(cell || '').trim();
         if (!val) return true; // treat empty as ignorable
         const isDateCol = String(headers[idx]) === 'Date';
         return isDateCol && val === today; // only default Date present
       }))
     : false;
+    
   if (!Array.isArray(rows) || rows.length === 0 || allEmpty || onlyDateDefaults) {
     const clarify = String(preview?.clarify || `No valid data provided. Please specify values for columns: ${headers.join(', ')}`);
-    return { title: 'Proposed Sheet Updates', headers, rows: [], clarify, meta: { clarify } } as any;
+    return { title: 'Proposed Sheet Updates', headers: headersWithAction, rows: [], clarify, meta: { clarify } } as any;
   }
+  
   const title = rows.length > 1 ? 'Proposed Sheet Updates (Multiple Rows)' : 'Proposed Sheet Updates';
-  return { title, headers, rows } as any;
+  return { title, headers: headersWithAction, rows } as any;
 }
 
 export async function processMessage(

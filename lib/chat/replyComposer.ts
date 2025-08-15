@@ -109,7 +109,7 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
   const prefix = qaAnswer && qaAnswer.trim() ? `Base answer: ${qaAnswer.trim()}` : '';
   // Updated to support inferred mappings; no JSON demands in replies.
   const previewHint = hasPreview
-    ? `\nBased on your request, I've mapped it to the sheet like this. Approve, edit, or reject?\nHere's the proposed updates in a table. Review and click 'Approve' to add, 'Edit' to modify, or 'Reject' to cancel.`
+    ? `\nBased on your request, I've mapped it to the sheet like this. Approve, edit, or reject?\nHere's the proposed updates (adds/updates) in a table. Review and click 'Approve' to apply, 'Edit' to modify, or 'Reject' to cancel.\n\nNote: The Action column shows whether each row will be added as new or updated if it matches an existing row. Updated cells are highlighted in bold.`
     : '';
 
   const prompt = [

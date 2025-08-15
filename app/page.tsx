@@ -103,6 +103,7 @@ type ChatMessage = {
     tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
     charts?: Array<{ kind: 'bar'|'line'|'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: Record<string, unknown> }>;
     insights?: string[];
+    approved?: boolean; // Track if this message's table updates have been approved
   };
 
   // Ephemeral file-analysis context shared across a few turns
@@ -1608,9 +1609,15 @@ export default function Home() {
       }
       const key = messageId != null && tableIndex != null ? `${messageId}_${tableIndex}_approve` : undefined;
       if (key) setTableActionState(prev => ({ ...prev, [key]: 'loading' }));
-      const rows = tableRows.map((r) => {
+      
+      // Handle Action column if present (for Proposed Sheet Updates tables)
+      const hasActionColumn = headers[0] === 'Action';
+      const effectiveHeaders = hasActionColumn ? headers.slice(1) : headers;
+      const effectiveRows = hasActionColumn ? tableRows.map(r => r.slice(1)) : tableRows;
+      
+      const rows = effectiveRows.map((r) => {
         const obj: Record<string, unknown> = {};
-        headers.forEach((h, i) => { obj[h] = r[i] ?? ''; });
+        effectiveHeaders.forEach((h, i) => { obj[h] = r[i] ?? ''; });
         return obj;
       });
       const toolCall = {
@@ -1625,6 +1632,14 @@ export default function Home() {
       const data = await resp.json();
       if (resp.ok && data?.success) {
         setSendResult(data.message || data.result || 'Update applied.');
+        
+        // Mark the message as approved to hide the buttons
+        if (messageId) {
+          setProviderChatMessages(prev => prev.map((msg: any) => 
+            msg.id === messageId ? { ...msg, approved: true } : msg
+          ));
+        }
+        
         // Re-hydrate current sheet on success to reflect changes immediately
         try {
           const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
@@ -1650,8 +1665,13 @@ export default function Home() {
   };
 
   const openEditModalFromTable = (headers: string[], tableRows: string[][], message?: string) => {
-    const rows = (tableRows || []).map((r) => headers.map((h, i) => ({ column: h, value: r[i] ?? '' })));
-    openEditModal({ headers, rows, message });
+    // Handle Action column if present (for Proposed Sheet Updates tables)
+    const hasActionColumn = headers[0] === 'Action';
+    const effectiveHeaders = hasActionColumn ? headers.slice(1) : headers;
+    const effectiveRows = hasActionColumn ? tableRows.map(r => r.slice(1)) : tableRows;
+    
+    const rows = (effectiveRows || []).map((r) => effectiveHeaders.map((h, i) => ({ column: h, value: r[i] ?? '' })));
+    openEditModal({ headers: effectiveHeaders, rows, message });
   };
 
   // Auto-scroll messages container to bottom when messages change
@@ -2238,11 +2258,32 @@ export default function Home() {
                               <tbody>
                                 {t.rows.map((row, rIdx) => (
                                   <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-white/0' : 'bg-white/[0.03]'}>
-                                    {row.map((cell, cIdx) => (
-                                      <td key={cIdx} className={`px-3 py-2 text-white/90 ${t.headers.length === 1 ? 'whitespace-pre-wrap break-words' : 'whitespace-nowrap'} border-b border-white/10`}>
-                                        {String(cell)}
-                                      </td>
-                                    ))}
+                                    {row.map((cell, cIdx) => {
+                                      // Check if this is a Proposed Sheet Updates table with Action column
+                                      const isProposedUpdates = t.title && /Proposed Sheet Updates/i.test(String(t.title));
+                                      const isActionColumn = cIdx === 0 && isProposedUpdates;
+                                      const isUpdateRow = isProposedUpdates && row[0] === 'Update';
+                                      
+                                      // Style Action column differently
+                                      if (isActionColumn) {
+                                        return (
+                                          <td key={cIdx} className="px-3 py-2 text-white/90 font-semibold border-b border-white/10">
+                                            <span className={`px-2 py-1 rounded text-[10px] ${isUpdateRow ? 'bg-orange-500/20 text-orange-200 border border-orange-500/30' : 'bg-green-500/20 text-green-200 border border-green-500/30'}`}>
+                                              {String(cell)}
+                                            </span>
+                                          </td>
+                                        );
+                                      }
+                                      
+                                      // Highlight updated cells in Update rows (make them bold)
+                                      const shouldHighlight = isUpdateRow && isProposedUpdates && cIdx > 0;
+                                      
+                                      return (
+                                        <td key={cIdx} className={`px-3 py-2 text-white/90 ${t.headers.length === 1 ? 'whitespace-pre-wrap break-words' : 'whitespace-nowrap'} border-b border-white/10 ${shouldHighlight ? 'font-bold' : ''}`}>
+                                          {String(cell)}
+                                        </td>
+                                      );
+                                    })}
                                   </tr>
                                 ))}
                               </tbody>
@@ -2262,8 +2303,8 @@ export default function Home() {
                             <div className="sticky bottom-0 right-0 w-full">
                               <div className="pointer-events-none bg-gradient-to-t from-black/40 to-transparent px-2 pt-6 pb-2">
                                     <div className="pointer-events-auto flex items-center justify-end gap-2">
-                                      {/* Show Approve/Reject/Edit buttons for both proposed updates AND extracted data tables */}
-                                      {(t.title && /Proposed Sheet Updates/i.test(String(t.title))) || ((t as any).meta?.fileIndex || (t as any).meta?.combined) ? (
+                                      {/* Show Approve/Reject/Edit buttons for both proposed updates AND extracted data tables, but only if not approved */}
+                                      {!message.approved && ((t.title && /Proposed Sheet Updates/i.test(String(t.title))) || ((t as any).meta?.fileIndex || (t as any).meta?.combined)) ? (
                                         <>
                                           <button
                                             className="bg-green-500 text-white px-4 py-2 mr-2 rounded inline-flex items-center gap-2"
@@ -2278,6 +2319,11 @@ export default function Home() {
                                           <button className="bg-red-500 text-white px-4 py-2 mr-2 rounded" onClick={() => setSendResult('Update canceled.')}>Reject</button>
                                           <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary)}>Edit</button>
                                         </>
+                                      ) : message.approved && (t.title && /Proposed Sheet Updates/i.test(String(t.title))) ? (
+                                        /* Show approved status for approved updates */
+                                        <div className="text-green-400 text-sm font-medium px-3 py-2">
+                                          ✓ Approved and applied
+                                        </div>
                                       ) : (
                                         /* No buttons for existing sheet data tables */
                                         null

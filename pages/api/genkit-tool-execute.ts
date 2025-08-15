@@ -2540,12 +2540,19 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
     const doCommit = commit === true && dryRun !== true;
     if (!doCommit) {
-      const rows2D = validRows.map(r => sheetHeaders.map(h => String((r as any)[h] ?? '')));
+      // Check if rows already have operation field from planner
+      const rowsWithOperation = validRows.map((r, index) => {
+        const rowData = sheetHeaders.map(h => String((r as any)[h] ?? ''));
+        // Use operation field if provided by planner, otherwise default to 'add'
+        const operation = (r as any).operation || 'add';
+        return { operation, data: rowData };
+      });
+      
       return res.status(200).json({
         success: false,
         preview: {
           headers: sheetHeaders,
-          rows: rows2D,
+          rows: rowsWithOperation,
           message: 'Proposed update requires confirmation.',
           action: 'confirm'
         }
