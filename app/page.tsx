@@ -32,7 +32,7 @@ import dynamic from 'next/dynamic';
 
 
 
-// import { useSettings } from './providers/SettingsProvider'; // Corrected import path
+
 
 // Types
 // Add interface for uploaded images
@@ -127,7 +127,7 @@ export default function Home() {
   const { user, loading, signInWithGoogle, joinBeta, authError, betaTester, betaWaitlist, continueWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, allSheetNames, sheetDataCache, sheetsPrefetched, setSheetDataCache, sheetStructureCache, unstructuredOverrides, setDefaultSpreadsheetId } = useSheet();
   const { serviceAccountEmail, isLoading: serviceAccountLoading } = useServiceAccount();
-  // Removed: const { settingsOpen, setSettingsOpen } = useSettings();
+
   // Track user's available spreadsheets
   const [hasSpreadsheets, setHasSpreadsheets] = useState(false);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(true);
@@ -149,8 +149,8 @@ export default function Home() {
   const [finalSubmitStatus, setFinalSubmitStatus] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   // Onboarding state for first-time setup
-  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
-  const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3>(1);
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(false); // Used in onboarding
+  const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3>(1); // Used in onboarding
 
   // Initialize onboarding for new users without a connected spreadsheet
   // Wait for spreadsheets to load before deciding whether to show onboarding
@@ -171,11 +171,11 @@ export default function Home() {
     }
   }, [showOnboarding, onboardingStep, defaultSpreadsheetId]);
 
-  const completeOnboarding = () => {
+  const completeOnboarding = () => { // Used in onboarding
     try { localStorage.setItem('onboardingDone', '1'); } catch {}
     setShowOnboarding(false);
   };
-  const dismissOnboarding = () => {
+  const dismissOnboarding = () => { // Used in onboarding
     setShowOnboarding(false);
   };
 
@@ -212,7 +212,7 @@ export default function Home() {
   // Chat provider hooks to ensure session and persist messages for AI title generation
   const { ensureSession, setChatMessages: setProviderChatMessages, chatMessages: providerChatMessages } = useChat();
   // Add state for available spreadsheet options
-  // const [spreadsheetOptions, setSpreadsheetOptions] = useState<Array<{id: string; spreadsheetId: string; sheetNames: string[]}>>([]);
+
 
   // Add state for image upload functionality
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
@@ -264,29 +264,9 @@ export default function Home() {
   const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
   const ChartExplorer = dynamic(() => import('./components/ChartExplorer'), { ssr: false });
   
-  // Visual feedback state for voice-to-chat transitions
-  // const [voiceTransitioning, setVoiceTransitioning] = useState(false);
-  
   // State for missed intent detection and fallback UI
   const [missedIntentSuggestion, setMissedIntentSuggestion] = useState<string | null>(null);
   
-  // Removed message filter UI
-  
-  
-  
-  // User context and preferences system
-  // const [userContext, setUserContext] = useState<{
-  //   businessType: string;
-  //   workflowDescription: string;
-  //   sheetPurpose: string;
-  //   preferredBehavior: string;
-  //   formulaRows: number[];
-  //   insertionPreference: 'above_formulas' | 'append' | 'custom';
-  // } | null>(null);
-  // const [showContextSetup, setShowContextSetup] = useState(false);
-  
-
-
   // Background operation state
   const [backgroundOperation, setBackgroundOperation] = useState<{
     isRunning: boolean;
@@ -453,21 +433,21 @@ export default function Home() {
     listeningRef.current = listening;
   }, [listening]);
 
-  // Debug transcript changes - add these right after the speech recognition useEffect
-  useEffect(() => {
-    console.log('Transcript changed:', transcript);
-  }, [transcript]);
+  // DEBUG: Debug transcript changes - add these right after the speech recognition useEffect
+  // useEffect(() => {
+  //   console.log('Transcript changed:', transcript);
+  // }, [transcript]);
 
-  useEffect(() => {
-    console.log('Interim text changed:', interimText);
-  }, [interimText]);
+  // useEffect(() => {
+  //   console.log('Interim text changed:', interimText);
+  // }, [interimText]);
 
   // Note: We keep the textarea bound only to editingText to preserve caret position while listening.
 
-  // Debug editingText changes
-  useEffect(() => {
-    console.log('editingText changed:', editingText);
-  }, [editingText]);
+  // DEBUG: Debug editingText changes
+  // useEffect(() => {
+  //   console.log('editingText changed:', editingText);
+  // }, [editingText]);
 
   // Check if user has any spreadsheets configured
   useEffect(() => {
@@ -558,18 +538,7 @@ export default function Home() {
 
 
 
-  // Subscribe to user's spreadsheet options
-  // useEffect(() => {
-  //   if (!user) return;
-  //   const optionsRef = collection(db, "users", user.uid, "options");
-  //   const unsubOptions = onSnapshot(optionsRef, (snapshot) => {
-  //     setSpreadsheetOptions(snapshot.docs.map(doc => ({ 
-  //       id: doc.id, 
-  //       ...doc.data() 
-  //     } as {id: string; spreadsheetId: string; sheetNames: string[]})));
-  //   });
-  //   return () => unsubOptions();
-  // }, [user]);
+
 
 
 
@@ -2833,64 +2802,7 @@ const detectMissedSheetIntent = (userMessage: string, aiResponse: string): boole
   return hasDataPattern && aiDidntMentionSheet;
 };
 
-const filterMessages = (messages: ChatMessage[], filter: 'all' | 'conversation' | 'sheet_updates') => {
-  switch (filter) {
-    case 'conversation':
-      return messages.filter(msg => 
-        msg.messageType === 'voice' || 
-        msg.messageType === 'text' || 
-        msg.messageType === 'ai_response'
-      );
-    case 'sheet_updates':
-      return messages.filter(msg => 
-        msg.messageType === 'sheet_update' || 
-        msg.messageType === 'tool_execution' ||
-        (msg.toolCalls && msg.toolCalls.length > 0) ||
-        (msg.toolResults && msg.toolResults.length > 0)
-      );
-    default:
-      return messages;
-  }
-};
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const suggestRelevantActions = (message: string, uploadedImages: UploadedImage[], hasSpreadsheet: boolean) => {
-  const suggestions = [];
-  
-  if (detectDataEntry(message) && hasSpreadsheet) {
-    suggestions.push({
-      icon: "📊",
-      text: "Add to spreadsheet",
-      action: "data_entry"
-    });
-  }
-  
-  if (message.toLowerCase().includes('analyze') || message.toLowerCase().includes('report')) {
-    suggestions.push({
-      icon: "📈",
-      text: "Analyze data",
-      action: "analyze"
-    });
-  }
-  
-  if (uploadedImages.length > 0) {
-    suggestions.push({
-      icon: "👁️",
-      text: "Extract data from files",
-      action: "extract_data"
-    });
-  }
-  
-  if (message.toLowerCase().includes('question') || message.includes('?')) {
-    suggestions.push({
-      icon: "❓",
-      text: "Answer question",
-      action: "question"
-    });
-  }
-  
-  return suggestions;
-};
 
 // Add this function near the top of the component, after the state declarations
 const extractColumnOptions = (content: string): string[] => {
