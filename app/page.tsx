@@ -1722,7 +1722,7 @@ export default function Home() {
               <span className="text-xs text-white/60">{betaCount}/{betaLimit}</span>
             </div>
             <p className="text-sm text-white/80 mb-6 leading-relaxed">
-              Thanks for joining! Our first {betaLimit} seats are full. You’re on the waitlist and will get access as soon as we open more spots. We’ll notify you via email.
+              Thanks for joining! Our first {betaLimit} seats are full. You're on the waitlist and will get access as soon as we open more spots. We'll notify you via email.
             </p>
           </div>
         </div>
@@ -1784,7 +1784,7 @@ export default function Home() {
                     </div>
                   </div>
                   <p className="text-sm text-white/80 mb-6 leading-relaxed">
-                    Sign in with Google to secure your spot. If we’re full, you’ll be added to the waitlist automatically.
+                    Sign in with Google to secure your spot. If we're full, you'll be added to the waitlist automatically.
                   </p>
                   {/* Primary CTAs */}
                   <div className="mt-4 flex flex-col items-center sm:flex-row sm:items-center justify-center gap-4 flex-wrap">
@@ -1988,7 +1988,7 @@ export default function Home() {
                   {onboardingStep === 1 && (
                     <div className="space-y-3">
                       <div className="text-white/90 font-medium">Add your first spreadsheet</div>
-                      <div className="text-white/70 text-sm">Paste a Google Sheets URL or ID. We’ll use it for updates.</div>
+                      <div className="text-white/70 text-sm">Paste a Google Sheets URL or ID. We'll use it for updates.</div>
                       <div className="flex gap-2">
                         <input
                           value={newSheetId}
@@ -2098,6 +2098,37 @@ export default function Home() {
                       <span className="text-[11px]">{message.timestamp.toLocaleTimeString()}</span>
                     </div>
                     <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+
+                    {/* Column options as clickable chips */}
+                    {message.role === 'assistant' && (() => {
+                      const columnOptions = extractColumnOptions(message.content);
+                      if (columnOptions.length === 0) return null;
+                      
+                      return (
+                        <div className="mt-3">
+                          <div className="text-xs text-white/70 mb-2">Select a column:</div>
+                          <div className="flex flex-wrap gap-2">
+                            {columnOptions.map((option, optionIdx) => (
+                              <button
+                                key={optionIdx}
+                                onClick={() => {
+                                  const synth: ChatMessage = {
+                                    id: `msg_${Date.now()}_column_select`,
+                                    role: 'user',
+                                    content: `Use column: ${option}`,
+                                    timestamp: new Date(),
+                                  } as any;
+                                  setProviderChatMessages(prev => [...prev, synth as unknown as ProviderChatMessage]);
+                                }}
+                                className="px-3 py-1.5 rounded-full text-xs border border-sky-400/40 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20 hover:border-sky-400/60 transition-all duration-200"
+                              >
+                                {option}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Column chooser for aggregate clarification */}
                     {message.role === 'assistant' && /Which column contains the sales amounts\?/i.test(message.content) && (
@@ -2231,8 +2262,8 @@ export default function Home() {
                             <div className="sticky bottom-0 right-0 w-full">
                               <div className="pointer-events-none bg-gradient-to-t from-black/40 to-transparent px-2 pt-6 pb-2">
                                     <div className="pointer-events-auto flex items-center justify-end gap-2">
-                                      {/* Updated buttons to Approve/Reject/Edit; Edit opens modal for changes before commit. */}
-                                      {t.title && /Proposed Sheet Updates/i.test(String(t.title)) ? (
+                                      {/* Show Approve/Reject/Edit buttons for both proposed updates AND extracted data tables */}
+                                      {(t.title && /Proposed Sheet Updates/i.test(String(t.title))) || ((t as any).meta?.fileIndex || (t as any).meta?.combined) ? (
                                         <>
                                           <button
                                             className="bg-green-500 text-white px-4 py-2 mr-2 rounded inline-flex items-center gap-2"
@@ -2248,26 +2279,8 @@ export default function Home() {
                                           <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary)}>Edit</button>
                                         </>
                                       ) : (
-                                        <button
-                                          onClick={() => addExtractedTableToSheet(message.id, tIdx, { headers: t.headers, rows: t.rows, title: t.title })}
-                                          className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] border border-emerald-400/40 bg-emerald-600 hover:bg-emerald-700 text-white shadow"
-                                          title={`Map and add this extracted data${selectedSheetNames?.length ? ` to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}` : ''}`}
-                                        >
-                                          {tableActionState[`${message.id}_${tIdx}`] === 'loading' ? (
-                                            <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
-                                          ) : tableActionState[`${message.id}_${tIdx}`] === 'done' ? (
-                                            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                                          ) : (
-                                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M6 20h12"/></svg>
-                                          )}
-                                          <span>
-                                            {tableActionState[`${message.id}_${tIdx}`] === 'done' ? 'Added' : (
-                                              selectedSheetNames && selectedSheetNames.length > 0
-                                                ? `Add extracted data to ${selectedSheetNames.length === 1 ? '"'+selectedSheetNames[0]+'"' : 'selected sheets'}`
-                                                : 'Add extracted data'
-                                            )}
-                                          </span>
-                                        </button>
+                                        /* No buttons for existing sheet data tables */
+                                        null
                                       )}
                                     </div>
                               </div>
@@ -2831,4 +2844,16 @@ const suggestRelevantActions = (message: string, uploadedImages: UploadedImage[]
   }
   
   return suggestions;
+};
+
+// Add this function near the top of the component, after the state declarations
+const extractColumnOptions = (content: string): string[] => {
+  const optionsMatch = content.match(/Options include:\s*'([^']+)'(?:,\s*'([^']+)')*(?:,\s*and\s*'([^']+)')?/i);
+  if (!optionsMatch) return [];
+  
+  // Extract all quoted strings after "Options include:"
+  const quotedStrings = content.match(/'([^']+)'/g);
+  if (!quotedStrings) return [];
+  
+  return quotedStrings.map(str => str.replace(/'/g, ''));
 };
