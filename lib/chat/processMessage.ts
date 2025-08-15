@@ -1124,20 +1124,7 @@ export async function processMessage(
     // (moved) auto-hydration now occurs earlier before planning
 
     // QA over sheets (always attempt after hydration; for vague queries, produce a high-level overview)
-    try {
-      const hydratedForQA = (context as any).sheetData as Record<string, string[][]> | undefined;
-      const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
-      const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
-      const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
-      if (!hasProposedUpdateTable && hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
-        const historySummary = summarizeHistory();
-        const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}\n\nIf query is vague, provide a high-level overview of the data.`, hydratedForQA, selectedForQA);
-        if (qa) {
-          response = qa.answer;
-          if (qa.tables && qa.tables.length > 0) dataTables.push(...qa.tables);
-        }
-      }
-    } catch {}
+    // Note: Moved to after charts and insights are declared to avoid variable hoisting issues
 
     // file analysis status: concise
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
@@ -1279,6 +1266,32 @@ export async function processMessage(
 
     const wantStats = (context as any)?.responsePrefs?.stats === true || /\b(stat|stats|statistics|summary|insight)\b/i.test(message);
     const insights: string[] = [];
+
+    // QA over sheets (always attempt after hydration; for vague queries, produce a high-level overview)
+    try {
+      const hydratedForQA = (context as any).sheetData as Record<string, string[][]> | undefined;
+      const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
+      const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
+      const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
+      if (!hasProposedUpdateTable && hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
+        const historySummary = summarizeHistory();
+        const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}\n\nIf query is vague, provide a high-level overview of the data.`, hydratedForQA, selectedForQA);
+        if (qa) {
+          response = qa.answer;
+          if (qa.tables && qa.tables.length > 0) dataTables.push(...qa.tables);
+          // Extract insights and chart from QA for use in composeGroundedReply
+          if (qa.insights && qa.insights.length > 0) {
+            insights.push(...qa.insights);
+          }
+          if (qa.chart && typeof qa.chart === 'object' && qa.chart.kind && qa.chart.title) {
+            const chart = qa.chart;
+            if (!charts.some(c => c.kind === chart.kind && c.title === chart.title)) {
+              charts.push(chart);
+            }
+          }
+        }
+      }
+    } catch {}
     try {
       if (wantStats && charts.length > 0) {
         for (const ch of charts.slice(0, 2)) {

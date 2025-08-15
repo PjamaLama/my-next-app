@@ -21,6 +21,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 
+import { motion } from 'framer-motion';
 import Image from 'next/image';
 import PWAInstaller from './components/PWAInstaller';
 import RecentActivity from './components/RecentActivity';
@@ -100,7 +101,7 @@ type ChatMessage = {
     quickReplies?: string[];
     sheetsUsed?: string[];
     tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
-    charts?: Array<{ kind: 'bar'|'line'|'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: unknown }>;
+    charts?: Array<{ kind: 'bar'|'line'|'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: Record<string, unknown> }>;
     insights?: string[];
   };
 
@@ -2275,7 +2276,29 @@ export default function Home() {
                         ))}
                       </div>
                     )}
-                    {/* Charts toggle and render removed from UI; charts still render when AI includes them explicitly */}
+
+                    {/* Render assistant charts inline */}
+                    {message.role === 'assistant' && Array.isArray(message.charts) && message.charts.length > 0 && (
+                      <div className="mt-2 space-y-3">
+                        {message.charts.map((chart, cIdx) => (
+                          <motion.div
+                            key={`${message.id}_chart_${cIdx}`}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: cIdx * 0.1 }}
+                            className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3"
+                          >
+                            {chart.title && (
+                              <div className="mb-2 text-[12px] font-semibold text-white/90">
+                                {chart.title}
+                              </div>
+                            )}
+                            <ChartRenderer spec={chart} />
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Insights toggle and render */}
                     {message.role === 'assistant' && Array.isArray(message.insights) && message.insights.length > 0 && (
                       <div className="mt-2">

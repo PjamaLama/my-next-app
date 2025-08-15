@@ -31,7 +31,7 @@ function buildClarifyUnparsedMessage(column: string, total: number, unparsed: nu
 }
 
 export async function composeGroundedReply(input: ComposeInput): Promise<string> {
-  const { userMessage, qaAnswer, tables = [], insights = [], toolSummaries = [], plan, toolResults } = input;
+  const { userMessage, qaAnswer, tables = [], charts = [], insights = [], toolSummaries = [], plan, toolResults } = input;
 
   // Prefer QA summary if available
   try {
@@ -95,7 +95,11 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     contextBits.push(`Tool results: ${toolSummaries.slice(0, 5).join('; ')}`);
   }
   if (Array.isArray(insights) && insights.length > 0) {
-    contextBits.push(`Insights: ${insights.slice(0, 3).join('; ')}`);
+    contextBits.push(`Include novel insights from: ${insights.slice(0, 3).join('; ')}`);
+  }
+  if (Array.isArray(charts) && charts.length > 0) {
+    const chartNotes = charts.map(chart => `Visualizing with a ${chart.kind} chart: ${chart.title || 'Data visualization'}`).join('; ');
+    contextBits.push(chartNotes);
   }
 
   // Attempt to derive a minimal sheet context for grounding (headers of preview table if present)
@@ -115,6 +119,8 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     "- Do not ask for JSON or exact formats—assume inference worked.",
     "- If mapping was ambiguous, include clarification questions.",
     "- Include this instructional text when a preview exists: Here's the proposed updates in a table. Review and click 'Approve' to add, 'Edit' to modify, or 'Reject' to cancel.",
+    '- Include novel insights when provided to enhance the response.',
+    '- If charts are mentioned, note that visualizations are available via the UI ChartRenderer.',
     'Ground on context for accuracy.',
     prefix,
     contextBits.join('\n'),

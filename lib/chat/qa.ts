@@ -4,7 +4,7 @@ import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structu
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
-export type QAResult = { answer: string; tables?: StructuredTable[] } | null;
+export type QAResult = { answer: string; tables?: StructuredTable[]; insights?: string[]; chart?: { kind: 'bar' | 'line' | 'pie'; title: string; labels: string[]; datasets: Array<{ label: string; data: number[] }> } | null } | null;
 
 const COLUMN_SYNONYMS: Record<string, string[]> = {
   amount: ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel cost', 'rands'],
@@ -455,8 +455,10 @@ Step 1: Understand the query.
 Step 2: Identify relevant columns and any filters from the provided headers/rows.
 Step 3: Reason step-by-step how to compute the answer.
 Step 4: Provide a concise final answer.
+Step 5: Suggest 1-2 novel insights about patterns or trends in the data (e.g., "Top 3 highest values are in rows X,Y,Z").
+Step 6: If visual would help (e.g., trends or comparisons), suggest a simple chart type: bar for comparisons, line for trends, pie for distributions.
 
-Return STRICT JSON only with fields: {"reasoning": string, "queryType": "aggregate"|"filter"|"text"|"other", "code": string, "answer": string}
+Return STRICT JSON only with fields: {"reasoning": string, "queryType": "aggregate"|"filter"|"text"|"other", "code": string, "answer": string, "insights": string[], "chart": {kind: "bar"|"line"|"pie", title: string, labels: string[], datasets: [{label: string, data: number[]}] } or null if no chart needed}
 - "code" should be short Python-like pseudocode using pandas (e.g., df['Sales'].sum(), df[df['Region']=='East']['Sales'].mean(), df.groupby('Region')['Sales'].sum().sort_values(desc=True).head(3)).
 - Keep reasoning concise (<= 3 sentences). Do NOT include any non-JSON text.
 
@@ -473,9 +475,11 @@ Sample rows (CSV-like): ${JSON.stringify(previewTable)}
     const parsed = JSON.parse(text);
     const code: string = typeof parsed.code === 'string' ? parsed.code : '';
     const llmAnswer: string = typeof parsed.answer === 'string' ? parsed.answer : '';
+    const insights: string[] = Array.isArray(parsed.insights) ? parsed.insights : [];
+    const chart = parsed.chart && typeof parsed.chart === 'object' ? parsed.chart : null;
 
     // Simple pseudo-executor to simulate pandas-like snippets on our in-memory table
-    const runPseudo = (): { answer: string; tables?: StructuredTable[] } | null => {
+    const runPseudo = (): { answer: string; tables?: StructuredTable[]; insights?: string[]; chart?: any } | null => {
       try {
         // groupby sum: df.groupby('X')['Y'].sum()
         const mGroup = code.match(/groupby\(['"](.+?)['"]\).*?\['(.+?)'\]\.sum\(\)/i);
@@ -503,7 +507,7 @@ Sample rows (CSV-like): ${JSON.stringify(previewTable)}
             const sd = Math.sqrt(values.reduce((a,b)=>a + (b-mean)*(b-mean), 0) / Math.max(1, values.length));
             const anomalies = entries.filter(([,v]) => sd > 0 && Math.abs((v-mean)/sd) >= 2.5).map(e => e[0]);
             const suffix = anomalies.length > 0 ? ` Possible anomalies: ${anomalies.slice(0,3).join(', ')}.` : '';
-            return { answer: `Top ${gCol} by total ${yCol}: ${entries[0]?.[0] ?? 'n/a'} (${Number((entries[0]?.[1] ?? 0).toFixed(2))}).${suffix}`, tables: [tbl] };
+            return { answer: `Top ${gCol} by total ${yCol}: ${entries[0]?.[0] ?? 'n/a'} (${Number((entries[0]?.[1] ?? 0).toFixed(2))}).${suffix}`, tables: [tbl], insights, chart };
           }
         }
         // simple sum: df['Col'].sum()
@@ -514,7 +518,7 @@ Sample rows (CSV-like): ${JSON.stringify(previewTable)}
           if (idx >= 0) {
             const vals = rows.map(r => parseNumber(r[idx])).filter((n): n is number => n != null);
             const total = vals.reduce((a,b)=>a+b,0);
-            return { answer: `Sum(${col}): ${Number(total.toFixed(2))}.` };
+            return { answer: `Sum(${col}): ${Number(total.toFixed(2))}.`, insights, chart };
           }
         }
         // filter mean: df[df['A']=="x"]["B"].mean()
@@ -526,7 +530,7 @@ Sample rows (CSV-like): ${JSON.stringify(previewTable)}
             const filt = rows.filter(r => (op === '==' ? String(r[aIdx]) === val : String(r[aIdx]) !== val));
             const vals = filt.map(r => parseNumber(r[bIdx])).filter((n): n is number => n != null);
             const avg = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : 0;
-            return { answer: `Average ${colB} where ${colA} ${op} ${val}: ${Number(avg.toFixed(2))}.` };
+            return { answer: `Average ${colB} where ${colA} ${op} ${val}: ${Number(avg.toFixed(2))}.`, insights, chart };
           }
         }
       } catch {}
@@ -535,7 +539,7 @@ Sample rows (CSV-like): ${JSON.stringify(previewTable)}
 
     const sim = runPseudo();
     if (sim) return sim;
-    if (llmAnswer) return { answer: llmAnswer };
+    if (llmAnswer) return { answer: llmAnswer, insights, chart };
   } catch {}
 
   return null;
