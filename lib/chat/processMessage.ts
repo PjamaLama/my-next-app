@@ -10,6 +10,55 @@ import { composeGroundedReply } from './replyComposer';
 import { generatePlan } from './planner';
 import { DataSource, SheetDataSource, FileDataSource } from '../data/source';
 
+// Helper function to infer missing values from patterns in recent sheet data
+function inferMissingValue(header: string, recentRows: string[][], sheetHeaders: string[], currentDate: string): string | null {
+  try {
+    const headerIndex = sheetHeaders.indexOf(header);
+    if (headerIndex === -1) return null;
+    
+    // Extract values for this column from recent rows
+    const columnValues = recentRows
+      .map(row => row[headerIndex])
+      .filter(val => val !== undefined && val !== null && val !== '')
+      .map(val => String(val || '').trim());
+    
+    if (columnValues.length === 0) return null;
+    
+    // Date pattern inference
+    if (/date|Date|DATE/i.test(header)) {
+      return currentDate;
+    }
+    
+    // For other columns, find most common value or average
+    if (columnValues.length > 0) {
+      // Count frequency of each value
+      const valueCounts = new Map<string, number>();
+      for (const val of columnValues) {
+        valueCounts.set(val, (valueCounts.get(val) || 0) + 1);
+      }
+      
+      // Return most frequent value
+      let mostFrequent = columnValues[0];
+      let maxCount = 1;
+      for (const [val, count] of valueCounts.entries()) {
+        if (count > maxCount) {
+          maxCount = count;
+          mostFrequent = val;
+        }
+      }
+      
+      // Only infer if we have reasonable confidence (value appears multiple times)
+      if (maxCount >= 2) {
+        return mostFrequent;
+      }
+    }
+    
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Enhanced describe_data with specific row insights for better conversationalism.
 // Helper: robustly extract headers from diverse tool response shapes
 function extractHeadersFromTool(toolRes: any): string[] {
@@ -299,6 +348,68 @@ export async function processMessage(
       }
     }
 
+    // Helper function to build combined table for multiple sheets
+    const buildCombinedSheetTable = (sheetData: Record<string, string[][]>, sheetNames: string[]): StructuredTable | null => {
+      try {
+        if (sheetNames.length <= 1) return null;
+        
+        // Find common headers across all sheets
+        const allHeaders = new Set<string>();
+        const sheetHeaders: Record<string, string[]> = {};
+        
+        for (const sheetName of sheetNames) {
+          const data = sheetData[sheetName];
+          if (Array.isArray(data) && data.length > 0) {
+            const headers = data[0] || [];
+            headers.forEach(h => allHeaders.add(String(h || '')));
+            sheetHeaders[sheetName] = headers;
+          }
+        }
+        
+        if (allHeaders.size === 0) return null;
+        
+        const commonHeaders = Array.from(allHeaders);
+        const combinedRows: string[][] = [];
+        
+        // Add rows from each sheet with sheet name prefix
+        for (const sheetName of sheetNames) {
+          const data = sheetData[sheetName];
+          if (Array.isArray(data) && data.length > 1) {
+            const headers = sheetHeaders[sheetName] || [];
+            const headerMap = new Map<string, number>();
+            headers.forEach((h, i) => headerMap.set(String(h || ''), i));
+            
+            // Add each data row with sheet name
+            for (let i = 1; i < data.length; i++) {
+              const row = data[i] || [];
+              const combinedRow = [sheetName]; // First column is Sheet
+              
+              // Map data to common headers
+              for (const header of commonHeaders) {
+                const colIdx = headerMap.get(header);
+                const value = colIdx != null && colIdx < row.length ? String(row[colIdx] || '') : '';
+                combinedRow.push(value);
+              }
+              
+              combinedRows.push(combinedRow);
+            }
+          }
+        }
+        
+        if (combinedRows.length === 0) return null;
+        
+        return {
+          title: 'Data Across Sheets',
+          headers: ['Sheet', ...commonHeaders],
+          rows: combinedRows,
+          summary: `Combined data from ${sheetNames.length} sheet(s): ${sheetNames.join(', ')}`,
+          meta: { combined: true }
+        };
+      } catch {
+        return null;
+      }
+    };
+
     // Helper to hydrate sheet data early and prepare summary for planner (robust range fallback)
     const hydrateSheetData = async (ds: DataSource, ctxAny: any): Promise<void> => {
 			// Prefer client-provided cache when available to avoid unnecessary server calls
@@ -315,21 +426,105 @@ export async function processMessage(
 					return;
 				}
 			} catch {}
+      
       try {
-				const headers = await ds.getHeaders();
-				let rows = await (ds as any).getSampleRows(50);
-        if (!Array.isArray(rows) || rows.length === 0) {
-          rows = await (ds as any).getSampleRows(100, 'A1:Z100');
-          ctxAny.hydrationNote = 'No data in standard range; scanned A1:Z100';
-        }
+        // Initialize sheetData if not present
         ctxAny.sheetData = ctxAny.sheetData || {};
-        const name = (ctxAny.sheetName && String(ctxAny.sheetName)) || 'Sheet1';
-        if ((Array.isArray(rows) && rows.length > 0) || (Array.isArray(headers) && headers.length > 0)) {
-          ctxAny.sheetData[name] = [headers || [], ...(rows || [])];
-        } else {
-          ctxAny.isNonTabular = true;
+        
+        // Get all sheet names to hydrate
+        const sheetNames = Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames.length > 0 
+          ? ctxAny.sheetNames 
+          : [(ctxAny.sheetName && String(ctxAny.sheetName)) || 'Sheet1'];
+        
+        // Loop over each sheet name and load data
+        const allHeaders: string[] = [];
+        const allLower: string[] = [];
+        const allTypes: string[] = [];
+        const allSheetNames: string[] = [];
+        
+        for (const sheetName of sheetNames) {
+          try {
+            // Create a new data source for each sheet
+            const scopedBase = (typeof window === 'undefined' && ctxAny._baseUrl) ? String(ctxAny._baseUrl) : undefined;
+            const sessionKey = String((ctxAny.userId || ctxAny.sessionId || '') || '');
+            const sheetDS = new (ds.constructor as any)(ctxAny.spreadsheetId, sheetName, scopedBase, sessionKey || undefined, ctxAny);
+            
+            const headers = await sheetDS.getHeaders();
+            let rows = await (sheetDS as any).getSampleRows(50);
+            if (!Array.isArray(rows) || rows.length === 0) {
+              rows = await (sheetDS as any).getSampleRows(100, 'A1:Z100');
+              if (sheetName === sheetNames[0]) { // Only set note for primary sheet
+                ctxAny.hydrationNote = 'No data in standard range; scanned A1:Z100';
+              }
+            }
+            
+            if ((Array.isArray(rows) && rows.length > 0) || (Array.isArray(headers) && headers.length > 0)) {
+              ctxAny.sheetData[sheetName] = [headers || [], ...(rows || [])];
+              
+              // Collect headers and types for combined column catalog
+              if (Array.isArray(headers) && headers.length > 0) {
+                const prefixedHeaders = headers.map((h: any) => `${sheetName}:${String(h ?? '')}`);
+                allHeaders.push(...prefixedHeaders);
+                allSheetNames.push(sheetName);
+                
+                // Infer types for this sheet's columns
+                if (Array.isArray(rows) && rows.length > 0) {
+                  for (let i = 0; i < headers.length; i++) {
+                    const col = rows.map(r => r?.[i]);
+                    const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
+                    const type = num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
+                    allTypes.push(type);
+                  }
+                } else {
+                  // If no rows, assume text type for all columns
+                  headers.forEach(() => allTypes.push('text'));
+                }
+                
+                // Add lowercase versions for search
+                const lower = headers.map((h: any) => String(h ?? '').toLowerCase());
+                allLower.push(...lower);
+              }
+            } else {
+              ctxAny.isNonTabular = true;
+            }
+          } catch (e: any) {
+            const msg = String(e?.message || e || 'Unknown error');
+            const errorMsg = `Failed to load '${sheetName}': ${msg}`;
+            
+            // Accumulate errors for multiple sheets
+            if (!Array.isArray(ctxAny.errors)) ctxAny.errors = [];
+            ctxAny.errors.push(errorMsg);
+            
+            // Set primary error for backward compatibility
+            if (sheetName === sheetNames[0]) {
+              ctxAny.error = errorMsg;
+              if (msg.includes('400')) ctxAny.error += ' (invalid sheet configuration)';
+              else if (msg.includes('403')) ctxAny.error += ' (check service account permissions)';
+              else if (msg.includes('404')) ctxAny.error += ' (tab not found)';
+            }
+          }
         }
-        ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
+        
+        // Set primary sheet headers for backward compatibility (first sheet)
+        if (allHeaders.length > 0) {
+          const primarySheet = sheetNames[0];
+          const primaryHeaders = Array.isArray(ctxAny.sheetData?.[primarySheet]?.[0]) 
+            ? ctxAny.sheetData[primarySheet][0] 
+            : [];
+          ctxAny.sheetHeaders = primaryHeaders.map((h: any) => String(h ?? ''));
+        }
+        
+        // Create combined column catalog with all sheets
+        if (allHeaders.length > 0) {
+          ctxAny.columnCatalog = {
+            sheets: allSheetNames,
+            headers: allHeaders,
+            lower: allLower,
+            types: allTypes,
+            primarySheet: sheetNames[0]
+          };
+        }
+        
         ctxAny._sheetHydratedAt = Date.now();
 			} catch (e: any) {
 				const name = String((ctxAny && ctxAny.sheetName) || '');
@@ -439,7 +634,7 @@ export async function processMessage(
         } else if (err.includes('403')) {
           msg = 'Permission issue with sheet access. Please check your credentials.';
         } else {
-          msg = `Couldn’t load '${name}': ${err}. Try another sheet or upload data.`;
+          msg = `Couldn't load '${name}': ${err}. Try another sheet or upload data.`;
         }
         ctxAny._specificErrorResponse = msg;
         try {
@@ -541,7 +736,7 @@ export async function processMessage(
               if (!Array.isArray(ctxAny.sheetHeaders) || ctxAny.sheetHeaders.length === 0) {
                 ctxAny.sheetHeaders = (headers || []).map((h: any) => String(h ?? ''));
               }
-              // Build a lightweight column catalog for planner/QA
+              // Build a lightweight column catalog for planner/QA (single sheet fallback)
               try {
                 const first = Object.keys(map)[0];
                 const table = map[first] || [];
@@ -552,7 +747,15 @@ export async function processMessage(
                   const num = col.map(parseFloat).filter(n => Number.isFinite(n)).length;
                   return num / Math.max(1, col.length) > 0.5 ? 'number' : 'text';
                 });
-                ctxAny.columnCatalog = { sheet: first, headers: hdrs, lower, types };
+                // Use single sheet format for backward compatibility
+                ctxAny.columnCatalog = { 
+                  sheet: first, 
+                  headers: hdrs, 
+                  lower, 
+                  types,
+                  sheets: [first],
+                  primarySheet: first
+                };
               } catch {}
             }
           } else {
@@ -648,6 +851,72 @@ export async function processMessage(
 
       // Use the plan as-is (auto-pick is handled inside the planner now)
       if (plan?.intent && typeof plan.intent === 'string') intent = plan.intent;
+
+      // Post-process plan: fill missing values in partial rows using patterns from sheet data
+      if (plan?.intent === 'update_data' && plan?.tools) {
+        try {
+          const ctxAny = context as any;
+          const sheetData = ctxAny?.sheetData;
+          const sheetHeaders = ctxAny?.sheetHeaders;
+          const currentDate = ctxAny?.currentDate || new Date().toLocaleDateString('en-US');
+          
+          if (Array.isArray(sheetData) && Array.isArray(sheetHeaders) && sheetData.length > 1) {
+            // Get recent data samples (last 10 rows, excluding header)
+            const recentRows = sheetData.slice(1, 11);
+            
+            for (const tool of plan.tools) {
+              if (String(tool?.name || '').toLowerCase() === 'apply_structured_rows' && Array.isArray(tool?.args?.rows)) {
+                const rows = tool.args.rows;
+                let missingFieldsCount = 0;
+                let totalFieldsCount = 0;
+                const enhancedRows: Record<string, unknown>[] = [];
+                
+                for (const row of rows) {
+                  if (typeof row === 'object' && row !== null) {
+                    const enhancedRow: Record<string, unknown> = { ...row };
+                    let rowMissingCount = 0;
+                    let rowTotalCount = 0;
+                    
+                    // Check each column for missing values
+                    for (const header of sheetHeaders) {
+                      rowTotalCount++;
+                      if (enhancedRow[header] === undefined || enhancedRow[header] === null || enhancedRow[header] === '') {
+                        rowMissingCount++;
+                        
+                        // Try to infer missing values from patterns
+                        const inferredValue = inferMissingValue(header, recentRows, sheetHeaders, currentDate);
+                        if (inferredValue !== null) {
+                          enhancedRow[header] = inferredValue;
+                          // Track inference for transparency
+                          if (!plan.inferences) plan.inferences = {};
+                          plan.inferences[header] = `inferred from recent entries pattern`;
+                        }
+                      }
+                    }
+                    
+                    missingFieldsCount += rowMissingCount;
+                    totalFieldsCount += rowTotalCount;
+                    enhancedRows.push(enhancedRow);
+                  } else {
+                    enhancedRows.push(row);
+                  }
+                }
+                
+                // Update the tool with enhanced rows
+                tool.args.rows = enhancedRows;
+                
+                // If more than 50% of fields are missing even after inference, set clarifyQuestion
+                if (totalFieldsCount > 0 && (missingFieldsCount / totalFieldsCount) > 0.5 && !plan.clarifyQuestion) {
+                  plan.clarifyQuestion = `Many fields are missing (${Math.round((missingFieldsCount / totalFieldsCount) * 100)}%). Please specify values for: ${sheetHeaders.filter(h => !enhancedRows.some(r => r[h] !== undefined && r[h] !== null && r[h] !== '')).slice(0, 5).join(', ')}`;
+                }
+              }
+            }
+          }
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.warn('[processMessage] Failed to fill missing values in plan rows:', error);
+        }
+      }
 
       // If clarification is still needed (e.g., no confident target), return clarification flow
       if (plan && plan.clarifyQuestion && !(String(plan?.intent || '').toLowerCase() === 'aggregate' && plan?.targetColumn)) {
@@ -1094,7 +1363,11 @@ export async function processMessage(
             const pv = (result as any).preview;
             const sheetHeaders: string[] = Array.isArray((context as any)?.sheetHeaders) ? (context as any).sheetHeaders as string[] : [];
             const table = buildProposedUpdatesTable(pv, sheetHeaders);
-            if (table && table.rows.length > 0) { dataTables.length = 0; dataTables.push(table); hasProposedUpdateTable = true; }
+            if (table && table.rows.length > 0) { 
+              dataTables.length = 0; 
+              dataTables.push(table); 
+              hasProposedUpdateTable = true; 
+            }
             ctxAny.previewActions = pv;
             ctxAny.quickReplies = [
               { text: 'Approve', action: 'confirm_update' },
@@ -1133,7 +1406,7 @@ export async function processMessage(
             const hdrs: string[] = Array.isArray((context as any)?.sheetHeaders) ? ((context as any).sheetHeaders as string[]) : [];
             const hinted = hasImageFiles && hdrs.length > 0 && /map|mapped|match|columns|unknown headers|could not map/i.test(String((result as any)?.error || result?.result || ''));
             if (hinted) {
-              const extra = `File data didn’t match columns: [${hdrs.join(', ')}]. Please clarify values.`;
+              const extra = `File data didn't match columns: [${hdrs.join(', ')}]. Please clarify values.`;
               response = response && response.trim() ? `${response}\n${extra}` : extra;
             }
           } catch {}
@@ -1169,6 +1442,14 @@ export async function processMessage(
       try {
         const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
         if (smart.length > 0) dataTables.push(...smart);
+        
+        // Add combined table for multiple sheets if available
+        if (selectedSheetNames.length > 1) {
+          const combinedTable = buildCombinedSheetTable(hydratedSheetData, selectedSheetNames);
+          if (combinedTable) {
+            dataTables.unshift(combinedTable); // Put combined table first
+          }
+        }
       } catch {}
     }
 
@@ -1202,61 +1483,104 @@ export async function processMessage(
         }
       }
 
-      // Build exactly one table per uploaded file (when available); skip if we already have a proposed updates preview
+      // Build exactly one table per uploaded file after AI analysis; always create a table even if no sheet selected
       for (let i = 0; i < (images?.length || 0); i++) {
-        if (hasProposedUpdateTable) break;
         const fileName = images?.[i]?.name;
+        let rowsArr: any[] | null = null;
+        let headers: string[] = [];
+        let summary = '';
 
-        // Prefer structured rows from analyses
+        // Always try to get structured rows from AI analysis first
         const a = analysesByIndex.get(i);
         if (a) {
           const data = a.extractedData ?? a.analysis;
-          let rowsArr: any[] | null = null;
           if (data && typeof data === 'object') {
             if (Array.isArray((data as any).extracted_rows)) rowsArr = (data as any).extracted_rows as any[];
             else if ((data as any).result && Array.isArray((data as any).result.extracted_rows)) rowsArr = (data as any).result.extracted_rows as any[];
-          }
-          if (Array.isArray(rowsArr) && rowsArr.length > 0) {
-            const allKeys: string[] = Array.from(new Set<string>(rowsArr.flatMap((r: any) => Object.keys(r))));
-            const rows: string[][] = rowsArr.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
-            filePreviews.push({
-              title: `Structured Extracted Data${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
-              headers: allKeys,
-              rows,
-              meta: { fileIndex: i + 1, fileName }
-            });
-            continue; // exactly one table per file
+            
+            // Priority 1: Use AI-provided inferred headers if available
+            if (!headers || headers.length === 0) {
+              if (Array.isArray((data as any).inferredHeaders)) {
+                headers = (data as any).inferredHeaders as string[];
+                console.log(`[File Analysis] Using AI inferred headers for file ${i + 1}:`, headers);
+              } else if ((data as any).result && Array.isArray((data as any).result.inferredHeaders)) {
+                headers = (data as any).result.inferredHeaders as string[];
+                console.log(`[File Analysis] Using AI result inferred headers for file ${i + 1}:`, headers);
+              }
+            }
           }
         }
 
-        // Fallback: use extraction structured/text
-        const ex = extractionsByIndex.get(i);
-        if (ex) {
-          if (Array.isArray(ex.structured) && ex.structured.length > 0) {
-            const allKeys: string[] = Array.from(new Set<string>(ex.structured.flatMap((r: any) => Object.keys(r))));
-            const rows: string[][] = ex.structured.slice(0, 50).map((r: Record<string, unknown>) => allKeys.map((k: string) => String((r as any)[k] ?? '')));
-            filePreviews.push({
-              title: `Structured Extracted Data${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
-              headers: allKeys,
-              rows,
-              meta: { fileIndex: i + 1, fileName }
-            });
-            continue;
-          }
-          if (typeof ex.extractedText === 'string') {
-            const text = (ex.extractedText as string).trim();
-            if (text) {
-              const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
-              const rows = lines.map((l: string) => [l.slice(0, 120)]);
-              filePreviews.push({
-                title: `Extracted Text Preview${fileName ? ` — ${fileName}` : ` (File ${i + 1})`}`,
-                headers: ['Line'],
-                rows,
-                meta: { fileIndex: i + 1, fileName }
-              });
-              continue;
+        // If no AI analysis, fallback to extraction structured/text
+        if (!rowsArr || rowsArr.length === 0) {
+          const ex = extractionsByIndex.get(i);
+          if (ex) {
+            if (Array.isArray(ex.structured) && ex.structured.length > 0) {
+              rowsArr = ex.structured as any[];
+            } else if (typeof ex.extractedText === 'string') {
+              const text = (ex.extractedText as string).trim();
+              if (text) {
+                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
+                rowsArr = lines.map((l: string) => ({ Line: l.slice(0, 120) }));
+              }
             }
           }
+        }
+
+        // Always create a table for each file
+        if (rowsArr && rowsArr.length > 0) {
+          // Priority 2: If no AI headers, infer from first row structure
+          if (!headers || headers.length === 0) {
+            if (rowsArr.length > 0 && typeof rowsArr[0] === 'object' && rowsArr[0] !== null) {
+              headers = Object.keys(rowsArr[0]);
+              console.log(`[File Analysis] Inferred headers from row structure for file ${i + 1}:`, headers);
+            }
+          }
+          
+          // Convert to string[][] format for table display
+          const rows: string[][] = rowsArr.slice(0, 50).map((r: Record<string, unknown>) => 
+            headers.map((k: string) => String((r as any)[k] ?? ''))
+          );
+
+          console.log(`[File Analysis] File ${i + 1} headers:`, headers);
+          console.log(`[File Analysis] File ${i + 1} rows count:`, rows.length);
+
+          // Add mapping note if context has sheetHeaders
+          const ctxAny = context as any;
+          const sheetHeaders = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders as string[] : [];
+          const sheetNames = Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames as string[] : [];
+          const primarySheet = sheetNames.length > 0 ? sheetNames[0] : '';
+          
+          if (sheetHeaders.length > 0 && headers.length > 0) {
+            // Find exact header matches (no fuzzy matching)
+            const matchingHeaders = headers.filter(h => sheetHeaders.includes(h));
+            if (matchingHeaders.length > 0) {
+              if (sheetNames.length > 1) {
+                summary = `From multiple sheets—applying to ${primarySheet}. Possible mapping: ${matchingHeaders.join(', ')}`;
+              } else {
+                summary = `Possible mapping to sheet columns: ${matchingHeaders.join(', ')}`;
+              }
+            }
+          } else if (sheetNames.length > 1) {
+            summary = `From multiple sheets—applying to ${primarySheet}`;
+          }
+
+          filePreviews.push({
+            title: `Extracted Data from File ${i + 1}${fileName ? ` — ${fileName}` : ''}`,
+            headers,
+            rows,
+            summary,
+            meta: { fileIndex: i + 1, fileName }
+          });
+        } else {
+          // Create empty table for files with no extracted data
+          filePreviews.push({
+            title: `Extracted Data from File ${i + 1}${fileName ? ` — ${fileName}` : ''}`,
+            headers: ['No Data'],
+            rows: [['No structured data extracted']],
+            summary: 'No data could be extracted from this file',
+            meta: { fileIndex: i + 1, fileName, empty: true }
+          });
         }
       }
 
@@ -1275,11 +1599,20 @@ export async function processMessage(
           });
 
           // Put combined overview first
+          const ctxAny = context as any;
+          const sheetNames = Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames as string[] : [];
+          const primarySheet = sheetNames.length > 0 ? sheetNames[0] : '';
+          
+          let combinedSummary = `Merged ${rows.length} row(s) from ${structuredOnly.length} file(s).`;
+          if (sheetNames.length > 1) {
+            combinedSummary += ` From multiple sheets—applying to ${primarySheet}`;
+          }
+          
           dataTables.push({
             title: 'Combined Extracted Data (all files)',
             headers: allHeaders,
             rows,
-            summary: `Merged ${rows.length} row(s) from ${structuredOnly.length} file(s).`,
+            summary: combinedSummary,
             meta: { combined: true }
           });
         }
@@ -1551,7 +1884,7 @@ export async function processMessage(
           }
 					let errText = String(ctxAny?.error || '');
 					if (/404/.test(errText) && !/tab not found/i.test(errText)) errText += ' (tab not found)';
-					response = `Couldn’t load data: ${errText || 'Unknown error'}. Try checking the tab or uploading a file.`;
+					response = `Couldn't load data: ${errText || 'Unknown error'}. Try checking the tab or uploading a file.`;
 					// If server hydration failed but client cache exists, surface cached rows info
 					try {
 						if (Array.isArray(table) && table.length > 1) {
@@ -1585,7 +1918,8 @@ export async function processMessage(
             tables: normalizedTables,
             charts,
             insights,
-            toolSummaries
+            toolSummaries,
+            inferences: currentPlan?.inferences || null
           });
           if (composed && composed.trim() && composed !== response) {
             response = `${response}\n${composed}`.trim();
@@ -1684,7 +2018,7 @@ export async function processMessage(
       suppressResponseText: isFileOnly
     };
     try {
-      const ensureRe = /No sheet data loaded yet|Tool error|tried accessing your sheet|haven't loaded your sheet|couldn['’]t load your sheet data/i;
+      const ensureRe = /No sheet data loaded yet|Tool error|tried accessing your sheet|haven't loaded your sheet|couldn't load your sheet data/i;
       const ctxAny = context as any;
       const dataEmpty = !ctxAny?.sheetData || Object.keys(ctxAny.sheetData || {}).length === 0;
       let zeroRows = false;

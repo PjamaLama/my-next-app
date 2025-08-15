@@ -2414,6 +2414,15 @@ export default function Home() {
                 <div className="relative rounded-2xl glass-soft border border-white/10 focus-within:ring-0 transition-all duration-200 overflow-visible">
                   {defaultSpreadsheetId && (
                     <div className="px-2 pt-2 pb-1 border-b border-white/10 bg-black/20 rounded-t-2xl">
+                      {/* Multi-sheet selection tooltip */}
+                      <div className="mb-2 px-2 py-1.5 rounded-lg bg-blue-900/20 border border-blue-700/30">
+                        <div className="flex items-center gap-2 text-xs text-blue-200">
+                          <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Queries can span multiple sheets; updates apply to primary (first selected).</span>
+                        </div>
+                      </div>
                       <SheetChipSelector />
                     </div>
                   )}

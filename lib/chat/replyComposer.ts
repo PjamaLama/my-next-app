@@ -15,6 +15,7 @@ type ComposeInput = {
   toolSummaries?: string[];
   plan?: any;
   toolResults?: any[];
+  inferences?: Record<string, string> | null;
 };
 
 export const CLARIFY_UNPARSED_TEMPLATE =
@@ -31,7 +32,7 @@ function buildClarifyUnparsedMessage(column: string, total: number, unparsed: nu
 }
 
 export async function composeGroundedReply(input: ComposeInput): Promise<string> {
-  const { userMessage, qaAnswer, tables = [], charts = [], insights = [], toolSummaries = [], plan, toolResults } = input;
+  const { userMessage, qaAnswer, tables = [], charts = [], insights = [], toolSummaries = [], plan, toolResults, inferences } = input;
 
   // Prefer QA summary if available
   try {
@@ -56,7 +57,7 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
       }
 
       const ratio = prov.rowsExamined > 0 ? prov.parsedCount / prov.rowsExamined : 0;
-      if (prov.unparsedCount > 0 && ratio < 0.7) {
+      if (prov.unparsedCount > 0 && ratio < 0.8) {
         const examples = (prov.sampleUnparsed || []).map((x) => x.rawValue);
         return buildClarifyUnparsedMessage(columnLabel, prov.rowsExamined, prov.unparsedCount, examples);
       }
@@ -101,6 +102,10 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     const chartNotes = charts.map(chart => `Visualizing with a ${chart.kind} chart: ${chart.title || 'Data visualization'}`).join('; ');
     contextBits.push(chartNotes);
   }
+  if (inferences && typeof inferences === 'object' && Object.keys(inferences).length > 0) {
+    const inferenceNotes = Object.entries(inferences).map(([column, reason]) => `Inferred ${column} from ${reason}`).join('; ');
+    contextBits.push(inferenceNotes);
+  }
 
   // Attempt to derive a minimal sheet context for grounding (headers of preview table if present)
   const previewTable = Array.isArray(tables) ? tables.find(t => /Proposed Sheet Updates/i.test(String(t.title))) : undefined;
@@ -121,6 +126,7 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     "- Include this instructional text when a preview exists: Here's the proposed updates in a table. Review and click 'Approve' to add, 'Edit' to modify, or 'Reject' to cancel.",
     '- Include novel insights when provided to enhance the response.',
     '- If charts are mentioned, note that visualizations are available via the UI ChartRenderer.',
+    '- When inferences are present, mention them naturally (e.g., "I filled in the Date field with today\'s date and Driver from recent entries"). Include in preview table as bold/italic for inferred cells.',
     'Ground on context for accuracy.',
     prefix,
     contextBits.join('\n'),

@@ -46,6 +46,7 @@ export type StructuredTable = {
     fileIndex?: number;
     fileName?: string;
     combined?: boolean;
+    empty?: boolean;
   };
 };
 

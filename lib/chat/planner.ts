@@ -39,6 +39,7 @@ export type PlannerPlan = {
   tools: Array<{ name: string; args: Record<string, unknown> }>;
   toolChain: Array<{ toolName: string; params: Record<string, unknown>; dependsOn?: number[] }>;
   clarifyQuestion: string | null;
+  inferences: Record<string, string> | null;
 };
 
 // Lightweight planner:
@@ -63,6 +64,7 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     spreadsheetId: (context as any)?.spreadsheetId || null,
     sheetName: (context as any)?.sheetName || null,
     sheetNames: (context as any)?.sheetNames || [],
+    primarySheet: Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 0 ? (context as any).sheetNames[0] : (context as any)?.sheetName || null,
     fileDataSample,
     sheetDataSample,
   });
@@ -86,8 +88,10 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
   - If spreadsheetId or sheetName is missing, set clarifyQuestion accordingly and do not produce rows.
   - If you cannot confidently form rows from the message and context, set clarifyQuestion asking the user to specify column-value pairs.
   - For describe/get requests, you may include a toolChain (e.g., get_sheet_data → aggregate), or leave it empty.
+  - For multi-sheet contexts (sheetNames >1), plan tools across sheets if query spans them (e.g., aggregate from all). For updates, set primarySheet to first in sheetNames, or clarifyQuestion if ambiguous.
+  - Infer missing values from patterns in sheetData (e.g., if recent rows have similar Driver, prefill it). Only clarify if inference confidence low (<70%). For updates, output partial rows with inferred fields marked (e.g., {column: "inferred value from pattern"}).
 
-  Output JSON with: intent, tools, toolChain, clarifyQuestion, and reasoning.
+  Output JSON with: intent, tools, toolChain, clarifyQuestion, reasoning, and inferences: {column: 'reason'} for transparency.
 
   Conversation history: {conversationHistory}
   User message: {userMessage}
@@ -99,7 +103,8 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
 User message (resolved): ${JSON.stringify(message)}
 Headers: [${headersList}]
 Sheet context (resolved): ${hydratedContextResolved}
-Conversation history (resolved): ${historyText}`;
+Conversation history (resolved): ${historyText}
+${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 1 ? `Note: Multiple sheets available: ${(context as any).sheetNames.join(', ')}. Use primarySheet for updates unless specified.` : ''}`;
 
   return template + compatibility;
 }
@@ -199,11 +204,22 @@ export async function generatePlan(
     // Ensure apply_structured_rows carries spreadsheetId and sheetName; do not synthesize rows here.
     try {
       const spreadsheetId = (context as any)?.spreadsheetId;
+      const sheetNames = Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames : [];
       const sheetName = (context as any)?.sheetName;
+      
+      // For multi-sheet contexts, use primary sheet (first in sheetNames) for updates unless specified
+      let primarySheetName = sheetName;
+      if (sheetNames.length > 1 && !sheetName) {
+        primarySheetName = sheetNames[0];
+      } else if (sheetNames.length > 1 && sheetName && !sheetNames.includes(sheetName)) {
+        // If specified sheetName is not in sheetNames, use first available
+        primarySheetName = sheetNames[0];
+      }
+      
       const ensureParams = (params: any): any => {
         const updated: any = { ...(params || {}) };
         if (spreadsheetId) updated.spreadsheetId = spreadsheetId;
-        if (sheetName) updated.sheetName = sheetName;
+        if (primarySheetName) updated.sheetName = primarySheetName;
         updated.dryRun = true;
         return updated;
       };
@@ -278,8 +294,12 @@ export async function generatePlan(
       console.log('Planner output:', { intent, tools, toolChain: committedChain, clarify: clarifyQuestion, rows: (tools as any)?.[0]?.params?.rows });
 
       // If critical context missing, ask to clarify
-      if ((!spreadsheetId || !sheetName) && intent === 'update_data' && !clarifyQuestion) {
-        clarifyQuestion = 'Please specify the sheet to update.';
+      if ((!spreadsheetId || !primarySheetName) && intent === 'update_data' && !clarifyQuestion) {
+        if (sheetNames.length > 1) {
+          clarifyQuestion = `Multiple sheets available: ${sheetNames.join(', ')}. Which sheet should I update?`;
+        } else {
+          clarifyQuestion = 'Please specify the sheet to update.';
+        }
       }
     } catch {}
 
@@ -289,13 +309,14 @@ export async function generatePlan(
       toolChain: committedChain,
       clarifyQuestion,
       reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : null,
+      inferences: typeof parsed.inferences === 'object' && parsed.inferences ? parsed.inferences : null,
     };
   } catch {
     // Safe fallback with a best-guess tool
     const summaryLike = /tell\s+me\s+about|summariz|what\s+i\s+did|overview/i.test(message || '');
     if (summaryLike) {
-      return { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Summary-like request.' };
+      return { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Summary-like request.', inferences: null };
     }
-    return { intent: 'get_data', tools: [{ name: 'get_sheet_data', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Fallback planner.' };
+    return { intent: 'get_data', tools: [{ name: 'get_sheet_data', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Fallback planner.', inferences: null };
   }
 }

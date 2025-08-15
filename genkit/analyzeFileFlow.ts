@@ -78,7 +78,8 @@ export const analyzeFileFlow = (apiKey: string) => {
         })),
       }),
       outputSchema: z.object({
-        extracted_rows: z.array(z.record(z.string(), z.string().or(z.number()).or(z.boolean()))).default([])
+        extracted_rows: z.array(z.record(z.string(), z.string().or(z.number()).or(z.boolean()))).default([]),
+        inferredHeaders: z.array(z.string()).optional()
       }).or(z.any()),
     },
     async ({ prompt, files }) => {
@@ -132,8 +133,9 @@ Return ONLY JSON, no markdown.
 IMPORTANT INSTRUCTIONS:
 1. Parse each file and identify entries relevant for spreadsheet rows.
 2. Normalize keys to common spreadsheet headers if present: ["Date","Driver","Reg#","Vehicle","KM Start","KM End","Business Km","Prvt Km","Leave Km","Total Km","TOWN VISITED","CLIENT SEEN","CLIENT CALLED","PHONE NUMBER","DETAILS OF VISIT","KM at Filling","Fuel in liters","Fuel Cost in Rands","SALES MADE"]
-3. Return ONLY raw JSON without markdown or explanations.
- 4. If nothing can be extracted, return { "extracted_rows": [] }.
+3. Always infer logical headers from content if not explicit (e.g., Date, Amount, Description).
+4. Return ONLY raw JSON without markdown or explanations.
+5. If nothing can be extracted, return { "extracted_rows": [] }.
 
 Example output format (RETURN EXACTLY JSON, no code fences):
 {
@@ -145,7 +147,8 @@ Example output format (RETURN EXACTLY JSON, no code fences):
       "Fuel in liters": "50",
       "Fuel Cost in Rands": "685.50"
     }
-  ]
+  ],
+  "inferredHeaders": ["Date", "Reg#", "TOWN VISITED", "Fuel in liters", "Fuel Cost in Rands"]
 }
 
 Analyze the extracted text content and extract relevant data in JSON format.`;
