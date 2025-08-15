@@ -236,6 +236,15 @@ export default function Home() {
   const [combinedTablePref, setCombinedTablePref] = useState<Record<string, boolean>>({});
   const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
   const [previewModal, setPreviewModal] = useState<{ open: boolean; rows: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }> | null; summary?: string }>({ open: false, rows: null });
+  const [editModal, setEditModal] = useState<{ 
+    open: boolean; 
+    preview: { headers: string[]; rows: Array<Array<{ column: string; value: unknown }>>; message?: string } | null;
+    messageId?: string;
+    tableIndex?: number;
+  }>({ open: false, preview: null });
+
+  // Force update state to trigger re-renders when table data changes
+  const [forceUpdate, setForceUpdate] = useState<number>(Date.now());
 
   // Keep recent file-analysis results so follow-up turns can reference them
   const [recentFileAnalysis, setRecentFileAnalysis] = useState<FileAnalysisContext | null>(null);
@@ -1556,17 +1565,8 @@ export default function Home() {
     }
   };
 
-  const openEditModal = (preview: { headers: string[]; rows: Array<Array<{ column: string; value: unknown }>>; message?: string }) => {
-    try {
-      const converted = (preview.rows || []).map((row, idx) => ({
-        row: idx + 2,
-        updates: row.reduce((acc, cur) => { acc[cur.column] = String(cur.value ?? ''); return acc; }, {} as Record<string, string>),
-        confidence: 0.8
-      }));
-      setPreviewModal({ open: true, rows: converted, summary: preview.message || 'Review and confirm updates.' } as any);
-    } catch {
-      setPreviewModal({ open: true, rows: null });
-    }
+  const openEditModal = (preview: { headers: string[]; rows: Array<Array<{ column: string; value: unknown }>>; message?: string }, messageId?: string, tableIndex?: number) => {
+    setEditModal({ open: true, preview, messageId, tableIndex });
   };
 
   // Commit from a rendered table (headers:string[], rows:string[][])
@@ -1633,14 +1633,14 @@ export default function Home() {
     }
   };
 
-  const openEditModalFromTable = (headers: string[], tableRows: string[][], message?: string) => {
+  const openEditModalFromTable = (headers: string[], tableRows: string[][], message?: string, messageId?: string, tableIndex?: number) => {
     // Handle Action column if present (for Proposed Sheet Updates tables)
     const hasActionColumn = headers[0] === 'Action';
     const effectiveHeaders = hasActionColumn ? headers.slice(1) : headers;
     const effectiveRows = hasActionColumn ? tableRows.map(r => r.slice(1)) : tableRows;
     
     const rows = (effectiveRows || []).map((r) => effectiveHeaders.map((h, i) => ({ column: h, value: r[i] ?? '' })));
-    openEditModal({ headers: effectiveHeaders, rows, message });
+    openEditModal({ headers: effectiveHeaders, rows, message }, messageId, tableIndex);
   };
 
   // Auto-scroll messages container to bottom when messages change
@@ -1648,7 +1648,7 @@ export default function Home() {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
-  }, [chatMessages, chatProcessing]);
+  }, [chatMessages, chatProcessing, forceUpdate]);
 
   // Observe bottom bar height to prevent overlap and keep layout compact
   useEffect(() => {
@@ -2204,7 +2204,18 @@ export default function Home() {
                         {(combinedTablePref[message.id]
                           ? message.tables.filter(t => (t as any).meta?.combined)
                           : message.tables.filter(t => !(t as any).meta?.combined)
-                        ).map((t, tIdx) => (
+                        ).map((t, tIdx) => {
+                          // Debug: Log table data for this specific table
+                          if (message.id === editModal?.messageId && tIdx === editModal?.tableIndex) {
+                            console.log('Rendering table that was edited:', {
+                              messageId: message.id,
+                              tableIndex: tIdx,
+                              table: t,
+                              rows: t.rows
+                            });
+                          }
+                          
+                          return (
                           <div key={`${message.id}_table_${tIdx}`} className="relative overflow-x-auto max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-white/5">
                             {t.title && (
                               <div className="px-3 py-2 border-b border-white/10 text-[12px] font-semibold text-white/90">
@@ -2286,7 +2297,16 @@ export default function Home() {
                                             <span>{tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? 'Applying...' : 'Approve'}</span>
                                           </button>
                                           <button className="bg-red-500 text-white px-4 py-2 mr-2 rounded" onClick={() => setSendResult('Update canceled.')}>Reject</button>
-                                          <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary)}>Edit</button>
+                                          <button 
+                                            className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded inline-flex items-center gap-2 transition-colors" 
+                                            onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary, message.id, tIdx)}
+                                            title="Edit row data before applying"
+                                          >
+                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                            Edit
+                                          </button>
                                         </>
                                       ) : message.approved && (t.title && /Proposed Sheet Updates/i.test(String(t.title))) ? (
                                         /* Show approved status for approved updates */
@@ -2301,7 +2321,8 @@ export default function Home() {
                               </div>
                             </div>
                           </div>
-                        ))}
+                        );
+                      })}
                       </div>
                     )}
 
@@ -2616,7 +2637,89 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Preview Modal */}
+          {/* Edit Modal */}
+          {editModal.open && editModal.preview && (
+            <EditRowModal 
+              isOpen={editModal.open} 
+              onClose={() => setEditModal({ open: false, preview: null, messageId: undefined, tableIndex: undefined })} 
+              preview={editModal.preview} 
+              activeSheet={selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined}
+              onSubmit={(rowData) => {
+                // Update the specific table in the chat messages locally
+                if (editModal.messageId && editModal.tableIndex !== undefined) {
+                  console.log('Updating table:', {
+                    messageId: editModal.messageId,
+                    tableIndex: editModal.tableIndex,
+                    rowData,
+                    currentMessages: providerChatMessages
+                  });
+                  
+                  setProviderChatMessages(prev => {
+                    const updated = prev.map(msg => {
+                      if (msg.id === editModal.messageId && Array.isArray(msg.tables)) {
+                        console.log('Found message to update:', msg);
+                        const updatedTables = [...msg.tables];
+                        if (updatedTables[editModal.tableIndex!]) {
+                          const currentTable = updatedTables[editModal.tableIndex!];
+                          console.log('Current table:', currentTable);
+                          
+                          // Convert the edited row data back to the table format
+                          const updatedRows = rowData.map(cell => String(cell.value));
+                          console.log('Updated rows:', updatedRows);
+                          
+                          // Update the table with the edited data
+                          // If the original table had multiple rows, preserve them but update the first one
+                          const originalRows = currentTable.rows || [];
+                          const newRows = [...originalRows];
+                          if (newRows.length > 0) {
+                            newRows[0] = updatedRows; // Update first row
+                          } else {
+                            newRows.push(updatedRows); // Add row if none existed
+                          }
+                          
+                          updatedTables[editModal.tableIndex!] = {
+                            ...currentTable,
+                            rows: newRows
+                          };
+                          
+                          console.log('Updated table:', updatedTables[editModal.tableIndex!]);
+                        }
+                        return { ...msg, tables: updatedTables };
+                      }
+                      return msg;
+                    });
+                    
+                    console.log('Updated messages:', updated);
+                    return updated;
+                  });
+                  
+                  // Force a re-render by updating a timestamp
+                  setForceUpdate(Date.now());
+                }
+                
+                setEditModal({ open: false, preview: null, messageId: undefined, tableIndex: undefined });
+                
+                // Optionally refresh the sheet data after edit
+                if (defaultSpreadsheetId && selectedSheetNames && selectedSheetNames.length > 0) {
+                  const activeSheet = selectedSheetNames[0];
+                  fetch('/api/get-sheet-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId, sheetName: activeSheet })
+                  })
+                  .then(res => res.json())
+                  .then(json => {
+                    if (json && json.data) {
+                      setSheetDataCache((prev) => ({ ...prev, [activeSheet]: json.data }));
+                    }
+                  })
+                  .catch(() => {});
+                }
+              }}
+            />
+          )}
+
+          {/* Preview Modal - keeping for other use cases but not for table editing */}
           {previewModal.open && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60">
               <div className="w-[90vw] max-w-3xl max-h-[80vh] overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0e] text-white shadow-2xl">
