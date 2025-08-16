@@ -1,7 +1,7 @@
-'''// Shared mocks
+// Shared mocks
 jest.mock('@genkit-ai/googleai', () => ({ googleAI: () => ({}), gemini15Flash: {} }));
 
-import { execute } from '../lib/chat/executionOrchestrator';
+
 import type { Context, ConversationHistoryItem } from '../lib/chat/types';
 
 // Utility to reset fetch between tests

@@ -1,7 +1,8 @@
 // Shared mocks
 jest.mock('@genkit-ai/googleai', () => ({ googleAI: () => ({}), gemini15Flash: {} }));
 
-import { hydrateData } from '../lib/chat/dataHydrator';
+
+import { hydrateSheetContext } from '../lib/chat/dataHydrator';
 import type { Context, ConversationHistoryItem } from '../lib/chat/types';
 
 // Utility to reset fetch between tests
@@ -21,7 +22,7 @@ describe('hydrateData behavior', () => {
     setFetchMock(async () => ({ ok: false, status: 500, json: async () => ({}), text: async () => 'error' }));
 
     const ctx: Context = { spreadsheetId: 'sheet-1', sheetName: 'Sheet1', sheetNames: ['Sheet1'] } as any;
-    const out = await hydrateData(ctx);
+    const out = await hydrateSheetContext(ctx);
 
     expect(out).toBeTruthy();
     // Error may be set depending on which hydration path failed; accept either
@@ -46,7 +47,7 @@ describe('hydrateData behavior', () => {
     setFetchMock(async () => ({ ok: false, status: 500, json: async () => ({}), text: async () => 'server error' }));
 
     // Re-require after mocks
-    const { hydrateData: run } = require('../lib/chat/dataHydrator');
+    const { hydrateSheetContext: run } = require('../lib/chat/dataHydrator');
 
     const ctx: Context = {
       spreadsheetId: 'abc',

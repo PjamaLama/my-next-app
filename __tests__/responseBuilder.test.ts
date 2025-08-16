@@ -1,7 +1,8 @@
 // Shared mocks
 jest.mock('@genkit-ai/googleai', () => ({ googleAI: () => ({}), gemini15Flash: {} }));
 
-import { buildResponse } from '../lib/chat/responseBuilder';
+
+import { buildUserResponse } from '../lib/chat/responseBuilder';
 import type { Context, ConversationHistoryItem } from '../lib/chat/types';
 
 // Utility to reset fetch between tests
@@ -47,7 +48,7 @@ describe('responseBuilder behavior', () => {
       },
     }));
 
-    const { buildResponse: run } = require('../lib/chat/responseBuilder');
+    const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'sheet-1', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
     const out = await run(plan, ctx, [], []);
 
@@ -77,7 +78,7 @@ describe('responseBuilder behavior', () => {
         return { success: true, result: `${name} ok` } as any;
       },
     }));
-    const { buildResponse: run } = require('../lib/chat/responseBuilder');
+    const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'sheet-1', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
     const out = await run(plan, ctx, [], []);
     expect(toolCalls).toContain('describe_sheet');
@@ -114,7 +115,7 @@ describe('responseBuilder behavior', () => {
       },
     }));
 
-    const { buildResponse: run } = require('../lib/chat/responseBuilder');
+    const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
     const out = await run(plan, ctx, [], []);
 
@@ -133,7 +134,7 @@ describe('responseBuilder behavior', () => {
     const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null };
     jest.doMock('../lib/chat/toolExecution', () => ({ executeToolCall: async (toolCall: any) => ({ success: true, result: 'Your sheet tracks fuel data.' }) }));
 
-    const { buildResponse: run } = require('../lib/chat/responseBuilder');
+    const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
     const out = await run(plan, ctx, [], []);
 
@@ -160,7 +161,7 @@ describe('responseBuilder behavior', () => {
     // Encourage describe_sheet and include explicit text_summary arg
     const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: { mode: 'text_summary' } }], toolChain: [], clarifyQuestion: null };
 
-    const { buildResponse: run } = require('../lib/chat/responseBuilder');
+    const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Notes', sheetNames: ['Notes'], isNonTabular: true };
     const out = await run(plan, ctx, [], []);
 
@@ -177,7 +178,7 @@ describe('responseBuilder behavior', () => {
     const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null };
     jest.doMock('../lib/chat/toolExecution', () => ({ executeToolCall: async (_toolCall: any) => ({ success: true, result: 'This sheet looks like sales data.' }) }));
 
-    const { buildResponse: run } = require('../lib/chat/responseBuilder');
+    const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const table = [
       ['Date','Client','Sales'],
       ['2024-01-01','A','100'],
@@ -209,7 +210,7 @@ describe('responseBuilder behavior', () => {
       }
     }));
 
-    const { buildResponse: run } = require('../lib/chat/responseBuilder');
+    const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Notes', sheetNames: ['Notes'], isNonTabular: true };
     const out = await run(plan, ctx, [], []);
     const describe = toolCalls.find(t => t.name === 'describe_sheet');
