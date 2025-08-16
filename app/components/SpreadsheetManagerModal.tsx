@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { useFirebase } from "../providers/FirebaseProvider";
 import { useSheet } from "../providers/SheetProvider";
+import { useServiceAccount } from "../providers/ServiceAccountProvider";
+import ServiceAccountInfo from "./ServiceAccountInfo";
 
 interface SpreadsheetManagerModalProps {
   open: boolean;
@@ -12,6 +14,7 @@ interface SpreadsheetManagerModalProps {
 const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open, onClose }) => {
   const { user } = useFirebase();
   const { setDefaultSpreadsheetId } = useSheet();
+  const { serviceAccountEmail } = useServiceAccount();
   const [newSheetId, setNewSheetId] = useState("");
   const [addingSheet, setAddingSheet] = useState(false);
 
@@ -75,6 +78,7 @@ const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open,
         </div>
         <div className="px-4 py-3 text-sm text-white/90">
           <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+            <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />
             <div className="text-xs text-white/80 mb-2">Add a Google Sheet</div>
             <div className="flex items-center gap-2">
               <input
