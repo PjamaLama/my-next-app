@@ -325,4 +325,3 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
     return { intent: 'get_data', tools: [{ name: 'get_sheet_data', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Fallback planner.', inferences: null };
   }
 }
-}

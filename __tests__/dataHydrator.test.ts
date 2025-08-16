@@ -22,16 +22,27 @@ describe('hydrateData behavior', () => {
     setFetchMock(async () => ({ ok: false, status: 500, json: async () => ({}), text: async () => 'error' }));
 
     const ctx: Context = { spreadsheetId: 'sheet-1', sheetName: 'Sheet1', sheetNames: ['Sheet1'] } as any;
-    const out = await hydrateSheetContext(ctx);
+    
+    // Mock DataSource
+    const mockDataSource = {
+      constructor: class MockDataSource {
+        constructor() {}
+        async getHeaders() { throw new Error('HTTP 500'); }
+        async getSampleRows() { throw new Error('HTTP 500'); }
+      }
+    } as any;
+    
+    await hydrateSheetContext(ctx, mockDataSource);
 
-    expect(out).toBeTruthy();
+    // Check that context was modified (function modifies context in-place)
+    expect(ctx).toBeTruthy();
     // Error may be set depending on which hydration path failed; accept either
-    const ctxErr = (out.context as any).error;
+    const ctxErr = ctx.error;
     if (ctxErr) {
-      expect(ctxErr).toMatch(/Sheet access failed/i);
+      expect(ctxErr).toMatch(/Failed to load|Sheet access failed/i);
     }
     // Ensure sheetData remains empty on hydration failure for safety
-    const sd = (out.context as any).sheetData || {};
+    const sd = ctx.sheetData || {};
     const hasOnlyEmpty = Object.values(sd).every((v: any) => Array.isArray(v) && v.length <= 1);
     expect(hasOnlyEmpty || Object.keys(sd).length === 0).toBe(true);
   }, 30000);
@@ -58,9 +69,18 @@ describe('hydrateData behavior', () => {
       ],
     } as any;
 
-    const out = await run(ctx);
+    // Mock DataSource
+    const mockDataSource = {
+      constructor: class MockDataSource {
+        constructor() {}
+        async getHeaders() { throw new Error('HTTP 500'); }
+        async getSampleRows() { throw new Error('HTTP 500'); }
+      }
+    } as any;
 
-    // Error tracking present
-    expect((out.context as any).error).toMatch(/Sheet access failed/i);
+    await run(ctx, mockDataSource);
+
+    // Error tracking present - check the modified context
+    expect(ctx.error).toMatch(/Failed to load|Sheet access failed/i);
   });
 });

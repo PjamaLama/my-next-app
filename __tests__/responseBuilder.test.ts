@@ -32,8 +32,21 @@ describe('responseBuilder behavior', () => {
     // Fetch used by some endpoints
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
 
-    // Plan describe for summary-like
-    const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: { sheetName: 'Fuel Weekly Repo' } }], toolChain: [], clarifyQuestion: null, reasoning: 'summary' };
+    // Mock execution result with proper structure
+    const executionResult = {
+      intent: 'describe_data',
+      toolResults: [],
+      response: '',
+      enhancedResponse: '',
+      describeText: '',
+      didUpdateSheet: false,
+      dataTables: [], // Initialize as empty array
+      hasProposedUpdateTable: false,
+      quickReplies: [],
+      postQuickActions: [],
+      currentPlan: null,
+      plannedToolCalls: []
+    };
 
     const toolCalls: string[] = [];
     jest.doMock('../lib/chat/toolExecution', () => ({
@@ -50,7 +63,7 @@ describe('responseBuilder behavior', () => {
 
     const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'sheet-1', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
-    const out = await run(plan, ctx, [], []);
+    const out = await run(executionResult, ctx, 'tell me about my sheet data', [], []);
 
     expect(toolCalls).toContain('describe_sheet');
     expect(out.response).toMatch(/columns\s+Date,\s*Fuel Type/i);
@@ -68,7 +81,23 @@ describe('responseBuilder behavior', () => {
       ['2024-01-29', 'Diesel', '11', '55'],
     ]);
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
-    const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: { sheetName: 'Fuel Weekly Repo' } }], toolChain: [], clarifyQuestion: null, reasoning: 'summary' };
+    
+    // Mock execution result with proper structure
+    const executionResult = {
+      intent: 'describe_data',
+      toolResults: [],
+      response: '',
+      enhancedResponse: '',
+      describeText: '',
+      didUpdateSheet: false,
+      dataTables: [], // Initialize as empty array
+      hasProposedUpdateTable: false,
+      quickReplies: [],
+      postQuickActions: [],
+      currentPlan: null,
+      plannedToolCalls: []
+    };
+    
     const toolCalls: string[] = [];
     jest.doMock('../lib/chat/toolExecution', () => ({
       executeToolCall: async (toolCall: any) => {
@@ -80,7 +109,7 @@ describe('responseBuilder behavior', () => {
     }));
     const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'sheet-1', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
-    const out = await run(plan, ctx, [], []);
+    const out = await run(executionResult, ctx, 'summarize my fuel weekly repo', [], []);
     expect(toolCalls).toContain('describe_sheet');
     expect(out.response).toMatch(/Fuel Weekly Repo|columns\s+Date,\s*Fuel Type/i);
   });
@@ -100,8 +129,21 @@ describe('responseBuilder behavior', () => {
 
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
 
-    // Plan describe_sheet
-    const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null };
+    // Mock execution result with proper structure
+    const executionResult = {
+      intent: 'describe_data',
+      toolResults: [],
+      response: '',
+      enhancedResponse: '',
+      describeText: '',
+      didUpdateSheet: false,
+      dataTables: [], // Initialize as empty array
+      hasProposedUpdateTable: false,
+      quickReplies: [],
+      postQuickActions: [],
+      currentPlan: null,
+      plannedToolCalls: []
+    };
 
     const toolCalls: string[] = [];
     jest.doMock('../lib/chat/toolExecution', () => ({
@@ -117,7 +159,7 @@ describe('responseBuilder behavior', () => {
 
     const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
-    const out = await run(plan, ctx, [], []);
+    const out = await run(executionResult, ctx, 'describe my sheet', [], []);
 
     expect(toolCalls).toContain('describe_sheet');
     expect(out.response).toMatch(/tracks fuel data/i);
@@ -131,12 +173,27 @@ describe('responseBuilder behavior', () => {
 
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
 
-    const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null };
+    // Mock execution result with proper structure
+    const executionResult = {
+      intent: 'describe_data',
+      toolResults: [],
+      response: '',
+      enhancedResponse: '',
+      describeText: '',
+      didUpdateSheet: false,
+      dataTables: [], // Initialize as empty array
+      hasProposedUpdateTable: false,
+      quickReplies: [],
+      postQuickActions: [],
+      currentPlan: null,
+      plannedToolCalls: []
+    };
+    
     jest.doMock('../lib/chat/toolExecution', () => ({ executeToolCall: async (toolCall: any) => ({ success: true, result: 'Your sheet tracks fuel data.' }) }));
 
     const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'] };
-    const out = await run(plan, ctx, [], []);
+    const out = await run(executionResult, ctx, 'describe my sheet', [], []);
 
     expect(out.response).toMatch(/Total rows:\s*0/i);
     expect(Array.isArray(out.quickReplies)).toBe(true);
@@ -158,12 +215,25 @@ describe('responseBuilder behavior', () => {
       },
     }));
 
-    // Encourage describe_sheet and include explicit text_summary arg
-    const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: { mode: 'text_summary' } }], toolChain: [], clarifyQuestion: null };
+    // Mock execution result with proper structure
+    const executionResult = {
+      intent: 'describe_data',
+      toolResults: [],
+      response: '',
+      enhancedResponse: '',
+      describeText: '',
+      didUpdateSheet: false,
+      dataTables: [], // Initialize as empty array
+      hasProposedUpdateTable: false,
+      quickReplies: [],
+      postQuickActions: [],
+      currentPlan: null,
+      plannedToolCalls: []
+    };
 
     const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Notes', sheetNames: ['Notes'], isNonTabular: true };
-    const out = await run(plan, ctx, [], []);
+    const out = await run(executionResult, ctx, 'describe my sheet', [], []);
 
     const describe = toolCalls.find(t => t.name === 'describe_sheet');
     expect(describe).toBeTruthy();
@@ -174,8 +244,22 @@ describe('responseBuilder behavior', () => {
   it("uses cached sheetData row count for 'tell me about my data' (6 rows)", async () => {
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
 
-    // Encourage describe_sheet, but rely on cached sheetData for row count composition
-    const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null };
+    // Mock execution result with proper structure
+    const executionResult = {
+      intent: 'describe_data',
+      toolResults: [],
+      response: '',
+      enhancedResponse: '',
+      describeText: '',
+      didUpdateSheet: false,
+      dataTables: [], // Initialize as empty array
+      hasProposedUpdateTable: false,
+      quickReplies: [],
+      postQuickActions: [],
+      currentPlan: null,
+      plannedToolCalls: []
+    };
+    
     jest.doMock('../lib/chat/toolExecution', () => ({ executeToolCall: async (_toolCall: any) => ({ success: true, result: 'This sheet looks like sales data.' }) }));
 
     const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
@@ -189,7 +273,7 @@ describe('responseBuilder behavior', () => {
       ['2024-01-06','F','600'],
     ];
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Fuel Weekly Repo', sheetNames: ['Fuel Weekly Repo'], sheetHeaders: ['Date','Client','Sales'], sheetData: { 'Fuel Weekly Repo': table } };
-    const out = await run(plan, ctx, [], []);
+    const out = await run(executionResult, ctx, 'tell me about my data', [], []);
     // Must mention sheet and either "has 6 rows" or "has total rows: 6"
     expect(out.response).toMatch(/Fuel Weekly Repo/i);
     expect(/has\s*6\s*rows/i.test(out.response) || /has\s*total\s*rows\s*:\s*6/i.test(out.response)).toBe(true);
@@ -199,7 +283,23 @@ describe('responseBuilder behavior', () => {
     setFetchMock(async () => ({ ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }));
 
     const toolCalls: Array<{ name: string; args: any }> = [];
-    const plan = { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: { mode: 'text_summary' } }], toolChain: [], clarifyQuestion: null };
+    
+    // Mock execution result with proper structure
+    const executionResult = {
+      intent: 'describe_data',
+      toolResults: [],
+      response: '',
+      enhancedResponse: '',
+      describeText: '',
+      didUpdateSheet: false,
+      dataTables: [], // Initialize as empty array
+      hasProposedUpdateTable: false,
+      quickReplies: [],
+      postQuickActions: [],
+      currentPlan: null,
+      plannedToolCalls: []
+    };
+    
     jest.doMock('../lib/chat/toolExecution', () => ({
       executeToolCall: async (toolCall: any) => {
         const name = toolCall?.function?.name;
@@ -212,7 +312,7 @@ describe('responseBuilder behavior', () => {
 
     const { buildUserResponse: run } = require('../lib/chat/responseBuilder');
     const ctx: any = { spreadsheetId: 'abc', sheetName: 'Notes', sheetNames: ['Notes'], isNonTabular: true };
-    const out = await run(plan, ctx, [], []);
+    const out = await run(executionResult, ctx, 'describe my sheet', [], []);
     const describe = toolCalls.find(t => t.name === 'describe_sheet');
     expect(describe).toBeTruthy();
     if (describe) expect(describe.args.mode).toBe('text_summary');

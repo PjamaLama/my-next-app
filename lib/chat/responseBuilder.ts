@@ -124,6 +124,11 @@ export async function buildUserResponse(executionResult: any, context: Context, 
         plannedToolCalls 
     } = executionResult;
 
+    // Ensure dataTables is always an array
+    if (!Array.isArray(dataTables)) {
+        dataTables = [];
+    }
+
     const hasFiles = images && images.length > 0;
     const isFileOnly = hasFiles && (!message || message.trim() === '');
 
