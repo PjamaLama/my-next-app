@@ -4,6 +4,7 @@ import { executeToolCall } from './toolExecution';
 import { DataSource, SheetDataSource, FileDataSource } from '../data/source';
 import { executeToolPlan } from './executionOrchestrator';
 import { buildUserResponse } from './responseBuilder';
+import { handleFatalError, handleHydrationError, handleGenericHydrationError, createUserFriendlyError } from './errorHandling';
 
 // Enhanced describe_data with specific row insights for better conversationalism.
 // Helper: robustly extract headers from diverse tool response shapes
@@ -291,20 +292,7 @@ export async function processMessage(
               ctxAny.isNonTabular = true;
             }
           } catch (e: any) {
-            const msg = String(e?.message || e || 'Unknown error');
-            const errorMsg = `Failed to load '${sheetName}': ${msg}`;
-            
-            // Accumulate errors for multiple sheets
-            if (!Array.isArray(ctxAny.errors)) ctxAny.errors = [];
-            ctxAny.errors.push(errorMsg);
-            
-            // Set primary error for backward compatibility
-            if (sheetName === sheetNames[0]) {
-              ctxAny.error = errorMsg;
-              if (msg.includes('400')) ctxAny.error += ' (invalid sheet configuration)';
-              else if (msg.includes('403')) ctxAny.error += ' (check service account permissions)';
-              else if (msg.includes('404')) ctxAny.error += ' (tab not found)';
-            }
+            handleHydrationError(e, ctxAny, sheetName);
           }
         }
         
@@ -330,17 +318,7 @@ export async function processMessage(
         
         ctxAny._sheetHydratedAt = Date.now();
 			} catch (e: any) {
-				const name = String((ctxAny && ctxAny.sheetName) || '');
-				const msg = String(e?.message || e || 'Unknown error');
-				ctxAny.error = `Failed to load '${name}': ${msg}`;
-				if (msg.includes('400')) ctxAny.error += ' (invalid sheet configuration)';
-				else if (msg.includes('403')) ctxAny.error += ' (check service account permissions)';
-				else if (msg.includes('404')) ctxAny.error += ' (tab not found)';
-				ctxAny.sheetData = ctxAny.sheetData || {};
-				ctxAny.quickReplies = [
-					{ text: `Check tab: ${name}`, action: 'clarify_sheet' },
-					{ text: 'Retry', action: 'retry_hydration' }
-				];
+				handleGenericHydrationError(e, ctxAny);
       }
     };
 
@@ -409,16 +387,7 @@ export async function processMessage(
                 await hydrateSheetData(earlyDS, context as any);
               }
             } catch (e: any) {
-              try {
-                let errMsg = `Failed to load sheet '${sheetName}': ${e?.message || String(e)}`;
-                if (typeof e?.message === 'string' && /404/.test(e.message)) errMsg += ' (sheet not found)';
-                ctxAny.error = errMsg;
-                ctxAny.sheetData = {};
-                ctxAny._uiActions = ctxAny._uiActions || [];
-                ctxAny._uiActions.push({ text: 'Check sheet name', action: 'clarify_sheet' }, { text: 'Retry', action: 'retry_hydration' });
-                ctxAny._pendingQuickActions = Array.isArray(ctxAny._pendingQuickActions) ? ctxAny._pendingQuickActions : [];
-                ctxAny._pendingQuickActions.push('Check sheet name', 'Retry');
-              } catch {}
+                handleGenericHydrationError(e, context as any);
             }
           }
         }
@@ -426,29 +395,7 @@ export async function processMessage(
     } catch {}
 
     // After hydration attempts: if we captured a context error, prepare specific user guidance
-    try {
-      const ctxAny = context as any;
-      if (typeof ctxAny?.error === 'string' && ctxAny.error.trim()) {
-        const err = ctxAny.error as string;
-        const name = String(ctxAny.sheetName || '').trim();
-        let msg = '';
-        if (err.includes('404')) {
-          msg = `Sheet '${name}' not found. Did you mean another name?`;
-        } else if (err.includes('403')) {
-          msg = 'Permission issue with sheet access. Please check your credentials.';
-        } else {
-          msg = `Couldn't load '${name}': ${err}. Try another sheet or upload data.`;
-        }
-        ctxAny._specificErrorResponse = msg;
-        try {
-          ctxAny._uiActions = ctxAny._uiActions || [];
-          ctxAny._uiActions.push(
-            { text: 'Specify sheet name', action: 'clarify_sheet' },
-            { text: 'Upload file', action: 'upload' }
-          );
-        } catch {}
-      }
-    } catch {}
+    createUserFriendlyError(context as any);
 
     // Build an abstracted data source (sheet vs file)
     let dataSource: DataSource | null = null;
@@ -607,15 +554,6 @@ export async function processMessage(
     return await buildUserResponse(executionResult, context, message, conversationHistory, images);
 
   } catch (e: any) {
-    // eslint-disable-next-line no-console
-    console.error('[processMessage] FATAL', e);
-    return {
-      response: `An unexpected error occurred: ${e.message}`,
-      toolCalls: [],
-      pendingToolCalls: [],
-      toolResults: [],
-      context,
-      quickReplies: ['Start over']
-    };
+    return handleFatalError(e, context);
   }
 }
