@@ -121,8 +121,13 @@ export async function generatePlan(
   const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
   const prompt = buildPrompt(message, context, conversationHistory || [], !!hasFiles);
   const { text } = await ai.generate(prompt);
+  const plannerPlan = parsePlanResponse(text, context, message);
+  return plannerPlan;
+}
+
+function parsePlanResponse(aiResponse: string, context: Context, message: string): PlannerPlan {
   try {
-    let cleaned = String(text || '').trim();
+    let cleaned = String(aiResponse || '').trim();
     if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleaned);
     const intent: PlannerPlan['intent'] = ['describe_data', 'update_data', 'get_data', 'other'].includes(parsed.intent)
@@ -319,4 +324,5 @@ export async function generatePlan(
     }
     return { intent: 'get_data', tools: [{ name: 'get_sheet_data', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Fallback planner.', inferences: null };
   }
+}
 }
