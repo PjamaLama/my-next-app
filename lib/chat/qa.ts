@@ -54,495 +54,207 @@ function parseSimpleFilter(message: string): { columnQuery: string; value: strin
   return null;
 }
 
-export async function answerQuestionFromSheets(
-  message: string,
-  hydratedSheetData: Record<string, string[][]>,
-  selectedSheetNames: string[]
-): Promise<QAResult> {
-  // Non-tabular support: if caller marks context as non-tabular, accept a conventionally attached raw text table under a special key
-  // Note: processMessage will still call this with (sheetData, sheetNames); for non-tabular, we attempt a text QA path when the table looks unstructured
-  const flattenSheetData = (table?: string[][]): string => {
-    try {
-      if (!Array.isArray(table)) return '';
-      const lines = table.map(r => (Array.isArray(r) ? r.map(v => String(v ?? '')).join(' ') : '')).filter(Boolean);
-      const joined = lines.join('\n');
-      return joined.length > 20000 ? joined.slice(0, 20000) : joined;
-    } catch { return ''; }
-  };
+function classifyQueryType(message: string) {
+    const lower = message.toLowerCase();
+    return {
+        wantsSum: /(total|sum)\b/i.test(lower),
+        wantsAvg: /(average|avg|mean)\b/i.test(lower),
+        wantsMin: /\b(min|minimum|lowest|least)\b/i.test(lower),
+        wantsMax: /\b(max|maximum|highest|most)\b/i.test(lower),
+        wantsCount: /\b(count|how\s+many|number\s+of)\b/i.test(lower),
+        groupMatch: lower.match(/\b(?:by|per)\s+([a-z][a-z0-9_\s]{2,})/i),
+        wantsMargin: /\b(margin|profit|markup)\b/i.test(lower),
+    };
+}
 
-  if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) {
-    // Proactive fallback when no data is available: infer intent/topic from message/history
-    try {
-      const lower = (message || '').toLowerCase();
-      const topics: Array<{ key: string; pattern: RegExp }> = [
-        { key: 'sales', pattern: /\b(sales|revenue|income|turnover)\b/i },
-        { key: 'costs', pattern: /\b(costs?|expense|spend)\b/i },
-        { key: 'drivers', pattern: /\b(drivers?|operator)\b/i },
-        { key: 'vehicles', pattern: /\b(vehicles?|truck|car|fleet)\b/i },
-        { key: 'fuel', pattern: /\b(fuel|diesel|petrol|gas|lit(er|re)s?)\b/i },
-        { key: 'inventory', pattern: /\b(inventory|stock)\b/i },
-        { key: 'orders', pattern: /\b(orders?|purchases?)\b/i },
-        { key: 'customers', pattern: /\b(customers?|clients?)\b/i },
-        { key: 'regions', pattern: /\b(regions?|areas?|states?|provinces?)\b/i },
-        { key: 'dates', pattern: /\b(date|timestamp|time|today|yesterday|last\s+week)\b/i },
-        { key: 'margin', pattern: /\b(margin|profit|markup)\b/i }
-      ];
-      const found = topics.find(t => t.pattern.test(lower));
-      const topic = found ? found.key : 'your sheet';
-      const answer = `I couldn’t load your sheet data. If it’s about ${topic}, try specifying a sheet name or column.`;
-      return { answer };
-    } catch {}
-    return { answer: `I couldn’t load your sheet data. Try specifying a sheet name or column.` };
-  }
+function resolveQueryColumns(message: string, headers: string[], rows: string[][]) {
+    const metricIdx = (() => {
+        const hints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
+        const direct = resolveColumnIndex(headers, message, hints);
+        if (direct >= 0) return direct;
+        const fallback = headers.findIndex((_, i) => rows.some((r) => parseNumber(r[i]) != null));
+        return fallback >= 0 ? fallback : 0;
+    })();
 
-  const lower = message.toLowerCase();
-  const wantsSum = /(total|sum)\b/i.test(message);
-  const wantsAvg = /(average|avg|mean)\b/i.test(message);
-  const wantsMin = /\b(min|minimum|lowest|least)\b/i.test(message);
-  const wantsMax = /\b(max|maximum|highest|most)\b/i.test(message);
-  const wantsCount = /\b(count|how\s+many|number\s+of)\b/i.test(message);
-  const groupMatch = message.match(/\b(?:by|per)\s+([a-z][a-z0-9_\s]{2,})/i);
+    const productKeyIdx = (() => {
+        const idx = bestHeaderIndex(headers, 'product');
+        if (idx >= 0) return idx;
+        const hints = ['title', 'name', 'handle'];
+        for (const h of hints) { const i = bestHeaderIndex(headers, h); if (i >= 0) return i; }
+        return -1;
+    })();
 
-  const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
-  const sheetName = candidateNames.find((n) => lower.includes(normalizeToken(n))) || candidateNames[0];
-  const table = hydratedSheetData[sheetName] || [];
-  if (table.length === 0) return null;
+    const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
 
-  // If the table seems non-tabular (e.g., very few columns or highly sparse), route to text QA using Gemini
-  try {
-    const looksNonTabular = table.length > 0 && (table[0]?.length ?? 0) <= 1;
-    if (looksNonTabular) {
-      const textBlob = flattenSheetData(table);
-      if (textBlob) {
-        const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-        const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
-        const prompt = `You are answering questions over raw sheet text (notes/logs). Keep answers concise.
-Text:
-${textBlob}
+    return { metricIdx, productKeyIdx, dateIdx };
+}
 
-Question: ${message}
-Answer:`;
-        let ans = '';
-        try {
-          const out = await ai.generate(prompt);
-          ans = String(out?.text || '').trim();
-        } catch {}
-        if (ans) return { answer: ans };
-      }
-    }
-  } catch {}
-  const shaped = structureForDisplay(table);
-  const headers = shaped.headers;
-  const rows = shaped.rows;
-  if (headers.length === 0 || rows.length === 0) return null;
-
-  const range = detectDateWindow(message);
-  const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
-  const filtered = range && dateIdx >= 0
-    ? rows.filter((r) => {
-        const d = dayjs(String(r[dateIdx] || ''));
-        return d.isValid() && (d.isAfter(range.start) || d.isSame(range.start)) && (d.isBefore(range.end) || d.isSame(range.end));
-      })
-    : rows;
-
-  // Handle simple entity lookup questions like "who was the driver"
-  try {
-    const asksWho = /\bwho\b/i.test(message);
-    const mentionsDriver = /\b(driver|driver name|operator)\b/i.test(lower);
-    if (asksWho && mentionsDriver) {
-      const driverIdx = resolveColumnIndex(headers, message, COLUMN_SYNONYMS.driver);
-      if (driverIdx >= 0) {
-        // Prefer the latest by date when available; otherwise, use the last non-empty driver in the filtered window
-        let candidateRows = filtered.filter(r => String(r[driverIdx] ?? '').trim() !== '');
-        if (candidateRows.length > 0) {
-          if (dateIdx >= 0) {
-            candidateRows = candidateRows
-              .map(r => ({ r, d: dayjs(String(r[dateIdx] || '')) }))
-              .filter(x => x.d.isValid())
-              .sort((a, b) => a.d.valueOf() - b.d.valueOf())
-              .map(x => x.r);
-          }
-          const latest = candidateRows[candidateRows.length - 1];
-          const name = String(latest[driverIdx] ?? '').trim();
-          if (name) {
-            // If there are multiple drivers, optionally surface that there are others
-            const uniqueDrivers = Array.from(new Set(candidateRows.map(r => String(r[driverIdx] ?? '').trim()).filter(Boolean)));
-            const suffix = uniqueDrivers.length > 1 ? ` (latest${range?.label ? ` ${range.label}` : ''})` : '';
-            return { answer: `Driver: ${name}${suffix}.` };
-          }
-        }
-      }
-    }
-  } catch {}
-
-  // Generalized categorical Q&A: detect target categorical column via synonyms (e.g., town/city/location) and answer
-  try {
-    const wantsMost = /\b(most|top|frequent|often)\b/i.test(message);
-    const categoryKeys = Object.keys(COLUMN_SYNONYMS) as Array<keyof typeof COLUMN_SYNONYMS>;
-    // Determine which categorical column is referenced, if any
-    let targetKey: keyof typeof COLUMN_SYNONYMS | null = null;
-    let targetIdx = -1;
-    for (const key of categoryKeys) {
-      // Skip numeric-focused categories here
-      if (key === 'amount' || key === 'fuel' || key === 'margin') continue;
-      const synonyms = COLUMN_SYNONYMS[key];
-      if (synonyms.some(s => lower.includes(s))) {
-        const idx = resolveColumnIndex(headers, message, synonyms);
-        if (idx >= 0) {
-          targetKey = key;
-          targetIdx = idx;
-          break;
-        }
-      }
-    }
-
-    if (targetIdx >= 0) {
-      const nonEmpty = filtered.filter(r => String(r[targetIdx] ?? '').trim() !== '');
-      // Case A: Most/common value for the referenced categorical column
-      if (wantsMost && nonEmpty.length > 0) {
-        const counts = new Map<string, number>();
-        for (const r of nonEmpty) {
-          const v = String(r[targetIdx] ?? '').trim();
-          counts.set(v, (counts.get(v) || 0) + 1);
-        }
-        const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-        if (sorted.length > 0) {
-          const [topValue, topCount] = sorted[0];
-          const title = `${sheetName} · Most common ${headers[targetIdx]}` + (range?.label ? ` · ${range.label}` : '');
-          const tblHeaders = [headers[targetIdx], 'Count'];
-          const tblRows = sorted.slice(0, 10).map(([v, c]) => [v, String(c)]);
-          return {
-            answer: `Most common ${headers[targetIdx]}: ${topValue} (${topCount}).`,
-            tables: [{ title, headers: tblHeaders, rows: tblRows }]
-          };
-        }
-      }
-
-      // Case B: If a date window is present, return the value for the latest row in that window
-      if (range && nonEmpty.length > 0) {
-        let candidate = nonEmpty;
-        if (dateIdx >= 0) {
-          candidate = candidate
-            .map(r => ({ r, d: dayjs(String(r[dateIdx] || '')) }))
-            .filter(x => x.d.isValid())
-            .sort((a, b) => a.d.valueOf() - b.d.valueOf())
-            .map(x => x.r);
-        }
-        const latest = candidate[candidate.length - 1];
-        const value = String(latest[targetIdx] ?? '').trim();
-        if (value) {
-          return { answer: `${headers[targetIdx]}: ${value}${range?.label ? ` · ${range.label}` : ''}.` };
-        }
-      }
-
-      // Case C: Fallback — return the latest non-empty categorical value
-      if (nonEmpty.length > 0) {
-        let candidate = nonEmpty;
-        if (dateIdx >= 0) {
-          candidate = candidate
-            .map(r => ({ r, d: dayjs(String(r[dateIdx] || '')) }))
-            .filter(x => x.d.isValid())
-            .sort((a, b) => a.d.valueOf() - b.d.valueOf())
-            .map(x => x.r);
-        }
-        const latest = candidate[candidate.length - 1];
-        const value = String(latest[targetIdx] ?? '').trim();
-        if (value) {
-          return { answer: `${headers[targetIdx]}: ${value}.` };
-        }
-      }
-    }
-  } catch {}
-
-  const metricIdx = (() => {
-    const hints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
-    const direct = resolveColumnIndex(headers, message, hints);
-    if (direct >= 0) return direct;
-    const fallback = headers.findIndex((_, i) => filtered.some((r) => parseNumber(r[i]) != null));
-    return fallback >= 0 ? fallback : 0;
-  })();
-
-  const wantsMargin = /\b(margin|profit|markup)\b/i.test(message);
-  const productKeyIdx = (() => {
-    const idx = bestHeaderIndex(headers, 'product');
-    if (idx >= 0) return idx;
-    const hints = ['title', 'name', 'handle'];
-    for (const h of hints) { const i = bestHeaderIndex(headers, h); if (i >= 0) return i; }
-    return -1;
-  })();
-
-  const vals = filtered.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
-  if (vals.length === 0 && !wantsCount) return null;
-
-  const aggTitle = (t: string) => `${t}(${headers[metricIdx]})${range?.label ? ` · ${range.label}` : ''}`;
-  const baseTitle = `${sheetName}${range?.label ? ` · ${range.label}` : ''}`;
-
-  const filterSpec = parseSimpleFilter(message);
-  let rowsForAgg = filtered;
-  if (filterSpec) {
-    const idx = resolveColumnIndex(headers, filterSpec.columnQuery);
-    if (idx >= 0) {
-      rowsForAgg = filtered.filter((r) => {
-        const v = String(r[idx] ?? '').toLowerCase();
-        const q = filterSpec.value.toLowerCase();
-        return filterSpec.op === 'contains' ? v.includes(q) : v === q;
-      });
-    }
-  }
-
-  // Pick a likely item label column for row identification in follow-ups
-  const labelIdx = (() => {
-    const hints = ['product', 'title', 'name', 'handle'];
-    for (const h of hints) { const i = bestHeaderIndex(headers, h); if (i >= 0) return i; }
-    return -1;
-  })();
-
-  // Exact numeric target lookup, e.g. "which item cost 5700"
-  try {
-    const numericMatch = message.match(/\b(\d+(?:\.\d+)?)\b/);
-    if (numericMatch && labelIdx >= 0 && metricIdx >= 0) {
-      const target = parseFloat(numericMatch[1]);
-      if (Number.isFinite(target)) {
-        const matches = rowsForAgg.filter(r => {
-          const n = parseNumber(r[metricIdx]);
-          return n != null && Math.abs(n - target) < 1e-6;
-        });
-        if (matches.length > 0) {
-          const rowsOut = matches.slice(0, 10).map(r => [String(r[labelIdx] ?? ''), String(parseNumber(r[metricIdx]) ?? '')]);
-          return {
-            answer: `Item(s) with ${headers[metricIdx]} = ${target}: ${rowsOut[0][0]}${rowsOut.length > 1 ? ` (+${rowsOut.length - 1} more)` : ''}.`,
-            tables: [{ title: `${sheetName} · Matches`, headers: [headers[labelIdx], headers[metricIdx]], rows: rowsOut }]
-          };
-        }
-      }
-    }
-  } catch {}
-
-  if (wantsMargin) {
-    const priceIdxCandidates = ['price', 'sell price', 'list price', 'amount', 'total'];
-    const costIdxCandidates = ['cost', 'cost per item', 'item cost', 'avg cost', 'average cost'];
-    const priceIdx = resolveColumnIndex(headers, message, priceIdxCandidates);
-    const costIdx  = resolveColumnIndex(headers, message, costIdxCandidates);
-
-    if (priceIdx >= 0 && costIdx >= 0 && productKeyIdx >= 0) {
-      const map = new Map<string, { sum: number; count: number }>();
-      for (const r of rowsForAgg) {
-        const key = String(r[productKeyIdx] ?? 'Unknown');
-        const price = parseNumber(r[priceIdx]);
-        const cost  = parseNumber(r[costIdx]);
-        if (price != null && cost != null) {
-          const margin = price - cost;
-          const prev = map.get(key) || { sum: 0, count: 0 };
-          prev.sum += margin; prev.count += 1;
-          map.set(key, prev);
-        }
-      }
-      if (map.size > 0) {
-        const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, avg: v.count ? v.sum / v.count : 0, count: v.count }));
-        entries.sort((a, b) => b.avg - a.avg);
-
-        const top = entries.slice(0, 10);
-        const rowsOut = top.map(e => [e.key, String(Number(e.avg.toFixed(2))), String(e.count)]);
-        const tables: StructuredTable[] = [{
-          title: `${sheetName} · Best avg margin by ${headers[productKeyIdx]}`,
-          headers: [headers[productKeyIdx], 'Avg Margin', 'Count'],
-          rows: normalizeDateColumns([headers[productKeyIdx], 'Avg Margin', 'Count'], rowsOut)
-        }];
-        const best = top[0];
-        const answer = `Best average margin: ${best?.key ?? 'n/a'} (${best ? Number(best.avg.toFixed(2)) : 0}).`;
-        return { answer, tables };
-      }
-    }
-  }
-
-  if (groupMatch) {
-    const groupIdx = bestHeaderIndex(headers, groupMatch[1].trim());
-    if (groupIdx >= 0) {
-      const map = new Map<string, { sum: number; count: number; min: number; max: number }>();
-      for (const r of rowsForAgg) {
+function performAggregation(rows: string[][], metricIdx: number, groupIdx: number, operation: 'sum' | 'avg' | 'min' | 'max') {
+    const map = new Map<string, { sum: number; count: number; min: number; max: number }>();
+    for (const r of rows) {
         const key = String(r[groupIdx] ?? 'Unknown');
         const n = parseNumber(r[metricIdx]);
         if (!map.has(key)) map.set(key, { sum: 0, count: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY });
         const rec = map.get(key)!;
         if (n != null) {
-          rec.sum += n; rec.count += 1; rec.min = Math.min(rec.min, n); rec.max = Math.max(rec.max, n);
+            rec.sum += n; rec.count += 1; rec.min = Math.min(rec.min, n); rec.max = Math.max(rec.max, n);
         }
-      }
-      const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, ...v }));
-      const sortBy = wantsAvg ? (e: any) => (e.count ? e.sum / e.count : 0)
-                  : wantsMin ? (e: any) => e.min
-                  : wantsMax ? (e: any) => e.max
+    }
+    const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, ...v }));
+    const sortBy = operation === 'avg' ? (e: any) => (e.count ? e.sum / e.count : 0)
+                  : operation === 'min' ? (e: any) => e.min
+                  : operation === 'max' ? (e: any) => e.max
                   : (e: any) => e.sum;
-      entries.sort((a, b) => (sortBy(b) as number) - (sortBy(a) as number));
-      const top = entries.slice(0, 10);
-      const rowsOut = top.map(e => [e.key, String(Number(e.sum.toFixed(2))), String(e.count)]);
-      const tables: StructuredTable[] = [{
-        title: `${sheetName} · by ${headers[groupIdx]}${range?.label ? ` · ${range.label}` : ''}`,
-        headers: [headers[groupIdx], `Sum(${headers[metricIdx]})`, 'Count'],
-        rows: normalizeDateColumns([headers[groupIdx], `Sum(${headers[metricIdx]})`, 'Count'], rowsOut)
-      }];
-      const best = top[0];
-      if (!best) return null;
-      let metricValue: number;
-      if (wantsAvg) metricValue = best.count ? best.sum / best.count : 0;
-      else if (wantsMin) metricValue = best.min;
-      else if (wantsMax) metricValue = best.max;
-      else metricValue = best.sum;
-      const label = wantsAvg ? 'Average' : wantsMin ? 'Min' : wantsMax ? 'Max' : 'Total';
-      const answer = `${label} ${headers[metricIdx]} by ${headers[groupIdx]}: ${Number(metricValue.toFixed(2))} (top: ${best.key}).`;
-      return { answer, tables };
-    }
-  }
-
-  if (wantsCount) {
-    const uniqueHint = /(unique|distinct)\b/i.test(message);
-    const columnMatch = message.match(/\b(?:of|in|for)?\s*([a-z][a-z0-9_\s]{2,})\b(?:\s+column)?/i);
-    let direct = '';
-    if (columnMatch) direct = columnMatch[1].trim();
-    const idx = resolveColumnIndex(headers, direct || message);
-    if (idx >= 0 && (uniqueHint || /\b(products?|drivers?|vehicles?|items?)\b/i.test(message))) {
-      const values = rowsForAgg.map(r => String(r[idx] ?? '')).filter(v => v.trim() !== '');
-      const unique = new Set(values.map(v => v.toLowerCase())).size;
-      const label = headers[idx];
-      const answer = uniqueHint
-        ? `Distinct ${label}${range?.label ? ` ${range.label}` : ''}: ${unique}.`
-        : `Count of ${label}${range?.label ? ` ${range.label}` : ''}: ${values.length}.`;
-      return { answer };
-    }
-    const answer = `Count${range?.label ? ` ${range.label}` : ''}: ${rowsForAgg.length} row(s) in ${baseTitle}.`;
-    return { answer };
-  }
-  if (wantsSum || wantsAvg || wantsMin || wantsMax) {
-    const vals2 = rowsForAgg.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
-    const total = vals2.reduce((a, b) => a + b, 0);
-    const avg = vals2.length ? total / vals2.length : 0;
-    const min = vals2.length ? Math.min(...vals2) : 0;
-    const max = vals2.length ? Math.max(...vals2) : 0;
-    let answer = '';
-    let tables: StructuredTable[] | undefined;
-    if (wantsSum) answer = `${aggTitle('Sum')}: ${Number(total.toFixed(2))} across ${vals2.length} row(s) in ${baseTitle}.`;
-    else if (wantsAvg) answer = `${aggTitle('Average')}: ${Number(avg.toFixed(2))} over ${vals2.length} row(s) in ${baseTitle}.`;
-    else if (wantsMin || wantsMax) {
-      const target = wantsMin ? min : max;
-      if (labelIdx >= 0 && metricIdx >= 0 && Number.isFinite(target)) {
-        const items = rowsForAgg.filter(r => {
-          const n = parseNumber(r[metricIdx]);
-          return n != null && Math.abs(n - target) < 1e-6;
-        });
-        if (items.length > 0) {
-          const rowsOut = items.slice(0, 10).map(r => [String(r[labelIdx] ?? ''), String(parseNumber(r[metricIdx]) ?? '')]);
-          tables = [{ title: `${sheetName} · ${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}`, headers: [headers[labelIdx], headers[metricIdx]], rows: rowsOut }];
-          answer = `${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} — ${rowsOut[0][0]}${rowsOut.length > 1 ? ` (+${rowsOut.length - 1} more)` : ''}.`;
-        } else {
-          answer = `${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} in ${baseTitle}.`;
-        }
-      } else {
-        answer = `${wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} in ${baseTitle}.`;
-      }
-    }
-    return tables ? { answer, tables } : { answer };
-  }
-
-  // As a fallback for complex questions: Use LLM chain-of-thought with a safe pseudo-execution
-  try {
-    const sampleRows = rows.slice(0, 30);
-    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-    const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
-    const previewTable = [headers, ...sampleRows];
-    const prompt = `You are a spreadsheet QA assistant.
-Follow these steps strictly:
-Step 1: Understand the query.
-Step 2: Identify relevant columns and any filters from the provided headers/rows.
-Step 3: Reason step-by-step how to compute the answer.
-Step 4: Provide a concise final answer.
-Step 5: Suggest 1-2 novel insights about patterns or trends in the data (e.g., "Top 3 highest values are in rows X,Y,Z").
-Step 6: If visual would help (e.g., trends or comparisons), suggest a simple chart type: bar for comparisons, line for trends, pie for distributions.
-
-Return STRICT JSON only with fields: {"reasoning": string, "queryType": "aggregate"|"filter"|"text"|"other", "code": string, "answer": string, "insights": string[], "chart": {kind: "bar"|"line"|"pie", title: string, labels: string[], datasets: [{label: string, data: number[]}] } or null if no chart needed}
-- "code" should be short Python-like pseudocode using pandas (e.g., df['Sales'].sum(), df[df['Region']=='East']['Sales'].mean(), df.groupby('Region')['Sales'].sum().sort_values(desc=True).head(3)).
-- Keep reasoning concise (<= 3 sentences). Do NOT include any non-JSON text.
-
-User query: ${JSON.stringify(message)}
-Headers: ${JSON.stringify(headers)}
-Sample rows (CSV-like): ${JSON.stringify(previewTable)}
-`;
-    let text = '';
-    try {
-      const out = await ai.generate(prompt);
-      text = (out?.text || '').trim();
-    } catch {}
-    if (text.startsWith('```')) text = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(text);
-    const code: string = typeof parsed.code === 'string' ? parsed.code : '';
-    const llmAnswer: string = typeof parsed.answer === 'string' ? parsed.answer : '';
-    const insights: string[] = Array.isArray(parsed.insights) ? parsed.insights : [];
-    const chart = parsed.chart && typeof parsed.chart === 'object' ? parsed.chart : null;
-
-    // Simple pseudo-executor to simulate pandas-like snippets on our in-memory table
-    const runPseudo = (): { answer: string; tables?: StructuredTable[]; insights?: string[]; chart?: any } | null => {
-      try {
-        // groupby sum: df.groupby('X')['Y'].sum()
-        const mGroup = code.match(/groupby\(['"](.+?)['"]\).*?\['(.+?)'\]\.sum\(\)/i);
-        if (mGroup) {
-          const gCol = mGroup[1];
-          const yCol = mGroup[2];
-          const gIdx = headers.indexOf(gCol);
-          const yIdx = headers.indexOf(yCol);
-          if (gIdx >= 0 && yIdx >= 0) {
-            const map = new Map<string, number>();
-            for (const r of rows) {
-              const k = String(r[gIdx] ?? '');
-              const v = parseNumber(r[yIdx]);
-              if (v != null) map.set(k, (map.get(k) || 0) + v);
-            }
-            const entries = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-            const tbl: StructuredTable = {
-              title: `${sheetName} · Sum(${yCol}) by ${gCol}`,
-              headers: [gCol, `Sum(${yCol})`],
-              rows: entries.slice(0, 10).map(([k, v]) => [k, String(Number(v.toFixed(2)))]),
-            };
-            // Basic anomaly detection (z-score on group sums)
-            const values = entries.map(e => e[1]);
-            const mean = values.reduce((a,b)=>a+b,0) / Math.max(1, values.length);
-            const sd = Math.sqrt(values.reduce((a,b)=>a + (b-mean)*(b-mean), 0) / Math.max(1, values.length));
-            const anomalies = entries.filter(([,v]) => sd > 0 && Math.abs((v-mean)/sd) >= 2.5).map(e => e[0]);
-            const suffix = anomalies.length > 0 ? ` Possible anomalies: ${anomalies.slice(0,3).join(', ')}.` : '';
-            return { answer: `Top ${gCol} by total ${yCol}: ${entries[0]?.[0] ?? 'n/a'} (${Number((entries[0]?.[1] ?? 0).toFixed(2))}).${suffix}`, tables: [tbl], insights, chart };
-          }
-        }
-        // simple sum: df['Col'].sum()
-        const mSum = code.match(/\[['"](.+?)['"]\]\.sum\(\)/i);
-        if (mSum) {
-          const col = mSum[1];
-          const idx = headers.indexOf(col);
-          if (idx >= 0) {
-            const vals = rows.map(r => parseNumber(r[idx])).filter((n): n is number => n != null);
-            const total = vals.reduce((a,b)=>a+b,0);
-            return { answer: `Sum(${col}): ${Number(total.toFixed(2))}.`, insights, chart };
-          }
-        }
-        // filter mean: df[df['A']=="x"]["B"].mean()
-        const mFilterMean = code.match(/df\[df\[['"](.+?)['"]\]\s*([!=]=)\s*['"](.+?)['"]\]\[['"](.+?)['"]\]\.mean\(\)/i);
-        if (mFilterMean) {
-          const colA = mFilterMean[1]; const op = mFilterMean[2]; const val = mFilterMean[3]; const colB = mFilterMean[4];
-          const aIdx = headers.indexOf(colA); const bIdx = headers.indexOf(colB);
-          if (aIdx >= 0 && bIdx >= 0) {
-            const filt = rows.filter(r => (op === '==' ? String(r[aIdx]) === val : String(r[aIdx]) !== val));
-            const vals = filt.map(r => parseNumber(r[bIdx])).filter((n): n is number => n != null);
-            const avg = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : 0;
-            return { answer: `Average ${colB} where ${colA} ${op} ${val}: ${Number(avg.toFixed(2))}.`, insights, chart };
-          }
-        }
-      } catch {}
-      return null;
-    };
-
-    const sim = runPseudo();
-    if (sim) return sim;
-    if (llmAnswer) return { answer: llmAnswer, insights, chart };
-  } catch {}
-
-  return null;
+    entries.sort((a, b) => (sortBy(b) as number) - (sortBy(a) as number));
+    return entries;
 }
 
+function applyQueryFilters(rows: string[][], message: string, headers: string[]) {
+    const filterSpec = parseSimpleFilter(message);
+    if (filterSpec) {
+        const idx = resolveColumnIndex(headers, filterSpec.columnQuery);
+        if (idx >= 0) {
+            return rows.filter((r) => {
+                const v = String(r[idx] ?? '').toLowerCase();
+                const q = filterSpec.value.toLowerCase();
+                return filterSpec.op === 'contains' ? v.includes(q) : v === q;
+            });
+        }
+    }
+    return rows;
+}
 
+export async function answerQuestionFromSheets(
+    message: string,
+    hydratedSheetData: Record<string, string[][]>,
+    selectedSheetNames: string[]
+): Promise<QAResult> {
+    const flattenSheetData = (table?: string[][]): string => {
+        try {
+            if (!Array.isArray(table)) return '';
+            const lines = table.map(r => (Array.isArray(r) ? r.map(v => String(v ?? '')).join(' ') : '')).filter(Boolean);
+            const joined = lines.join('\n');
+            return joined.length > 20000 ? joined.slice(0, 20000) : joined;
+        } catch { return ''; }
+    };
+
+    if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) {
+        return { answer: `I couldn’t load your sheet data. Try specifying a sheet name or column.` };
+    }
+
+    const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
+    const sheetName = candidateNames.find((n) => message.toLowerCase().includes(normalizeToken(n))) || candidateNames[0];
+    const table = hydratedSheetData[sheetName] || [];
+    if (table.length === 0) return null;
+
+    const shaped = structureForDisplay(table);
+    const headers = shaped.headers;
+    let rows = shaped.rows;
+    if (headers.length === 0 || rows.length === 0) return null;
+
+    const { metricIdx, productKeyIdx, dateIdx } = resolveQueryColumns(message, headers, rows);
+    const queryType = classifyQueryType(message);
+
+    const range = detectDateWindow(message);
+    if (range && dateIdx >= 0) {
+        rows = rows.filter((r) => {
+            const d = dayjs(String(r[dateIdx] || ''));
+            return d.isValid() && (d.isAfter(range.start) || d.isSame(range.start)) && (d.isBefore(range.end) || d.isSame(range.end));
+        });
+    }
+
+    rows = applyQueryFilters(rows, message, headers);
+
+    if (queryType.groupMatch) {
+        const groupIdx = bestHeaderIndex(headers, queryType.groupMatch[1].trim());
+        if (groupIdx >= 0) {
+            const operation = queryType.wantsAvg ? 'avg' : queryType.wantsMin ? 'min' : queryType.wantsMax ? 'max' : 'sum';
+            const entries = performAggregation(rows, metricIdx, groupIdx, operation);
+            const top = entries.slice(0, 10);
+            const rowsOut = top.map(e => [e.key, String(Number(e.sum.toFixed(2))), String(e.count)]);
+            const tables: StructuredTable[] = [{
+                title: `${sheetName} · by ${headers[groupIdx]}${range?.label ? ` · ${range.label}` : ''}`,
+                headers: [headers[groupIdx], `Sum(${headers[metricIdx]})`, 'Count'],
+                rows: normalizeDateColumns([headers[groupIdx], `Sum(${headers[metricIdx]})`, 'Count'], rowsOut)
+            }];
+            const best = top[0];
+            if (!best) return null;
+            let metricValue: number;
+            if (queryType.wantsAvg) metricValue = best.count ? best.sum / best.count : 0;
+            else if (queryType.wantsMin) metricValue = best.min;
+            else if (queryType.wantsMax) metricValue = best.max;
+            else metricValue = best.sum;
+            const label = queryType.wantsAvg ? 'Average' : queryType.wantsMin ? 'Min' : queryType.wantsMax ? 'Max' : 'Total';
+            const answer = `${label} ${headers[metricIdx]} by ${headers[groupIdx]}: ${Number(metricValue.toFixed(2))} (top: ${best.key}).`;
+            return { answer, tables };
+        }
+    }
+
+    if (queryType.wantsCount) {
+        const uniqueHint = /(unique|distinct)\b/i.test(message);
+        const columnMatch = message.match(/\b(?:of|in|for)?\s*([a-z][a-z0-9_\s]{2,})\b(?:\s+column)?/i);
+        let direct = '';
+        if (columnMatch) direct = columnMatch[1].trim();
+        const idx = resolveColumnIndex(headers, direct || message);
+        if (idx >= 0 && (uniqueHint || /\b(products?|drivers?|vehicles?|items?)\b/i.test(message))) {
+            const values = rows.map(r => String(r[idx] ?? '')).filter(v => v.trim() !== '');
+            const unique = new Set(values.map(v => v.toLowerCase())).size;
+            const label = headers[idx];
+            const answer = uniqueHint
+                ? `Distinct ${label}${range?.label ? ` ${range.label}` : ''}: ${unique}.`
+                : `Count of ${label}${range?.label ? ` ${range.label}` : ''}: ${values.length}.`;
+            return { answer };
+        }
+        const answer = `Count${range?.label ? ` ${range.label}` : ''}: ${rows.length} row(s) in ${sheetName}.`;
+        return { answer };
+    }
+
+    if (queryType.wantsSum || queryType.wantsAvg || queryType.wantsMin || queryType.wantsMax) {
+        const vals = rows.map((r) => parseNumber(r[metricIdx])).filter((n): n is number => n != null);
+        const total = vals.reduce((a, b) => a + b, 0);
+        const avg = vals.length ? total / vals.length : 0;
+        const min = vals.length ? Math.min(...vals) : 0;
+        const max = vals.length ? Math.max(...vals) : 0;
+        let answer = '';
+        let tables: StructuredTable[] | undefined;
+        if (queryType.wantsSum) answer = `Sum(${headers[metricIdx]}): ${Number(total.toFixed(2))} across ${vals.length} row(s) in ${sheetName}.`;
+        else if (queryType.wantsAvg) answer = `Average(${headers[metricIdx]}): ${Number(avg.toFixed(2))} over ${vals.length} row(s) in ${sheetName}.`;
+        else if (queryType.wantsMin || queryType.wantsMax) {
+            const target = queryType.wantsMin ? min : max;
+            if (productKeyIdx >= 0 && metricIdx >= 0 && Number.isFinite(target)) {
+                const items = rows.filter(r => {
+                    const n = parseNumber(r[metricIdx]);
+                    return n != null && Math.abs(n - target) < 1e-6;
+                });
+                if (items.length > 0) {
+                    const rowsOut = items.slice(0, 10).map(r => [String(r[productKeyIdx] ?? ''), String(parseNumber(r[metricIdx]) ?? '')]);
+                    tables = [{ title: `${sheetName} · ${queryType.wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}`, headers: [headers[productKeyIdx], headers[metricIdx]], rows: rowsOut }];
+                    answer = `${queryType.wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} — ${rowsOut[0][0]}${rowsOut.length > 1 ? ` (+${rowsOut.length - 1} more)` : ''}.`;
+                } else {
+                    answer = `${queryType.wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} in ${sheetName}.`;
+                }
+            } else {
+                answer = `${queryType.wantsMin ? 'Min' : 'Max'} ${headers[metricIdx]}: ${Number(target.toFixed(2))} in ${sheetName}.`;
+            }
+        }
+        return tables ? { answer, tables } : { answer };
+    }
+
+    // Fallback to LLM for complex questions
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+    const previewTable = [headers, ...rows.slice(0, 30)];
+    const prompt = `You are a spreadsheet QA assistant. Answer the user query based on the provided data. Return a JSON object with "answer" and optional "insights" and "chart".\n\nUser query: ${JSON.stringify(message)}\nHeaders: ${JSON.stringify(headers)}\nSample rows (CSV-like): ${JSON.stringify(previewTable)}\n`;
+    try {
+        const out = await ai.generate(prompt);
+        const text = (out?.text || '').trim().replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(text);
+        return {
+            answer: parsed.answer || 'I am not sure how to answer that.',
+            insights: parsed.insights,
+            chart: parsed.chart,
+        };
+    } catch {
+        return { answer: 'I was unable to process the response from the model.' };
+    }
+}
