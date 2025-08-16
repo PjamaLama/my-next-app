@@ -1,0 +1,172 @@
+
+> my-next-app@0.1.0 test
+> jest --testPathPattern="intentDetection.test.ts" --debug --verbose
+
+{
+  "configs": [
+    {
+      "automock": false,
+      "cache": true,
+      "cacheDirectory": "C:\\Users\\marnu\\AppData\\Local\\Temp\\jest",
+      "clearMocks": false,
+      "collectCoverageFrom": [
+        "pages/api/**/*.ts",
+        "genkit/**/*.ts",
+        "!**/*.d.ts",
+        "!**/node_modules/**"
+      ],
+      "coverageDirectory": "D:\\Cursor Projects\\report_ai\\my-next-app\\coverage",
+      "coveragePathIgnorePatterns": [
+        "\\\\node_modules\\\\"
+      ],
+      "cwd": "D:\\Cursor Projects\\report_ai\\my-next-app",
+      "detectLeaks": false,
+      "detectOpenHandles": false,
+      "errorOnDeprecated": false,
+      "extensionsToTreatAsEsm": [],
+      "fakeTimers": {
+        "enableGlobally": false
+      },
+      "forceCoverageMatch": [],
+      "globals": {},
+      "haste": {
+        "computeSha1": false,
+        "enableSymlinks": false,
+        "forceNodeFilesystemAPI": true,
+        "throwOnModuleCollision": false
+      },
+      "id": "a1a5276d0ae08ddb422a6ee8f1bb00a7",
+      "injectGlobals": true,
+      "moduleDirectories": [
+        "node_modules"
+      ],
+      "moduleFileExtensions": [
+        "js",
+        "mjs",
+        "cjs",
+        "jsx",
+        "ts",
+        "tsx",
+        "json",
+        "node"
+      ],
+      "moduleNameMapper": [
+        [
+          "^@/(.*)$",
+          "D:\\Cursor Projects\\report_ai\\my-next-app\\$1"
+        ],
+        [
+          "^node-fetch$",
+          "D:\\Cursor Projects\\report_ai\\my-next-app\\__mocks__\\node-fetch.js"
+        ]
+      ],
+      "modulePathIgnorePatterns": [],
+      "openHandlesTimeout": 1000,
+      "prettierPath": "prettier",
+      "resetMocks": false,
+      "resetModules": false,
+      "restoreMocks": false,
+      "rootDir": "D:\\Cursor Projects\\report_ai\\my-next-app",
+      "roots": [
+        "D:\\Cursor Projects\\report_ai\\my-next-app"
+      ],
+      "runner": "D:\\Cursor Projects\\report_ai\\my-next-app\\node_modules\\jest-runner\\build\\index.js",
+      "sandboxInjectedGlobals": [],
+      "setupFiles": [],
+      "setupFilesAfterEnv": [
+        "D:\\Cursor Projects\\report_ai\\my-next-app\\jest.setup.js"
+      ],
+      "skipFilter": false,
+      "slowTestThreshold": 5,
+      "snapshotFormat": {
+        "escapeString": false,
+        "printBasicPrototype": false
+      },
+      "snapshotSerializers": [],
+      "testEnvironment": "D:\\Cursor Projects\\report_ai\\my-next-app\\node_modules\\jest-environment-node\\build\\index.js",
+      "testEnvironmentOptions": {},
+      "testLocationInResults": false,
+      "testMatch": [
+        "**/__tests__/**/*.test.ts"
+      ],
+      "testPathIgnorePatterns": [
+        "\\\\node_modules\\\\"
+      ],
+      "testRegex": [],
+      "testRunner": "D:\\Cursor Projects\\report_ai\\my-next-app\\node_modules\\jest-circus\\runner.js",
+      "transform": [
+        [
+          "^.+\\.tsx?$",
+          "D:\\Cursor Projects\\report_ai\\my-next-app\\node_modules\\ts-jest\\dist\\index.js",
+          {}
+        ]
+      ],
+      "transformIgnorePatterns": [
+        "\\\\node_modules\\\\",
+        "\\.pnp\\.[^\\\\]+$"
+      ],
+      "watchPathIgnorePatterns": []
+    }
+  ],
+  "globalConfig": {
+    "bail": 0,
+    "changedFilesWithAncestor": false,
+    "ci": false,
+    "collectCoverage": false,
+    "collectCoverageFrom": [
+      "pages/api/**/*.ts",
+      "genkit/**/*.ts",
+      "!**/*.d.ts",
+      "!**/node_modules/**"
+    ],
+    "coverageDirectory": "D:\\Cursor Projects\\report_ai\\my-next-app\\coverage",
+    "coverageProvider": "babel",
+    "coverageReporters": [
+      "json",
+      "text",
+      "lcov",
+      "clover"
+    ],
+    "detectLeaks": false,
+    "detectOpenHandles": false,
+    "errorOnDeprecated": false,
+    "expand": false,
+    "findRelatedTests": false,
+    "forceExit": false,
+    "json": false,
+    "lastCommit": false,
+    "listTests": false,
+    "logHeapUsage": false,
+    "maxConcurrency": 5,
+    "maxWorkers": 11,
+    "noStackTrace": false,
+    "nonFlagArgs": [],
+    "notify": false,
+    "notifyMode": "failure-change",
+    "onlyChanged": false,
+    "onlyFailures": false,
+    "openHandlesTimeout": 1000,
+    "passWithNoTests": false,
+    "projects": [],
+    "rootDir": "D:\\Cursor Projects\\report_ai\\my-next-app",
+    "runTestsByPath": false,
+    "seed": 877274989,
+    "skipFilter": false,
+    "snapshotFormat": {
+      "escapeString": false,
+      "printBasicPrototype": false
+    },
+    "testFailureExitCode": 1,
+    "testPathPattern": "intentDetection.test.ts",
+    "testSequencer": "D:\\Cursor Projects\\report_ai\\my-next-app\\node_modules\\@jest\\test-sequencer\\build\\index.js",
+    "testTimeout": 10000,
+    "updateSnapshot": "new",
+    "useStderr": false,
+    "verbose": true,
+    "watch": false,
+    "watchAll": false,
+    "watchman": true,
+    "workerThreads": false
+  },
+  "version": "29.7.0"
+}
