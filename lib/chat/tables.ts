@@ -77,17 +77,41 @@ function selectTableColumns(message: string, headers: string[]): number[] | null
 export function buildSmartTables(
   message: string,
   hydratedSheetData: Record<string, string[][]>,
-  selectedSheetNames: string[]
+  selectedSheetNames: string[],
+  intent?: string
 ): StructuredTable[] {
   if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return [];
 
-  const { wantAggregate, groupMatch, sheetName, table } = selectTableType(message, hydratedSheetData, selectedSheetNames);
+  // If intent is explicitly update_data, force editable table mode (no aggregation)
+  const { wantAggregate, groupMatch, sheetName, table } = intent === 'update_data' 
+    ? { 
+        wantAggregate: false, 
+        groupMatch: null, 
+        sheetName: selectedSheetNames.length > 0 ? selectedSheetNames[0] : Object.keys(hydratedSheetData)[0],
+        table: hydratedSheetData[selectedSheetNames.length > 0 ? selectedSheetNames[0] : Object.keys(hydratedSheetData)[0]] || []
+      }
+    : selectTableType(message, hydratedSheetData, selectedSheetNames);
+    
   if (table.length === 0) return [];
   
   const shaped = structureForDisplay(table);
   const headers = shaped.headers;
   const rows = shaped.rows;
   if (headers.length === 0 || rows.length === 0) return [];
+
+  // For update_data intent, show raw data without analysis
+  if (intent === 'update_data') {
+    const selectedIdxs = headers.map((_, i) => i).slice(0, 10); // Show first 10 columns
+    const outHeaders = selectedIdxs.map((i) => headers[i]);
+    const body = rows.slice(-20).map((r) => selectedIdxs.map((i) => String(r[i] ?? ''))); // Show last 20 rows
+    
+    return [{
+      title: `${sheetName} · Raw Data`,
+      headers: outHeaders,
+      rows: normalizeDateColumns(outHeaders, body),
+      summary: `Showing ${body.length} of ${rows.length} row(s) for editing.`
+    }];
+  }
 
   const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
   const range = detectDateWindow(message);

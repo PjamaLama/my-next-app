@@ -99,6 +99,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log(`API: Executing approved tool: ${name}`);
     console.log(`API: Tool arguments:`, args);
+    console.log(`API: Context received:`, context);
     console.log(`API: Received ${images?.length || 0} images`);
     console.log(`API: Images types:`, images?.map((img: ImageData) => img.mimeType) || []);
     console.log(`API: Gemini API key provided:`, !!apiKey);
@@ -262,21 +263,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'get_sheet_data':
         try {
-          return await handleGetSheetData(args, res);
+          return await handleGetSheetData(args, res, context);
         } catch (e) {
           return res.status(500).json({ success: false, error: 'Failed to get sheet data', details: e instanceof Error ? e.message : String(e) });
         }
 
       case 'get_sheet_stats':
         try {
-          return await handleGetSheetStats(args, res);
+          return await handleGetSheetStats(args, res, context);
         } catch (e) {
           return res.status(500).json({ success: false, error: 'Failed to get sheet stats', details: e instanceof Error ? e.message : String(e) });
         }
 
       case 'get_column_stats':
         try {
-          return await handleGetColumnStats(args, res);
+          return await handleGetColumnStats(args, res, context);
         } catch (e) {
           return res.status(500).json({ success: false, error: 'Failed to get column stats', details: e instanceof Error ? e.message : String(e) });
         }
@@ -795,11 +796,27 @@ function pickHeaderIndex(headers: string[], query: string): number {
   return best;
 }
 
-async function handleGetSheetStats(args: ToolArgs, res: NextApiResponse) {
+async function handleGetSheetStats(args: ToolArgs, res: NextApiResponse, context?: Context) {
   try {
-    const { spreadsheetId, sheetName } = args as any;
+    // Try to get spreadsheetId and sheetName from args first, then fall back to context
+    let { spreadsheetId, sheetName } = args as any;
+    
+    // If not in args, try to get from context
+    if (!spreadsheetId && context?.spreadsheetId) {
+      spreadsheetId = context.spreadsheetId as string;
+    }
+    
+    if (!sheetName && context?.sheetName) {
+      sheetName = context.sheetName as string;
+    }
+    
+    // Also check for sheetNames array in context
+    if (!sheetName && context?.sheetNames && Array.isArray(context.sheetNames) && context.sheetNames.length > 0) {
+      sheetName = context.sheetNames[0];
+    }
+    
     if (!spreadsheetId || !sheetName) {
-      return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required' });
+      return res.status(400).json({ success: false, error: 'spreadsheetId and sheetName are required. Please provide them in the tool arguments or ensure they are set in the context.' });
     }
 
     const sheets = await getGoogleSheetsClient();
@@ -836,11 +853,27 @@ async function handleGetSheetStats(args: ToolArgs, res: NextApiResponse) {
   }
 }
 
-async function handleGetColumnStats(args: ToolArgs, res: NextApiResponse) {
+async function handleGetColumnStats(args: ToolArgs, res: NextApiResponse, context?: Context) {
   try {
-    const { spreadsheetId, sheetName, column } = args as any;
+    // Try to get spreadsheetId and sheetName from args first, then fall back to context
+    let { spreadsheetId, sheetName, column } = args as any;
+    
+    // If not in args, try to get from context
+    if (!spreadsheetId && context?.spreadsheetId) {
+      spreadsheetId = context.spreadsheetId as string;
+    }
+    
+    if (!sheetName && context?.sheetName) {
+      sheetName = context.sheetName as string;
+    }
+    
+    // Also check for sheetNames array in context
+    if (!sheetName && context?.sheetNames && Array.isArray(context.sheetNames) && context.sheetNames.length > 0) {
+      sheetName = context.sheetNames[0];
+    }
+    
     if (!spreadsheetId || !sheetName || (!column && column !== 0)) {
-      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName and column are required' });
+      return res.status(400).json({ success: false, error: 'spreadsheetId, sheetName and column are required. Please provide them in the tool arguments or ensure they are set in the context.' });
     }
 
     const sheets = await getGoogleSheetsClient();
@@ -1568,14 +1601,29 @@ function formatAnalysesAsMarkdown(analyses: Array<{ index: number; type: string;
 
 
 
-async function handleGetSheetData(args: ToolArgs, res: NextApiResponse) {
+async function handleGetSheetData(args: ToolArgs, res: NextApiResponse, context?: Context) {
   try {
-    const { spreadsheetId, sheetName } = args;
+    // Try to get spreadsheetId and sheetName from args first, then fall back to context
+    let { spreadsheetId, sheetName } = args;
+    
+    // If not in args, try to get from context
+    if (!spreadsheetId && context?.spreadsheetId) {
+      spreadsheetId = context.spreadsheetId as string;
+    }
+    
+    if (!sheetName && context?.sheetName) {
+      sheetName = context.sheetName as string;
+    }
+    
+    // Also check for sheetNames array in context
+    if (!sheetName && context?.sheetNames && Array.isArray(context.sheetNames) && context.sheetNames.length > 0) {
+      sheetName = context.sheetNames[0];
+    }
 
     if (!spreadsheetId || !sheetName) {
       return res.status(400).json({
         success: false,
-        error: 'Spreadsheet ID and sheet name are required'
+        error: 'Spreadsheet ID and sheet name are required. Please provide them in the tool arguments or ensure they are set in the context.'
       });
     }
 

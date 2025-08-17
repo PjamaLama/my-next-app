@@ -7,6 +7,75 @@ import { composeGroundedReply } from './replyComposer';
 import { generateQuickReplies } from './quickReplies';
 import { SheetDataSource } from '../data/source';
 
+// Helper function to get cached headers from context
+const getCachedHeaders = (context: Context): string[] => {
+  try {
+    const ctxAny = context as any;
+    console.log('[getCachedHeaders] Context:', {
+      sheetHeaders: ctxAny?.sheetHeaders,
+      sheetData: ctxAny?.sheetData ? Object.keys(ctxAny.sheetData) : 'none',
+      sheetNames: ctxAny?.sheetNames
+    });
+    
+    // Try to get headers from sheetHeaders first
+    if (Array.isArray(ctxAny?.sheetHeaders) && ctxAny.sheetHeaders.length > 0) {
+      console.log('[getCachedHeaders] Using sheetHeaders:', ctxAny.sheetHeaders);
+      return ctxAny.sheetHeaders;
+    }
+    
+    // Fallback to extracting headers from sheetData
+    if (ctxAny?.sheetData && typeof ctxAny.sheetData === 'object') {
+      const sheetNames = Array.isArray(ctxAny.sheetNames) ? ctxAny.sheetNames : [];
+      const primarySheet = sheetNames.length > 0 ? sheetNames[0] : Object.keys(ctxAny.sheetData)[0];
+      
+      if (primarySheet && Array.isArray(ctxAny.sheetData[primarySheet]) && ctxAny.sheetData[primarySheet].length > 0) {
+        const headers = ctxAny.sheetData[primarySheet][0] || [];
+        console.log('[getCachedHeaders] Using sheetData headers from', primarySheet, ':', headers);
+        return headers;
+      }
+    }
+    
+    // Default headers if nothing is available
+    console.log('[getCachedHeaders] Using default headers');
+    return ['Column 1', 'Column 2', 'Column 3'];
+  } catch (error) {
+    console.error('[getCachedHeaders] Error:', error);
+    return ['Column 1', 'Column 2', 'Column 3'];
+  }
+};
+
+// Helper function to build editable table for update_data intents
+const buildEditableTable = (context: Context, intent: string, error?: any, proposedRow?: any[]): StructuredTable | null => {
+  if (intent !== 'update_data') {
+    return null;
+  }
+  
+  try {
+    const headers = getCachedHeaders(context);
+    const tableData = proposedRow ? [proposedRow] : [new Array(headers.length).fill('')];
+    
+    const table: StructuredTable = {
+      title: 'Editable Data Table',
+      headers,
+      rows: tableData,
+      summary: 'Edit the data below and retry the update',
+      meta: { 
+        editable: true,
+        buttons: ['approve', 'edit', 'reject'],
+        type: 'editable'
+      }
+    };
+    
+    if (error) {
+      table.summary = `Error occurred: ${String(error?.message || error || 'Unknown error')}. Edit the table below and retry.`;
+    }
+    
+    return table;
+  } catch {
+    return null;
+  }
+};
+
 // Helper function to build combined table for multiple sheets
 const buildCombinedSheetTable = (sheetData: Record<string, string[][]>, sheetNames: string[]): StructuredTable | null => {
     try {
@@ -148,9 +217,12 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
     const wantsExplicitDataView2 = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
     const suppressTablesForCharts2 = wantCharts && !wantsExplicitDataView2;
-    if (!hasProposedUpdateTable && !hasFiles && !suppressTablesForCharts2 && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView2)) {
+    // For update_data intents, suppress smart tables (including stats) and prioritize editable tables
+    if (intent === 'update_data') {
+      // Skip smart tables for update intents - we want editable tables instead
+    } else if (!hasProposedUpdateTable && !hasFiles && !suppressTablesForCharts2 && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView2)) {
       try {
-        const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames);
+        const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames, intent);
         if (smart.length > 0) dataTables.push(...smart);
         
         // Add combined table for multiple sheets if available
@@ -161,6 +233,25 @@ export async function buildUserResponse(executionResult: any, context: Context, 
           }
         }
       } catch {}
+    }
+
+    // Always ensure editable table for update_data intents
+    if (intent === 'update_data') {
+      try {
+        // Check if we already have an editable table
+        const hasEditableTable = dataTables.some((t: StructuredTable) => t.meta?.editable === true);
+        
+        if (!hasEditableTable) {
+          // Build editable table with current context
+          const editableTable = buildEditableTable(context, intent);
+          if (editableTable) {
+            dataTables.push(editableTable);
+            console.log('[ResponseBuilder] Built editable table for update_data intent:', editableTable);
+          }
+        }
+      } catch (error) {
+        console.error('[ResponseBuilder] Error building editable table:', error);
+      }
     }
 
     // per-file preview tables built strictly one table per file
@@ -341,7 +432,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
       const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
       const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
-      if (!hasProposedUpdateTable && hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts) {
+      if (!hasProposedUpdateTable && hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts && intent !== 'update_data') {
         const historySummary = summarizeHistory(context);
         const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}\n\nIf query is vague, provide a high-level overview of the data.`, hydratedForQA, selectedForQA);
         if (qa) {
@@ -361,7 +452,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       }
     } catch {}
     try {
-      if (wantStats && charts.length > 0) {
+      if (wantStats && charts.length > 0 && intent !== 'update_data') {
         for (const ch of charts.slice(0, 2)) {
           if (ch.kind === 'line' && ch.labels.length >= 3 && ch.datasets[0]?.data?.length === ch.labels.length) {
             const y = ch.datasets[0].data;
@@ -477,6 +568,30 @@ export async function buildUserResponse(executionResult: any, context: Context, 
         response = `Update failed: ${err || 'Unknown error'}. Try again?`;
         const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
         quickReplies = Array.from(new Set([...baseQR, 'Retry', 'Cancel'])).slice(0, 5);
+        
+        // For update_data intents, ensure we have an editable table even on errors
+        if (intent === 'update_data') {
+          try {
+            // Extract proposed row from failed update tool results if available
+            let proposedRow: any[] | undefined;
+            const failedUpdate = (toolResults || []).find((r: any) => {
+              const name = String(r?.tool || r?.name || '').toLowerCase();
+              const isUpdate = name.includes('update_sheet') || name.includes('apply_structured_rows');
+              return isUpdate && r && r.success === false;
+            });
+            
+            if (failedUpdate?.preview || failedUpdate?.proposedRow) {
+              proposedRow = failedUpdate.preview || failedUpdate.proposedRow;
+            }
+            
+            // Build editable table with error context
+            const editableTable = buildEditableTable(context, intent, err, proposedRow);
+            if (editableTable) {
+              // Add to dataTables so it gets processed with other tables
+              dataTables.push(editableTable);
+            }
+          } catch {}
+        }
       }
     } catch {}
 
@@ -485,13 +600,38 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       ...t,
       rows: normalizeDateColumns(t.headers, t.rows)
     }));
-    // If a proposed updates table exists, prefer showing only that table to avoid noise
-    try {
-      const idx = normalizedTables.findIndex((t: StructuredTable) => /proposed sheet updates/i.test(String(t.title)));
-      if (idx >= 0) {
-        normalizedTables = [normalizedTables[idx]];
+    // For update_data intents, prioritize editable tables and suppress other tables
+    if (intent === 'update_data') {
+      try {
+        console.log('[ResponseBuilder] Processing update_data intent, current tables:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
+        
+        // Check if we have an editable table
+        const hasEditableTable = normalizedTables.some((t: StructuredTable) => t.meta?.editable === true);
+        console.log('[ResponseBuilder] Has editable table:', hasEditableTable);
+        
+        if (hasEditableTable) {
+          // Show only the editable table for update intents
+          const editableTables = normalizedTables.filter((t: StructuredTable) => t.meta?.editable === true);
+          console.log('[ResponseBuilder] Filtered to editable tables:', editableTables.length);
+          if (editableTables.length > 0) {
+            normalizedTables = editableTables;
+            console.log('[ResponseBuilder] Final tables for update_data:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
+          }
+        } else {
+          console.log('[ResponseBuilder] No editable table found, keeping all tables');
+        }
+      } catch (error) {
+        console.error('[ResponseBuilder] Error processing update_data tables:', error);
       }
-    } catch {}
+    } else {
+      // If a proposed updates table exists, prefer showing only that table to avoid noise
+      try {
+        const idx = normalizedTables.findIndex((t: StructuredTable) => /proposed sheet updates/i.test(String(t.title)));
+        if (idx >= 0) {
+          normalizedTables = [normalizedTables[idx]];
+        }
+      } catch {}
+    }
 
     // If user wanted charts/graphs and did not explicitly ask for table/data view, suppress tables unless they came from file uploads
     try {
@@ -572,6 +712,42 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       } catch {
         response = (enhancedResponse || '').trim() || 'Applied updates.';
       }
+    }
+
+    // Always build editable table for update_data intents, even on errors
+    if (intent === 'update_data') {
+      try {
+        // Check if we already have a proposed update table
+        const hasProposedTable = normalizedTables.some((t: StructuredTable) => /proposed sheet updates/i.test(String(t.title)));
+        
+        if (!hasProposedTable) {
+          // Extract proposed row from tool results if available
+          let proposedRow: any[] | undefined;
+          try {
+            const updateResults = (toolResults || []).filter((r: any) => {
+              const name = String(r?.tool || r?.name || '').toLowerCase();
+              return name.includes('update_sheet') || name.includes('apply_structured_rows');
+            });
+            
+            if (updateResults.length > 0) {
+              const lastUpdate = updateResults[updateResults.length - 1];
+              if (lastUpdate?.preview || lastUpdate?.proposedRow) {
+                proposedRow = lastUpdate.preview || lastUpdate.proposedRow;
+              }
+            }
+          } catch {}
+          
+          // Build editable table with error context if available
+          const ctxAny = context as any;
+          const error = ctxAny?.error || (toolResults || []).find((r: any) => r?.success === false);
+          
+          const editableTable = buildEditableTable(context, intent, error, proposedRow);
+          if (editableTable) {
+            // Insert editable table at the beginning to prioritize it
+            normalizedTables.unshift(editableTable);
+          }
+        }
+      } catch {}
     }
 
     // Compose a grounded conversational reply if we still don't have a response
@@ -713,6 +889,14 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       } catch { return r; }
     });
 
+    // Final logging to see what we're returning
+    console.log('[ResponseBuilder] Final return - intent:', intent, 'tables:', normalizedTables.map((t: StructuredTable) => ({ 
+      title: t.title, 
+      meta: t.meta,
+      headers: t.headers?.length || 0,
+      rows: t.rows?.length || 0
+    })));
+    
     return {
       response: response || 'Sorry, I am not sure how to handle that.',
       toolCalls: [],

@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { createLogger } from '@/lib/logger';
+import { setTimeout } from 'timers/promises';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
@@ -30,7 +31,7 @@ export const getGoogleSheetsClient = async (retries = 3) => {
       // Add timeout for authorization
       const authPromise = client.authorize();
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error(`Authentication timeout after ${Math.round(AUTH_TIMEOUT_MS / 1000)} seconds`)), AUTH_TIMEOUT_MS)
+        setTimeout(AUTH_TIMEOUT_MS).then(() => reject(new Error(`Authentication timeout after ${Math.round(AUTH_TIMEOUT_MS / 1000)} seconds`)))
       );
 
       await Promise.race([authPromise, timeoutPromise]);
@@ -39,10 +40,18 @@ export const getGoogleSheetsClient = async (retries = 3) => {
       const sheets = google.sheets({ version: 'v4', auth: client });
       cachedSheets = sheets;
       cachedAt = Date.now();
-      return cachedSheets;
+      return sheets;
       
     } catch (error) {
       log.warn(`Authentication attempt ${attempt} failed`, error);
+      
+      // Handle ETIMEDOUT errors specifically with exponential backoff
+      if (error instanceof Error && error.message.includes('timeout') && attempt < retries) {
+        const backoffTime = 1000 * Math.pow(2, attempt - 1); // Backoff: 1s, 2s, 4s
+        log.debug(`Authentication timeout, retrying in ${backoffTime/1000}s...`);
+        await setTimeout(backoffTime);
+        continue;
+      }
       
       if (attempt === retries) {
         log.error(`All ${retries} authentication attempts failed`);
@@ -52,7 +61,7 @@ export const getGoogleSheetsClient = async (retries = 3) => {
       // Wait before retrying (exponential backoff)
       const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
       log.debug(`Waiting ${waitTime/1000}s before retry...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+        await setTimeout(waitTime);
     }
   }
   
@@ -105,7 +114,7 @@ export const getRange = async (
       log.warn(`getRange failed (attempt ${attempt}) for ${spreadsheetId} ${range}`, e as any);
       if (attempt < Math.max(1, retries + 1)) {
         const backoff = attempt * 500;
-        await new Promise(r => setTimeout(r, backoff));
+        await setTimeout(backoff);
       }
     }
   }

@@ -47,6 +47,9 @@ export type StructuredTable = {
     fileName?: string;
     combined?: boolean;
     empty?: boolean;
+    editable?: boolean;
+    buttons?: string[];
+    type?: string;
   };
 };
 

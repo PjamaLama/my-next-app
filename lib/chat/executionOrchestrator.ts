@@ -120,6 +120,152 @@ function buildProposedUpdatesTable(preview: any, sheetHeaders?: string[]): Struc
   return { title, headers: headersWithAction, rows } as any;
 }
 
+// New function to handle tool selection and argument propagation for update_data intents
+async function executeTool(intent: string, message: string, context: { spreadsheetId?: string; sheetName?: string }) {
+  if (intent === 'update_data') {
+    if (!context.spreadsheetId || !context.sheetName) {
+      throw new Error('Missing spreadsheetId or sheetName from context');
+    }
+    
+    try {
+      // Create a SheetDataSource to get headers
+      const ds = new SheetDataSource(
+        context.spreadsheetId,
+        context.sheetName,
+        undefined, // baseUrl
+        '', // userId
+        context as any
+      );
+      
+      const headers = await ds.getHeaders();
+      
+      if (!Array.isArray(headers) || headers.length === 0) {
+        throw new Error('Failed to retrieve sheet headers');
+      }
+      
+      const proposedRow = parseMessageToRow(message, headers);
+      
+      // Validate that we have some meaningful data in the proposed row
+      const hasData = proposedRow.some((cell, index) => {
+        // Skip date columns as they're auto-filled
+        const header = headers[index];
+        if (/date|Date|DATE/.test(header)) return false;
+        return cell && cell.toString().trim().length > 0;
+      });
+      
+      if (!hasData) {
+        console.warn('[executeTool] No meaningful data extracted from message for update_data intent');
+      }
+      
+      // Return the tool call structure that matches the expected format
+      return {
+        id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type: 'function',
+        function: { 
+          name: 'prepare_update_data', 
+          arguments: JSON.stringify({ 
+            ...context, 
+            proposedRow, 
+            range: 'A:Z',
+            headers,
+            message, // Include original message for context
+            timestamp: new Date().toISOString()
+          }) 
+        }
+      };
+    } catch (error) {
+      console.error('[executeTool] Error creating update_data tool call:', error);
+      throw new Error(`Failed to prepare update_data tool: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  } else {
+    // Return default tool call for other intents
+    return {
+      id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: 'function',
+      function: { 
+        name: 'get_sheet_data', 
+        arguments: JSON.stringify({ ...context }) 
+      }
+    };
+  }
+}
+
+function parseMessageToRow(message: string, headers: string[]) {
+  const row = new Array(headers.length).fill('');
+  const messageLower = message.toLowerCase();
+  
+  // Enhanced pattern matching for common column types
+  // Date columns
+  headers.forEach((header, index) => {
+    if (/date|Date|DATE/.test(header)) {
+      const today = new Date().toLocaleDateString('en-US');
+      row[index] = today;
+    }
+  });
+  
+  // Client/Contact columns
+  if (headers.includes('CLIENT SEEN')) {
+    const match = message.match(/see (\w+)/i);
+    if (match) row[headers.indexOf('CLIENT SEEN')] = match[1];
+  }
+  
+  if (headers.includes('CLIENT')) {
+    const match = message.match(/client[:\s]+(\w+)/i) || message.match(/for (\w+)/i);
+    if (match) row[headers.indexOf('CLIENT')] = match[1];
+  }
+  
+  // Location columns
+  if (headers.includes('TOWN')) {
+    const match = message.match(/in (\w+)/i) || message.match(/town[:\s]+(\w+)/i);
+    if (match) row[headers.indexOf('TOWN')] = match[1];
+  }
+  
+  if (headers.includes('LOCATION')) {
+    const match = message.match(/at (\w+)/i) || message.match(/location[:\s]+(\w+)/i);
+    if (match) row[headers.indexOf('LOCATION')] = match[1];
+  }
+  
+  // Sales/Revenue columns
+  if (headers.includes('SALES MADE')) {
+    const match = message.match(/sale[s]? (\w+)/i) || message.match(/sold (\w+)/i);
+    if (match) row[headers.indexOf('SALES MADE')] = match[1];
+  }
+  
+  if (headers.includes('AMOUNT')) {
+    const match = message.match(/\$?(\d+(?:\.\d{2})?)/i) || message.match(/amount[:\s]+(\d+)/i);
+    if (match) row[headers.indexOf('AMOUNT')] = match[1];
+  }
+  
+  // Status columns
+  if (headers.includes('STATUS')) {
+    if (messageLower.includes('completed') || messageLower.includes('done')) {
+      row[headers.indexOf('STATUS')] = 'Completed';
+    } else if (messageLower.includes('pending') || messageLower.includes('waiting')) {
+      row[headers.indexOf('STATUS')] = 'Pending';
+    }
+  }
+  
+  // Notes/Description columns
+  if (headers.includes('NOTES') || headers.includes('DESCRIPTION')) {
+    const headerName = headers.includes('NOTES') ? 'NOTES' : 'DESCRIPTION';
+    // Extract meaningful content, excluding common filler words
+    const meaningfulWords = message
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !['the', 'and', 'for', 'with', 'in', 'on', 'at', 'to'].includes(word.toLowerCase()))
+      .slice(0, 5) // Limit to first 5 meaningful words
+      .join(' ');
+    if (meaningfulWords) row[headers.indexOf(headerName)] = meaningfulWords;
+  }
+  
+  // Time columns
+  if (headers.includes('TIME')) {
+    const timeMatch = message.match(/(\d{1,2}:\d{2}(?:\s*[ap]m)?)/i);
+    if (timeMatch) row[headers.indexOf('TIME')] = timeMatch[1];
+  }
+  
+  return row;
+}
+
 export async function executeToolPlan(
   message: string,
   context: Context,
@@ -215,11 +361,43 @@ export async function executeToolPlan(
     }
 
     const toolsFromPlan = Array.isArray(plan?.tools) ? plan.tools : [];
-    plannedToolCalls = toolsFromPlan.map((t: any) => ({
-      id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      type: 'function',
-      function: { name: String(t?.name || ''), arguments: JSON.stringify(t?.args || {}) },
-    }));
+    
+    // Use the new executeTool function for update_data intents to ensure proper argument propagation
+    if (intent === 'update_data') {
+      try {
+        const ctxAny = context as any;
+        const spreadsheetId = ctxAny?.spreadsheetId;
+        const sheetName = ctxAny?.sheetName;
+        
+        if (spreadsheetId && sheetName) {
+          // Use the dedicated executeTool function for update_data intents
+          const toolCall = await executeTool(intent, message, { spreadsheetId, sheetName });
+          plannedToolCalls = [toolCall];
+        } else {
+          // Fallback to original logic if context is missing
+          plannedToolCalls = toolsFromPlan.map((t: any) => ({
+            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: { name: String(t?.name || ''), arguments: JSON.stringify(t?.args || {}) },
+          }));
+        }
+      } catch (error) {
+        console.warn('[executeToolPlan] Failed to use executeTool for update_data intent:', error);
+        // Fallback to original logic
+        plannedToolCalls = toolsFromPlan.map((t: any) => ({
+          id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'function',
+          function: { name: String(t?.name || ''), arguments: JSON.stringify(t?.args || {}) },
+        }));
+      }
+    } else {
+      // Use original logic for non-update_data intents
+      plannedToolCalls = toolsFromPlan.map((t: any) => ({
+        id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type: 'function',
+        function: { name: String(t?.name || ''), arguments: JSON.stringify(t?.args || {}) },
+      }));
+    }
 
     // If planner provided a dependency-aware toolChain, execute it here with parallelization
     let _chainCollected: any[] = [];
@@ -267,11 +445,42 @@ export async function executeToolPlan(
             completed.add(idx);
             return stub;
           }
-          const call = {
-            id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            type: 'function',
-            function: { name: String(step.toolName || ''), arguments: JSON.stringify(step.params || {}) }
-          } as any;
+          // For update_data intents, ensure proper argument propagation
+          let call: any;
+          if (intent === 'update_data' && step.toolName === 'prepare_update_data') {
+            try {
+              const ctxAny = context as any;
+              const spreadsheetId = ctxAny?.spreadsheetId;
+              const sheetName = ctxAny?.sheetName;
+              
+              if (spreadsheetId && sheetName) {
+                // Use executeTool to ensure proper argument structure
+                call = await executeTool(intent, message, { spreadsheetId, sheetName });
+              } else {
+                // Fallback to original structure
+                call = {
+                  id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'function',
+                  function: { name: String(step.toolName || ''), arguments: JSON.stringify(step.params || {}) }
+                };
+              }
+            } catch (error) {
+              console.warn('[executeToolPlan] Failed to use executeTool in tool chain:', error);
+              // Fallback to original structure
+              call = {
+                id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: 'function',
+                function: { name: String(step.toolName || ''), arguments: JSON.stringify(step.params || {}) }
+              };
+            }
+          } else {
+            // Original structure for non-update_data tools
+            call = {
+              id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              type: 'function',
+              function: { name: String(step.toolName || ''), arguments: JSON.stringify(step.params || {}) }
+            };
+          }
           let res = await executeToolCall(call, context, images);
           if (!res?.success && step.fallback && step.fallback.toolName) {
             const fb = {

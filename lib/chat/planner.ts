@@ -1,6 +1,7 @@
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 import { Context, ConversationHistoryItem } from './types';
+import { detectIntent } from './intentDetection';
 
 // Helper function to detect if a row likely matches existing data
 function detectExistingRow(row: Record<string, unknown>, headers: string[], sheetData: string[][]): boolean {
@@ -47,7 +48,7 @@ export type PlannerPlan = {
 // - For updates, enforce a single-path using apply_structured_rows with dryRun: true
 // - No sheet-specific rules or hard-coded mappings
 
-function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean): string {
+function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean, detectedIntent: string): string {
   // Preserve placeholders in the template, but also include resolved context for grounding and tests
   const headers: string[] = Array.isArray((context as any)?.sheetHeaders)
     ? ((context as any).sheetHeaders as string[])
@@ -91,6 +92,8 @@ Sample recent rows: ${sheetDataSample || 'No recent rows available'}
 
 User query: ${JSON.stringify(message)}
 
+IMPORTANT: Enhanced intent detection suggests the user's intent is likely: "${detectedIntent}"
+
 Decide the user's intent from: 'update_data', 'describe_data', 'get_data', or 'other'.
 
 Principles:
@@ -103,6 +106,12 @@ Principles:
 - For describe/get requests, you may include a toolChain (e.g., get_sheet_data → aggregate), or leave it empty.
 - For multi-sheet contexts (sheetNames >1), plan tools across sheets if query spans them (e.g., aggregate from all). For updates, set primarySheet to first in sheetNames, or clarifyQuestion if ambiguous.
 - Infer missing values from patterns in sheetData (e.g., if recent rows have similar Driver, prefill it). Only clarify if inference confidence low (<70%). For updates, output partial rows with inferred fields marked (e.g., {column: "inferred value from pattern"}).
+
+INTENT GUIDANCE:
+- If enhanced detection suggests "update_data": Strongly consider this intent unless the message clearly contradicts it
+- If enhanced detection suggests "get_data": The user likely wants to see/analyze existing data
+- If enhanced detection suggests "describe_data": The user wants a general overview or explanation
+- Always validate the detected intent against the actual message content
 
 If intent is 'update_data', output structured rows that match the sheet's format. Key instructions:
 - Infer column mappings, data formats, and styles from the sample recent rows. Match patterns in how data is placed (e.g., if names often go in 'Ty' for personal visits and towns in 'CLIENT SEEN', do the same; if sales are formatted as 'Rxxx.00', use that).
@@ -137,22 +146,47 @@ export async function generatePlan(
   conversationHistory: ConversationHistoryItem[],
   hasFiles: boolean
 ): Promise<PlannerPlan> {
+  // Enhanced intent detection: use semantic analysis first
+  let detectedIntent: string;
+  try {
+    detectedIntent = await detectIntent(message);
+    console.log(`[Planner] Enhanced intent detection: "${detectedIntent}" for message: "${message}"`);
+  } catch (error) {
+    console.warn('[Planner] Enhanced intent detection failed, falling back to AI:', error);
+    detectedIntent = 'unknown';
+  }
+
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
-  const prompt = buildPrompt(message, context, conversationHistory || [], !!hasFiles);
+  
+  // Pass the detected intent to the prompt for better AI guidance
+  const prompt = buildPrompt(message, context, conversationHistory || [], !!hasFiles, detectedIntent);
   const { text } = await ai.generate(prompt);
-  const plannerPlan = parsePlanResponse(text, context, message);
+  const plannerPlan = parsePlanResponse(text, context, message, detectedIntent);
   return plannerPlan;
 }
 
-function parsePlanResponse(aiResponse: string, context: Context, message: string): PlannerPlan {
+function parsePlanResponse(aiResponse: string, context: Context, message: string, detectedIntent: string): PlannerPlan {
   try {
     let cleaned = String(aiResponse || '').trim();
     if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json\n?/, '');
     const parsed = JSON.parse(cleaned);
-    const intent: PlannerPlan['intent'] = ['describe_data', 'update_data', 'get_data', 'other'].includes(parsed.intent)
-      ? parsed.intent
-      : 'other';
+    
+    // Use AI response intent, but fall back to detected intent if AI is unclear
+    let intent: PlannerPlan['intent'];
+    if (['describe_data', 'update_data', 'get_data', 'other'].includes(parsed.intent)) {
+      intent = parsed.intent;
+    } else if (detectedIntent !== 'unknown' && ['describe_data', 'update_data', 'get_data'].includes(detectedIntent)) {
+      // Fall back to detected intent if AI response is unclear
+      console.log(`[Planner] AI intent unclear, using detected intent: "${detectedIntent}"`);
+      intent = detectedIntent as PlannerPlan['intent'];
+    } else {
+      intent = 'other';
+    }
+    
+    // Log intent decision for debugging
+    console.log(`[Planner] Final intent decision: "${intent}" (AI: "${parsed.intent}", Detected: "${detectedIntent}")`);
+    
     // Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
     let tools = Array.isArray(parsed.tools)
       ? parsed.tools.map((t: any) => ({
@@ -164,7 +198,7 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
       ? parsed.toolChain.map((s: any) => ({
           toolName: String(s?.toolName || ''),
           params: (typeof s?.params === 'object' && s?.params) ? s.params : {},
-          dependsOn: Array.isArray(s?.dependsOn) ? s.dependsOn.map((i: any) => Number(i)).filter((n: number) => Number.isFinite(n) && n >= 0) : [],
+          dependsOn: Array.isArray(s?.dependsOn) ? s?.dependsOn.map((i: number) => Number(i)).filter((n: number) => Number.isFinite(n) && n >= 0) : [],
         }))
       : [];
     // Enforce single-tool path + preview-first: rewrite update_sheet->apply_structured_rows and set dryRun
