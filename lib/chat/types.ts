@@ -50,21 +50,26 @@ export type StructuredTable = {
     editable?: boolean;
     buttons?: string[];
     type?: string;
+    mappingConfidence?: Record<string, number>;
+    unmappedHeaders?: string[];
+    originalHeaders?: string[];
+    sheetName?: string;
+    current?: boolean;
+    isDryRun?: boolean;
+    totalRows?: number;
+    operations?: {
+      add: number;
+      update: number;
+    };
+    dryRunContext?: {
+      toolName: string;
+      dryRun: boolean;
+      proposedChanges: Record<string, unknown>;
+    };
+    requiresConfirmation?: boolean;
   };
 };
 
-export type ChartSpec = {
-  kind: 'bar' | 'line' | 'pie';
-  title?: string;
-  labels: string[];
-  datasets: Array<{ label: string; data: number[] }>;
-  options?: Record<string, unknown>;
-  meta?: {
-    sheetName?: string;
-    metricHeader?: string;
-    groupByHeader?: string;
-    dateHeader?: string;
-  };
-};
+
 
 

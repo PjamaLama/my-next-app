@@ -75,17 +75,36 @@ export async function executeToolCall(
     } catch {
       throw new Error('Invalid JSON response from tool execution');
     }
+    // Enhanced preview handling for update tools
+    let enhancedPreview = (data as any)?.preview;
+    if (enhancedPreview && (data as any)?.dryRun === true) {
+      // Enhance preview with additional context for better user experience
+      enhancedPreview = {
+        ...enhancedPreview,
+        isDryRun: true,
+        requiresConfirmation: true,
+        userOptions: ['accept', 'reject', 'edit'],
+        context: {
+          toolName: toolCall.function.name,
+          dryRun: true,
+          proposedChanges: (data as any)?.proposedChanges || {}
+        }
+      };
+    }
+    
     return {
       success: data.success,
       result: data.result,
       details: data.details,
-      preview: (data as any)?.preview,
+      preview: enhancedPreview,
       analyses: data.analyses,
       extractions: data.extractions,
       data: data.data,
       flowPreview: (data as any)?.flowPreview,
       actions: (data as any)?.actions,
-      toolId: toolCall.id
+      toolId: toolCall.id,
+      dryRun: (data as any)?.dryRun || false,
+      proposedChanges: (data as any)?.proposedChanges || null
     };
   } catch (error) {
     // eslint-disable-next-line no-console

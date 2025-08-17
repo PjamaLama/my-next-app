@@ -1,12 +1,13 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import { useChat, ChatMessage as ProviderChatMessage } from './providers/ChatProvider';
-import ColumnChooser from './components/ColumnChooser';
+
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
 import { useServiceAccount } from './providers/ServiceAccountProvider';
 import ServiceAccountInfo from './components/ServiceAccountInfo';
 import { db } from "./providers/FirebaseProvider";
+import { executeToolCall } from '../lib/chat/toolExecution';
 import {
   collection,
   onSnapshot,
@@ -101,8 +102,7 @@ type ChatMessage = {
     quickReplies?: string[];
     sheetsUsed?: string[];
     tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
-    charts?: Array<{ kind: 'bar'|'line'|'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: Record<string, unknown> }>;
-    insights?: string[];
+    
     approved?: boolean; // Track if this message's table updates have been approved
   };
 
@@ -230,11 +230,11 @@ export default function Home() {
     function: { name: string; arguments: string };
   }>>([]);
   const [chatProcessing, setChatProcessing] = useState(false);
-  const [showCharts, setShowCharts] = useState<boolean>(false);
+
   const [showStats, setShowStats] = useState<boolean>(false);
   // Toggle per message id whether we show only combined table (if present) or all per-file tables
   const [combinedTablePref, setCombinedTablePref] = useState<Record<string, boolean>>({});
-  const [responsePrefs, setResponsePrefs] = useState<{ charts: boolean; stats: boolean }>({ charts: false, stats: false });
+  const [responsePrefs, setResponsePrefs] = useState<{ stats: boolean }>({ stats: false });
   const [previewModal, setPreviewModal] = useState<{ open: boolean; rows: Array<{ row: number; updates: Record<string, string>; confidence: number; reason?: string }> | null; summary?: string }>({ open: false, rows: null });
   const [editModal, setEditModal] = useState<{ 
     open: boolean; 
@@ -270,8 +270,7 @@ export default function Home() {
     return Date.now() - fa.lastUpdated < FIVE_MINUTES;
   };
 
-  const ChartRenderer = dynamic(() => import('./components/ChartRenderer'), { ssr: false });
-  const ChartExplorer = dynamic(() => import('./components/ChartExplorer'), { ssr: false });
+
   
   // State for missed intent detection and fallback UI
   const [missedIntentSuggestion, setMissedIntentSuggestion] = useState<string | null>(null);
@@ -1228,8 +1227,7 @@ export default function Home() {
           // Attach tables for rendering
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined,
-          charts: Array.isArray((data as any).charts) ? (data as any).charts : undefined,
-          insights: Array.isArray((data as any).insights) ? (data as any).insights : undefined
+          
         };
         setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
       }
@@ -1304,6 +1302,256 @@ export default function Home() {
   };
 
 
+
+  // Function to handle accepting mapped data
+  const handleAcceptMappedData = async (table: any) => {
+    try {
+      console.log('[Accept Mapped Data] Handling table:', table);
+      
+      if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+        setToast({ 
+          type: 'error', 
+          message: 'Please select a spreadsheet and sheet first.' 
+        });
+        return;
+      }
+      
+      const primarySheet = selectedSheetNames[0];
+      
+      // Convert table rows to structured data format
+      const rows = table.rows.map((row: string[]) => {
+        const rowObj: Record<string, unknown> = {};
+        table.headers.forEach((header: string, colIndex: number) => {
+          rowObj[header] = row[colIndex] || '';
+        });
+        return rowObj;
+      });
+      
+      // Create context for tool execution
+      const contextForTool = {
+        spreadsheetId: defaultSpreadsheetId,
+        sheetNames: selectedSheetNames,
+        sheetName: primarySheet,
+        sheetHeaders: table.headers
+      };
+      
+      // Execute the apply_structured_rows tool to insert the data
+      const toolCall = {
+        id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type: 'function',
+        function: {
+          name: 'apply_structured_rows',
+          arguments: JSON.stringify({
+            spreadsheetId: defaultSpreadsheetId,
+            sheetName: primarySheet,
+            rows,
+            dryRun: false,
+            commit: true
+          })
+        }
+      };
+      
+      const result = await executeToolCall(toolCall as any, contextForTool, []);
+      
+      if (result && result.success) {
+        setToast({ 
+          type: 'success', 
+          message: `Successfully added ${rows.length} rows to ${primarySheet}!` 
+        });
+      } else {
+        setToast({ 
+          type: 'error', 
+          message: `Failed to add data: ${result?.error || 'Unknown error'}` 
+        });
+      }
+      
+    } catch (error) {
+      console.error('[Accept Mapped Data] Error:', error);
+      setToast({ 
+        type: 'error', 
+        message: 'Failed to accept mapped data.' 
+      });
+    }
+  };
+
+  // Function to handle rejecting mapped data
+  const handleRejectMappedData = (table: any) => {
+    try {
+      console.log('[Reject Mapped Data] Handling table:', table);
+      
+      // Remove the table from the current message
+      setProviderChatMessages(prev => prev.map(msg => {
+        if (msg.tables && Array.isArray(msg.tables)) {
+          return {
+            ...msg,
+            tables: msg.tables.filter((t: any) => t !== table)
+          };
+        }
+        return msg;
+      }));
+      
+      setToast({ 
+        type: 'success', 
+        message: 'Mapped data rejected and removed.' 
+      });
+      
+    } catch (error) {
+      console.error('[Reject Mapped Data] Error:', error);
+      setToast({ 
+        type: 'error', 
+        message: 'Failed to reject mapped data.' 
+      });
+    }
+  };
+
+  // Function to handle editing mapped data
+  const handleEditMappedData = (table: any) => {
+    try {
+      console.log('[Edit Mapped Data] Handling table:', table);
+      
+      // For now, show a toast with instructions
+      // TODO: Implement inline editing or modal editing
+      setToast({ 
+        type: 'success', 
+        message: 'Edit functionality coming soon. For now, you can modify the data in the chat.' 
+      });
+      
+    } catch (error) {
+      console.error('[Edit Mapped Data] Error:', error);
+      setToast({ 
+        type: 'error', 
+        message: 'Failed to edit mapped data.' 
+      });
+    }
+  };
+
+  // Function to handle mapping extracted data to sheet columns
+  const handleMapToSheet = async (table: any) => {
+    try {
+      console.log('[Map to Sheet] Handling table:', table);
+      
+      // Check if we have sheet context
+      if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+        setToast({ 
+          type: 'error', 
+          message: 'Please select a spreadsheet and sheet first.' 
+        });
+        return;
+      }
+      
+      const primarySheet = selectedSheetNames[0];
+      
+      // Show loading toast
+      setToast({ 
+        type: 'success', 
+        message: `Mapping ${table.headers.length} columns to ${primarySheet}...` 
+      });
+      
+      // Prepare the extracted data for mapping
+      const extractedData = {
+        headers: table.headers,
+        rows: table.rows.map((row: string[], index: number) => {
+          const rowObj: Record<string, unknown> = {};
+          table.headers.forEach((header: string, colIndex: number) => {
+            rowObj[header] = row[colIndex] || '';
+          });
+          return rowObj;
+        })
+      };
+      
+      // Get sheet headers from sheet data cache or fetch them
+      let sheetHeaders: string[] = [];
+      try {
+        // Try to get headers from sheet data cache first
+        const cachedTable = sheetDataCache[primarySheet];
+        if (Array.isArray(cachedTable) && cachedTable.length > 0) {
+          sheetHeaders = cachedTable[0].map((h: any) => String(h ?? ''));
+        } else {
+          // Fetch headers from the sheet
+          const response = await fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`);
+          if (response.ok) {
+            const data = await response.json();
+            const sheetData = data.sheets?.find((s: any) => s.name === primarySheet);
+            if (sheetData?.headers) {
+              sheetHeaders = sheetData.headers;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to get sheet headers:', error);
+      }
+      
+      if (sheetHeaders.length === 0) {
+        setToast({ 
+          type: 'error', 
+          message: 'Could not retrieve sheet headers for mapping.' 
+        });
+        return;
+      }
+      
+      // Create a mapping message that will trigger the mapping prompt
+      const mappingMessage = `Map the following extracted data to the sheet columns: ${JSON.stringify(extractedData.headers)}. Sheet headers: ${JSON.stringify(sheetHeaders)}`;
+      
+      // Add the mapping message to chat with mapped flag
+      const newMessage: ChatMessage = {
+        id: `msg_${Date.now()}_mapping`,
+        role: 'user',
+        content: mappingMessage,
+        timestamp: new Date(),
+        messageType: 'text',
+        attachments: []
+      };
+      
+      // Add message to chat
+      setProviderChatMessages(prev => [...prev, newMessage]);
+      
+      // Send the mapping message to trigger the mapping prompt via the chat API
+      try {
+        const focus = selectedSheetNames?.[0];
+        const cachedTable = focus ? sheetDataCache[focus] : undefined;
+        const contextForChat = {
+          spreadsheetId: defaultSpreadsheetId,
+          sheetNames: selectedSheetNames,
+          sheetName: focus,
+          debug: true,
+          allSheetNames,
+          flag: 'mapped', // This flag will trigger the mapping prompt
+          ...(cachedTable && cachedTable.length > 0 ? { sheetData: { [focus as string]: cachedTable }, sheetHeaders: cachedTable[0] } : {})
+        };
+        
+        const response = await fetch('/api/genkit-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: mappingMessage,
+            context: contextForChat,
+            conversationHistory: chatMessages.slice(-5),
+            images: []
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          // Handle the response data as needed
+          console.log('Mapping response:', data);
+        }
+      } catch (error) {
+        console.error('Error sending mapping message:', error);
+      }
+      
+      setToast({ 
+        type: 'success', 
+        message: 'Mapping request sent. AI will now map the data to your sheet columns.' 
+      });
+      
+    } catch (error) {
+      console.error('Error in handleMapToSheet:', error);
+      setToast({ 
+        type: 'error', 
+        message: 'Failed to initiate mapping. Please try again.' 
+      });
+    }
+  };
 
   // Function to execute tool after confirmation
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -2119,38 +2367,7 @@ export default function Home() {
                       );
                     })()}
 
-                    {/* Column chooser for aggregate clarification */}
-                    {message.role === 'assistant' && /Which column contains the sales amounts\?/i.test(message.content) && (
-                      <div className="mt-2">
-                        {(() => {
-                          try {
-                            // Pull headers from last fetched sheet in cache
-                            const sheetNames = selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(sheetDataCache || {});
-                            const first = sheetNames && sheetNames.length > 0 ? sheetNames[0] : undefined;
-                            const table = first ? sheetDataCache[first] : undefined;
-                            const headers = Array.isArray(table) && table.length > 0 ? (table[0] as string[]) : [];
-                            if (!headers || headers.length === 0) return null;
-                            return (
-                              <ColumnChooser
-                                headers={headers}
-                                title="Pick a column"
-                                onSelect={(header) => {
-                                  const h = (header || '').trim();
-                                  if (!h) return;
-                                  const synth: ChatMessage = {
-                                    id: `msg_${Date.now()}_column_select`,
-                                    role: 'user',
-                                    content: `Use column: ${h}`,
-                                    timestamp: new Date(),
-                                  } as any;
-                                  setProviderChatMessages(prev => [...prev, synth as unknown as ProviderChatMessage]);
-                                }}
-                              />
-                            );
-                          } catch { return null; }
-                        })()}
-                      </div>
-                    )}
+
 
                     {/* Render user attachments inside the bubble, WhatsApp-style */}
                     {message.role === 'user' && Array.isArray(message.attachments) && message.attachments.length > 0 && (
@@ -2279,6 +2496,56 @@ export default function Home() {
                                 </tfoot>
                               )}
                             </table>
+                            
+                            {/* Render table action buttons */}
+                            {Array.isArray((t as any).meta?.buttons) && (t as any).meta.buttons.length > 0 && (
+                              <div className="px-3 py-2 border-t border-white/10 flex gap-2">
+                                {(t as any).meta.buttons.map((button: string, bIdx: number) => {
+                                  if (button === 'map_to_sheet') {
+                                    return (
+                                      <button
+                                        key={bIdx}
+                                        onClick={() => handleMapToSheet(t)}
+                                        className="px-3 py-1.5 text-[11px] bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 border border-blue-500/30 rounded-md transition-colors"
+                                      >
+                                        Map to Sheet Data
+                                      </button>
+                                    );
+                                  } else if (button === 'accept') {
+                                    return (
+                                      <button
+                                        key={bIdx}
+                                        onClick={() => handleAcceptMappedData(t)}
+                                        className="px-3 py-1.5 text-[11px] bg-green-500/20 hover:bg-green-500/30 text-green-200 border border-green-500/30 rounded-md transition-colors"
+                                      >
+                                        Accept
+                                      </button>
+                                    );
+                                  } else if (button === 'reject') {
+                                    return (
+                                      <button
+                                        key={bIdx}
+                                        onClick={() => handleRejectMappedData(t)}
+                                        className="px-3 py-1.5 text-[11px] bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 rounded-md transition-colors"
+                                      >
+                                        Reject
+                                      </button>
+                                    );
+                                  } else if (button === 'edit') {
+                                    return (
+                                      <button
+                                        key={bIdx}
+                                        onClick={() => handleEditMappedData(t)}
+                                        className="px-3 py-1.5 text-[11px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 border border-yellow-500/30 rounded-md transition-colors"
+                                      >
+                                        Edit
+                                      </button>
+                                    );
+                                  }
+                                  return null;
+                                })}
+                              </div>
+                            )}
                             {/* Sticky quick action bar (always visible while scrolling) */}
                             <div className="sticky bottom-0 right-0 w-full">
                               <div className="pointer-events-none bg-gradient-to-t from-black/40 to-transparent px-2 pt-6 pb-2">
@@ -2326,46 +2593,9 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Render assistant charts inline */}
-                    {message.role === 'assistant' && Array.isArray(message.charts) && message.charts.length > 0 && (
-                      <div className="mt-2 space-y-3">
-                        {message.charts.map((chart, cIdx) => (
-                          <motion.div
-                            key={`${message.id}_chart_${cIdx}`}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.3, delay: cIdx * 0.1 }}
-                            className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3"
-                          >
-                            {chart.title && (
-                              <div className="mb-2 text-[12px] font-semibold text-white/90">
-                                {chart.title}
-                              </div>
-                            )}
-                            <ChartRenderer spec={chart} />
-                          </motion.div>
-                        ))}
-                      </div>
-                    )}
 
-                    {/* Insights toggle and render */}
-                    {message.role === 'assistant' && Array.isArray(message.insights) && message.insights.length > 0 && (
-                      <div className="mt-2">
-                        <button
-                          className="ml-2 text-[11px] px-2 py-1 rounded border border-white/10 bg-white/5 hover:bg-white/10"
-                          onClick={() => setShowStats(prev => !prev)}
-                        >
-                          {showStats ? 'Hide stats' : 'Show stats'}
-                        </button>
-                        {showStats && (
-                          <ul className="mt-2 text-[12px] text-white/90 list-disc pl-5 space-y-1">
-                            {message.insights.map((it, i) => (
-                              <li key={`${message.id}_ins_${i}`}>{it}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    )}
+
+
                     {message.role === 'assistant' && Array.isArray(message.sheetsUsed) && message.sheetsUsed.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {message.sheetsUsed.map((name) => (

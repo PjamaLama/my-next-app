@@ -7,7 +7,7 @@ interface InsertRowInput {
   sheetId: string;
   sheetName: string;
   row: number;
-  lastDataRow?: number; // Add this parameter to use the lastDataRow from AI analysis
+  lastDataRow?: number; // Add this parameter to use the lastDataRow from context
 }
 
 // Input type for updateCell tool

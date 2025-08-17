@@ -4,7 +4,7 @@ import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structu
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
-export type QAResult = { answer: string; tables?: StructuredTable[]; insights?: string[]; chart?: { kind: 'bar' | 'line' | 'pie'; title: string; labels: string[]; datasets: Array<{ label: string; data: number[] }> } | null } | null;
+export type QAResult = { answer: string; tables?: StructuredTable[]; insights?: string[] } | null;
 
 import { resolveColumnIndex, parseSimpleFilter, classifyQueryType, resolveQueryColumns, performAggregation, applyQueryFilters } from './queryProcessing';
 
@@ -128,7 +128,7 @@ export async function answerQuestionFromSheets(
     const apiKey = process.env.GOOGLE_GENAI_API_KEY;
     const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
     const previewTable = [headers, ...rows.slice(0, 30)];
-    const prompt = `You are a spreadsheet QA assistant. Answer the user query based on the provided data. Return a JSON object with "answer" and optional "insights" and "chart".\n\nUser query: ${JSON.stringify(message)}\nHeaders: ${JSON.stringify(headers)}\nSample rows (CSV-like): ${JSON.stringify(previewTable)}\n`;
+    const prompt = `You are a spreadsheet QA assistant. Answer the user query based on the provided data. Return a JSON object with "answer" and optional "insights".\n\nUser query: ${JSON.stringify(message)}\nHeaders: ${JSON.stringify(headers)}\nSample rows (CSV-like): ${JSON.stringify(previewTable)}\n`;
     try {
         const out = await ai.generate(prompt);
         const text = (out?.text || '').trim().replace(/```json|```/g, '').trim();
@@ -136,7 +136,6 @@ export async function answerQuestionFromSheets(
         return {
             answer: parsed.answer || 'I am not sure how to answer that.',
             insights: parsed.insights,
-            chart: parsed.chart,
         };
     } catch {
         return { answer: 'I was unable to process the response from the model.' };

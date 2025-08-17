@@ -2,24 +2,21 @@ import { Context, ConversationHistoryItem, ImageData, StructuredTable } from './
 import { buildSmartTables } from './tables';
 import { normalizeDateColumns } from './utils';
 import { answerQuestionFromSheets } from './qa';
-import { buildChartSpecs } from './charts';
+
 import { composeGroundedReply } from './replyComposer';
 import { generateQuickReplies } from './quickReplies';
 import { SheetDataSource } from '../data/source';
+import { logContext, debugContext, logContextError, createContextTimer, LogLevel } from './contextUtils';
 
 // Helper function to get cached headers from context
 const getCachedHeaders = (context: Context): string[] => {
   try {
     const ctxAny = context as any;
-    console.log('[getCachedHeaders] Context:', {
-      sheetHeaders: ctxAny?.sheetHeaders,
-      sheetData: ctxAny?.sheetData ? Object.keys(ctxAny.sheetData) : 'none',
-      sheetNames: ctxAny?.sheetNames
-    });
+    debugContext(context, 'getCachedHeaders');
     
     // Try to get headers from sheetHeaders first
     if (Array.isArray(ctxAny?.sheetHeaders) && ctxAny.sheetHeaders.length > 0) {
-      console.log('[getCachedHeaders] Using sheetHeaders:', ctxAny.sheetHeaders);
+      logContext(context, `Using sheetHeaders: ${ctxAny.sheetHeaders.join(', ')}`, LogLevel.DEBUG);
       return ctxAny.sheetHeaders;
     }
     
@@ -30,16 +27,17 @@ const getCachedHeaders = (context: Context): string[] => {
       
       if (primarySheet && Array.isArray(ctxAny.sheetData[primarySheet]) && ctxAny.sheetData[primarySheet].length > 0) {
         const headers = ctxAny.sheetData[primarySheet][0] || [];
-        console.log('[getCachedHeaders] Using sheetData headers from', primarySheet, ':', headers);
+        logContext(context, `Using sheetData headers from ${primarySheet}: ${headers.join(', ')}`, LogLevel.DEBUG);
         return headers;
       }
     }
     
     // Default headers if nothing is available
-    console.log('[getCachedHeaders] Using default headers');
+    logContext(context, 'Using default headers', LogLevel.DEBUG);
     return ['Column 1', 'Column 2', 'Column 3'];
   } catch (error) {
-    console.error('[getCachedHeaders] Error:', error);
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    logContextError(context, errorObj, 'getCachedHeaders');
     return ['Column 1', 'Column 2', 'Column 3'];
   }
 };
@@ -177,6 +175,313 @@ const inferFromHistory = (message: string, context: Context): string => {
     } catch { return ''; }
 };
 
+// Helper function to create preview tables for update tools in dryRun mode
+const createPreviewTable = (result: any, context: Context, intent: string): StructuredTable | null => {
+  if (!result.preview || !result.preview.headers || !result.preview.rows) {
+    return null;
+  }
+  
+  const ctxAny = context as any;
+  const primarySheet = ctxAny?.sheetName || (Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames[0] : 'Sheet1');
+  const isUpdate = intent === 'update_data' || result.preview.isDryRun;
+  const isDryRun = result.preview.isDryRun || false;
+  
+  // Determine appropriate buttons based on preview type and context
+  let buttons: string[] = [];
+  if (isDryRun && result.preview.meta?.buttons) {
+    buttons = result.preview.meta.buttons;
+  } else if (isUpdate) {
+    buttons = ['accept', 'reject', 'edit'];
+  } else {
+    buttons = ['apply'];
+  }
+  
+  // Handle different preview row formats
+  let normalizedRows: string[][] = [];
+  if (result.preview.rows && Array.isArray(result.preview.rows)) {
+    normalizedRows = result.preview.rows.map((row: any) => {
+      if (row.operation && row.data) {
+        // New structure with operation field
+        const operation = String(row.operation || 'add').toLowerCase() === 'update' ? 'Update' : 'Add';
+        return [operation, ...(Array.isArray(row.data) ? row.data : [])];
+      } else if (Array.isArray(row)) {
+        // Legacy structure - assume first column is action
+        return row;
+      } else {
+        // Object structure - convert to array
+        return ['Add', ...Object.values(row).map(v => String(v ?? ''))];
+      }
+    });
+  }
+  
+  // Create enhanced preview table
+  const previewTable: StructuredTable = {
+    title: result.preview.title || (isUpdate ? 'Proposed Sheet Updates' : 'Data Preview'),
+    headers: result.preview.headers || ['Action', 'Data'],
+    rows: normalizedRows,
+    summary: result.preview.summary || result.preview.message || (isUpdate ? 'Review the proposed changes below' : 'Data ready for application'),
+    meta: {
+      type: isUpdate ? 'proposed_updates' : 'data_preview',
+      buttons,
+      editable: isUpdate,
+      sheetName: primarySheet,
+      isDryRun,
+      totalRows: result.preview.meta?.totalRows,
+      operations: result.preview.meta?.operations
+    }
+  };
+  
+  // Add additional context for dry run previews
+  if (isDryRun && result.preview.context) {
+    previewTable.meta = {
+      ...previewTable.meta,
+      dryRunContext: result.preview.context,
+      requiresConfirmation: true
+    };
+  }
+  
+  return previewTable;
+};
+
+// Helper function to format execution results as data tables per sheet with precise column mapping
+const formatExecutionResultsAsTables = (toolResults: any[], context: Context, intent: string): StructuredTable[] => {
+  const tables: StructuredTable[] = [];
+  
+  try {
+    // Get sheet context
+    const ctxAny = context as any;
+    const sheetNames = Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames : [];
+    const primarySheet = ctxAny?.sheetName || (sheetNames.length > 0 ? sheetNames[0] : 'Sheet1');
+    const sheetHeaders = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders : [];
+    
+    // Process each tool result
+    for (const result of toolResults) {
+      if (!result || !result.success) continue;
+      
+      // Handle different types of results
+      if (result.mappedTable) {
+        // This is a mapped table result from map_extracted_data tool
+        tables.push({
+          title: result.mappedTable.title || 'Mapped Data',
+          headers: result.mappedTable.headers || [],
+          rows: result.mappedTable.rows || [],
+          summary: result.mappedTable.summary || 'Data mapped to sheet columns',
+          meta: {
+            type: 'mapped_data',
+            buttons: ['accept', 'reject', 'edit'],
+            mappingConfidence: result.mappedTable.meta?.mappingConfidence,
+            unmappedHeaders: result.mappedTable.meta?.unmappedHeaders,
+            originalHeaders: result.mappedTable.meta?.originalHeaders
+          }
+        });
+      } else if (result.preview && result.preview.headers && result.preview.rows) {
+        // This is a preview result (e.g., from apply_structured_rows)
+        const previewTable = createPreviewTable(result, context, intent);
+        if (previewTable) {
+          tables.push(previewTable);
+        }
+      } else if (result.data && Array.isArray(result.data)) {
+        // This is a data result (e.g., from aggregate, get_sheet_data)
+        const headers = result.details?.headers || [];
+        if (headers.length > 0) {
+          tables.push({
+            title: result.result || 'Data Results',
+            headers,
+            rows: result.data.map((row: any) => 
+              Array.isArray(row) ? row.map(v => String(v ?? '')) : Object.values(row).map(v => String(v ?? ''))
+            ),
+            summary: `Retrieved ${result.data.length} row(s)`,
+            meta: {
+              type: 'data_results',
+              buttons: ['export'],
+              sheetName: primarySheet
+            }
+          });
+        }
+      } else if (result.result && typeof result.result === 'string') {
+        // This is a text result - create a simple table
+        const lines = result.result.split('\n').filter((l: string) => l.trim().length > 0);
+        if (lines.length > 0) {
+          tables.push({
+            title: 'Tool Execution Result',
+            headers: ['Result'],
+            rows: lines.slice(0, 10).map((line: string) => [line.trim()]),
+            summary: `Tool executed successfully`,
+            meta: {
+              type: 'tool_result',
+              buttons: ['copy', 'export']
+            }
+          });
+        }
+      }
+    }
+    
+    // Add sheet-specific tables if we have sheet data
+    if (sheetHeaders.length > 0 && Object.keys(ctxAny?.sheetData || {}).length > 0) {
+      for (const [sheetName, sheetData] of Object.entries(ctxAny.sheetData)) {
+        if (Array.isArray(sheetData) && sheetData.length > 0) {
+          const headers = sheetData[0] || [];
+          const rows = sheetData.slice(1, 11); // Show first 10 rows
+          
+          if (headers.length > 0 && rows.length > 0) {
+            tables.push({
+              title: `Current Data - ${sheetName}`,
+              headers,
+              rows,
+              summary: `${rows.length} of ${Math.max(0, sheetData.length - 1)} total rows shown`,
+              meta: {
+                type: 'current_data',
+                buttons: ['refresh', 'export'],
+                sheetName,
+                current: true
+              }
+            });
+          }
+        }
+      }
+    }
+    
+  } catch (error) {
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    logContextError(context, errorObj, 'formatExecutionResultsAsTables');
+  }
+  
+  return tables;
+};
+
+// Helper function to build multi-sheet tables from plan.sheets
+const buildMultiSheetTables = (currentPlan: any, context: Context, intent: string): StructuredTable[] => {
+  const tables: StructuredTable[] = [];
+  
+  try {
+    if (!currentPlan?.sheets || !Array.isArray(currentPlan.sheets)) {
+      return tables;
+    }
+    
+    const ctxAny = context as any;
+    const sheetNames = Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames : [];
+    const primarySheet = ctxAny?.sheetName || (sheetNames.length > 0 ? sheetNames[0] : 'Sheet1');
+    
+    for (const sheetPlan of currentPlan.sheets) {
+      if (!sheetPlan || !sheetPlan.sheetName || !Array.isArray(sheetPlan.rows)) {
+        continue;
+      }
+      
+      const sheetName = String(sheetPlan.sheetName);
+      const rows = sheetPlan.rows;
+      
+      if (rows.length === 0) {
+        continue;
+      }
+      
+      // Get headers for this sheet
+      let headers: string[] = [];
+      try {
+        if (ctxAny?.sheetData?.[sheetName] && Array.isArray(ctxAny.sheetData[sheetName][0])) {
+          headers = ctxAny.sheetData[sheetName][0].map((h: any) => String(h ?? ''));
+        } else if (Array.isArray(ctxAny?.sheetHeaders)) {
+          headers = ctxAny.sheetHeaders;
+        } else if (rows.length > 0 && typeof rows[0] === 'object') {
+          headers = Object.keys(rows[0]);
+        }
+      } catch {}
+      
+      // Convert rows to string[][] format
+      const normalizedRows: string[][] = rows.map((row: any) => {
+        if (Array.isArray(row)) {
+          return row.map((v: any) => String(v ?? ''));
+        } else if (typeof row === 'object' && row !== null) {
+          return headers.map(header => String((row as any)[header] ?? ''));
+        } else {
+          return [String(row ?? '')];
+        }
+      });
+      
+      // Determine table type and buttons based on intent and content
+      let tableType = 'data_preview';
+      let buttons: string[] = [];
+      let summary = '';
+      
+      if (intent === 'update_data') {
+        tableType = 'proposed_updates';
+        buttons = ['accept', 'reject', 'edit'];
+        summary = `Proposed updates for ${sheetName}`;
+      } else if (intent === 'extraction') {
+        tableType = 'extracted_data';
+        buttons = ['map_to_sheet'];
+        summary = `Extracted data for ${sheetName}`;
+      } else {
+        tableType = 'data_results';
+        buttons = ['export', 'refresh'];
+        summary = `Data from ${sheetName}`;
+      }
+      
+      // Create the table
+      const table: StructuredTable = {
+        title: `${sheetName} - ${intent === 'update_data' ? 'Proposed Updates' : 'Data'}`,
+        headers: headers.length > 0 ? headers : ['Data'],
+        rows: normalizedRows,
+        summary,
+        meta: {
+          type: tableType,
+          buttons,
+          sheetName,
+          editable: intent === 'update_data',
+          totalRows: normalizedRows.length
+        }
+      };
+      
+      tables.push(table);
+    }
+  } catch (error) {
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    logContextError(context, errorObj, 'buildMultiSheetTables');
+  }
+  
+  return tables;
+};
+
+// Helper function to enforce response prompts for tables and buttons
+const enforceResponsePrompts = (tables: StructuredTable[], intent: string, context: Context): StructuredTable[] => {
+  return tables.map((table: StructuredTable) => {
+    if (!table.meta) table.meta = {};
+    
+    // Ensure buttons are always present based on table type and intent
+    if (!table.meta.buttons || table.meta.buttons.length === 0) {
+      if (table.meta.type === 'mapped_data') {
+        table.meta.buttons = ['accept', 'reject', 'edit'];
+      } else if (table.meta.type === 'proposed_updates') {
+        table.meta.buttons = ['accept', 'reject', 'edit'];
+      } else if (table.meta.type === 'extracted_data') {
+        table.meta.buttons = ['map_to_sheet'];
+      } else if (table.meta.type === 'data_preview') {
+        table.meta.buttons = ['apply'];
+      } else if (table.meta.type === 'data_results') {
+        table.meta.buttons = ['export'];
+      } else if (table.meta.type === 'current_data') {
+        table.meta.buttons = ['refresh', 'export'];
+      } else if (intent === 'update_data') {
+        table.meta.buttons = ['accept', 'reject', 'edit'];
+      } else {
+        // Default buttons for unknown types
+        table.meta.buttons = ['refresh', 'export'];
+      }
+    }
+    
+    // Ensure table has proper meta information
+    if (!table.meta.type) {
+      table.meta.type = intent === 'update_data' ? 'proposed_updates' : 'data_results';
+    }
+    
+    // Ensure editable flag is set for update_data intents
+    if (intent === 'update_data' && table.meta.type === 'proposed_updates') {
+      table.meta.editable = true;
+    }
+    
+    return table;
+  });
+};
+
 export async function buildUserResponse(executionResult: any, context: Context, message: string, conversationHistory: ConversationHistoryItem[], images: ImageData[]) {
     let { 
         toolResults, 
@@ -201,8 +506,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     const hasFiles = images && images.length > 0;
     const isFileOnly = hasFiles && (!message || message.trim() === '');
 
-    // Determine if user is asking for charts/graphs early (used by table suppression later)
-    const wantCharts = (context as any)?.responsePrefs?.charts === true || /\b(chart|graph|trend|distribution|plot|bar\s+chart|line\s+chart|pie\s+chart)\b/i.test(message);
+
 
     // file analysis status: concise
     if (context.fileAnalysis && context.fileAnalysis.files.length > 0) {
@@ -216,7 +520,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     const hydratedSheetData = (context as any).sheetData as Record<string, string[][]> | undefined;
     const selectedSheetNames = Array.isArray((context as any).sheetNames) ? (context as any).sheetNames as string[] : [];
     const wantsExplicitDataView2 = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
-    const suppressTablesForCharts2 = wantCharts && !wantsExplicitDataView2;
+    const suppressTablesForCharts2 = false;
     // For update_data intents, suppress smart tables (including stats) and prioritize editable tables
     if (intent === 'update_data') {
       // Skip smart tables for update intents - we want editable tables instead
@@ -246,17 +550,42 @@ export async function buildUserResponse(executionResult: any, context: Context, 
           const editableTable = buildEditableTable(context, intent);
           if (editableTable) {
             dataTables.push(editableTable);
-            console.log('[ResponseBuilder] Built editable table for update_data intent:', editableTable);
+            logContext(context, `Built editable table for update_data intent`, LogLevel.DEBUG);
           }
         }
       } catch (error) {
-        console.error('[ResponseBuilder] Error building editable table:', error);
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        logContextError(context, errorObj, 'buildEditableTable');
+      }
+    }
+
+    // Build multi-sheet tables from plan.sheets if available
+    if (currentPlan?.sheets && Array.isArray(currentPlan.sheets) && currentPlan.sheets.length > 0) {
+      try {
+        const multiSheetTables = buildMultiSheetTables(currentPlan, context, intent);
+        if (multiSheetTables.length > 0) {
+          // Add multi-sheet tables to dataTables
+          dataTables.push(...multiSheetTables);
+          logContext(context, `Added multi-sheet tables from plan: ${multiSheetTables.length}`, LogLevel.DEBUG);
+        }
+      } catch (error) {
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        logContextError(context, errorObj, 'buildMultiSheetTables');
       }
     }
 
     // per-file preview tables built strictly one table per file
     try {
       const filePreviews: StructuredTable[] = [];
+
+      // Check if planner provided extractedData
+      const plannerExtractedData = (context as any)?.extractedData;
+      let hasPlannerData = false;
+      
+      if (plannerExtractedData && Array.isArray(plannerExtractedData.rows) && plannerExtractedData.rows.length > 0) {
+        hasPlannerData = true;
+        logContext(context, `Using planner extractedData: ${plannerExtractedData.rows.length} rows`, LogLevel.DEBUG);
+      }
 
       // Gather extractions by file index
       const allExtractions: any[] = toolResults.map((r: any) => (r as any).extractions).filter(Boolean).flat();
@@ -284,104 +613,104 @@ export async function buildUserResponse(executionResult: any, context: Context, 
         }
       }
 
-      // Build exactly one table per uploaded file after AI analysis; always create a table even if no sheet selected
-      for (let i = 0; i < (images?.length || 0); i++) {
-        const fileName = images?.[i]?.name;
-        let rowsArr: any[] | null = null;
-        let headers: string[] = [];
-        let summary = '';
-
-        // Always try to get structured rows from AI analysis first
-        const a = analysesByIndex.get(i);
-        if (a) {
-          const data = a.extractedData ?? a.analysis;
-          if (data && typeof data === 'object') {
-            if (Array.isArray((data as any).extracted_rows)) rowsArr = (data as any).extracted_rows as any[];
-            else if ((data as any).result && Array.isArray((data as any).result.extracted_rows)) rowsArr = (data as any).result.extracted_rows as any[];
-            
-            // Priority 1: Use AI-provided inferred headers if available
-            if (!headers || headers.length === 0) {
-              if (Array.isArray((data as any).inferredHeaders)) {
-                headers = (data as any).inferredHeaders as string[];
-                console.log(`[File Analysis] Using AI inferred headers for file ${i + 1}:`, headers);
-              } else if ((data as any).result && Array.isArray((data as any).result.inferredHeaders)) {
-                headers = (data as any).result.inferredHeaders as string[];
-                console.log(`[File Analysis] Using AI result inferred headers for file ${i + 1}:`, headers);
-              }
-            }
-          }
-        }
-
-        // If no AI analysis, fallback to extraction structured/text
-        if (!rowsArr || rowsArr.length === 0) {
-          const ex = extractionsByIndex.get(i);
-          if (ex) {
-            if (Array.isArray(ex.structured) && ex.structured.length > 0) {
-              rowsArr = ex.structured as any[];
-            } else if (typeof ex.extractedText === 'string') {
-              const text = (ex.extractedText as string).trim();
-              if (text) {
-                const lines = text.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean).slice(0, 120);
-                rowsArr = lines.map((l: string) => ({ Line: l.slice(0, 120) }));
-              }
-            }
-          }
-        }
-
-        // Always create a table for each file
-        if (rowsArr && rowsArr.length > 0) {
-          // Priority 2: If no AI headers, infer from first row structure
-          if (!headers || headers.length === 0) {
-            if (rowsArr.length > 0 && typeof rowsArr[0] === 'object' && rowsArr[0] !== null) {
-              headers = Object.keys(rowsArr[0]);
-              console.log(`[File Analysis] Inferred headers from row structure for file ${i + 1}:`, headers);
-            }
-          }
+      // Process each file
+      for (let i = 0; i < images.length; i++) {
+        try {
+          const image = images[i];
+          const fileName = image.name || `File ${i + 1}`;
           
-          // Convert to string[][] format for table display
-          const rows: string[][] = rowsArr.slice(0, 50).map((r: Record<string, unknown>) => 
-            headers.map((k: string) => String((r as any)[k] ?? ''))
+          // Try to get AI analysis first
+          let headers: string[] = [];
+          let rows: string[][] = [];
+          let summary = '';
+          
+          const data = (context as any)?.fileData?.[i]?.extractedData;
+          if (data) {
+            // Use AI analysis results
+            if (Array.isArray((data as any).inferredHeaders)) {
+              headers = (data as any).inferredHeaders as string[];
+              logContext(context, `Using AI inferred headers for file ${i + 1}: ${headers.join(', ')}`, LogLevel.DEBUG);
+            } else if ((data as any).result && Array.isArray((data as any).result.inferredHeaders)) {
+              headers = (data as any).result.inferredHeaders as string[];
+              logContext(context, `Using AI result inferred headers for file ${i + 1}: ${headers.join(', ')}`, LogLevel.DEBUG);
+            }
+            
+            const rowsArr = (data as any).extracted_rows || (data as any).rows || [];
+            if (Array.isArray(rowsArr) && rowsArr.length > 0) {
+              if (Array.isArray(rowsArr[0])) {
+                rows = rowsArr as string[][];
+              } else if (rowsArr.length > 0 && typeof rowsArr[0] === 'object' && rowsArr[0] !== null) {
+                headers = Object.keys(rowsArr[0]);
+                logContext(context, `Inferred headers from row structure for file ${i + 1}: ${headers.join(', ')}`, LogLevel.DEBUG);
+              }
+            }
+          } else {
+            // Fallback to extraction results
+            const ex = extractionsByIndex.get(i);
+            if (ex && ex.extractedText) {
+              headers = ['Extracted Text'];
+              rows = [[ex.extractedText.slice(0, 200) + (ex.extractedText.length > 200 ? '...' : '')]];
+            }
+          }
+
+          // Normalize rows to ensure consistent format
+          rows = rows.map((row: any) => 
+            Array.isArray(row) ? row.map((v: any) => String(v ?? '')) : [String(row ?? '')]
           );
 
-          console.log(`[File Analysis] File ${i + 1} headers:`, headers);
-          console.log(`[File Analysis] File ${i + 1} rows count:`, rows.length);
+          logContext(context, `File ${i + 1} headers: ${headers.join(', ')}`, LogLevel.DEBUG);
+          logContext(context, `File ${i + 1} rows count: ${rows.length}`, LogLevel.DEBUG);
 
           // Add mapping note if context has sheetHeaders
           const ctxAny = context as any;
-          const sheetHeaders = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders as string[] : [];
-          const sheetNames = Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames as string[] : [];
+          const sheetHeaders = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders : [];
+          const sheetNames = Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames : [];
           const primarySheet = sheetNames.length > 0 ? sheetNames[0] : '';
           
           if (sheetHeaders.length > 0 && headers.length > 0) {
-            // Find exact header matches (no fuzzy matching)
-            const matchingHeaders = headers.filter((h: string) => sheetHeaders.includes(h));
+            // Find matching headers
+            const matchingHeaders = headers.filter(h => 
+              sheetHeaders.some((sh: string) => sh.toLowerCase() === h.toLowerCase())
+            );
+            
             if (matchingHeaders.length > 0) {
               if (sheetNames.length > 1) {
                 summary = `From multiple sheets—applying to ${primarySheet}. Possible mapping: ${matchingHeaders.join(', ')}`;
               } else {
                 summary = `Possible mapping to sheet columns: ${matchingHeaders.join(', ')}`;
               }
+            } else if (sheetNames.length > 1) {
+              summary = `From multiple sheets—applying to ${primarySheet}`;
             }
-          } else if (sheetNames.length > 1) {
-            summary = `From multiple sheets—applying to ${primarySheet}`;
-          }
 
-          filePreviews.push({
-            title: `Extracted Data from File ${i + 1}${fileName ? ` — ${fileName}` : ''}`,
-            headers,
-            rows,
-            summary,
-            meta: { fileIndex: i + 1, fileName }
-          });
-        } else {
-          // Create empty table for files with no extracted data
-          filePreviews.push({
-            title: `Extracted Data from File ${i + 1}${fileName ? ` — ${fileName}` : ''}`,
-            headers: ['No Data'],
-            rows: [['No structured data extracted']],
-            summary: 'No data could be extracted from this file',
-            meta: { fileIndex: i + 1, fileName, empty: true }
-          });
+            // Add "Map to Sheet Data" button if we have sheet headers
+            const buttons = sheetHeaders.length > 0 ? ['map_to_sheet'] : [];
+
+            filePreviews.push({
+              title: `Extracted Data from File ${i + 1}${fileName ? ` — ${fileName}` : ''}`,
+              headers,
+              rows,
+              summary,
+              meta: { 
+                fileIndex: i + 1, 
+                fileName,
+                buttons,
+                type: 'extracted_data'
+              }
+            });
+          } else {
+            // Create empty table for files with no extracted data
+            filePreviews.push({
+              title: `Extracted Data from File ${i + 1}${fileName ? ` — ${fileName}` : ''}`,
+              headers: ['No Data'],
+              rows: [['No structured data extracted']],
+              summary: 'No data could be extracted from this file',
+              meta: { fileIndex: i + 1, fileName, empty: true }
+            });
+          }
+        } catch (error) {
+          const errorObj = error instanceof Error ? error : new Error(String(error));
+          logContextError(context, errorObj, `file_processing_${i}`);
         }
       }
 
@@ -409,19 +738,55 @@ export async function buildUserResponse(executionResult: any, context: Context, 
             combinedSummary += ` From multiple sheets—applying to ${primarySheet}`;
           }
           
+          // Add "Map to Sheet Data" button if we have sheet headers
+          const sheetHeaders = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders as string[] : [];
+          const buttons = sheetHeaders.length > 0 ? ['map_to_sheet'] : [];
+          
           dataTables.push({
             title: 'Combined Extracted Data (all files)',
             headers: allHeaders,
             rows,
             summary: combinedSummary,
-            meta: { combined: true }
+            meta: { 
+              combined: true,
+              buttons,
+              type: 'extracted_data'
+            }
           });
         }
       } catch {}
 
       if (filePreviews.length > 0) dataTables.push(...filePreviews);
+      
+      // Add planner extractedData table if available
+      if (hasPlannerData && plannerExtractedData) {
+        const ctxAny = context as any;
+        const sheetHeaders = Array.isArray(ctxAny?.sheetHeaders) ? ctxAny.sheetHeaders as string[] : [];
+        const sheetNames = Array.isArray(ctxAny?.sheetNames) ? ctxAny.sheetNames as string[] : [];
+        const primarySheet = sheetNames.length > 0 ? sheetNames[0] : '';
+        
+        // Convert planner rows to string[][] format
+        const rows: string[][] = plannerExtractedData.rows.slice(0, 50).map((r: Record<string, unknown>) => 
+          plannerExtractedData.headers.map((k: string) => String((r as any)[k] ?? ''))
+        );
+        
+        // Add "Map to Sheet Data" button if we have sheet headers
+        const buttons = sheetHeaders.length > 0 ? ['map_to_sheet'] : [];
+        
+        dataTables.unshift({
+          title: 'Extracted Data from Files (Planner Analysis)',
+          headers: plannerExtractedData.headers,
+          rows,
+          summary: `AI extracted ${plannerExtractedData.rows.length} row(s) from uploaded files. Use the "Map to Sheet Data" button to align with your sheet columns.`,
+          meta: { 
+            type: 'planner_extracted_data',
+            buttons,
+            combined: true
+          }
+        });
+      }
     } catch {}
-    const charts = wantCharts && hydratedSheetData ? buildChartSpecs(message, hydratedSheetData, selectedSheetNames) : [];
+    const charts: any[] = [];
 
     const wantStats = (context as any)?.responsePrefs?.stats === true || /\b(stat|stats|statistics|summary|insight)\b/i.test(message);
     const insights: string[] = [];
@@ -431,7 +796,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       const hydratedForQA = (context as any).sheetData as Record<string, string[][]> | undefined;
       const selectedForQA = Array.isArray((context as any).sheetNames) ? ((context as any).sheetNames as string[]) : [];
       const wantsExplicitDataView = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
-      const suppressTablesForCharts = wantCharts && !wantsExplicitDataView;
+      const suppressTablesForCharts = false;
       if (!hasProposedUpdateTable && hydratedForQA && Object.keys(hydratedForQA).length > 0 && !hasFiles && !suppressTablesForCharts && intent !== 'update_data') {
         const historySummary = summarizeHistory(context);
         const qa = await answerQuestionFromSheets(`${message}\n\n(Recent context:)\n${historySummary}\n\nIf query is vague, provide a high-level overview of the data.`, hydratedForQA, selectedForQA);
@@ -442,47 +807,11 @@ export async function buildUserResponse(executionResult: any, context: Context, 
           if (qa.insights && qa.insights.length > 0) {
             insights.push(...qa.insights);
           }
-          if (qa.chart && typeof qa.chart === 'object' && qa.chart.kind && qa.chart.title) {
-            const chart = qa.chart;
-            if (!charts.some(c => c.kind === chart.kind && c.title === chart.title)) {
-              charts.push(chart);
-            }
-          }
+          
         }
       }
     } catch {}
-    try {
-      if (wantStats && charts.length > 0 && intent !== 'update_data') {
-        for (const ch of charts.slice(0, 2)) {
-          if (ch.kind === 'line' && ch.labels.length >= 3 && ch.datasets[0]?.data?.length === ch.labels.length) {
-            const y = ch.datasets[0].data;
-            const n = y.length;
-            const xs = Array.from({ length: n }, (_, i) => i + 1);
-            const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
-            const xBar = mean(xs);
-            const yBar = mean(y);
-            const num = xs.reduce((acc, xi, i) => acc + (xi - xBar) * (y[i] - yBar), 0);
-            const den = xs.reduce((acc, xi) => acc + (xi - xBar) ** 2, 0) || 1;
-            const slope = num / den;
-            if (Math.abs(slope) > 0.01) insights.push(`${ch.datasets[0].label || 'Series'} is ${slope > 0 ? 'increasing' : 'decreasing'} over time`);
-          }
-          if (ch.kind === 'bar' && ch.labels.length > 0 && ch.datasets[0]?.data?.length === ch.labels.length) {
-            const data = ch.datasets[0].data;
-            let bestIdx = 0;
-            for (let i = 1; i < data.length; i++) if (data[i] > data[bestIdx]) bestIdx = i;
-            insights.push(`Top ${ch.meta?.groupByHeader || 'category'}: ${ch.labels[bestIdx]} (${data[bestIdx]})`);
-          }
-          if (ch.kind === 'pie' && ch.labels.length > 0 && ch.datasets[0]?.data?.length === ch.labels.length) {
-            const data = ch.datasets[0].data;
-            const total = data.reduce((a, b) => a + b, 0) || 1;
-            let bestIdx = 0;
-            for (let i = 1; i < data.length; i++) if (data[i] > data[bestIdx]) bestIdx = i;
-            const pct = Math.round((data[bestIdx] / total) * 100);
-            insights.push(`${ch.labels[bestIdx]} makes up ~${pct}%`);
-          }
-        }
-      }
-    } catch {}
+
 
     quickReplies = await generateQuickReplies(message, conversationHistory, context, intent, hasFiles);
     // If a specific error response was prepared during hydration, surface it and add helpful actions
@@ -596,32 +925,46 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     } catch {}
 
     // Normalize date formats across all tables before returning
-    let normalizedTables = dataTables.map((t: StructuredTable) => ({
-      ...t,
-      rows: normalizeDateColumns(t.headers, t.rows)
-    }));
+    let normalizedTables = dataTables.map((t: StructuredTable) => {
+      // Add action buttons for update_data intent tables
+      let enhancedMeta = t.meta || {};
+      if (intent === 'update_data' && !enhancedMeta.buttons) {
+        enhancedMeta = {
+          ...enhancedMeta,
+          buttons: ['accept', 'reject', 'edit'],
+          editable: true
+        };
+      }
+      
+      return {
+        ...t,
+        rows: normalizeDateColumns(t.headers, t.rows),
+        meta: enhancedMeta
+      };
+    });
     // For update_data intents, prioritize editable tables and suppress other tables
     if (intent === 'update_data') {
       try {
-        console.log('[ResponseBuilder] Processing update_data intent, current tables:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
+        debugContext(context, '[ResponseBuilder] Processing update_data intent, current tables:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
         
         // Check if we have an editable table
         const hasEditableTable = normalizedTables.some((t: StructuredTable) => t.meta?.editable === true);
-        console.log('[ResponseBuilder] Has editable table:', hasEditableTable);
+        debugContext(context, '[ResponseBuilder] Has editable table:', hasEditableTable);
         
         if (hasEditableTable) {
           // Show only the editable table for update intents
           const editableTables = normalizedTables.filter((t: StructuredTable) => t.meta?.editable === true);
-          console.log('[ResponseBuilder] Filtered to editable tables:', editableTables.length);
+          debugContext(context, '[ResponseBuilder] Filtered to editable tables:', editableTables.length);
           if (editableTables.length > 0) {
             normalizedTables = editableTables;
-            console.log('[ResponseBuilder] Final tables for update_data:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
+            debugContext(context, '[ResponseBuilder] Final tables for update_data:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
           }
         } else {
-          console.log('[ResponseBuilder] No editable table found, keeping all tables');
+          debugContext(context, '[ResponseBuilder] No editable table found, keeping all tables');
         }
       } catch (error) {
-        console.error('[ResponseBuilder] Error processing update_data tables:', error);
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        logContextError(context, '[ResponseBuilder] Error processing update_data tables:', errorObj);
       }
     } else {
       // If a proposed updates table exists, prefer showing only that table to avoid noise
@@ -633,18 +976,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       } catch {}
     }
 
-    // If user wanted charts/graphs and did not explicitly ask for table/data view, suppress tables unless they came from file uploads
-    try {
-      const wantsExplicitDataView3 = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\boverview\b|\bsummary\b)/i.test(message);
-      const suppressTablesForCharts3 = wantCharts && !wantsExplicitDataView3;
-      if (!hasFiles && suppressTablesForCharts3) {
-        normalizedTables = [];
-        // Also clear any QA-generated response if charts exist to focus on charts
-        if (charts && charts.length > 0) {
-          response = '';
-        }
-      }
-    } catch {}
+
 
     // If intent was a broad description request, prefer tool description if present; then validate with concrete row count
     try {
@@ -802,8 +1134,6 @@ export async function buildUserResponse(executionResult: any, context: Context, 
             userMessage: message,
             qaAnswer: response,
             tables: normalizedTables,
-            charts,
-            insights,
             toolSummaries,
             inferences: currentPlan?.inferences || null
           });
@@ -889,8 +1219,42 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       } catch { return r; }
     });
 
+    // Format execution results as data tables per sheet with precise column mapping
+    const executionResultTables = formatExecutionResultsAsTables(toolResults, context, intent);
+    if (executionResultTables.length > 0) {
+      dataTables.push(...executionResultTables);
+      debugContext(context, '[ResponseBuilder] Added execution result tables:', executionResultTables.length);
+    }
+    
+    // Enforce response prompts: ensure all tables have proper buttons and meta information
+    dataTables = enforceResponsePrompts(dataTables, intent, context);
+    
+    // Ensure all tables have proper action buttons based on their type and intent
+    dataTables = dataTables.map((table: StructuredTable) => {
+      if (!table.meta) table.meta = {};
+      
+      // Add default buttons based on table type and intent
+              if (!table.meta.buttons || table.meta.buttons.length === 0) {
+          if (table.meta.type === 'mapped_data') {
+            table.meta.buttons = ['accept', 'reject', 'edit'];
+          } else if (table.meta.type === 'proposed_updates') {
+          table.meta.buttons = ['accept', 'reject', 'edit'];
+        } else if (table.meta.type === 'data_preview') {
+          table.meta.buttons = ['apply'];
+        } else if (table.meta.type === 'data_results') {
+          table.meta.buttons = ['export'];
+        } else if (table.meta.type === 'current_data') {
+          table.meta.buttons = ['refresh', 'export'];
+        } else if (intent === 'update_data') {
+          table.meta.buttons = ['accept', 'reject', 'edit'];
+        }
+      }
+      
+      return table;
+    });
+
     // Final logging to see what we're returning
-    console.log('[ResponseBuilder] Final return - intent:', intent, 'tables:', normalizedTables.map((t: StructuredTable) => ({ 
+    debugContext(context, '[ResponseBuilder] Final return - intent:', intent, 'tables:', normalizedTables.map((t: StructuredTable) => ({ 
       title: t.title, 
       meta: t.meta,
       headers: t.headers?.length || 0,
@@ -905,8 +1269,6 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       context,
       quickReplies,
       dataTables: normalizedTables,
-      charts,
-      insights,
-      suppressResponseText: (charts && charts.length > 0) || (normalizedTables && normalizedTables.length > 0)
+              suppressResponseText: (normalizedTables && normalizedTables.length > 0)
     };
 }

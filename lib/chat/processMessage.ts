@@ -162,6 +162,71 @@ export async function processMessage(
     }
 
     const hasFiles = images && images.length > 0;
+    
+    // Extract structured data from files if present
+    if (hasFiles) {
+      try {
+        const ctxAny = context as any;
+        ctxAny.fileData = [];
+        
+        for (let i = 0; i < images.length; i++) {
+          const image = images[i];
+          try {
+            // Use the existing file analysis flow to extract structured data
+            const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+            if (apiKey) {
+              const { analyzeFileFlow } = await import('@/genkit/analyzeFileFlow');
+              const flow = analyzeFileFlow(apiKey);
+              const result = await flow.run({ 
+                prompt: 'Extract all relevant data from this file that could be added to a spreadsheet', 
+                files: [image] 
+              });
+              
+              if (result && typeof result === 'object') {
+                const extractedRows = (result as any).extracted_rows || [];
+                const inferredHeaders = (result as any).inferredHeaders || [];
+                
+                ctxAny.fileData.push({
+                  index: i,
+                  mimeType: image.mimeType,
+                  name: image.name,
+                  extractedData: result,
+                  rows: extractedRows,
+                  headers: inferredHeaders.length > 0 ? inferredHeaders : (extractedRows.length > 0 ? Object.keys(extractedRows[0] || {}) : [])
+                });
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to analyze file ${i}:`, error);
+            ctxAny.fileData.push({
+              index: i,
+              mimeType: image.mimeType,
+              name: image.name,
+              error: String(error)
+            });
+          }
+        }
+        
+        // Set extraction flag for planner
+        ctxAny.flag = 'extraction';
+      } catch (error) {
+        console.warn('File analysis failed:', error);
+      }
+    }
+    
+    // Check for mapping flag from user message
+    if (message && typeof message === 'string') {
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes('map') || lowerMessage.includes('mapping') || lowerMessage.includes('align')) {
+        try {
+          const ctxAny = context as any;
+          if (!ctxAny.flag) {
+            ctxAny.flag = 'mapped';
+          }
+        } catch {}
+      }
+    }
+
     // Intercept confirmation/cancellation for pending previewed updates
     try {
       const lower = String(message || '').toLowerCase();

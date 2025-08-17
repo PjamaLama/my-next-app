@@ -352,6 +352,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'apply_structured_rows':
         return await handleApplyStructuredRows(args, context, res);
 
+      case 'map_extracted_data':
+        return await handleMapExtractedData(args, context, res);
+
       case 'bulk_update_column':
         return await handleBulkUpdateColumn(args, context, res);
 
@@ -2297,7 +2300,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
 
     const doCommit = commit === true && dryRun !== true;
     if (!doCommit) {
-      // Check if rows already have operation field from planner
+      // Generate comprehensive preview table for dryRun mode
       const rowsWithOperation = validRows.map((r, index) => {
         const rowData = sheetHeaders.map(h => String((r as any)[h] ?? ''));
         // Use operation field if provided by planner, otherwise default to 'add'
@@ -2305,13 +2308,39 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
         return { operation, data: rowData };
       });
       
+      // Create enhanced preview with user confirmation options
+      const previewTable = {
+        title: 'Proposed Sheet Updates - Review Required',
+        headers: ['Action', ...sheetHeaders],
+        rows: rowsWithOperation.map((r, index) => [
+          String(r.operation || 'add').toLowerCase() === 'update' ? 'Update' : 'Add',
+          ...r.data
+        ]),
+        summary: `Ready to ${validRows.length === 1 ? 'apply 1 change' : `apply ${validRows.length} changes`} to ${sheetName}. Review the proposed updates below.`,
+        message: 'Proposed update requires confirmation.',
+        action: 'confirm',
+        meta: {
+          type: 'proposed_updates',
+          buttons: ['accept', 'reject', 'edit'],
+          editable: true,
+          sheetName,
+          totalRows: validRows.length,
+          operations: {
+            add: rowsWithOperation.filter(r => r.operation === 'add').length,
+            update: rowsWithOperation.filter(r => r.operation === 'update').length
+          }
+        }
+      };
+      
       return res.status(200).json({
         success: false,
-        preview: {
-          headers: sheetHeaders,
-          rows: rowsWithOperation,
-          message: 'Proposed update requires confirmation.',
-          action: 'confirm'
+        preview: previewTable,
+        dryRun: true,
+        proposedChanges: {
+          totalRows: validRows.length,
+          sheetName,
+          spreadsheetId,
+          operations: previewTable.meta.operations
         }
       });
     }
@@ -2473,4 +2502,118 @@ function formatExtractionsAsMarkdown(extractions: Array<{ index: number; type: s
   });
   
   return markdown;
-} 
+}
+
+// Map extracted data to sheet columns using semantic similarity
+async function handleMapExtractedData(args: ToolArgs, context: Context, res: NextApiResponse) {
+  try {
+    const { extractedData, sheetHeaders } = args as any;
+    
+    if (!extractedData || !Array.isArray(extractedData.rows) || extractedData.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'extractedData with rows is required'
+      });
+    }
+
+    if (!Array.isArray(sheetHeaders) || sheetHeaders.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'sheetHeaders array is required'
+      });
+    }
+
+    // Get API key for AI processing
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        error: 'Gemini API key is required for semantic mapping'
+      });
+    }
+
+    // Create AI prompt for semantic column mapping
+    const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+    
+    const prompt = `Map the provided extracted data table to the sheet's columns by finding semantic matches between field names and sheet headers using vector embeddings, outputting a new table with columns renamed to exact sheet headers and rows filled accordingly, ready for accept, reject, or edit actions.
+
+EXTRACTED DATA:
+Headers: ${JSON.stringify(extractedData.headers)}
+Sample rows: ${JSON.stringify(extractedData.rows.slice(0, 3))}
+
+TARGET SHEET HEADERS:
+${JSON.stringify(sheetHeaders)}
+
+INSTRUCTIONS:
+1. Analyze the semantic meaning of each extracted data header
+2. Find the best matching sheet header for each extracted header
+3. Map data values accordingly, handling any format conversions needed
+4. Output a JSON object with:
+   - mappedHeaders: array of sheet headers that have matches
+   - mappedRows: array of row objects with sheet header keys
+   - unmappedHeaders: array of extracted headers that couldn't be mapped
+   - mappingConfidence: object showing confidence scores for each mapping
+
+Return ONLY valid JSON, no markdown or explanations.`;
+
+    const { text } = await ai.generate(prompt);
+    
+    // Parse AI response
+    let mappingResult;
+    try {
+      const cleaned = text.replace(/```json\n?/, '').replace(/```\n?/, '').trim();
+      mappingResult = JSON.parse(cleaned);
+    } catch (parseError) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to parse AI mapping response',
+        details: parseError instanceof Error ? parseError.message : String(parseError)
+      });
+    }
+
+    // Validate mapping result
+    if (!mappingResult.mappedHeaders || !mappingResult.mappedRows) {
+      return res.status(500).json({
+        success: false,
+        error: 'Invalid mapping result from AI',
+        details: 'Missing required mapping fields'
+      });
+    }
+
+    // Create the mapped table
+    const mappedTable = {
+      title: 'Mapped Data (Ready for Review)',
+      headers: mappingResult.mappedHeaders,
+      rows: mappingResult.mappedRows.map((row: any) => 
+        mappingResult.mappedHeaders.map((header: string) => String(row[header] ?? ''))
+      ),
+      summary: `Mapped ${mappingResult.mappedRows.length} rows to ${mappingResult.mappedHeaders.length} sheet columns. ${mappingResult.unmappedHeaders?.length || 0} headers could not be mapped.`,
+      meta: {
+        type: 'mapped_data',
+        buttons: ['accept', 'reject', 'edit'],
+        mappingConfidence: mappingResult.mappingConfidence,
+        unmappedHeaders: mappingResult.unmappedHeaders,
+        originalHeaders: extractedData.headers
+      }
+    };
+
+    return res.status(200).json({
+      success: true,
+      result: `Successfully mapped ${mappingResult.mappedRows.length} rows to sheet columns`,
+      mappedTable,
+      mappingDetails: {
+        mappedHeaders: mappingResult.mappedHeaders,
+        unmappedHeaders: mappingResult.unmappedHeaders || [],
+        confidence: mappingResult.mappingConfidence || {}
+      }
+    });
+
+  } catch (error) {
+    console.error('Failed to map extracted data:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to map extracted data',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+}

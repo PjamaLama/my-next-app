@@ -4,13 +4,13 @@ import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 // Cleaned up; tables built in processMessage, not here.
 
 type ComposeTable = { title?: string; headers: string[]; rows: string[][]; summary?: string };
-type ComposeChart = { kind: 'bar' | 'line' | 'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }> };
+
 
 type ComposeInput = {
   userMessage: string;
   qaAnswer?: string;
   tables?: ComposeTable[];
-  charts?: ComposeChart[];
+
   insights?: string[];
   toolSummaries?: string[];
   plan?: any;
@@ -32,7 +32,7 @@ function buildClarifyUnparsedMessage(column: string, total: number, unparsed: nu
 }
 
 export async function composeGroundedReply(input: ComposeInput): Promise<string> {
-  const { userMessage, qaAnswer, tables = [], charts = [], insights = [], toolSummaries = [], plan, toolResults, inferences } = input;
+  const { userMessage, qaAnswer, tables = [], insights = [], toolSummaries = [], plan, toolResults, inferences } = input;
 
   // Prefer QA summary if available
   try {
@@ -98,10 +98,7 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
   if (Array.isArray(insights) && insights.length > 0) {
     contextBits.push(`Include novel insights from: ${insights.slice(0, 3).join('; ')}`);
   }
-  if (Array.isArray(charts) && charts.length > 0) {
-    const chartNotes = charts.map(chart => `Visualizing with a ${chart.kind} chart: ${chart.title || 'Data visualization'}`).join('; ');
-    contextBits.push(chartNotes);
-  }
+
   if (inferences && typeof inferences === 'object' && Object.keys(inferences).length > 0) {
     const inferenceNotes = Object.entries(inferences).map(([column, reason]) => `Inferred ${column} from ${reason}`).join('; ');
     contextBits.push(inferenceNotes);
@@ -125,7 +122,7 @@ export async function composeGroundedReply(input: ComposeInput): Promise<string>
     "- If mapping was ambiguous, include clarification questions.",
     "- Include this instructional text when a preview exists: Here's the proposed updates in a table. Review and click 'Approve' to add, 'Edit' to modify, or 'Reject' to cancel.",
     '- Include novel insights when provided to enhance the response.',
-    '- If charts are mentioned, note that visualizations are available via the UI ChartRenderer.',
+    
     '- When inferences are present, mention them naturally (e.g., "I filled in the Date field with today\'s date and Driver from recent entries"). Include in preview table as bold/italic for inferred cells.',
     'Ground on context for accuracy.',
     prefix,

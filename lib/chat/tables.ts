@@ -6,14 +6,14 @@ import { bestHeaderIndex, detectDateWindow, normalizeToken, parseNumber, structu
 
 function selectTableType(message: string, hydratedSheetData: Record<string, string[][]>, selectedSheetNames: string[]) {
   const msg = message.toLowerCase();
-  const wantAggregate = /(total|sum|average|avg|count|group)/i.test(message);
+
   const groupMatch = message.match(/\b(?:by|per)\s+([a-z][a-z0-9_\s]{2,})/i);
 
   const candidateNames = selectedSheetNames.length > 0 ? selectedSheetNames : Object.keys(hydratedSheetData);
   const sheetName = candidateNames.find((n) => msg.includes(normalizeToken(n))) || candidateNames[0];
   const table = hydratedSheetData[sheetName] || [];
   
-  return { wantAggregate, groupMatch, sheetName, table };
+  return { groupMatch, sheetName, table };
 }
 
 function performTableAggregation(
@@ -83,9 +83,8 @@ export function buildSmartTables(
   if (!hydratedSheetData || Object.keys(hydratedSheetData).length === 0) return [];
 
   // If intent is explicitly update_data, force editable table mode (no aggregation)
-  const { wantAggregate, groupMatch, sheetName, table } = intent === 'update_data' 
+  const { groupMatch, sheetName, table } = intent === 'update_data' 
     ? { 
-        wantAggregate: false, 
         groupMatch: null, 
         sheetName: selectedSheetNames.length > 0 ? selectedSheetNames[0] : Object.keys(hydratedSheetData)[0],
         table: hydratedSheetData[selectedSheetNames.length > 0 ? selectedSheetNames[0] : Object.keys(hydratedSheetData)[0]] || []
@@ -148,18 +147,7 @@ export function buildSmartTables(
 
   const tables: StructuredTable[] = [];
 
-  const aggregationResult = performTableAggregation(filtered, headers, metricIdx, groupIdx, message);
-  if (aggregationResult) {
-    const when = range?.label ? ` · ${range.label}` : '';
-    tables.push({
-      title: `${sheetName} · ${groupIdx >= 0 ? `by ${aggregationResult.headers[0]}` : 'aggregate'}${when}`,
-      headers: aggregationResult.headers,
-      rows: aggregationResult.rows,
-      footer: aggregationResult.footer,
-      summary: aggregationResult.summary
-    });
-    return tables;
-  }
+
 
   const selectedIdxs = selectTableColumns(message, headers);
   const idxs = selectedIdxs || headers.map((_, i) => i).slice(0, 5);

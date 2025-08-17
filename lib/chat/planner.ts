@@ -2,6 +2,8 @@ import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 import { Context, ConversationHistoryItem } from './types';
 import { detectIntent } from './intentDetection';
+import { executeAIWithRetry } from '../aiUtils';
+import { debugContext, logContext, logContextError, createContextTimer } from './contextUtils';
 
 // Helper function to detect if a row likely matches existing data
 function detectExistingRow(row: Record<string, unknown>, headers: string[], sheetData: string[][]): boolean {
@@ -35,21 +37,22 @@ function detectExistingRow(row: Record<string, unknown>, headers: string[], shee
 }
 
 export type PlannerPlan = {
-  intent: 'describe_data' | 'update_data' | 'get_data' | 'other';
+  intent: 'update_data' | 'extraction';
   reasoning: string | null;
   tools: Array<{ name: string; args: Record<string, unknown> }>;
   toolChain: Array<{ toolName: string; params: Record<string, unknown>; dependsOn?: number[] }>;
   clarifyQuestion: string | null;
   inferences: Record<string, string> | null;
+  extractedData: { rows: Record<string, unknown>[]; headers: string[] } | null;
+  sheets: Array<{
+    sheetName: string;
+    rows: Array<Record<string, unknown>>;
+  }>;
 };
 
-// Lightweight planner:
-// - Focus on intent detection and tool planning
-// - For updates, enforce a single-path using apply_structured_rows with dryRun: true
-// - No sheet-specific rules or hard-coded mappings
-
-function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean, detectedIntent: string): string {
-  // Preserve placeholders in the template, but also include resolved context for grounding and tests
+// New planner prompt focused on updates with multi-sheet support
+function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean, isExtraction: boolean): string {
+  // Get sheet context
   const headers: string[] = Array.isArray((context as any)?.sheetHeaders)
     ? ((context as any).sheetHeaders as string[])
     : [];
@@ -57,13 +60,16 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
   const sheetData: (string | undefined)[][] = Array.isArray((context as any)?.sheetData)
     ? ((context as any).sheetData as (string | undefined)[][])
     : [];
-  // Use last 10 rows for sample (or fewer if not available), formatted as CSV-like with "" for empty cells
   const sheetDataSample = sheetData.slice(-10).map(row => 
     row.map((cell: string | undefined) => cell === undefined || cell === null || cell === '' ? '""' : JSON.stringify(String(cell))).join(',')
   ).join('\n');
+  
+  // Extract file data for planner context
+  const fileData = hasFiles ? (context as any)?.fileData || [] : [];
   const fileDataSample = Array.isArray((context as any)?.fileData)
     ? ((context as any).fileData as any[]).slice(0, 3)
     : [];
+  
   const hydratedContextResolved = JSON.stringify({
     sheetHeaders: headers,
     spreadsheetId: (context as any)?.spreadsheetId || null,
@@ -71,9 +77,11 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     sheetNames: (context as any)?.sheetNames || [],
     primarySheet: Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 0 ? (context as any).sheetNames[0] : (context as any)?.sheetName || null,
     fileDataSample,
-    sheetDataSample: sheetData.slice(-10), // Raw for resolved, but use formatted in prompt
+    fileData,
+    sheetDataSample: sheetData.slice(-10),
   });
-  // Build a compact conversation history string for grounding
+  
+  // Build conversation history
   const historyText = Array.isArray(history)
     ? history
         .slice(-6)
@@ -81,53 +89,149 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
         .join('\n')
     : '';
 
-  // Updated template incorporating new inference rules for updates while preserving original structure and principles
-  const template = `You are an AI planner for a Google Sheets assistant.
+  // Check for mapping flag
+  const ctxAny = context as any;
+  const isMapping = ctxAny?.flag === 'mapped';
 
-Your task is to analyze the user's intent and prepare actions accordingly. Always base your decisions on the provided headers and sample recent rows from the sheet.
+  // New focused update planner prompt
+  const template = isExtraction 
+    ? `You are a data extraction planner for Google Sheets. Your job is to analyze uploaded files and create an initial extraction plan.
 
-Headers: [${headersList}]
+IMPORTANT: Always return intent: "extraction" - the user wants to extract and map data from files.
 
-Sample recent rows: ${sheetDataSample || 'No recent rows available'}
+CONTEXT:
+- Headers: [${headersList}]
+- Sample recent rows: ${sheetDataSample || 'No recent rows available'}
+- User query: ${JSON.stringify(message)}
+- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}
 
-User query: ${JSON.stringify(message)}
+${hasFiles ? `FILE ATTACHMENTS: ${Array.isArray((context as any)?.fileData) ? (context as any).fileData.length : 0} file(s) uploaded. Extract structured data from these files.` : ''}
 
-IMPORTANT: Enhanced intent detection suggests the user's intent is likely: "${detectedIntent}"
+TASK: Create an initial extraction plan that shows the raw extracted data from files.
 
-Decide the user's intent from: 'update_data', 'describe_data', 'get_data', or 'other'.
+REQUIREMENTS:
+1. Focus on extracting and displaying the raw data from files first
+2. Do not attempt to map to exact column names yet - this will be done in a second step
+3. Always use the apply_structured_rows tool with dryRun: true for preview
+4. Set clarifyQuestion if you cannot extract meaningful data from files
 
-Principles:
-- Use exact column headers from {hydratedContext.sheetHeaders}. Do not assume synonyms.
-- For updates, plan a single tool only: { name: 'apply_structured_rows', args: { spreadsheetId, sheetName, rows, dryRun: true } }.
-- For updates to existing rows, identify row by primary key or unique value (from sheetConfig). Plan as apply_structured_rows with partial rows (only changed cells), and note "updating existing row" in reasoning.
-- Do not include 'resolve_column' or any other tools for updates. toolChain must be empty for updates.
-- If spreadsheetId or sheetName is missing, set clarifyQuestion accordingly and do not produce rows.
-- If you cannot confidently form rows from the message and context, set clarifyQuestion asking the user to specify column-value pairs.
-- For describe/get requests, you may include a toolChain (e.g., get_sheet_data → aggregate), or leave it empty.
-- For multi-sheet contexts (sheetNames >1), plan tools across sheets if query spans them (e.g., aggregate from all). For updates, set primarySheet to first in sheetNames, or clarifyQuestion if ambiguous.
-- Infer missing values from patterns in sheetData (e.g., if recent rows have similar Driver, prefill it). Only clarify if inference confidence low (<70%). For updates, output partial rows with inferred fields marked (e.g., {column: "inferred value from pattern"}).
+OUTPUT FORMAT:
+Return a JSON object with this EXACT structure:
+{
+  "intent": "extraction",
+  "reasoning": "Brief explanation of what data was extracted",
+  "tools": [{"name": "apply_structured_rows", "args": {...}}],
+  "toolChain": [],
+  "clarifyQuestion": null,
+  "inferences": null,
+  "extractedData": { "rows": [...], "headers": [...] },
+  "sheets": [
+    {
+      "sheetName": "Sheet1",
+      "rows": [
+        {"Column1": "value1", "Column2": "value2"}
+      ]
+    }
+  ]
+}
 
-INTENT GUIDANCE:
-- If enhanced detection suggests "update_data": Strongly consider this intent unless the message clearly contradicts it
-- If enhanced detection suggests "get_data": The user likely wants to see/analyze existing data
-- If enhanced detection suggests "describe_data": The user wants a general overview or explanation
-- Always validate the detected intent against the actual message content
+EXTRACTION FOCUS: For file attachments, output extractedData: { rows: [array of row objects from files], headers: [inferred headers from files] } to show the raw extracted data before mapping.`
 
-If intent is 'update_data', output structured rows that match the sheet's format. Key instructions:
-- Infer column mappings, data formats, and styles from the sample recent rows. Match patterns in how data is placed (e.g., if names often go in 'Ty' for personal visits and towns in 'CLIENT SEEN', do the same; if sales are formatted as 'Rxxx.00', use that).
-- For dates: Replace vague terms like 'Today' with the actual current date in the format used in samples (e.g., MM/DD/YYYY). Current date: August 17, 2025.
-- For missing or unspecified fields: Leave as empty unless a clear pattern in samples suggests a default (e.g., if most rows leave 'TOWN' empty for certain types of entries, do so).
-- Separate details logically: Put conversation notes in 'DETAILS OF VISIT' without duplicating sales info; put monetary values only in 'SALES MADE' in the matching format.
-- Keep it simple: Only infer based on majority patterns in samples; do not overcomplicate or add unmentioned data.
+    : isMapping
+    ? `You are a data mapping planner for Google Sheets. Your job is to map extracted data to exact sheet column names.
 
-For other intents, follow standard logic.
+IMPORTANT: Always return intent: "update_data" - the user wants to map extracted data to sheet columns.
 
-Output JSON with: intent, tools, toolChain, clarifyQuestion, reasoning, inferences: {column: 'reason'} for transparency, and rows: [array of row objects with keys matching headers] (only for 'update_data').
+CONTEXT:
+- Headers: [${headersList}]
+- Sample recent rows: ${sheetDataSample || 'No recent rows available'}
+- User query: ${JSON.stringify(message)}
+- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}
 
-Conversation history: {conversationHistory}
-Sheet context: {hydratedContext}`;
+TASK: Map the extracted data to EXACT column names from the sheet headers.
 
-  // Compatibility block: include resolved values so models and tests see concrete content
+REQUIREMENTS:
+1. Use EXACT column headers from the headers list above - no synonyms or fuzzy matching
+2. Map each extracted column to the most appropriate sheet column
+3. If a column cannot be mapped exactly, set clarifyQuestion
+4. Always use the apply_structured_rows tool with dryRun: true for preview
+5. Ensure all mapped column names exactly match the sheet headers
+
+OUTPUT FORMAT:
+Return a JSON object with this EXACT structure:
+{
+  "intent": "update_data",
+  "reasoning": "Brief explanation of how you mapped the data",
+  "tools": [{"name": "apply_structured_rows", "args": {...}}],
+  "toolChain": [],
+  "clarifyQuestion": null,
+  "inferences": null,
+  "extractedData": null,
+  "sheets": [
+    {
+      "sheetName": "Sheet1",
+      "rows": [
+        {"ExactColumnName": "value1", "AnotherExactColumn": "value2"}
+      ]
+    }
+  ]
+}
+
+MAPPING REQUIREMENTS:
+- All column names in the output must exactly match headers from the headers list
+- If you cannot map a column exactly, ask for clarification
+- Use the most semantically appropriate column for each piece of data
+- Ensure the mapped data structure matches the sheet schema exactly`
+
+    : `You are a Google Sheets update planner. Your job is to analyze user requests and create structured data updates.
+
+IMPORTANT: Always return intent: "update_data" - the user wants to add or modify data.
+
+CONTEXT:
+- Headers: [${headersList}]
+- Sample recent rows: ${sheetDataSample || 'No recent rows available'}
+- User query: ${JSON.stringify(message)}
+- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}
+
+${hasFiles ? `FILE ATTACHMENTS: ${Array.isArray((context as any)?.fileData) ? (context as any).fileData.length : 0} file(s) uploaded. Extract structured data from these files.` : ''}
+
+TASK: Create a structured update plan that maps user input to exact column names.
+
+REQUIREMENTS:
+1. Use EXACT column headers from the headers list above - no synonyms or fuzzy matching
+2. If multiple sheets are involved, segment rows by sheet name
+3. Always use the apply_structured_rows tool with dryRun: true for preview
+4. If you cannot confidently map user input to exact column names, set clarifyQuestion
+
+OUTPUT FORMAT:
+Return a JSON object with this EXACT structure:
+{
+  "intent": "update_data",
+  "reasoning": "Brief explanation of what you're doing",
+  "tools": [{"name": "apply_structured_rows", "args": {...}}],
+  "toolChain": [],
+  "clarifyQuestion": null,
+  "inferences": null,
+  "extractedData": ${hasFiles ? '{ "rows": [...], "headers": [...] }' : 'null'},
+  "sheets": [
+    {
+      "sheetName": "Sheet1",
+      "rows": [
+        {"Column1": "value1", "Column2": "value2"}
+      ]
+    }
+  ]
+}
+
+MULTI-SHEET SUPPORT:
+- If multiple sheets are mentioned or available, create separate sheet entries
+- Each sheet must have sheetName and rows array
+- Use the primary sheet if no specific sheet is mentioned
+- Ensure all column names exactly match the headers provided
+
+${hasFiles ? `FILE PROCESSING: For file attachments, also output extractedData: { rows: [array of row objects from files], headers: [inferred headers from files] } to show the raw extracted data before mapping.` : ''}`;
+
+  // Compatibility block with resolved values
   const compatibility = `
 
 User message (resolved): ${JSON.stringify(message)}
@@ -138,32 +242,57 @@ ${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.len
   return template + compatibility;
 }
 
-// No hard-coded extraction helpers; rely on the model and caller context for mapping.
-
 export async function generatePlan(
   message: string,
   context: Context,
   conversationHistory: ConversationHistoryItem[],
   hasFiles: boolean
 ): Promise<PlannerPlan> {
-  // Enhanced intent detection: use semantic analysis first
-  let detectedIntent: string;
-  try {
-    detectedIntent = await detectIntent(message);
-    console.log(`[Planner] Enhanced intent detection: "${detectedIntent}" for message: "${message}"`);
-  } catch (error) {
-    console.warn('[Planner] Enhanced intent detection failed, falling back to AI:', error);
-    detectedIntent = 'unknown';
-  }
-
-  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-  const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+  const timer = createContextTimer('generatePlan');
   
-  // Pass the detected intent to the prompt for better AI guidance
-  const prompt = buildPrompt(message, context, conversationHistory || [], !!hasFiles, detectedIntent);
-  const { text } = await ai.generate(prompt);
-  const plannerPlan = parsePlanResponse(text, context, message, detectedIntent);
-  return plannerPlan;
+  try {
+    // Check for extraction flag
+    const ctxAny = context as any;
+    const isExtraction = ctxAny?.flag === 'extraction';
+    
+    // Set intent based on flag
+    const detectedIntent = isExtraction ? 'extraction' : 'update_data';
+    
+    // Log context and operation details
+    debugContext(context, 'generatePlan');
+    logContext(context, `Generating plan with intent: ${detectedIntent}`, 1);
+    
+    console.log(`[Planner] Intent: "${detectedIntent}" for message: "${message}"`);
+
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GOOGLE_GENAI_API_KEY not configured');
+    }
+    
+    const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
+    
+    const prompt = buildPrompt(message, context, conversationHistory || [], !!hasFiles, isExtraction);
+    
+    // Use aiUtils retry for the LLM call
+    const { text } = await executeAIWithRetry(
+      async () => ai.generate(prompt),
+      'Plan generation'
+    );
+    
+    const plannerPlan = parsePlanResponse(text, context, message, detectedIntent);
+    
+    // Log successful plan generation
+    logContext(context, `Plan generated successfully with ${plannerPlan.sheets?.length || 0} sheets`, 1);
+    
+    timer(); // End timing
+    return plannerPlan;
+    
+  } catch (error) {
+    timer(); // End timing even on error
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    logContextError(context, errorObj, 'generatePlan');
+    throw errorObj;
+  }
 }
 
 function parsePlanResponse(aiResponse: string, context: Context, message: string, detectedIntent: string): PlannerPlan {
@@ -172,20 +301,24 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
     if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json\n?/, '');
     const parsed = JSON.parse(cleaned);
     
-    // Use AI response intent, but fall back to detected intent if AI is unclear
-    let intent: PlannerPlan['intent'];
-    if (['describe_data', 'update_data', 'get_data', 'other'].includes(parsed.intent)) {
-      intent = parsed.intent;
-    } else if (detectedIntent !== 'unknown' && ['describe_data', 'update_data', 'get_data'].includes(detectedIntent)) {
-      // Fall back to detected intent if AI response is unclear
-      console.log(`[Planner] AI intent unclear, using detected intent: "${detectedIntent}"`);
-      intent = detectedIntent as PlannerPlan['intent'];
-    } else {
-      intent = 'other';
-    }
+    // Use the detected intent from the flag
+    const intent: PlannerPlan['intent'] = detectedIntent as 'update_data' | 'extraction';
     
     // Log intent decision for debugging
-    console.log(`[Planner] Final intent decision: "${intent}" (AI: "${parsed.intent}", Detected: "${detectedIntent}")`);
+    console.log(`[Planner] Final intent decision: "${intent}"`);
+    
+    // Extract sheets data - this is now mandatory
+    const sheets = Array.isArray(parsed.sheets) ? parsed.sheets : [];
+    
+    // Validate sheets structure
+    if (sheets.length === 0) {
+      // Fallback: create a default sheet structure if none provided
+      const sheetName = (context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames[0] : 'Sheet1');
+      sheets.push({
+        sheetName,
+        rows: []
+      });
+    }
     
     // Consolidated to single path for simplicity: apply_structured_rows only for tabular updates
     let tools = Array.isArray(parsed.tools)
@@ -201,8 +334,8 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
           dependsOn: Array.isArray(s?.dependsOn) ? s?.dependsOn.map((i: number) => Number(i)).filter((n: number) => Number.isFinite(n) && n >= 0) : [],
         }))
       : [];
+    
     // Enforce single-tool path + preview-first: rewrite update_sheet->apply_structured_rows and set dryRun
-    // Fixed context propagation for spreadsheetId, sheetName; bypassed resolve_column for updates.
     let committedChain = toolChain.map((step: { toolName: string; params: Record<string, unknown>; dependsOn?: number[] }) => {
       const name = String(step.toolName || '').toLowerCase();
       if (name === 'update_sheet') {
@@ -214,18 +347,9 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
       return step;
     });
 
-    // Removed resolve_column for updates to simplify flow.
-    // If intent is update, do not include resolve_column and keep toolChain empty for updates
+    // For update_data intent, do not include resolve_column and keep toolChain empty for updates
     if (intent === 'update_data') {
       committedChain = [];
-    } else {
-      committedChain = committedChain.map((s: any) => {
-        if (String(s?.toolName || '').toLowerCase() === 'resolve_column') {
-          const sheetName = String((context as any)?.sheetName || 'Sheet1');
-          return { ...s, params: { ...(s.params || {}), query: `SELECT * FROM ${sheetName} LIMIT 1` } };
-        }
-        return s;
-      });
     }
 
     // Post-parse enforcement: if apply_structured_rows contains unmapped keys (not in exact headers), request clarification
@@ -243,25 +367,34 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
           }
         }
       };
+      
+      // Inspect sheets for invalid keys
+      for (const sheet of sheets) {
+        if (Array.isArray(sheet.rows)) {
+          inspectRows(sheet.rows);
+        }
+      }
+      
       // Inspect tools array
       for (const t of tools) {
         if (String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows') {
           inspectRows((t as any)?.args?.rows);
         }
       }
+      
       // Inspect toolChain array
       for (const step of committedChain as any[]) {
         if (String(step?.toolName || '').toLowerCase() === 'apply_structured_rows') {
           inspectRows(step?.params?.rows);
         }
       }
+      
       if (invalidKeys.size > 0 && headers.length > 0 && !clarifyQuestion) {
         clarifyQuestion = `Could not map some terms to columns: ${Array.from(invalidKeys).join(', ')}. Available: ${headers.join(', ')}. Please clarify which columns to use.`;
       }
     } catch {}
 
     // Ensure apply_structured_rows carries spreadsheetId and sheetName; do not synthesize rows here.
-    // Also handle top-level 'rows' from parsed output and inject into apply_structured_rows args if present
     try {
       const spreadsheetId = (context as any)?.spreadsheetId;
       const sheetNames = Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames : [];
@@ -284,16 +417,6 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
         return updated;
       };
 
-      // If top-level 'rows' exists in parsed (for update_data), ensure it's injected into apply_structured_rows args
-      if (intent === 'update_data' && Array.isArray(parsed.rows)) {
-        let applyTool = tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows');
-        if (!applyTool) {
-          applyTool = { name: 'apply_structured_rows', args: {} } as any;
-          tools.push(applyTool);
-        }
-        applyTool.args = { ...(applyTool.args || {}), rows: parsed.rows };
-      }
-
       // Update tools array and filter to only apply_structured_rows for updates; synthesize if missing
       tools = tools
         .filter((t: any) => intent !== 'update_data' || String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows')
@@ -305,11 +428,13 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
           (t as any).params = (t as any).args;
           return t;
         });
+      
       if (intent === 'update_data' && !tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows')) {
         const synthesized = { name: 'apply_structured_rows', args: ensureParams({}) } as any;
         synthesized.params = synthesized.args;
         tools.push(synthesized);
       }
+      
       // Update toolChain entries
       committedChain = (committedChain as any[]).map((s) => {
         if (String(s?.toolName || '').toLowerCase() === 'apply_structured_rows') {
@@ -318,40 +443,27 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
         return s;
       });
 
-      const firstApply = (committedChain as any[]).find((s) => String(s?.toolName || '').toLowerCase() === 'apply_structured_rows');
-      const rows = firstApply?.params?.rows || (tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows') as any)?.args?.rows;
-      
-      // Analyze rows to determine if they should be updates or additions
-      if (intent === 'update_data' && Array.isArray(rows) && rows.length > 0) {
+      // Analyze rows in sheets to determine if they should be updates or additions
+      if (intent === 'update_data' && sheets.length > 0) {
         try {
           const sheetData = (context as any)?.sheetData;
           const sheetHeaders = (context as any)?.sheetHeaders;
           
           if (Array.isArray(sheetData) && Array.isArray(sheetHeaders)) {
-            // Mark rows as updates if they likely match existing data
-            const enhancedRows = rows.map((row: any) => {
-              if (typeof row === 'object' && row !== null) {
-                // Check if this row likely matches an existing row
-                const isUpdate = detectExistingRow(row, sheetHeaders, sheetData);
-                return { ...row, operation: isUpdate ? 'update' : 'add' };
+            // Process each sheet's rows
+            for (const sheet of sheets) {
+              if (Array.isArray(sheet.rows)) {
+                const enhancedRows = sheet.rows.map((row: any) => {
+                  if (typeof row === 'object' && row !== null) {
+                    // Check if this row likely matches an existing row
+                    const isUpdate = detectExistingRow(row, sheetHeaders, sheetData);
+                    return { ...row, operation: isUpdate ? 'update' : 'add' };
+                  }
+                  return row;
+                });
+                sheet.rows = enhancedRows;
               }
-              return row;
-            });
-            
-            // Update the rows in tools and toolChain
-            tools = tools.map((t: any) => {
-              if (String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows') {
-                return { ...t, args: { ...(t as any).args, rows: enhancedRows } };
-              }
-              return t;
-            });
-            
-            committedChain = (committedChain as any[]).map((s) => {
-              if (String(s?.toolName || '').toLowerCase() === 'apply_structured_rows') {
-                return { ...s, params: { ...s.params, rows: enhancedRows } };
-              }
-              return s;
-            });
+            }
           }
         } catch (error) {
           // eslint-disable-next-line no-console
@@ -361,7 +473,7 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
       
       // Debug log of final planner output
       // eslint-disable-next-line no-console
-      console.log('Planner output:', { intent, tools, toolChain: committedChain, clarify: clarifyQuestion, rows: (tools as any)?.[0]?.params?.rows });
+      console.log('Planner output:', { intent, tools, toolChain: committedChain, clarify: clarifyQuestion, sheets });
 
       // If critical context missing, ask to clarify
       if ((!spreadsheetId || !primarySheetName) && intent === 'update_data' && !clarifyQuestion) {
@@ -380,13 +492,21 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
       clarifyQuestion,
       reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : null,
       inferences: typeof parsed.inferences === 'object' && parsed.inferences ? parsed.inferences : null,
+      extractedData: typeof parsed.extractedData === 'object' && parsed.extractedData ? parsed.extractedData : null,
+      sheets,
     };
   } catch {
-    // Safe fallback with a best-guess tool
-    const summaryLike = /tell\s+me\s+about|summariz|what\s+i\s+did|overview/i.test(message || '');
-    if (summaryLike) {
-      return { intent: 'describe_data', tools: [{ name: 'describe_sheet', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Summary-like request.', inferences: null };
-    }
-    return { intent: 'get_data', tools: [{ name: 'get_sheet_data', args: {} }], toolChain: [], clarifyQuestion: null, reasoning: 'Fallback planner.', inferences: null };
+    // Safe fallback for update_data intent
+    const sheetName = (context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames[0] : 'Sheet1');
+    return { 
+      intent: 'update_data', 
+      tools: [{ name: 'apply_structured_rows', args: {} }], 
+      toolChain: [], 
+      clarifyQuestion: 'Failed to parse plan. Please try again.', 
+      reasoning: 'Fallback planner.', 
+      inferences: null, 
+      extractedData: null,
+      sheets: [{ sheetName, rows: [] }]
+    };
   }
 }

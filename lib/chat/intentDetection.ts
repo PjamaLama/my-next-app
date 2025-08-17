@@ -2,84 +2,10 @@ import { ConversationHistoryItem, Context, ImageData } from './types';
 import { generateQuickReplies } from './quickReplies';
 import { executeToolCall } from './toolExecution';
 import { extractSheetNameFromMessage, extractIdFromHistory, extractSheetName } from './extractor';
-import { embedText, cosineSimilarity } from '../embeddings';
 
-// Enhanced intent detection with semantic similarity fallback
+// Hardcoded intent detection - always returns update_data
 async function detectIntent(message: string): Promise<string> {
-  const dataEntryPatterns = /(add|insert|new|record|entry|log|enter|fill|complete|submit|edit|change|modify|update|correct|fix|adjust)/i;
-  const analysisPatterns = /(show|display|analyze|summarize|total|average|count|group|trend|insight)/i;
-
-  // Priority 1: Explicit data entry patterns (highest priority)
-  if (dataEntryPatterns.test(message)) {
-    return 'update_data'; // Prioritize entry even if analysis keywords present
-  }
-  
-  // Priority 2: Explicit analysis patterns
-  if (analysisPatterns.test(message)) {
-    return 'get_data';
-  }
-
-  // Priority 3: Semantic similarity fallback for ambiguous cases
-  try {
-    const messageVector = await embedText(message);
-    
-    // Define reference phrases for different intents
-    const entryPhrases = [
-      'User wants to add or edit data',
-      'User wants to insert new information',
-      'User wants to modify existing data',
-      'User wants to create a new record',
-      'User wants to update the sheet'
-    ];
-    
-    const analysisPhrases = [
-      'User wants to see data',
-      'User wants to analyze data',
-      'User wants to view information',
-      'User wants to get insights',
-      'User wants to understand the data'
-    ];
-
-    // Calculate similarity scores
-    let maxEntryScore = 0;
-    let maxAnalysisScore = 0;
-
-    for (const phrase of entryPhrases) {
-      const phraseVector = await embedText(phrase);
-      const score = cosineSimilarity(messageVector, phraseVector);
-      maxEntryScore = Math.max(maxEntryScore, score);
-    }
-
-    for (const phrase of analysisPhrases) {
-      const phraseVector = await embedText(phrase);
-      const score = cosineSimilarity(messageVector, phraseVector);
-      maxAnalysisScore = Math.max(maxAnalysisScore, score);
-    }
-
-    // Use threshold-based decision with bias toward data entry
-    const entryThreshold = 0.6; // Lower threshold for entry (more permissive)
-    const analysisThreshold = 0.7; // Higher threshold for analysis (more strict)
-    
-    if (maxEntryScore > entryThreshold && maxEntryScore > maxAnalysisScore) {
-      return 'update_data';
-    } else if (maxAnalysisScore > analysisThreshold) {
-      return 'get_data';
-    }
-    
-    // Default to describe_data for truly ambiguous cases
-    return 'describe_data';
-  } catch (error) {
-    // Fallback to pattern-based detection if embeddings fail
-    console.warn('Semantic intent detection failed, falling back to pattern matching:', error);
-    
-    // Simple fallback: if message contains any data-related action words, assume update
-    const hasActionWords = /(want|need|should|must|going|planning|trying|attempting)/i.test(message);
-    if (hasActionWords) {
-      return 'update_data';
-    }
-    
-    return 'describe_data';
-  }
+  return 'update_data';
 }
 
 export async function detectUserIntent(
@@ -156,7 +82,7 @@ export async function detectUserIntent(
   return null;
 }
 
-// Export the enhanced intent detection for use in other modules
+// Export the hardcoded intent detection for use in other modules
 export { detectIntent };
 
 // Test function for development/debugging
@@ -174,7 +100,7 @@ export async function testIntentDetection() {
     "Log a new entry"
   ];
 
-  console.log('Testing enhanced intent detection:');
+  console.log('Testing hardcoded intent detection:');
   for (const message of testMessages) {
     try {
       const intent = await detectIntent(message);

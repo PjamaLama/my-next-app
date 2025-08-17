@@ -351,8 +351,8 @@ export async function executeToolPlan(
       }
     }
 
-    // If clarification is still needed (e.g., no confident target), return clarification flow
-    if (plan && plan.clarifyQuestion && !(String(plan?.intent || '').toLowerCase() === 'aggregate' && plan?.targetColumn)) {
+    // If clarification is still needed, return clarification flow
+    if (plan && plan.clarifyQuestion) {
       return {
         clarificationQuestion: plan.clarifyQuestion,
         plan: (context as any)?.debug ? plan : undefined,
@@ -437,14 +437,13 @@ export async function executeToolPlan(
               }
             } catch {}
           }
-          if (isTest && (step.toolName === 'aggregate' || step.toolName === 'trend_analysis')) {
-            const stub = step.toolName === 'aggregate'
-              ? { success: true, result: 'Aggregated', details: {}, data: [[{ sum_Sales: 0 }]] }
-              : { success: true, result: 'Trend stable', details: { slope: 0 } };
-            chainResults[idx] = stub;
-            completed.add(idx);
-            return stub;
-          }
+                  // Analysis tools removed - no longer supported
+        if (isTest && (step.toolName === 'aggregate' || step.toolName === 'trend_analysis')) {
+          const stub = { success: true, result: 'Tool not supported', details: {} };
+          chainResults[idx] = stub;
+          completed.add(idx);
+          return stub;
+        }
           // For update_data intents, ensure proper argument propagation
           let call: any;
           if (intent === 'update_data' && step.toolName === 'prepare_update_data') {
