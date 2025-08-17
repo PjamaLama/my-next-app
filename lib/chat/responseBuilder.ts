@@ -85,7 +85,7 @@ const summarizeHistory = (context: Context): string => {
           }
         }
       } catch {}
-      const joined = items.map(i => `${i.role}: ${i.content}`).join('\n');
+      const joined = items.map((i: ConversationHistoryItem) => `${i.role}: ${i.content}`).join('\n');
       // rough cap ~1000 tokens ≈ 4000 chars
       return joined.length > 4000 ? joined.slice(-4000) : joined;
     } catch { return ''; }
@@ -230,7 +230,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
             } else if (typeof ex.extractedText === 'string') {
               const text = (ex.extractedText as string).trim();
               if (text) {
-                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 120);
+                const lines = text.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean).slice(0, 120);
                 rowsArr = lines.map((l: string) => ({ Line: l.slice(0, 120) }));
               }
             }
@@ -263,7 +263,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
           
           if (sheetHeaders.length > 0 && headers.length > 0) {
             // Find exact header matches (no fuzzy matching)
-            const matchingHeaders = headers.filter(h => sheetHeaders.includes(h));
+            const matchingHeaders = headers.filter((h: string) => sheetHeaders.includes(h));
             if (matchingHeaders.length > 0) {
               if (sheetNames.length > 1) {
                 summary = `From multiple sheets—applying to ${primarySheet}. Possible mapping: ${matchingHeaders.join(', ')}`;
@@ -296,13 +296,13 @@ export async function buildUserResponse(executionResult: any, context: Context, 
 
       // Optionally add a combined view across all structured per-file tables
       try {
-        const structuredOnly = filePreviews.filter(t => t.headers && t.headers.length > 1 && Array.isArray(t.rows) && t.rows.length > 0);
+        const structuredOnly = filePreviews.filter((t: StructuredTable) => t.headers && t.headers.length > 1 && Array.isArray(t.rows) && t.rows.length > 0);
         if (structuredOnly.length > 1) {
-          const allHeaders = Array.from(new Set<string>(structuredOnly.flatMap(t => t.headers)));
-          const rows = structuredOnly.flatMap(t => {
+          const allHeaders = Array.from(new Set<string>(structuredOnly.flatMap((t: StructuredTable) => t.headers)));
+          const rows = structuredOnly.flatMap((t: StructuredTable) => {
             const indexByHeader: Record<string, number> = {};
             t.headers.forEach((h, i) => { indexByHeader[h] = i; });
-            return t.rows.map(r => allHeaders.map(h => {
+            return t.rows.map((r: string[]) => allHeaders.map((h: string) => {
               const idx = indexByHeader[h];
               return idx != null ? String(r[idx] ?? '') : '';
             }));
@@ -481,13 +481,13 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     } catch {}
 
     // Normalize date formats across all tables before returning
-    let normalizedTables = dataTables.map(t => ({
+    let normalizedTables = dataTables.map((t: StructuredTable) => ({
       ...t,
       rows: normalizeDateColumns(t.headers, t.rows)
     }));
     // If a proposed updates table exists, prefer showing only that table to avoid noise
     try {
-      const idx = normalizedTables.findIndex(t => /proposed sheet updates/i.test(String(t.title)));
+      const idx = normalizedTables.findIndex((t: StructuredTable) => /proposed sheet updates/i.test(String(t.title)));
       if (idx >= 0) {
         normalizedTables = [normalizedTables[idx]];
       }
@@ -577,7 +577,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     // Compose a grounded conversational reply if we still don't have a response
 		if (!response || !response.trim()) {
       try {
-        const toolSummaries = (enhancedResponse || '').split('\n').map(s => s.trim()).filter(Boolean);
+        const toolSummaries = (enhancedResponse || '').split('\n').map((s: string) => s.trim()).filter(Boolean);
         const ctxAny = context as any;
         const sheetName = (typeof ctxAny.sheetName === 'string' && ctxAny.sheetName.trim()) ? ctxAny.sheetName : (Array.isArray(ctxAny.sheetNames) && ctxAny.sheetNames[0]) || '';
         const table = (ctxAny.sheetData && sheetName && Array.isArray(ctxAny.sheetData[sheetName])) ? (ctxAny.sheetData[sheetName] as string[][]) : [];
