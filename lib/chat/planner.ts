@@ -53,9 +53,13 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     ? ((context as any).sheetHeaders as string[])
     : [];
   const headersList = headers.map((h) => JSON.stringify(String(h))).join(', ');
-  const sheetDataSample = Array.isArray((context as any)?.sheetData)
-    ? ((context as any).sheetData as any[]).slice(0, 3)
+  const sheetData: (string | undefined)[][] = Array.isArray((context as any)?.sheetData)
+    ? ((context as any).sheetData as (string | undefined)[][])
     : [];
+  // Use last 10 rows for sample (or fewer if not available), formatted as CSV-like with "" for empty cells
+  const sheetDataSample = sheetData.slice(-10).map(row => 
+    row.map((cell: string | undefined) => cell === undefined || cell === null || cell === '' ? '""' : JSON.stringify(String(cell))).join(',')
+  ).join('\n');
   const fileDataSample = Array.isArray((context as any)?.fileData)
     ? ((context as any).fileData as any[]).slice(0, 3)
     : [];
@@ -66,7 +70,7 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     sheetNames: (context as any)?.sheetNames || [],
     primarySheet: Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 0 ? (context as any).sheetNames[0] : (context as any)?.sheetName || null,
     fileDataSample,
-    sheetDataSample,
+    sheetDataSample: sheetData.slice(-10), // Raw for resolved, but use formatted in prompt
   });
   // Build a compact conversation history string for grounding
   const historyText = Array.isArray(history)
@@ -76,32 +80,48 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
         .join('\n')
     : '';
 
-  // Lightweight prompt content focusing on intent and planning without sheet-specific rules
+  // Updated template incorporating new inference rules for updates while preserving original structure and principles
   const template = `You are an AI planner for a Google Sheets assistant.
-  Decide the user's intent: 'update_data', 'describe_data', 'get_data', or 'other'.
 
-  Principles:
-  - Use exact column headers from {hydratedContext.sheetHeaders}. Do not assume synonyms.
-  - For updates, plan a single tool only: { name: 'apply_structured_rows', args: { spreadsheetId, sheetName, rows, dryRun: true } }.
-  - For updates to existing rows, identify row by primary key or unique value (from sheetConfig). Plan as apply_structured_rows with partial rows (only changed cells), and note "updating existing row" in reasoning.
-  - Do not include 'resolve_column' or any other tools for updates. toolChain must be empty for updates.
-  - If spreadsheetId or sheetName is missing, set clarifyQuestion accordingly and do not produce rows.
-  - If you cannot confidently form rows from the message and context, set clarifyQuestion asking the user to specify column-value pairs.
-  - For describe/get requests, you may include a toolChain (e.g., get_sheet_data → aggregate), or leave it empty.
-  - For multi-sheet contexts (sheetNames >1), plan tools across sheets if query spans them (e.g., aggregate from all). For updates, set primarySheet to first in sheetNames, or clarifyQuestion if ambiguous.
-  - Infer missing values from patterns in sheetData (e.g., if recent rows have similar Driver, prefill it). Only clarify if inference confidence low (<70%). For updates, output partial rows with inferred fields marked (e.g., {column: "inferred value from pattern"}).
+Your task is to analyze the user's intent and prepare actions accordingly. Always base your decisions on the provided headers and sample recent rows from the sheet.
 
-  Output JSON with: intent, tools, toolChain, clarifyQuestion, reasoning, and inferences: {column: 'reason'} for transparency.
+Headers: [${headersList}]
 
-  Conversation history: {conversationHistory}
-  User message: {userMessage}
-  Sheet context: {hydratedContext}`;
+Sample recent rows: ${sheetDataSample || 'No recent rows available'}
+
+User query: ${JSON.stringify(message)}
+
+Decide the user's intent from: 'update_data', 'describe_data', 'get_data', or 'other'.
+
+Principles:
+- Use exact column headers from {hydratedContext.sheetHeaders}. Do not assume synonyms.
+- For updates, plan a single tool only: { name: 'apply_structured_rows', args: { spreadsheetId, sheetName, rows, dryRun: true } }.
+- For updates to existing rows, identify row by primary key or unique value (from sheetConfig). Plan as apply_structured_rows with partial rows (only changed cells), and note "updating existing row" in reasoning.
+- Do not include 'resolve_column' or any other tools for updates. toolChain must be empty for updates.
+- If spreadsheetId or sheetName is missing, set clarifyQuestion accordingly and do not produce rows.
+- If you cannot confidently form rows from the message and context, set clarifyQuestion asking the user to specify column-value pairs.
+- For describe/get requests, you may include a toolChain (e.g., get_sheet_data → aggregate), or leave it empty.
+- For multi-sheet contexts (sheetNames >1), plan tools across sheets if query spans them (e.g., aggregate from all). For updates, set primarySheet to first in sheetNames, or clarifyQuestion if ambiguous.
+- Infer missing values from patterns in sheetData (e.g., if recent rows have similar Driver, prefill it). Only clarify if inference confidence low (<70%). For updates, output partial rows with inferred fields marked (e.g., {column: "inferred value from pattern"}).
+
+If intent is 'update_data', output structured rows that match the sheet's format. Key instructions:
+- Infer column mappings, data formats, and styles from the sample recent rows. Match patterns in how data is placed (e.g., if names often go in 'Ty' for personal visits and towns in 'CLIENT SEEN', do the same; if sales are formatted as 'Rxxx.00', use that).
+- For dates: Replace vague terms like 'Today' with the actual current date in the format used in samples (e.g., MM/DD/YYYY). Current date: August 17, 2025.
+- For missing or unspecified fields: Leave as empty unless a clear pattern in samples suggests a default (e.g., if most rows leave 'TOWN' empty for certain types of entries, do so).
+- Separate details logically: Put conversation notes in 'DETAILS OF VISIT' without duplicating sales info; put monetary values only in 'SALES MADE' in the matching format.
+- Keep it simple: Only infer based on majority patterns in samples; do not overcomplicate or add unmentioned data.
+
+For other intents, follow standard logic.
+
+Output JSON with: intent, tools, toolChain, clarifyQuestion, reasoning, inferences: {column: 'reason'} for transparency, and rows: [array of row objects with keys matching headers] (only for 'update_data').
+
+Conversation history: {conversationHistory}
+Sheet context: {hydratedContext}`;
 
   // Compatibility block: include resolved values so models and tests see concrete content
   const compatibility = `
 
 User message (resolved): ${JSON.stringify(message)}
-Headers: [${headersList}]
 Sheet context (resolved): ${hydratedContextResolved}
 Conversation history (resolved): ${historyText}
 ${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 1 ? `Note: Multiple sheets available: ${(context as any).sheetNames.join(', ')}. Use primarySheet for updates unless specified.` : ''}`;
@@ -128,7 +148,7 @@ export async function generatePlan(
 function parsePlanResponse(aiResponse: string, context: Context, message: string): PlannerPlan {
   try {
     let cleaned = String(aiResponse || '').trim();
-    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
+    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json\n?/, '');
     const parsed = JSON.parse(cleaned);
     const intent: PlannerPlan['intent'] = ['describe_data', 'update_data', 'get_data', 'other'].includes(parsed.intent)
       ? parsed.intent
@@ -207,6 +227,7 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
     } catch {}
 
     // Ensure apply_structured_rows carries spreadsheetId and sheetName; do not synthesize rows here.
+    // Also handle top-level 'rows' from parsed output and inject into apply_structured_rows args if present
     try {
       const spreadsheetId = (context as any)?.spreadsheetId;
       const sheetNames = Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames : [];
@@ -229,6 +250,16 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
         return updated;
       };
 
+      // If top-level 'rows' exists in parsed (for update_data), ensure it's injected into apply_structured_rows args
+      if (intent === 'update_data' && Array.isArray(parsed.rows)) {
+        let applyTool = tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows');
+        if (!applyTool) {
+          applyTool = { name: 'apply_structured_rows', args: {} } as any;
+          tools.push(applyTool);
+        }
+        applyTool.args = { ...(applyTool.args || {}), rows: parsed.rows };
+      }
+
       // Update tools array and filter to only apply_structured_rows for updates; synthesize if missing
       tools = tools
         .filter((t: any) => intent !== 'update_data' || String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows')
@@ -240,7 +271,7 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
           (t as any).params = (t as any).args;
           return t;
         });
-      if (intent === 'update_data' && !tools.find((t: any) => String((t as any)?.name || '').toLowerCase() === 'apply_structured_rows')) {
+      if (intent === 'update_data' && !tools.find((t: any) => String(t?.name || '').toLowerCase() === 'apply_structured_rows')) {
         const synthesized = { name: 'apply_structured_rows', args: ensureParams({}) } as any;
         synthesized.params = synthesized.args;
         tools.push(synthesized);
