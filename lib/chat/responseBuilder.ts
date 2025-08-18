@@ -522,42 +522,24 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     const wantsExplicitDataView2 = /(\bshow\b|\bdisplay\b|\btable\b|\bcolumns?\b|\brows?\b|\blist\b|\bgroup\b|\bby\b|\bper\b|\btotals?\b|\bsum\b|\baverage\b|\bavg\b|\bcount\b|\bfilter\b|\bunique\b|\bdistinct\b|\boverview\b|\bsummary\b)/i.test(message);
     const suppressTablesForCharts2 = false;
     // For update_data intents, suppress smart tables (including stats) and prioritize editable tables
-    if (intent === 'update_data') {
-      // Skip smart tables for update intents - we want editable tables instead
-    } else if (!hasProposedUpdateTable && !hasFiles && !suppressTablesForCharts2 && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView2)) {
-      try {
-        const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames, intent);
-        if (smart.length > 0) dataTables.push(...smart);
+    // if (intent === 'update_data') {
+    //   // Skip smart tables for update intents - we want editable tables instead
+    // } else if (!hasProposedUpdateTable && !hasFiles && !suppressTablesForCharts2 && hydratedSheetData && Object.keys(hydratedSheetData).length > 0 && (intent === 'get_data' || wantsExplicitDataView2)) {
+    //   try {
+    //     const smart = buildSmartTables(message, hydratedSheetData, selectedSheetNames, intent);
+    //     if (smart.length > 0) dataTables.push(...smart);
         
-        // Add combined table for multiple sheets if available
-        if (selectedSheetNames.length > 1) {
-          const combinedTable = buildCombinedSheetTable(hydratedSheetData, selectedSheetNames);
-          if (combinedTable) {
-            dataTables.unshift(combinedTable); // Put combined table first
-          }
-        }
-      } catch {}
-    }
+    //     // Add combined table for multiple sheets if available
+    //     if (selectedSheetNames.length > 1) {
+    //       const combinedTable = buildCombinedSheetTable(hydratedSheetData, selectedSheetNames);
+    //       if (combinedTable) {
+    //         dataTables.unshift(combinedTable); // Put combined table first
+    //       }
+    //     }
+    //   } catch {}
+    // }
 
-    // Always ensure editable table for update_data intents
-    if (intent === 'update_data') {
-      try {
-        // Check if we already have an editable table
-        const hasEditableTable = dataTables.some((t: StructuredTable) => t.meta?.editable === true);
-        
-        if (!hasEditableTable) {
-          // Build editable table with current context
-          const editableTable = buildEditableTable(context, intent);
-          if (editableTable) {
-            dataTables.push(editableTable);
-            logContext(context, `Built editable table for update_data intent`, LogLevel.DEBUG);
-          }
-        }
-      } catch (error) {
-        const errorObj = error instanceof Error ? error : new Error(String(error));
-        logContextError(context, errorObj, 'buildEditableTable');
-      }
-    }
+    
 
     // Build multi-sheet tables from plan.sheets if available
     if (currentPlan?.sheets && Array.isArray(currentPlan.sheets) && currentPlan.sheets.length > 0) {
@@ -885,44 +867,74 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     } catch {}
 
     // If an update failed, surface a clear failure message and actionable quick replies
-    try {
-      // Mark failure when any update tool returned error
-      const hasUpdateError = (toolResults || []).some((r: any) => {
-        const name = String(r?.tool || r?.name || '').toLowerCase();
-        const isUpdate = name.includes('update_sheet') || name.includes('apply_structured_rows');
-        return isUpdate && r && r.success === false;
-      });
-      if (hasUpdateError || (context as any)?.error) {
-        const err = String((context as any)?.error || '').trim();
-        response = `Update failed: ${err || 'Unknown error'}. Try again?`;
-        const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
-        quickReplies = Array.from(new Set([...baseQR, 'Retry', 'Cancel'])).slice(0, 5);
+    // try {
+    //   // Mark failure when any update tool returned error
+    //   const hasUpdateError = (toolResults || []).some((r: any) => {
+    //     const name = String(r?.tool || r?.name || '').toLowerCase();
+    //     const isUpdate = name.includes('update_sheet') || name.includes('apply_structured_rows');
+    //     return isUpdate && r && r.success === false;
+    //   });
+    //   if (hasUpdateError || (context as any)?.error) {
+    //     const err = String((context as any)?.error || '').trim();
+    //     response = `Update failed: ${err || 'Unknown error'}. Try again?`;
+    //     const baseQR = Array.isArray(quickReplies) ? quickReplies : [];
+    //     quickReplies = Array.from(new Set([...baseQR, 'Retry', 'Cancel'])).slice(0, 5);
         
-        // For update_data intents, ensure we have an editable table even on errors
-        if (intent === 'update_data') {
-          try {
-            // Extract proposed row from failed update tool results if available
-            let proposedRow: any[] | undefined;
-            const failedUpdate = (toolResults || []).find((r: any) => {
-              const name = String(r?.tool || r?.name || '').toLowerCase();
-              const isUpdate = name.includes('update_sheet') || name.includes('apply_structured_rows');
-              return isUpdate && r && r.success === false;
-            });
-            
-            if (failedUpdate?.preview || failedUpdate?.proposedRow) {
-              proposedRow = failedUpdate.preview || failedUpdate.proposedRow;
+        
+    //   }
+    // } catch {}
+
+    
+
+    // For update_data intents, prioritize editable tables and suppress other tables
+    // if (intent === 'update_data') {
+    //     const proposedIdx = dataTables.findIndex((t: StructuredTable) => /proposed/i.test(String(t.title)));
+    //     if (proposedIdx >= 0) {
+    //         dataTables = [dataTables[proposedIdx]];
+    //     } else {
+    //         const editableTables = dataTables.filter((t: StructuredTable) => t.meta?.editable === true);
+    //         if (editableTables.length > 0) {
+    //             dataTables = [editableTables[0]];
+    //         }
+    //     }
+    // } else {
+    //   // If a proposed updates table exists, prefer showing only that table to avoid noise
+    //   const idx = dataTables.findIndex((t: StructuredTable) => /proposed/i.test(String(t.title)));
+    //   if (idx >= 0) {
+    //     dataTables = [dataTables[idx]];
+    //   }
+    // }
+
+    // For update_data intents, prioritize editable tables and suppress other tables
+    // if (intent === 'update_data') {
+    //     const proposedIdx = dataTables.findIndex((t: StructuredTable) => /proposed/i.test(String(t.title)));
+    //     if (proposedIdx >= 0) {
+    //         dataTables = [dataTables[proposedIdx]];
+    //     } else {
+    //         const editableTables = dataTables.filter((t: StructuredTable) => t.meta?.editable === true);
+    //         if (editableTables.length > 0) {
+    //             dataTables = [editableTables[0]];
+    //         }
+    //     }
+    // } else {
+    //   // If a proposed updates table exists, prefer showing only that table to avoid noise
+    //   const idx = dataTables.findIndex((t: StructuredTable) => /proposed/i.test(String(t.title)));
+    //   if (idx >= 0) {
+    //     dataTables = [dataTables[idx]];
+    //   }
+    // }
+
+    if (intent === 'update_data') {
+        const proposedIdx = dataTables.findIndex((t: StructuredTable) => /proposed/i.test(String(t.title)));
+        if (proposedIdx >= 0) {
+            dataTables = [dataTables[proposedIdx]];
+        } else {
+            const editableTables = dataTables.filter((t: StructuredTable) => t.meta?.editable === true);
+            if (editableTables.length > 0) {
+                dataTables = [editableTables[0]];
             }
-            
-            // Build editable table with error context
-            const editableTable = buildEditableTable(context, intent, err, proposedRow);
-            if (editableTable) {
-              // Add to dataTables so it gets processed with other tables
-              dataTables.push(editableTable);
-            }
-          } catch {}
         }
-      }
-    } catch {}
+    }
 
     // Normalize date formats across all tables before returning
     let normalizedTables = dataTables.map((t: StructuredTable) => {
@@ -942,39 +954,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
         meta: enhancedMeta
       };
     });
-    // For update_data intents, prioritize editable tables and suppress other tables
-    if (intent === 'update_data') {
-      try {
-        logContext(context, `[ResponseBuilder] Processing update_data intent, current tables: ${JSON.stringify(normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })))}`, LogLevel.DEBUG);
-        
-        // Check if we have an editable table
-        const hasEditableTable = normalizedTables.some((t: StructuredTable) => t.meta?.editable === true);
-        logContext(context, `[ResponseBuilder] Has editable table: ${hasEditableTable}`, LogLevel.DEBUG);
-        
-        if (hasEditableTable) {
-          // Show only the editable table for update intents
-          const editableTables = normalizedTables.filter((t: StructuredTable) => t.meta?.editable === true);
-          logContext(context, `[ResponseBuilder] Filtered to editable tables: ${editableTables.length}`, LogLevel.DEBUG);
-          if (editableTables.length > 0) {
-            normalizedTables = editableTables;
-            logContext(context, `[ResponseBuilder] Final tables for update_data: ${JSON.stringify(normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })))}`, LogLevel.DEBUG);
-          }
-        } else {
-          logContext(context, '[ResponseBuilder] No editable table found, keeping all tables', LogLevel.DEBUG);
-        }
-      } catch (error) {
-        const errorObj = error instanceof Error ? error : new Error(String(error));
-        logContextError(context, errorObj, '[ResponseBuilder] Error processing update_data tables');
-      }
-    } else {
-      // If a proposed updates table exists, prefer showing only that table to avoid noise
-      try {
-        const idx = normalizedTables.findIndex((t: StructuredTable) => /proposed sheet updates/i.test(String(t.title)));
-        if (idx >= 0) {
-          normalizedTables = [normalizedTables[idx]];
-        }
-      } catch {}
-    }
+    
 
 
 
@@ -1046,41 +1026,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
       }
     }
 
-    // Always build editable table for update_data intents, even on errors
-    if (intent === 'update_data') {
-      try {
-        // Check if we already have a proposed update table
-        const hasProposedTable = normalizedTables.some((t: StructuredTable) => /proposed sheet updates/i.test(String(t.title)));
-        
-        if (!hasProposedTable) {
-          // Extract proposed row from tool results if available
-          let proposedRow: any[] | undefined;
-          try {
-            const updateResults = (toolResults || []).filter((r: any) => {
-              const name = String(r?.tool || r?.name || '').toLowerCase();
-              return name.includes('update_sheet') || name.includes('apply_structured_rows');
-            });
-            
-            if (updateResults.length > 0) {
-              const lastUpdate = updateResults[updateResults.length - 1];
-              if (lastUpdate?.preview || lastUpdate?.proposedRow) {
-                proposedRow = lastUpdate.preview || lastUpdate.proposedRow;
-              }
-            }
-          } catch {}
-          
-          // Build editable table with error context if available
-          const ctxAny = context as any;
-          const error = ctxAny?.error || (toolResults || []).find((r: any) => r?.success === false);
-          
-          const editableTable = buildEditableTable(context, intent, error, proposedRow);
-          if (editableTable) {
-            // Insert editable table at the beginning to prioritize it
-            normalizedTables.unshift(editableTable);
-          }
-        }
-      } catch {}
-    }
+    
 
     // Compose a grounded conversational reply if we still don't have a response
 		if (!response || !response.trim()) {
