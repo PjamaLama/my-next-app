@@ -945,26 +945,26 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     // For update_data intents, prioritize editable tables and suppress other tables
     if (intent === 'update_data') {
       try {
-        debugContext(context, '[ResponseBuilder] Processing update_data intent, current tables:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
+        logContext(context, `[ResponseBuilder] Processing update_data intent, current tables: ${JSON.stringify(normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })))}`, LogLevel.DEBUG);
         
         // Check if we have an editable table
         const hasEditableTable = normalizedTables.some((t: StructuredTable) => t.meta?.editable === true);
-        debugContext(context, '[ResponseBuilder] Has editable table:', hasEditableTable);
+        logContext(context, `[ResponseBuilder] Has editable table: ${hasEditableTable}`, LogLevel.DEBUG);
         
         if (hasEditableTable) {
           // Show only the editable table for update intents
           const editableTables = normalizedTables.filter((t: StructuredTable) => t.meta?.editable === true);
-          debugContext(context, '[ResponseBuilder] Filtered to editable tables:', editableTables.length);
+          logContext(context, `[ResponseBuilder] Filtered to editable tables: ${editableTables.length}`, LogLevel.DEBUG);
           if (editableTables.length > 0) {
             normalizedTables = editableTables;
-            debugContext(context, '[ResponseBuilder] Final tables for update_data:', normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })));
+            logContext(context, `[ResponseBuilder] Final tables for update_data: ${JSON.stringify(normalizedTables.map((t: StructuredTable) => ({ title: t.title, meta: t.meta })))}`, LogLevel.DEBUG);
           }
         } else {
-          debugContext(context, '[ResponseBuilder] No editable table found, keeping all tables');
+          logContext(context, '[ResponseBuilder] No editable table found, keeping all tables', LogLevel.DEBUG);
         }
       } catch (error) {
         const errorObj = error instanceof Error ? error : new Error(String(error));
-        logContextError(context, '[ResponseBuilder] Error processing update_data tables:', errorObj);
+        logContextError(context, errorObj, '[ResponseBuilder] Error processing update_data tables');
       }
     } else {
       // If a proposed updates table exists, prefer showing only that table to avoid noise
@@ -1223,7 +1223,7 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     const executionResultTables = formatExecutionResultsAsTables(toolResults, context, intent);
     if (executionResultTables.length > 0) {
       dataTables.push(...executionResultTables);
-      debugContext(context, '[ResponseBuilder] Added execution result tables:', executionResultTables.length);
+      logContext(context, `[ResponseBuilder] Added execution result tables: ${executionResultTables.length}`, LogLevel.DEBUG);
     }
     
     // Enforce response prompts: ensure all tables have proper buttons and meta information
@@ -1254,12 +1254,12 @@ export async function buildUserResponse(executionResult: any, context: Context, 
     });
 
     // Final logging to see what we're returning
-    debugContext(context, '[ResponseBuilder] Final return - intent:', intent, 'tables:', normalizedTables.map((t: StructuredTable) => ({ 
+    logContext(context, `[ResponseBuilder] Final return - intent: ${intent}, tables: ${JSON.stringify(normalizedTables.map((t: StructuredTable) => ({ 
       title: t.title, 
       meta: t.meta,
       headers: t.headers?.length || 0,
       rows: t.rows?.length || 0
-    })));
+    })))}`, LogLevel.DEBUG);
     
     return {
       response: response || 'Sorry, I am not sure how to handle that.',

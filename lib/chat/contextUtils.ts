@@ -3,7 +3,7 @@
 import { Context } from './types';
 
 // Debug logging levels
-export enum LogLevel {
+enum LogLevel {
   DEBUG = 0,
   INFO = 1,
   WARN = 2,
@@ -13,16 +13,16 @@ export enum LogLevel {
 // Global log level configuration
 let currentLogLevel = LogLevel.INFO;
 
-export function setLogLevel(level: LogLevel): void {
+function setLogLevel(level: LogLevel): void {
   currentLogLevel = level;
 }
 
-export function getLogLevel(): LogLevel {
+function getLogLevel(): LogLevel {
   return currentLogLevel;
 }
 
 // Context logging utilities
-export function logContext(context: Context, message: string, level: LogLevel = LogLevel.INFO): void {
+function logContext(context: Context, message: string, level: LogLevel = LogLevel.INFO): void {
   if (level < currentLogLevel) return;
   
   const timestamp = new Date().toISOString();
@@ -45,7 +45,7 @@ export function logContext(context: Context, message: string, level: LogLevel = 
 }
 
 // Context validation and debugging
-export function validateContext(context: Context): { isValid: boolean; issues: string[] } {
+function validateContext(context: Context): { isValid: boolean; issues: string[] } {
   const issues: string[] = [];
   
   try {
@@ -95,7 +95,7 @@ export function validateContext(context: Context): { isValid: boolean; issues: s
 }
 
 // Context debugging with detailed information
-export function debugContext(context: Context, operation: string): void {
+function debugContext(context: Context, operation: string): void {
   if (currentLogLevel > LogLevel.DEBUG) return;
   
   const ctxAny = context as any;
@@ -123,7 +123,7 @@ export function debugContext(context: Context, operation: string): void {
 }
 
 // Context hydration status logging
-export function logHydrationStatus(context: Context, operation: string, success: boolean, details?: any): void {
+function logHydrationStatus(context: Context, operation: string, success: boolean, details?: any): void {
   const ctxAny = context as any;
   const status = {
     operation,
@@ -149,7 +149,7 @@ export function logHydrationStatus(context: Context, operation: string, success:
 }
 
 // Context state change logging
-export function logContextChange(context: Context, change: string, oldValue?: any, newValue?: any): void {
+function logContextChange(context: Context, change: string, oldValue?: any, newValue?: any): void {
   if (currentLogLevel > LogLevel.DEBUG) return;
   
   const changeInfo = {
@@ -165,7 +165,7 @@ export function logContextChange(context: Context, change: string, oldValue?: an
 }
 
 // Context performance monitoring
-export function createContextTimer(operation: string): () => void {
+function createContextTimer(operation: string): () => void {
   const startTime = Date.now();
   
   return () => {
@@ -177,7 +177,7 @@ export function createContextTimer(operation: string): () => void {
 }
 
 // Context error logging with context information
-export function logContextError(context: Context, error: Error, operation: string): void {
+function logContextError(context: Context, error: Error, operation: string): void {
   const errorInfo = {
     operation,
     timestamp: new Date().toISOString(),
@@ -197,7 +197,7 @@ export function logContextError(context: Context, error: Error, operation: strin
 }
 
 // Context summary for debugging
-export function getContextSummary(context: Context): string {
+function getContextSummary(context: Context): string {
   const ctxAny = context as any;
   
   const summary = {
@@ -219,6 +219,8 @@ export function getContextSummary(context: Context): string {
 // Export all utilities
 export {
   LogLevel,
+  setLogLevel,
+  getLogLevel,
   logContext,
   validateContext,
   debugContext,
