@@ -1,9 +1,7 @@
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 import { Context, ConversationHistoryItem } from './types';
-import { detectIntent } from './intentDetection';
 import { executeAIWithRetry } from '../aiUtils';
-import { debugContext, logContext, logContextError, createContextTimer } from './contextUtils';
 
 // Helper function to detect if a row likely matches existing data
 function detectExistingRow(row: Record<string, unknown>, headers: string[], sheetData: string[][]): boolean {
@@ -104,7 +102,7 @@ export async function generatePlan(
   conversationHistory: ConversationHistoryItem[],
   hasFiles: boolean
 ): Promise<PlannerPlan> {
-  const timer = createContextTimer('generatePlan');
+  const startTime = Date.now();
   
   try {
     // Check for extraction flag
@@ -115,10 +113,7 @@ export async function generatePlan(
     const detectedIntent = isExtraction ? 'extraction' : 'update_data';
     
     // Log context and operation details
-    debugContext(context, 'generatePlan');
-    logContext(context, `Generating plan with intent: ${detectedIntent}`, 1);
-    
-    console.log(`[Planner] Intent: "${detectedIntent}" for message: "${message}"`);
+    console.log(`[Planner] Generating plan with intent: "${detectedIntent}" for message: "${message}"`);
 
     const apiKey = process.env.GOOGLE_GENAI_API_KEY;
     if (!apiKey) {
@@ -138,15 +133,15 @@ export async function generatePlan(
     const plannerPlan = parsePlanResponse(text, context, message, detectedIntent);
     
     // Log successful plan generation
-    logContext(context, `Plan generated successfully with ${plannerPlan.sheets?.length || 0} sheets`, 1);
+    const duration = Date.now() - startTime;
+    console.log(`[Planner] Plan generated successfully with ${plannerPlan.sheets?.length || 0} sheets in ${duration}ms`);
     
-    timer(); // End timing
     return plannerPlan;
     
   } catch (error) {
-    timer(); // End timing even on error
+    const duration = Date.now() - startTime;
     const errorObj = error instanceof Error ? error : new Error(String(error));
-    logContextError(context, errorObj, 'generatePlan');
+    console.error(`[Planner] Error generating plan after ${duration}ms:`, errorObj);
     throw errorObj;
   }
 }

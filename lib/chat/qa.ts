@@ -6,7 +6,111 @@ import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 
 export type QAResult = { answer: string; tables?: StructuredTable[]; insights?: string[] } | null;
 
-import { resolveColumnIndex, parseSimpleFilter, classifyQueryType, resolveQueryColumns, performAggregation, applyQueryFilters } from './queryProcessing';
+// Inline implementations of query processing functions
+function resolveColumnIndex(headers: string[], query: string): number {
+  const q = query.toLowerCase();
+  const qParts = q.split(' ').filter(Boolean);
+  let bestIdx = -1;
+  let bestScore = 0;
+  headers.forEach((h, i) => {
+    const hNorm = h.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    let score = 0;
+    if (hNorm === q) score += 4;
+    qParts.forEach((p) => {
+      if (p.length >= 3 && hNorm.includes(p)) score += 1;
+    });
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  });
+  return bestIdx;
+}
+
+function classifyQueryType(message: string) {
+  const lower = message.toLowerCase();
+  return {
+    wantsSum: /(total|sum)\b/i.test(lower),
+    wantsAvg: /(average|avg|mean)\b/i.test(lower),
+    wantsMin: /\b(min|minimum|lowest|least)\b/i.test(lower),
+    wantsMax: /\b(max|maximum|highest|most)\b/i.test(lower),
+    wantsCount: /\b(count|how\s+many|number\s+of)\b/i.test(lower),
+    groupMatch: lower.match(/\b(?:by|per)\s+([a-z][a-z0-9_\s]{3,})/i),
+    wantsMargin: /\b(margin|profit|markup)\b/i.test(lower),
+  };
+}
+
+function resolveQueryColumns(message: string, headers: string[], rows: string[][]) {
+  const metricIdx = (() => {
+    const hints = ['amount', 'total', 'cost', 'expense', 'price', 'value', 'fuel', 'litre', 'liter', 'distance', 'km', 'qty', 'quantity'];
+    const direct = resolveColumnIndex(headers, message);
+    if (direct >= 0) return direct;
+    const fallback = headers.findIndex((_, i) => rows.some((r) => parseNumber(r[i]) != null));
+    return fallback >= 0 ? fallback : 0;
+  })();
+
+  const productKeyIdx = (() => {
+    const idx = resolveColumnIndex(headers, 'product');
+    if (idx >= 0) return idx;
+    const hints = ['title', 'name', 'handle'];
+    for (const h of hints) { const i = resolveColumnIndex(headers, h); if (i >= 0) return i; }
+    return -1;
+  })();
+
+  const dateIdx = headers.findIndex((h) => /date|timestamp|time/i.test(h));
+
+  return { metricIdx, productKeyIdx, dateIdx };
+}
+
+function performAggregation(rows: string[][], metricIdx: number, groupIdx: number, operation: 'sum' | 'avg' | 'min' | 'max') {
+  const map = new Map<string, { sum: number; count: number; min: number; max: number }>();
+  for (const r of rows) {
+    const key = String(r[groupIdx] ?? 'Unknown');
+    const n = parseNumber(r[metricIdx]);
+    if (!map.has(key)) map.set(key, { sum: 0, count: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY });
+    const rec = map.get(key)!;
+    if (n != null) {
+      rec.sum += n; rec.count += 1; rec.min = Math.min(rec.min, n); rec.max = Math.max(rec.max, n);
+    }
+  }
+  const entries = Array.from(map.entries()).map(([k, v]) => ({ key: k, ...v }));
+  const sortBy = operation === 'avg' ? (e: any) => (e.count ? e.sum / e.count : 0)
+                : operation === 'min' ? (e: any) => e.min
+                : operation === 'max' ? (e: any) => e.max
+                : (e: any) => e.sum;
+  entries.sort((a, b) => (sortBy(b) as number) - (sortBy(a) as number));
+  return entries;
+}
+
+function applyQueryFilters(rows: string[][], message: string, headers: string[]) {
+  const filterSpec = parseSimpleFilter(message);
+  if (filterSpec) {
+    const idx = resolveColumnIndex(headers, filterSpec.columnQuery);
+    if (idx >= 0) {
+      return rows.filter((r) => {
+        const v = String(r[idx] ?? '').toLowerCase();
+        const q = filterSpec.value.toLowerCase();
+        return filterSpec.op === 'contains' ? v.includes(q) : v === q;
+      });
+    }
+  }
+  return rows;
+}
+
+function parseSimpleFilter(message: string): { columnQuery: string; value: string; op: 'equals' | 'contains' } | null {
+  const m1 = message.match(/\b(?:where|with|filter|only|for)\s+([a-z][a-z0-9_\s]{3,})\s*(?:=|is|equals|to|contains|has)?\s*"?([\w\-\s\.#/]+)"?/i);
+  if (m1) {
+    const col = m1[1].trim();
+    const val = m1[2].trim();
+    const hasContains = /contains|has/i.test(m1[0]);
+    return { columnQuery: col, value: val, op: hasContains ? 'contains' : 'equals' };
+  }
+  const m2 = message.match(/\b([a-z][a-z0-9_\s]{3,})\s*:\s*"?([^\n,;]+)"?/i);
+  if (m2) {
+    return { columnQuery: m2[1].trim(), value: m2[2].trim(), op: 'equals' };
+  }
+  return null;
+}
 
 export async function answerQuestionFromSheets(
     message: string,

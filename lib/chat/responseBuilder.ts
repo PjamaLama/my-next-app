@@ -6,7 +6,26 @@ import { answerQuestionFromSheets } from './qa';
 import { composeGroundedReply } from './replyComposer';
 import { generateQuickReplies } from './quickReplies';
 import { SheetDataSource } from '../data/source';
-import { logContext, debugContext, logContextError, createContextTimer, LogLevel } from './contextUtils';
+// Simple logging utilities to replace contextUtils
+const LogLevel = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+const logContext = (context: any, message: string, level: number = LogLevel.INFO) => {
+  if (level <= LogLevel.INFO) {
+    console.log(`[CONTEXT] ${message}`);
+  }
+};
+const debugContext = (context: any, operation: string) => {
+  console.debug(`[CONTEXT_DEBUG] ${operation}`);
+};
+const logContextError = (context: any, error: any, operation: string) => {
+  console.error(`[CONTEXT_ERROR] ${operation}:`, error);
+};
+const createContextTimer = (operation: string) => {
+  const startTime = Date.now();
+  return () => {
+    const duration = Date.now() - startTime;
+    console.info(`[CONTEXT_PERF] ${operation} completed in ${duration}ms`);
+  };
+};
 
 // Helper function to get cached headers from context
 const getCachedHeaders = (context: Context): string[] => {
