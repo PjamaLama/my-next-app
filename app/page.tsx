@@ -1303,96 +1303,25 @@ export default function Home() {
 
 
 
-  // Function to handle accepting mapped data
-  const handleAcceptMappedData = async (table: any) => {
-    try {
-      console.log('[Accept Mapped Data] Handling table:', table);
-      
-      if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
-        setToast({ 
-          type: 'error', 
-          message: 'Please select a spreadsheet and sheet first.' 
-        });
-        return;
-      }
-      
-      const primarySheet = selectedSheetNames[0];
-      
-      // Convert table rows to structured data format
-      const rows = table.rows.map((row: string[]) => {
-        const rowObj: Record<string, unknown> = {};
-        table.headers.forEach((header: string, colIndex: number) => {
-          rowObj[header] = row[colIndex] || '';
-        });
-        return rowObj;
-      });
-      
-      // Create context for tool execution
-      const contextForTool = {
-        spreadsheetId: defaultSpreadsheetId,
-        sheetNames: selectedSheetNames,
-        sheetName: primarySheet,
-        sheetHeaders: table.headers
-      };
-      
-      // Execute the apply_structured_rows tool to insert the data
-      const toolCall = {
-        id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        type: 'function',
-        function: {
-          name: 'apply_structured_rows',
-          arguments: JSON.stringify({
-            spreadsheetId: defaultSpreadsheetId,
-            sheetName: primarySheet,
-            rows,
-            dryRun: false,
-            commit: true
-          })
-        }
-      };
-      
-      const result = await executeToolCall(toolCall as any, contextForTool, []);
-      
-      if (result && result.success) {
-        setToast({ 
-          type: 'success', 
-          message: `Successfully added ${rows.length} rows to ${primarySheet}!` 
-        });
-      } else {
-        setToast({ 
-          type: 'error', 
-          message: `Failed to add data: ${result?.error || 'Unknown error'}` 
-        });
-      }
-      
-    } catch (error) {
-      console.error('[Accept Mapped Data] Error:', error);
-      setToast({ 
-        type: 'error', 
-        message: 'Failed to accept mapped data.' 
-      });
-    }
-  };
+
 
   // Function to handle rejecting mapped data
-  const handleRejectMappedData = (table: any) => {
+  const handleRejectMappedData = (table: any, messageId: string, tableIndex: number) => {
     try {
       console.log('[Reject Mapped Data] Handling table:', table);
       
-      // Remove the table from the current message
+      // Remove the table from the message
       setProviderChatMessages(prev => prev.map(msg => {
-        if (msg.tables && Array.isArray(msg.tables)) {
-          return {
-            ...msg,
-            tables: msg.tables.filter((t: any) => t !== table)
-          };
+        if (msg.id === messageId && msg.tables && Array.isArray(msg.tables)) {
+          const newTables = msg.tables.filter((_, i) => i !== tableIndex);
+          return { ...msg, tables: newTables };
         }
         return msg;
       }));
       
-      setToast({ 
-        type: 'success', 
-        message: 'Mapped data rejected and removed.' 
+      setToast({
+        type: 'success',
+        message: 'Update rejected and removed.'
       });
       
     } catch (error) {
@@ -1405,16 +1334,23 @@ export default function Home() {
   };
 
   // Function to handle editing mapped data
-  const handleEditMappedData = (table: any) => {
+  const handleEditMappedData = (table: any, messageId: string, tableIndex: number) => {
     try {
       console.log('[Edit Mapped Data] Handling table:', table);
       
-      // For now, show a toast with instructions
-      // TODO: Implement inline editing or modal editing
-      setToast({ 
-        type: 'success', 
-        message: 'Edit functionality coming soon. For now, you can modify the data in the chat.' 
-      });
+      // Open the edit modal with the table data using the existing openEditModal function
+      const modalPreview = {
+        headers: table.headers,
+        rows: table.rows.map((row: string[]) => 
+          table.headers.map((header: string, index: number) => ({ 
+            column: header, 
+            value: row[index] || '' 
+          }))
+        ),
+        message: table.summary || 'Edit the data below'
+      };
+      
+      openEditModal(modalPreview, messageId, tableIndex);
       
     } catch (error) {
       console.error('[Edit Mapped Data] Error:', error);
@@ -2500,50 +2436,59 @@ export default function Home() {
                             {/* Render table action buttons */}
                             {Array.isArray((t as any).meta?.buttons) && (t as any).meta.buttons.length > 0 && (
                               <div className="px-3 py-2 border-t border-white/10 flex gap-2">
-                                {(t as any).meta.buttons.map((button: string, bIdx: number) => {
-                                  if (button === 'map_to_sheet') {
-                                    return (
-                                      <button
-                                        key={bIdx}
-                                        onClick={() => handleMapToSheet(t)}
-                                        className="px-3 py-1.5 text-[11px] bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 border border-blue-500/30 rounded-md transition-colors"
-                                      >
-                                        Map to Sheet Data
-                                      </button>
-                                    );
-                                  } else if (button === 'accept') {
-                                    return (
-                                      <button
-                                        key={bIdx}
-                                        onClick={() => handleAcceptMappedData(t)}
-                                        className="px-3 py-1.5 text-[11px] bg-green-500/20 hover:bg-green-500/30 text-green-200 border border-green-500/30 rounded-md transition-colors"
-                                      >
-                                        Accept
-                                      </button>
-                                    );
-                                  } else if (button === 'reject') {
-                                    return (
-                                      <button
-                                        key={bIdx}
-                                        onClick={() => handleRejectMappedData(t)}
-                                        className="px-3 py-1.5 text-[11px] bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 rounded-md transition-colors"
-                                      >
-                                        Reject
-                                      </button>
-                                    );
-                                  } else if (button === 'edit') {
-                                    return (
-                                      <button
-                                        key={bIdx}
-                                        onClick={() => handleEditMappedData(t)}
-                                        className="px-3 py-1.5 text-[11px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 border border-yellow-500/30 rounded-md transition-colors"
-                                      >
-                                        Edit
-                                      </button>
-                                    );
-                                  }
-                                  return null;
-                                })}
+                                {tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? (
+                                  // Show only loading spinner when accept is in progress
+                                  <div className="flex items-center gap-2 text-green-200">
+                                    <span className="inline-block w-4 h-4 rounded-full border-2 border-green-200/70 border-t-transparent animate-spin" />
+                                    <span className="text-sm">Applying update...</span>
+                                  </div>
+                                ) : (
+                                  // Show all buttons when not loading
+                                  (t as any).meta.buttons.map((button: string, bIdx: number) => {
+                                    if (button === 'map_to_sheet') {
+                                      return (
+                                        <button
+                                          key={bIdx}
+                                          onClick={() => handleMapToSheet(t)}
+                                          className="px-3 py-1.5 text-[11px] bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 border border-blue-500/30 rounded-md transition-colors"
+                                        >
+                                          Map to Sheet Data
+                                        </button>
+                                      );
+                                    } else if (button === 'accept') {
+                                      return (
+                                        <button
+                                          key={bIdx}
+                                          onClick={() => handleCommitFromTable(t.headers, t.rows, message.id, tIdx)}
+                                          className="px-3 py-1.5 text-[11px] bg-green-500/20 hover:bg-green-500/30 text-green-200 border border-green-500/30 rounded-md transition-colors"
+                                        >
+                                          Accept
+                                        </button>
+                                      );
+                                    } else if (button === 'reject') {
+                                      return (
+                                        <button
+                                          key={bIdx}
+                                          onClick={() => handleRejectMappedData(t, message.id, tIdx)}
+                                          className="px-3 py-1.5 text-[11px] bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 rounded-md transition-colors"
+                                        >
+                                          Reject
+                                        </button>
+                                      );
+                                    } else if (button === 'edit') {
+                                      return (
+                                        <button
+                                          key={bIdx}
+                                          onClick={() => handleEditMappedData(t, message.id, tIdx)}
+                                          className="px-3 py-1.5 text-[11px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 border border-yellow-500/30 rounded-md transition-colors"
+                                        >
+                                          Edit
+                                        </button>
+                                      );
+                                    }
+                                    return null;
+                                  })
+                                )}
                               </div>
                             )}
                             {/* Sticky quick action bar (always visible while scrolling) */}
@@ -2552,29 +2497,38 @@ export default function Home() {
                                     <div className="pointer-events-auto flex items-center justify-end gap-2">
                                       {/* Show Approve/Reject/Edit buttons for both proposed updates AND extracted data tables, but only if not approved */}
                                       {!message.approved && ((t.title && /Proposed Sheet Updates/i.test(String(t.title))) || ((t as any).meta?.fileIndex || (t as any).meta?.combined)) ? (
-                                        <>
-                                          <button
-                                            className="bg-green-500 text-white px-4 py-2 mr-2 rounded inline-flex items-center gap-2"
-                                            onClick={() => handleCommitFromTable(t.headers, t.rows, message.id, tIdx)}
-                                            disabled={tableActionState[`${message.id}_${tIdx}_approve`] === 'loading'}
-                                          >
-                                            {tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? (
-                                              <span className="inline-block w-3 h-3 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
-                                            ) : null}
-                                            <span>{tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? 'Applying...' : 'Approve'}</span>
-                                          </button>
-                                          <button className="bg-red-500 text-white px-4 py-2 mr-2 rounded" onClick={() => setSendResult('Update canceled.')}>Reject</button>
-                                          <button 
-                                            className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded inline-flex items-center gap-2 transition-colors" 
-                                            onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary, message.id, tIdx)}
-                                            title="Edit row data before applying"
-                                          >
-                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                            </svg>
-                                            Edit
-                                          </button>
-                                        </>
+                                        tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? (
+                                          // Show only loading spinner when accept is in progress
+                                          <div className="flex items-center gap-2 text-green-200">
+                                            <span className="inline-block w-4 h-4 rounded-full border-2 border-green-200/70 border-t-transparent animate-spin" />
+                                            <span className="text-sm">Applying update...</span>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <button
+                                              className="bg-green-500 text-white px-4 py-2 mr-2 rounded inline-flex items-center gap-2"
+                                              onClick={() => handleCommitFromTable(t.headers, t.rows, message.id, tIdx)}
+                                            >
+                                              Approve
+                                            </button>
+                                            <button 
+                                              className="bg-red-500 text-white px-4 py-2 mr-2 rounded" 
+                                              onClick={() => handleRejectMappedData(t, message.id, tIdx)}
+                                            >
+                                              Reject
+                                            </button>
+                                            <button 
+                                              className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded inline-flex items-center gap-2 transition-colors" 
+                                              onClick={() => openEditModalFromTable(t.headers, t.rows, t.summary, message.id, tIdx)}
+                                              title="Edit row data before applying"
+                                            >
+                                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                              </svg>
+                                              Edit
+                                            </button>
+                                          </>
+                                        )
                                       ) : message.approved && (t.title && /Proposed Sheet Updates/i.test(String(t.title))) ? (
                                         /* Show approved status for approved updates */
                                         <div className="text-green-400 text-sm font-medium px-3 py-2">
