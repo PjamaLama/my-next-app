@@ -1,3 +1,4 @@
+// Updated lib/chat/planner.ts - improved prompt to use selected sheets as default and propose previews for text inputs
 import { genkit } from 'genkit';
 import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
 import { Context, ConversationHistoryItem } from './types';
@@ -49,7 +50,6 @@ export type PlannerPlan = {
 };
 
 // New planner prompt focused on updates with multi-sheet support
-// New planner prompt focused on updates with multi-sheet support
 function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean, isExtraction: boolean): string {
   // Get sheet context
   const headers: string[] = Array.isArray((context as any)?.sheetHeaders)
@@ -91,23 +91,38 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
     const sheet_names = Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet';
 
   // New simplified update planner prompt with format conformity requirements
-  const template = 'You are a planner for Google Sheets updates. Analyze the request to determine intent (always \'extraction\' for file uploads or data entry).\n' +
-  '- If files present, plan to extract and preview data.\n' +
-  '- Combine text with file content.\n' +
-  '- Infer sheets (e.g., \'Logbook\' for fuel/KM).\n' +
-  '- Use tool: apply_structured_rows (dryRun: true) for previews.\n' +
-  'CONTEXT:\n' +
-  '- User request: {message}\n' +
-  '- Files: {has_files}\n' +
-  '- Sheets: {sheet_names}\n' +
-  'IMPORTANT: You MUST respond with valid JSON only. No comments, no trailing commas, no explanatory text.\n' +
-  'Output JSON:\n' +
-  '{\n' +
-  '  "intent": "extraction",\n' +
-  '  "tools": [{"name": "apply_structured_rows", "args": {}, "params": {"dryRun": true}}],\n' +
-  '  "clarify": "{if_needed}",\n' +
-  '  "sheets": ["Logbook"]\n' +
-  '}';
+  const template = `You are a planner for Google Sheets updates. Analyze the request to determine intent ('extraction' for file uploads, 'update_data' for text-based entries).
+
+- If files present, plan to extract and preview data.
+- For text inputs, infer rows to add/update and preview as tables for the selected/default sheet(s).
+- Combine text with file content if both.
+- Infer sheets from content (e.g., 'Logbook' for fuel/KM, 'Food Acomodation' for claims). Use selected sheets as default if no clear inference.
+- Always propose previews with apply_structured_rows (dryRun: true).
+
+IMPORTANT: You MUST use ONLY these valid tool names:
+- apply_structured_rows (for updating sheet data)
+- get_sheet_data (for retrieving sheet data)
+- describe_sheet (for sheet analysis)
+- analyze_images (for image analysis)
+- extract_data_from_images (for data extraction from images)
+
+DO NOT use any other tool names like 'prepare_update_data', 'update_sheet', etc.
+
+CONTEXT:
+- User request: {message}
+- Files: {has_files ? 'Yes' : 'No'}
+- Sheets (use as default): {sheet_names}
+- Sheet Data Sample: ${sheetDataSample}
+
+IMPORTANT: You MUST respond with valid JSON only. No comments, no trailing commas, no explanatory text.
+
+Output JSON:
+{
+  "intent": "update_data" | "extraction",
+  "tools": [{"name": "apply_structured_rows", "args": {"dryRun": true}, "params": {"dryRun": true}}],
+  "clarify": "{if_needed}",
+  "sheets": ["Logbook"]  // Inferred or selected sheets
+}`;
 
   const populatedTemplate = template
     .replace('{message}', message)
@@ -121,7 +136,6 @@ User message (resolved): ${JSON.stringify(message)}
 Sheet context (resolved): ${hydratedContextResolved}
 Conversation history (resolved): ${historyText}
 ${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 1 ? `Note: Multiple sheets available: ${(context as any).sheetNames.join(', ')}. Use primarySheet for updates unless specified.` : ''}`;
-
   return populatedTemplate + compatibility;
 }
 
@@ -263,6 +277,26 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
           dependsOn: Array.isArray(s?.dependsOn) ? s?.dependsOn.map((i: number) => Number(i)).filter((n: number) => Number.isFinite(n) && n >= 0) : [],
         }))
       : [];
+    
+    // Safety check: correct any invalid tool names to valid ones
+    const validToolNames = ['apply_structured_rows', 'get_sheet_data', 'describe_sheet', 'analyze_images', 'extract_data_from_images'];
+    tools = tools.map((t: any) => {
+      const toolName = String(t?.name || '').toLowerCase();
+      if (!validToolNames.includes(toolName)) {
+        console.warn(`[Planner] Invalid tool name "${toolName}" corrected to "apply_structured_rows"`);
+        return { ...t, name: 'apply_structured_rows' };
+      }
+      return t;
+    });
+    
+    toolChain = toolChain.map((s: any) => {
+      const toolName = String(s?.toolName || '').toLowerCase();
+      if (!validToolNames.includes(toolName)) {
+        console.warn(`[Planner] Invalid tool name "${toolName}" corrected to "apply_structured_rows"`);
+        return { ...s, toolName: 'apply_structured_rows' };
+      }
+      return s;
+    });
     
     // Enforce single-tool path + preview-first: rewrite update_sheet->apply_structured_rows and set dryRun
     let committedChain = toolChain.map((step: { toolName: string; params: Record<string, unknown>; dependsOn?: number[] }) => {

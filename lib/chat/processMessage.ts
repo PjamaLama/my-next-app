@@ -143,6 +143,13 @@ export async function processMessage(
     try {
       const ctxAny = context as any;
       inferSheetContext(message, ctxAny, conversationHistory);
+      
+      // Ensure selected sheets are in context
+      const selectedSheets = (context as any).sheetNames || []; // Assume this comes from UI chips
+      if (selectedSheets.length > 0 && !context.sheetName) {
+        context.sheetName = selectedSheets[0]; // Default to first selected
+      }
+      
       if (!ctxAny.spreadsheetId || !ctxAny.sheetName) {
         ctxAny.error = 'No valid sheet selected.';
       }

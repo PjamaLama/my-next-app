@@ -162,7 +162,7 @@ async function executeTool(intent: string, message: string, context: { spreadshe
         id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type: 'function',
         function: { 
-          name: 'prepare_update_data', 
+          name: 'apply_structured_rows', 
           arguments: JSON.stringify({ 
             ...context, 
             proposedRow, 
@@ -194,74 +194,53 @@ function parseMessageToRow(message: string, headers: string[]) {
   const row = new Array(headers.length).fill('');
   const messageLower = message.toLowerCase();
   
-  // Enhanced pattern matching for common column types
-  // Date columns
+  // Generalist approach: only handle common data types generically
   headers.forEach((header, index) => {
-    if (/date|Date|DATE/.test(header)) {
+    const headerLower = header.toLowerCase();
+    
+    // Date columns - any header containing "date"
+    if (headerLower.includes('date')) {
       const today = new Date().toLocaleDateString('en-US');
       row[index] = today;
     }
-  });
-  
-  // Client/Contact columns
-  if (headers.includes('CLIENT SEEN')) {
-    const match = message.match(/see (\w+)/i);
-    if (match) row[headers.indexOf('CLIENT SEEN')] = match[1];
-  }
-  
-  if (headers.includes('CLIENT')) {
-    const match = message.match(/client[:\s]+(\w+)/i) || message.match(/for (\w+)/i);
-    if (match) row[headers.indexOf('CLIENT')] = match[1];
-  }
-  
-  // Location columns
-  if (headers.includes('TOWN')) {
-    const match = message.match(/in (\w+)/i) || message.match(/town[:\s]+(\w+)/i);
-    if (match) row[headers.indexOf('TOWN')] = match[1];
-  }
-  
-  if (headers.includes('LOCATION')) {
-    const match = message.match(/at (\w+)/i) || message.match(/location[:\s]+(\w+)/i);
-    if (match) row[headers.indexOf('LOCATION')] = match[1];
-  }
-  
-  // Sales/Revenue columns
-  if (headers.includes('SALES MADE')) {
-    const match = message.match(/sale[s]? (\w+)/i) || message.match(/sold (\w+)/i);
-    if (match) row[headers.indexOf('SALES MADE')] = match[1];
-  }
-  
-  if (headers.includes('AMOUNT')) {
-    const match = message.match(/\$?(\d+(?:\.\d{2})?)/i) || message.match(/amount[:\s]+(\d+)/i);
-    if (match) row[headers.indexOf('AMOUNT')] = match[1];
-  }
-  
-  // Status columns
-  if (headers.includes('STATUS')) {
-    if (messageLower.includes('completed') || messageLower.includes('done')) {
-      row[headers.indexOf('STATUS')] = 'Completed';
-    } else if (messageLower.includes('pending') || messageLower.includes('waiting')) {
-      row[headers.indexOf('STATUS')] = 'Pending';
+    
+    // Time columns - any header containing "time"
+    else if (headerLower.includes('time')) {
+      const timeMatch = message.match(/(\d{1,2}:\d{2}(?:\s*[ap]m)?)/i);
+      if (timeMatch) row[index] = timeMatch[1];
     }
-  }
-  
-  // Notes/Description columns
-  if (headers.includes('NOTES') || headers.includes('DESCRIPTION')) {
-    const headerName = headers.includes('NOTES') ? 'NOTES' : 'DESCRIPTION';
-    // Extract meaningful content, excluding common filler words
-    const meaningfulWords = message
-      .split(/\s+/)
-      .filter(word => word.length > 2 && !['the', 'and', 'for', 'with', 'in', 'on', 'at', 'to'].includes(word.toLowerCase()))
-      .slice(0, 5) // Limit to first 5 meaningful words
-      .join(' ');
-    if (meaningfulWords) row[headers.indexOf(headerName)] = meaningfulWords;
-  }
-  
-  // Time columns
-  if (headers.includes('TIME')) {
-    const timeMatch = message.match(/(\d{1,2}:\d{2}(?:\s*[ap]m)?)/i);
-    if (timeMatch) row[headers.indexOf('TIME')] = timeMatch[1];
-  }
+    
+    // Amount/Money columns - any header containing amount, money, price, cost, etc.
+    else if (headerLower.includes('amount') || headerLower.includes('money') || 
+             headerLower.includes('price') || headerLower.includes('cost') || 
+             headerLower.includes('revenue') || headerLower.includes('sales')) {
+      const match = message.match(/\$?(\d+(?:\.\d{2})?)/i);
+      if (match) row[index] = match[1];
+    }
+    
+    // Status columns - any header containing status, state, condition, etc.
+    else if (headerLower.includes('status') || headerLower.includes('state') || 
+             headerLower.includes('condition') || headerLower.includes('progress')) {
+      if (messageLower.includes('completed') || messageLower.includes('done') || messageLower.includes('finished')) {
+        row[index] = 'Completed';
+      } else if (messageLower.includes('pending') || messageLower.includes('waiting') || messageLower.includes('in progress')) {
+        row[index] = 'Pending';
+      }
+    }
+    
+    // Notes/Description columns - any header containing notes, description, details, comments, etc.
+    else if (headerLower.includes('notes') || headerLower.includes('description') || 
+             headerLower.includes('details') || headerLower.includes('comments') || 
+             headerLower.includes('summary') || headerLower.includes('info')) {
+      // Extract meaningful content, excluding common filler words
+      const meaningfulWords = message
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !['the', 'and', 'for', 'with', 'in', 'on', 'at', 'to', 'went', 'saw', 'sold', 'client', 'customer'].includes(word.toLowerCase()))
+        .slice(0, 6) // Limit to first 6 meaningful words
+        .join(' ');
+      if (meaningfulWords) row[index] = meaningfulWords;
+    }
+  });
   
   return row;
 }
@@ -446,7 +425,7 @@ export async function executeToolPlan(
         }
           // For update_data intents, ensure proper argument propagation
           let call: any;
-          if (intent === 'update_data' && step.toolName === 'prepare_update_data') {
+          if (intent === 'update_data' && step.toolName === 'apply_structured_rows') {
             try {
               const ctxAny = context as any;
               const spreadsheetId = ctxAny?.spreadsheetId;

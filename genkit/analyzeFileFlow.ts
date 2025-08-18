@@ -1,4 +1,4 @@
-
+// Updated genkit/analyzeFileFlow.ts - full file with improved prompt and better handling for inference without user text
 import { genkit } from 'genkit';
 import { z } from 'zod';
 import { gemini15Flash, gemini15Pro, googleAI } from '@genkit-ai/googleai';
@@ -117,12 +117,13 @@ export const analyzeFileFlow = (apiKey: string) => {
       
       // Create a comprehensive prompt with extracted text
       const fullPrompt = `Analyze the input to extract structured data for Google Sheet updates. If files are provided, extract text/content from them (use tools like search_pdf_attachment for keyword searches or browse_pdf_attachment for specific pages if needed for deeper analysis). Combine any user text with extracted file content as context.
-- Infer target sheet(s) from content (e.g., 'Logbook' for KM/fuel data; group by sheet if multiple inferred).
-- If no text and only files, default to extracting all tabular data.
-- Generate preview tables for each sheet, proposing new rows or updates (match existing formats from sheet history).
+- Infer target sheet(s) from content (e.g., 'Logbook' for KM/fuel data, 'Food Acomodation' for claims/expenses; group by sheet if multiple inferred). If no clear inference, use the selected/default sheet if provided in context.
+- If no user text and only files, proactively extract all tabular/invoice-like data into rows (e.g., dates, amounts, locations from fuel/claim slips).
+- Always attempt to extract structured rows even if text is limited—look for patterns like dates, numbers, names, totals.
+- Generate preview tables for each sheet, proposing new rows or updates (match existing formats from sheet history if available).
 - For multi-file/multi-sheet, process sequentially and group previews in one response.
 - Always preview first; do not commit without confirmation.
-- If unclear (e.g., no inferable sheet), ask for clarification in the response.
+- If unclear (e.g., no inferable sheet or data), ask for clarification in the response but still attempt best-guess extraction.
 
 IMPORTANT: You MUST respond with valid JSON only. Do not include any explanatory text outside the JSON structure.
 
@@ -131,6 +132,7 @@ INPUT CONTEXT:
 - Extracted file content: ${extractedContents.map((content, index) => `File ${index + 1} (${content.mimeType}):
 ${content.extractedText}
 ---`).join('\n')}
+- Selected/Default Sheets (use as fallback): Logbook
 
 Respond with this exact JSON format:
 {
@@ -151,9 +153,11 @@ Respond with this exact JSON format:
       "Fuel in liters": "50",
       "Fuel Cost in Rands": "1000.00"
     }
+    // Add more rows as extracted
   ],
-  "sheets": ["Logbook"],
-  "message": "Confirm to commit these updates?"`;
+  "sheets": ["Logbook"],  // Inferred or selected sheets
+  "message": "Confirm to commit these updates?"
+}`;
 
       try {
         console.log('🔍 [ANALYZE_FILE_FLOW] Attempting to generate content with multiple models...');
@@ -187,7 +191,7 @@ Respond with this exact JSON format:
           
           // Remove markdown code blocks if present
           if (cleanedOutput.includes('```json')) {
-            cleanedOutput = cleanedOutput.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+            cleanedOutput = cleanedOutput.replace(/```json/g, '');
           }
           
           // Remove any leading/trailing whitespace

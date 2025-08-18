@@ -1263,7 +1263,8 @@ export default function Home() {
           if (failures.length > 0) {
             const detailText = failures.map((f, i) => {
               const d = typeof f.details === 'string' ? f.details : (f.details ? JSON.stringify(f.details) : '');
-              return `${i + 1}. ${f.result}${d ? `\n   Details: ${d}` : ''}`;
+              const resultText = f.result || 'Unknown error';
+              return `${i + 1}. ${resultText}${d ? `\n   Details: ${d}` : ''}`;
             }).join('\n');
             const msg = `Tool error: One or more actions failed.\n${detailText}`;
             setSendResult(msg);

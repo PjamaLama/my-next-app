@@ -112,11 +112,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const { spreadsheetId, sheetNames } = context as any;
           const { sheetName, range, spec } = args as any;
           if (!spreadsheetId) {
-            return res.status(400).json({ success: false, error: 'Spreadsheet ID is required' });
+            return res.status(400).json({ 
+          success: false, 
+          result: 'Spreadsheet ID is required for this operation',
+          error: 'Spreadsheet ID is required' 
+        });
           }
           const targetSheet = sheetName || (Array.isArray(sheetNames) && sheetNames.length > 0 ? sheetNames[0] : null);
           if (!targetSheet) {
-            return res.status(400).json({ success: false, error: 'sheetName is required (or provide context.sheetNames)' });
+            return res.status(400).json({ 
+          success: false, 
+          result: 'Sheet name is required for this operation',
+          error: 'sheetName is required (or provide context.sheetNames)' 
+        });
           }
           const sheets = await getGoogleSheetsClient();
           const escaped = targetSheet.includes(' ')? `'${targetSheet.replace(/'/g, "''")}'`: targetSheet;
@@ -385,6 +393,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       default:
         return res.status(400).json({
           success: false,
+          result: `Unknown tool: ${name}`,
           error: `Unknown tool: ${name}`
         });
     }
@@ -2236,10 +2245,30 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
   try {
     const argSpreadsheetId = (args as any)?.spreadsheetId;
     const argSheetName = (args as any)?.sheetName;
-    let { rows, dryRun, startRow, commit } = (args || {}) as { rows?: Array<Record<string, unknown>>; dryRun?: boolean; startRow?: number; commit?: boolean };
+    let { rows, proposedRow, dryRun, startRow, commit } = (args || {}) as { 
+      rows?: Array<Record<string, unknown>>; 
+      proposedRow?: any[]; 
+      dryRun?: boolean; 
+      startRow?: number; 
+      commit?: boolean 
+    };
 
     const spreadsheetId = argSpreadsheetId || (context as any)?.spreadsheetId;
     const sheetName = argSheetName || (context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames?.[0] : undefined);
+
+    // Handle both rows and proposedRow parameters for backward compatibility
+    if (!rows && proposedRow) {
+      // Convert proposedRow array to rows format
+      const headers = (args as any)?.headers || (context as any)?.sheetHeaders || [];
+      if (Array.isArray(headers) && headers.length > 0) {
+        rows = [proposedRow.reduce((acc: Record<string, unknown>, cell: any, index: number) => {
+          if (index < headers.length) {
+            acc[headers[index]] = cell;
+          }
+          return acc;
+        }, {} as Record<string, unknown>)];
+      }
+    }
 
     if (!spreadsheetId || !sheetName || !Array.isArray(rows) || rows.length === 0) {
       const missingParts: string[] = [];
@@ -2248,6 +2277,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       if (!rows || rows.length === 0) missingParts.push('rows');
       return res.status(200).json({
         success: false,
+        result: `Missing required params: ${missingParts.join(' ')}`,
         error: `Missing required params: ${missingParts.join(' ')}`,
         clarify: 'Please specify the sheet and data to update.'
       });
@@ -2264,7 +2294,12 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       } catch {}
     }
     if (!Array.isArray(sheetHeaders) || sheetHeaders.length === 0) {
-      return res.status(200).json({ success: false, error: 'No valid headers found', clarify: 'Please specify column names.' });
+      return res.status(200).json({ 
+        success: false, 
+        result: 'No valid headers found in sheet',
+        error: 'No valid headers found', 
+        clarify: 'Please specify column names.' 
+      });
     }
 
     // Accept only exact header keys (ignore unknowns) and permit rows that have at least one non-Date value
@@ -2289,6 +2324,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
     if (!validRows.length) {
       return res.status(200).json({
         success: false,
+        result: 'Invalid rows: provide at least one known column value',
         error: 'Invalid rows: provide at least one known column value.',
         clarify: `Rows need values for: [${sheetHeaders.join(', ')}]`
       });
@@ -2333,7 +2369,8 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       };
       
       return res.status(200).json({
-        success: false,
+        success: true,
+        result: `Preview generated for ${validRows.length} row${validRows.length === 1 ? '' : 's'} in ${sheetName}`,
         preview: previewTable,
         dryRun: true,
         proposedChanges: {
@@ -2361,7 +2398,12 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
     return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: validRows, result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to apply structured rows', details: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ 
+      success: false, 
+      result: 'Failed to apply structured rows to sheet',
+      error: 'Failed to apply structured rows', 
+      details: error instanceof Error ? error.message : String(error) 
+    });
   }
  }
 
