@@ -49,6 +49,7 @@ export type PlannerPlan = {
 };
 
 // New planner prompt focused on updates with multi-sheet support
+// New planner prompt focused on updates with multi-sheet support
 function buildPrompt(message: string, context: Context, history: ConversationHistoryItem[], hasFiles: boolean, isExtraction: boolean): string {
   // Get sheet context
   const headers: string[] = Array.isArray((context as any)?.sheetHeaders)
@@ -87,14 +88,43 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
         .join('\n')
     : '';
 
+    const sheet_names = Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet';
+
   // New simplified update planner prompt with format conformity requirements
-  const template = `You are a Google Sheets update planner. Your job is to analyze user requests and create structured data updates.\n\nIMPORTANT: Always return intent: "update_data" - the user wants to add or modify data.\n\nCONTEXT:\n- Headers: [${headersList}]\n- Sample recent rows: ${sheetDataSample || 'No recent rows available'}\n- User query: ${JSON.stringify(message)}\n- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}\n\nTASK: Create a structured update plan that maps user input to exact column names.\n\nREQUIREMENTS:\n1. Use EXACT column headers from the headers list above - no synonyms or fuzzy matching.\n2. If you cannot confidently map user input to exact column names, set clarifyQuestion.\n3. Always use the apply_structured_rows tool with dryRun: true for preview.\n4. If the user's request is unclear, ask for clarification.\n5. When proposing new row data, strictly match the format and style of existing sheet entries.\n\nFORMAT CONFORMITY RULES:\n- Use the provided sample rows as a reference for formatting\n- Match currency formats exactly (e.g., 'R 23', 'R10,000.00', 'R0.00')\n- Match date formats exactly (e.g., '7/30/2025')\n- For today's date, use '=TODAY()' if the sheet supports it to keep it dynamic\n- Preserve empty string patterns for unused columns\n- Match text formatting and capitalization style\n\nINFERENCE RULES FOR MISSING VALUES:\n- If user doesn't provide a value for a field, infer it from patterns in sheet's recent history\n- Use the most common or last value if logical (e.g., repeat previous driver's name if unchanged)\n- For KM fields, use formulas like '=PREVIOUS_END_KM' when appropriate\n- If no clear inference possible, leave field blank or use sensible defaults\n- Only prompt for clarification if inference fails for critical fields like date\n- Reference the provided sample rows to understand patterns and relationships\n\nOUTPUT FORMAT:\nReturn a JSON object with this EXACT structure. Do not add any extra text or formatting.\n{\n  "intent": "update_data",\n  "reasoning": "Brief explanation of what you're doing",\n  "tools": [{"name": "apply_structured_rows", "args": {"rows": [{"Column1": "value1"}]}}],\n  "toolChain": [],\n  "clarifyQuestion": null,\n  "inferences": null,\n  "extractedData": null,\n  "sheets": [\n    {\n      "sheetName": "Sheet1",\n      "rows": [\n        {"Column1": "value1", "Column2": "value2"}\n      ]\n    }\n  ]\n}\n\nIf you make a mistake, please correct it and return the valid JSON.`
+  const template = 'You are a planner for Google Sheets updates. Analyze the request to determine intent (always \'extraction\' for file uploads or data entry).\n' +
+  '- If files present, plan to extract and preview data.\n' +
+  '- Combine text with file content.\n' +
+  '- Infer sheets (e.g., \'Logbook\' for fuel/KM).\n' +
+  '- Use tool: apply_structured_rows (dryRun: true) for previews.\n' +
+  'CONTEXT:\n' +
+  '- User request: {message}\n' +
+  '- Files: {has_files}\n' +
+  '- Sheets: {sheet_names}\n' +
+  'IMPORTANT: You MUST respond with valid JSON only. No comments, no trailing commas, no explanatory text.\n' +
+  'Output JSON:\n' +
+  '{\n' +
+  '  "intent": "extraction",\n' +
+  '  "tools": [{"name": "apply_structured_rows", "args": {}, "params": {"dryRun": true}}],\n' +
+  '  "clarify": "{if_needed}",\n' +
+  '  "sheets": ["Logbook"]\n' +
+  '}';
+
+  const populatedTemplate = template
+    .replace('{message}', message)
+    .replace('{has_files}', hasFiles ? 'Yes' : 'No')
+    .replace('{sheet_names}', sheet_names);
 
   // Compatibility block with resolved values
-  const compatibility = `\n\nUser message (resolved): ${JSON.stringify(message)}\nSheet context (resolved): ${hydratedContextResolved}\nConversation history (resolved): ${historyText}\n${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 1 ? `Note: Multiple sheets available: ${(context as any).sheetNames.join(', ')}. Use primarySheet for updates unless specified.` : ''}`;
+  const compatibility = `
 
-  return template + compatibility;
+User message (resolved): ${JSON.stringify(message)}
+Sheet context (resolved): ${hydratedContextResolved}
+Conversation history (resolved): ${historyText}
+${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 1 ? `Note: Multiple sheets available: ${(context as any).sheetNames.join(', ')}. Use primarySheet for updates unless specified.` : ''}`;
+
+  return populatedTemplate + compatibility;
 }
+
 
 export async function generatePlan(
   message: string,
@@ -150,6 +180,54 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
   try {
     let cleaned = String(aiResponse || '').trim();
     if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json\n?|```/g, '');
+    
+    // Remove any trailing comments or invalid JSON syntax
+    cleaned = cleaned.replace(/\/\/.*$/gm, ''); // Remove single-line comments
+    cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
+    cleaned = cleaned.replace(/,\s*}/g, '}'); // Remove trailing commas
+    cleaned = cleaned.replace(/,\s*]/g, ']'); // Remove trailing commas in arrays
+    
+    // Try to find the last valid JSON object/array
+    let lastValidJson = '';
+    let braceCount = 0;
+    let bracketCount = 0;
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i < cleaned.length; i++) {
+      const char = cleaned[i];
+      
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      
+      if (char === '"' && !escapeNext) {
+        inString = !inString;
+      }
+      
+      if (!inString) {
+        if (char === '{') braceCount++;
+        if (char === '}') braceCount--;
+        if (char === '[') bracketCount++;
+        if (char === ']') bracketCount--;
+      }
+      
+      lastValidJson += char;
+      
+      // If we have a complete JSON structure, stop
+      if (braceCount === 0 && bracketCount === 0 && (char === '}' || char === ']')) {
+        break;
+      }
+    }
+    
+    cleaned = lastValidJson;
+    
     const parsed = JSON.parse(cleaned);
     
     // Use the detected intent from the flag
@@ -348,17 +426,41 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
     };
   } catch (e) {
     console.error("Failed to parse AI plan:", aiResponse, e);
+    
+    // Try to extract any useful information from the malformed response
+    let extractedIntent = 'update_data';
+    let extractedSheets: string[] = [];
+    
+    try {
+      // Look for common patterns in the malformed response
+      if (aiResponse.includes('"intent"')) {
+        const intentMatch = aiResponse.match(/"intent"\s*:\s*"([^"]+)"/);
+        if (intentMatch) extractedIntent = intentMatch[1];
+      }
+      
+      if (aiResponse.includes('"sheets"')) {
+        const sheetsMatch = aiResponse.match(/"sheets"\s*:\s*\[([^\]]+)\]/);
+        if (sheetsMatch) {
+          extractedSheets = sheetsMatch[1].split(',').map(s => s.trim().replace(/"/g, ''));
+        }
+      }
+    } catch (extractError) {
+      console.warn("Failed to extract partial info from malformed response:", extractError);
+    }
+    
     // Safe fallback for update_data intent
     const sheetName = (context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames[0] : 'Sheet1');
+    const fallbackSheets = extractedSheets.length > 0 ? extractedSheets : [sheetName];
+    
     return { 
-      intent: 'update_data', 
+      intent: extractedIntent as 'update_data' | 'extraction', 
       tools: [{ name: 'apply_structured_rows', args: {} }], 
       toolChain: [], 
       clarifyQuestion: 'Failed to parse plan. Please try again.', 
-      reasoning: 'Fallback planner.', 
+      reasoning: 'Fallback planner due to JSON parsing error.', 
       inferences: null, 
       extractedData: null,
-      sheets: [{ sheetName, rows: [] }]
+      sheets: fallbackSheets.map(name => ({ sheetName: name, rows: [] }))
     };
   }
 }

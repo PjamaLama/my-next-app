@@ -178,7 +178,7 @@ export async function processMessage(
               const { analyzeFileFlow } = await import('@/genkit/analyzeFileFlow');
               const flow = analyzeFileFlow(apiKey);
               const result = await flow.run({ 
-                prompt: 'Extract all relevant data from this file that could be added to a spreadsheet', 
+                prompt: message || 'Extract all relevant data from this file that could be added to a spreadsheet', 
                 files: [image] 
               });
               

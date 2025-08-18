@@ -116,42 +116,44 @@ export const analyzeFileFlow = (apiKey: string) => {
       }
       
       // Create a comprehensive prompt with extracted text
-      const fullPrompt = `You are an expert data analyst that extracts tabular fuel/expense entries suitable for Google Sheets. A user has uploaded ${files.length} file(s) and asked the following:
+      const fullPrompt = `Analyze the input to extract structured data for Google Sheet updates. If files are provided, extract text/content from them (use tools like search_pdf_attachment for keyword searches or browse_pdf_attachment for specific pages if needed for deeper analysis). Combine any user text with extracted file content as context.
+- Infer target sheet(s) from content (e.g., 'Logbook' for KM/fuel data; group by sheet if multiple inferred).
+- If no text and only files, default to extracting all tabular data.
+- Generate preview tables for each sheet, proposing new rows or updates (match existing formats from sheet history).
+- For multi-file/multi-sheet, process sequentially and group previews in one response.
+- Always preview first; do not commit without confirmation.
+- If unclear (e.g., no inferable sheet), ask for clarification in the response.
 
-"${prompt}"
+IMPORTANT: You MUST respond with valid JSON only. Do not include any explanatory text outside the JSON structure.
 
-EXTRACTED TEXT CONTENT:
-${extractedContents.map((content, index) => `File ${index + 1} (${content.mimeType}):
+INPUT CONTEXT:
+- User text: ${prompt}
+- Extracted file content: ${extractedContents.map((content, index) => `File ${index + 1} (${content.mimeType}):
 ${content.extractedText}
----`).join('\n\n')}
+---`).join('\n')}
 
-Your task is to analyze the extracted text content and return a STRICT JSON with an array of normalized row objects in a top-level field named "extracted_rows". Normalize values:
-- Dates: DD/MM/YY or ISO YYYY-MM-DD
-- Amounts and numbers: plain decimals without currency symbols
-Return ONLY JSON, no markdown.
-
-IMPORTANT INSTRUCTIONS:
-1. Parse each file and identify entries relevant for spreadsheet rows.
-2. Normalize keys to common spreadsheet headers if present: ["Date","Driver","Reg#","Vehicle","KM Start","KM End","Business Km","Prvt Km","Leave Km","Total Km","TOWN VISITED","CLIENT SEEN","CLIENT CALLED","PHONE NUMBER","DETAILS OF VISIT","KM at Filling","Fuel in liters","Fuel Cost in Rands","SALES MADE"]
-3. Always infer logical headers from content if not explicit (e.g., Date, Amount, Description).
-4. Return ONLY raw JSON without markdown or explanations.
-5. If nothing can be extracted, return { "extracted_rows": [] }.
-
-Example output format (RETURN EXACTLY JSON, no code fences):
+Respond with this exact JSON format:
 {
   "extracted_rows": [
     {
-      "Date": "25/07/25",
-      "Reg#": "NR33581",
-      "TOWN VISITED": "Glenfair Service Station & Daventry Roads",
+      "Date": "07/25/2025",
+      "Driver": "Neville Young",
+      "Reg#": "CG09TYZN",
+      "Vehicle": "Vehicle Name",
+      "KM Start": "1000",
+      "KM End": "1100",
+      "Business Km": "100",
+      "Prvt Km": "0",
+      "Leave Km": "0",
+      "Total Km": "100",
+      "TOWN VISITED": "Town Name",
+      "KM at Filling": "1050",
       "Fuel in liters": "50",
-      "Fuel Cost in Rands": "685.50"
+      "Fuel Cost in Rands": "1000.00"
     }
   ],
-  "inferredHeaders": ["Date", "Reg#", "TOWN VISITED", "Fuel in liters", "Fuel Cost in Rands"]
-}
-
-Analyze the extracted text content and extract relevant data in JSON format.`;
+  "sheets": ["Logbook"],
+  "message": "Confirm to commit these updates?"`;
 
       try {
         console.log('🔍 [ANALYZE_FILE_FLOW] Attempting to generate content with multiple models...');
