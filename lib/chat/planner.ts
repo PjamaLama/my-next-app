@@ -89,155 +89,11 @@ function buildPrompt(message: string, context: Context, history: ConversationHis
         .join('\n')
     : '';
 
-  // Check for mapping flag
-  const ctxAny = context as any;
-  const isMapping = ctxAny?.flag === 'mapped';
-
-  // New focused update planner prompt
-  const template = isExtraction 
-    ? `You are a data extraction planner for Google Sheets. Your job is to analyze uploaded files and create an initial extraction plan.
-
-IMPORTANT: Always return intent: "extraction" - the user wants to extract and map data from files.
-
-CONTEXT:
-- Headers: [${headersList}]
-- Sample recent rows: ${sheetDataSample || 'No recent rows available'}
-- User query: ${JSON.stringify(message)}
-- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}
-
-${hasFiles ? `FILE ATTACHMENTS: ${Array.isArray((context as any)?.fileData) ? (context as any).fileData.length : 0} file(s) uploaded. Extract structured data from these files.` : ''}
-
-TASK: Create an initial extraction plan that shows the raw extracted data from files.
-
-REQUIREMENTS:
-1. Focus on extracting and displaying the raw data from files first
-2. Do not attempt to map to exact column names yet - this will be done in a second step
-3. Always use the apply_structured_rows tool with dryRun: true for preview
-4. Set clarifyQuestion if you cannot extract meaningful data from files
-
-OUTPUT FORMAT:
-Return a JSON object with this EXACT structure:
-{
-  "intent": "extraction",
-  "reasoning": "Brief explanation of what data was extracted",
-  "tools": [{"name": "apply_structured_rows", "args": {...}}],
-  "toolChain": [],
-  "clarifyQuestion": null,
-  "inferences": null,
-  "extractedData": { "rows": [...], "headers": [...] },
-  "sheets": [
-    {
-      "sheetName": "Sheet1",
-      "rows": [
-        {"Column1": "value1", "Column2": "value2"}
-      ]
-    }
-  ]
-}
-
-EXTRACTION FOCUS: For file attachments, output extractedData: { rows: [array of row objects from files], headers: [inferred headers from files] } to show the raw extracted data before mapping.`
-
-    : isMapping
-    ? `You are a data mapping planner for Google Sheets. Your job is to map extracted data to exact sheet column names.
-
-IMPORTANT: Always return intent: "update_data" - the user wants to map extracted data to sheet columns.
-
-CONTEXT:
-- Headers: [${headersList}]
-- Sample recent rows: ${sheetDataSample || 'No recent rows available'}
-- User query: ${JSON.stringify(message)}
-- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}
-
-TASK: Map the extracted data to EXACT column names from the sheet headers.
-
-REQUIREMENTS:
-1. Use EXACT column headers from the headers list above - no synonyms or fuzzy matching
-2. Map each extracted column to the most appropriate sheet column
-3. If a column cannot be mapped exactly, set clarifyQuestion
-4. Always use the apply_structured_rows tool with dryRun: true for preview
-5. Ensure all mapped column names exactly match the sheet headers
-
-OUTPUT FORMAT:
-Return a JSON object with this EXACT structure:
-{
-  "intent": "update_data",
-  "reasoning": "Brief explanation of how you mapped the data",
-  "tools": [{"name": "apply_structured_rows", "args": {...}}],
-  "toolChain": [],
-  "clarifyQuestion": null,
-  "inferences": null,
-  "extractedData": null,
-  "sheets": [
-    {
-      "sheetName": "Sheet1",
-      "rows": [
-        {"ExactColumnName": "value1", "AnotherExactColumn": "value2"}
-      ]
-    }
-  ]
-}
-
-MAPPING REQUIREMENTS:
-- All column names in the output must exactly match headers from the headers list
-- If you cannot map a column exactly, ask for clarification
-- Use the most semantically appropriate column for each piece of data
-- Ensure the mapped data structure matches the sheet schema exactly`
-
-    : `You are a Google Sheets update planner. Your job is to analyze user requests and create structured data updates.
-
-IMPORTANT: Always return intent: "update_data" - the user wants to add or modify data.
-
-CONTEXT:
-- Headers: [${headersList}]
-- Sample recent rows: ${sheetDataSample || 'No recent rows available'}
-- User query: ${JSON.stringify(message)}
-- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}
-
-${hasFiles ? `FILE ATTACHMENTS: ${Array.isArray((context as any)?.fileData) ? (context as any).fileData.length : 0} file(s) uploaded. Extract structured data from these files.` : ''}
-
-TASK: Create a structured update plan that maps user input to exact column names.
-
-REQUIREMENTS:
-1. Use EXACT column headers from the headers list above - no synonyms or fuzzy matching
-2. If multiple sheets are involved, segment rows by sheet name
-3. Always use the apply_structured_rows tool with dryRun: true for preview
-4. If you cannot confidently map user input to exact column names, set clarifyQuestion
-
-OUTPUT FORMAT:
-Return a JSON object with this EXACT structure:
-{
-  "intent": "update_data",
-  "reasoning": "Brief explanation of what you're doing",
-  "tools": [{"name": "apply_structured_rows", "args": {...}}],
-  "toolChain": [],
-  "clarifyQuestion": null,
-  "inferences": null,
-  "extractedData": ${hasFiles ? '{ "rows": [...], "headers": [...] }' : 'null'},
-  "sheets": [
-    {
-      "sheetName": "Sheet1",
-      "rows": [
-        {"Column1": "value1", "Column2": "value2"}
-      ]
-    }
-  ]
-}
-
-MULTI-SHEET SUPPORT:
-- If multiple sheets are mentioned or available, create separate sheet entries
-- Each sheet must have sheetName and rows array
-- Use the primary sheet if no specific sheet is mentioned
-- Ensure all column names exactly match the headers provided
-
-${hasFiles ? `FILE PROCESSING: For file attachments, also output extractedData: { rows: [array of row objects from files], headers: [inferred headers from files] } to show the raw extracted data before mapping.` : ''}`;
+  // New simplified update planner prompt
+  const template = `You are a Google Sheets update planner. Your job is to analyze user requests and create structured data updates.\n\nIMPORTANT: Always return intent: "update_data" - the user wants to add or modify data.\n\nCONTEXT:\n- Headers: [${headersList}]\n- Sample recent rows: ${sheetDataSample || 'No recent rows available'}\n- User query: ${JSON.stringify(message)}\n- Available sheets: ${Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames.join(', ') : 'Single sheet'}\n\nTASK: Create a structured update plan that maps user input to exact column names.\n\nREQUIREMENTS:\n1. Use EXACT column headers from the headers list above - no synonyms or fuzzy matching.\n2. If you cannot confidently map user input to exact column names, set clarifyQuestion.\n3. Always use the apply_structured_rows tool with dryRun: true for preview.\n4. If the user's request is unclear, ask for clarification.\n\nOUTPUT FORMAT:\nReturn a JSON object with this EXACT structure. Do not add any extra text or formatting.\n{\n  "intent": "update_data",\n  "reasoning": "Brief explanation of what you're doing",\n  "tools": [{"name": "apply_structured_rows", "args": {"rows": [{"Column1": "value1"}]}}],\n  "toolChain": [],\n  "clarifyQuestion": null,\n  "inferences": null,\n  "extractedData": null,\n  "sheets": [\n    {\n      "sheetName": "Sheet1",\n      "rows": [\n        {"Column1": "value1", "Column2": "value2"}\n      ]\n    }\n  ]\n}\n\nIf you make a mistake, please correct it and return the valid JSON.`
 
   // Compatibility block with resolved values
-  const compatibility = `
-
-User message (resolved): ${JSON.stringify(message)}
-Sheet context (resolved): ${hydratedContextResolved}
-Conversation history (resolved): ${historyText}
-${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 1 ? `Note: Multiple sheets available: ${(context as any).sheetNames.join(', ')}. Use primarySheet for updates unless specified.` : ''}`;
+  const compatibility = `\n\nUser message (resolved): ${JSON.stringify(message)}\nSheet context (resolved): ${hydratedContextResolved}\nConversation history (resolved): ${historyText}\n${Array.isArray((context as any)?.sheetNames) && (context as any).sheetNames.length > 1 ? `Note: Multiple sheets available: ${(context as any).sheetNames.join(', ')}. Use primarySheet for updates unless specified.` : ''}`;
 
   return template + compatibility;
 }
@@ -298,7 +154,7 @@ export async function generatePlan(
 function parsePlanResponse(aiResponse: string, context: Context, message: string, detectedIntent: string): PlannerPlan {
   try {
     let cleaned = String(aiResponse || '').trim();
-    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json\n?/, '');
+    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json\n?|```/g, '');
     const parsed = JSON.parse(cleaned);
     
     // Use the detected intent from the flag
@@ -495,7 +351,8 @@ function parsePlanResponse(aiResponse: string, context: Context, message: string
       extractedData: typeof parsed.extractedData === 'object' && parsed.extractedData ? parsed.extractedData : null,
       sheets,
     };
-  } catch {
+  } catch (e) {
+    console.error("Failed to parse AI plan:", aiResponse, e);
     // Safe fallback for update_data intent
     const sheetName = (context as any)?.sheetName || (Array.isArray((context as any)?.sheetNames) ? (context as any).sheetNames[0] : 'Sheet1');
     return { 
