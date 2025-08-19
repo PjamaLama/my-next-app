@@ -102,7 +102,8 @@ type ChatMessage = {
     quickReplies?: string[];
     sheetsUsed?: string[];
     tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
-    
+    charts?: Array<{ kind: 'bar' | 'line' | 'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: unknown }>;
+    insights?: string[];
     approved?: boolean; // Track if this message's table updates have been approved
   };
 

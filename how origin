@@ -1,0 +1,105 @@
+[33me04eee4[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mn8n-integration[m[33m)[m Refactor and clean up chat processing and error handling
+[33mff4a7b1[m[33m ([m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmaster[m[33m)[m Enhance error handling and update prompts for structured data processing
+[33mfd33ed4[m Enhance file analysis and update planning with improved prompts and JSON handling
+[33m33885ce[m Enhance update planner prompt with new format conformity and inference rules
+[33mef2ba03[m Remove deprecated vector indexing and testing files to streamline the codebase
+[33m5a5a535[m Remove deprecated files and components to streamline the codebase
+[33m73fbe96[m Remove deprecated prompt and component files to streamline the codebase
+[33mc623f16[m Enhance sheet update prompt with new formatting guidelines for proposed row data
+[33mb385352[m Remove deprecated test files and mock implementations to streamline the codebase
+[33mfd951f1[m Refactor responseBuilder to streamline update_data intent handling
+[33m86f3f6d[m Refactor buildPrompt function for improved clarity and structure in update planning
+[33mbfdc711[m Refactor logging functions in contextUtils and responseBuilder for improved clarity and consistency
+[33mcecb4b6[m Refactor planner and update handling for enhanced data management and user experience
+[33m528765c[m Enhance Google Sheets integration and intent detection for improved user experience
+[33mfb5bf83[m Refactor buildPrompt and parsePlanResponse for enhanced data handling and clarity
+[33m5250155[m Enhance sheet update prompt with detailed inference rules
+[33mbe7dbbb[m Enhance error handling in chat module for improved user feedback
+[33m941be50[m Refactor executionOrchestrator for enhanced data handling and clarity
+[33m338efdc[m Add ServiceAccountInfo component to SpreadsheetManagerModal for displaying service account email
+[33me0a9196[m Remove outdated test files for executionOrchestrator and intentDetection to streamline the testing suite
+[33mfc09a4b[m Remove outdated responseBuilder test file to streamline the testing suite
+[33m41cc0dd[m Refactor tests for data hydration and response building for improved clarity and functionality
+[33m2329d92[m Refactor planner and table generation for improved clarity and functionality
+[33mdea7403[m Refactor test files to improve clarity and structure
+[33m9bc2088[m Remove outdated test files for normalizeNumber and processMessage
+[33m1562827[m Refactor processMessage behavior tests for clarity and structure
+[33m863b11d[m Remove integration tests for processMessage
+[33m13cb2a6[m Add chart type detection and data preparation for dynamic chart generation
+[33maddd28c[m Refactor error handling in processMessage for improved clarity and user feedback
+[33mdd03782[m Refactor processMessage for improved clarity and functionality
+[33m2f8421b[m Refactor processMessage for enhanced execution and clarity
+[33m95fcc7b[m Refactor Home component for improved data handling and user experience
+[33m6447f41[m Enhance data processing and inference capabilities in chat components
+[33m78c6f85[m Add edit modal functionality for table updates in Home component
+[33m9bd61f9[m Refactor Home component and API for improved clarity and performance
+[33m0f9ba86[m Enhance table update handling and user feedback in Home component
+[33mfbc5005[m Update text formatting and add column options feature in Home component
+[33m7da0eff[m Add chart rendering and insights extraction to message processing
+[33m73a8173[m Improve onboarding experience by adding loading state for spreadsheets
+[33mfc1e356[m Enhance get-sheet-data API for explicit range handling and error reporting
+[33m31c56fc[m Refactor and simplify various components for improved performance and user experience
+[33m9d1978d[m Enhance handleCommitFromTable for improved user feedback and state management
+[33m59e765b[m Enhance multi-row update handling and user interaction in processMessage and ChatSidebar
+[33m2b99bc6[m Enhance processMessage and ChatSidebar for improved user interaction and structured updates
+[33m55d7b8d[m Refactor ChatSidebar and EditRowModal for improved structured updates
+[33mbfc292c[m Enhance ChatSidebar and planner for structured updates
+[33m4c31de2[m Remove unnecessary resolve_column helper injection for update intents in processMessage to prevent errors from incomplete parameters.
+[33m54d8510[m Refine proposed updates table logic in processMessage
+[33m5fea4f3[m Enhance structured updates and error handling in ChatSidebar and planner
+[33m8f37ea8[m Enhance structured updates and error handling in planner and processMessage
+[33m609d312[m Refine error handling and header validation in handleApplyStructuredRows
+[33m85ee757[m Implement Google Sheets API integration and enhance header fetching logic
+[33mc60ead2[m Enhance proposed updates handling in processMessage
+[33mbc2515a[m Enhance reply composition for structured updates
+[33m168a560[m Refactor planner and genkit-tool-execute for enhanced structured updates
+[33m47faa77[m Integrate EditRowModal and enhance proposed update handling
+[33m9cf37ec[m Consolidate update handling in updateSheetFlow and planner for structured updates
+[33m7e0edbf[m Enhance proposed update handling in processMessage
+[33mb0a6474[m Enhance structured update handling in updateSheetFlow and planner
+[33m8a6b2a6[m Implement table commit and edit functionality in Home component
+[33m4ece539[m Enhance error handling in processMessage for improved user feedback
+[33mcf06945[m Integrate EditRowModal for structured row editing in ChatSidebar
+[33me19135d[m Add structured preview confirmation handling in Home component
+[33m43ac6de[m Refactor row remapping and preview handling in genkit-tool-execute for improved user feedback
+[33m85249e1[m Revise parsing guidance in chat planner for improved field mapping and structured row handling
+[33m4767256[m Enhance Google Sheets client authorization timeout configuration and update processMessage for structured row handling
+[33me4f4414[m Enhance processMessage and SheetDataSource for improved test handling and response management
+[33m5c229b7[m Refactor batchUpdate request structure in genkit-tool-execute for improved readability
+[33m5adaf54[m Refactor quickReplies handling in processMessage for improved tool processing
+[33m4442a9f[m Enhance tests for processMessage to improve update handling and user interaction
+[33m50a6d35[m Update chat planner and processMessage to enforce Date field inclusion and improve data normalization
+[33md0818dc[m Enhance chat planner and processMessage for improved update handling and user interaction
+[33m01c96a4[m Enhance chat planner and processMessage for improved update handling and user confirmation
+[33md8b17f6[m Add test for handling server 400 errors in processMessage
+[33m77fc67a[m Update SheetDataSource to enhance header detection by examining the first 100 rows for non-standard layouts, improving data retrieval accuracy.
+[33m1e1cf5d[m Enhance chat planner and genkit-tool-execute for improved data processing and user interaction
+[33mb182e48[m Enhance processMessage to leverage client cache for improved data retrieval and user feedback
+[33m8314b8c[m Enhance processMessage and tests for improved data handling and user feedback
+[33md7f0367[m Refine chat planner and processMessage for enhanced data handling and user interaction
+[33mddf9ec5[m Enhance chat planner and processMessage for improved data handling and user guidance
+[33m46f77a5[m Enhance chat API context handling by refining sheet data retrieval and non-tabular detection
+[33m6d84dca[m Add tests for non-standard sheets and error handling in processMessage
+[33md474b6f[m Enhance chat planner, processMessage, and data source for improved non-tabular support and error handling
+[33m907be0a[m Enhance processMessage and tests for improved data handling and user guidance
+[33m4483c0d[m Enhance processMessage and genkit-tool-execute for improved data handling and user guidance
+[33m772fa40[m Enhance chat planner and processMessage for improved examples and error handling
+[33m19d5690[m Enhance context handling in chat API and processMessage for improved data extraction
+[33m4ab6fd7[m Refactor processMessage tests for enhanced error handling and proactive guidance
+[33m73f7508[m Refactor tests and enhance processMessage for improved data handling
+[33m1c20bec[m Refactor chat planner and processMessage for improved data handling and proactive user guidance
+[33m83a8b4e[m Refactor header processing in processMessage for improved data handling
+[33mcac135d[m Refine processMessage tests and enhance hydration failure handling
+[33m053b208[m Enhance processMessage and planner for proactive data handling and user guidance
+[33m1a6e810[m Enhance processMessage tests and error handling for hydration failures
+[33m6a35464[m Enhance processMessage and error handling for improved user experience
+[33m1613340[m Enhance chat planner and message processing for improved context handling
+[33mc178dbe[m Refactor Q&A functionality to support asynchronous processing
+[33mb6187fd[m Enhance data handling and user interaction in chat functionality
+[33mf433fac[m Enhance testing and configuration for Jest and improve ColumnChooser component
+[33m921efdd[m Update TypeScript configuration and enhance Cypress test setup
+[33mc6839d5[m Enhance aggregation functionality and clarify column selection in chat interface
+[33ma5aa631[m Update dependencies and enhance Firebase admin initialization
+[33m61534c7[m Implement generalized categorical Q&A functionality in answerQuestionFromSheets
+[33m78de258[m Initialize dataTables array in processMessage function to enhance tool result handling
+[33m96777b5[m Refactor sheet structure validation and enhance header detection logic
