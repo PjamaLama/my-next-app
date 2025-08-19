@@ -1,0 +1,266 @@
+"use client";
+
+import React, { useState, useRef, useEffect } from 'react';
+import { useChat } from '../providers/ChatProvider';
+import { useSheet } from '../providers/SheetProvider';
+import { Send, Loader2 } from 'lucide-react';
+
+interface ChatInterfaceProps {
+  className?: string;
+}
+
+export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
+  const { chatMessages, addMessage, loading, error } = useChat();
+  const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
+  const [inputValue, setInputValue] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isSending) return;
+
+    const message = inputValue.trim();
+    setInputValue('');
+    setIsSending(true);
+
+    try {
+      // Add user message to chat
+      await addMessage({
+        role: 'user',
+        content: message,
+      });
+
+      // Call AI service to get response
+      const response = await fetch('/api/genkit-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          context: {
+            sheetNames: selectedSheetNames || [],
+            sheetData: sheetDataCache || {}
+          },
+          conversationHistory: chatMessages.slice(-5).map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        })
+      });
+
+      // Debug logging
+      console.log('🔍 [CHAT] Sending to genkit-chat:', {
+        message,
+        selectedSheetNames,
+        sheetDataCacheKeys: Object.keys(sheetDataCache || {}),
+        sheetDataCacheSample: Object.fromEntries(
+          Object.entries(sheetDataCache || {}).map(([name, data]) => [
+            name, 
+            { 
+              isArray: Array.isArray(data), 
+              length: Array.isArray(data) ? data.length : 'N/A',
+              hasHeaders: Array.isArray(data) && data.length > 0 ? Array.isArray(data[0]) : false
+            }
+          ])
+        )
+      });
+
+      if (response.ok) {
+        const aiResponse = await response.json();
+        
+        // Sanitize the AI response to remove nested arrays that Firestore can't handle
+        const sanitizedTables = aiResponse.tables ? aiResponse.tables.map((table: any) => ({
+          title: table.title || '',
+          headers: Array.isArray(table.headers) ? table.headers : [],
+          rowCount: Array.isArray(table.rows) ? table.rows.length : 0,
+          summary: table.summary || '',
+          meta: table.meta ? {
+            sheetName: table.meta.sheetName || '',
+            operations: table.meta.operations || {},
+            requiresConfirmation: Boolean(table.meta.requiresConfirmation),
+            isDryRun: Boolean(table.meta.isDryRun)
+          } : {}
+        })) : [];
+        
+        // Add AI response to chat
+        await addMessage({
+          role: 'assistant',
+          content: aiResponse.reasoning || 'AI processing completed.',
+          tables: sanitizedTables,
+          insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
+          quickReplies: Array.isArray(aiResponse.quickReplies) ? aiResponse.quickReplies : []
+        });
+      } else {
+        // Add error message if AI service fails
+        await addMessage({
+          role: 'assistant',
+          content: 'Sorry, I encountered an error processing your request. Please try again.',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      // Add error message to chat
+      await addMessage({
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const formatTimestamp = (timestamp: Date) => {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(timestamp);
+  };
+
+  if (loading) {
+    return (
+      <div className={`flex-1 flex items-center justify-center ${className}`}>
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
+          <Loader2 className="animate-spin h-5 w-5" />
+          <span>Loading chat...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex flex-col h-full ${className}`}>
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        {chatMessages.length === 0 ? (
+          <div className="text-center text-white/60 py-12">
+            <div className="text-2xl mb-2">👋</div>
+            <h3 className="text-lg font-semibold mb-2">Welcome to Report AI!</h3>
+            <p className="text-sm">
+              Start a conversation to analyze your spreadsheet data, ask questions, or get insights.
+            </p>
+            <div className="mt-4 text-xs text-white/40">
+              Try asking: "What's in my data?" or "Show me a summary of sales"
+            </div>
+          </div>
+        ) : (
+          chatMessages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                  message.role === 'user'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-white/10 text-white border border-white/20'
+                }`}
+              >
+                <div className="text-sm">{message.content}</div>
+                {message.tables && message.tables.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {message.tables.map((table, index) => (
+                      <div key={index} className="bg-white/10 rounded p-3">
+                        {table.title && (
+                          <div className="font-semibold mb-2 text-emerald-300">
+                            {table.title}
+                          </div>
+                        )}
+                        {table.data && Array.isArray(table.data) && (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-white/20">
+                                  {table.headers?.map((header: string, i: number) => (
+                                    <th key={i} className="text-left p-2 font-medium">
+                                      {header}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {table.data.slice(0, 10).map((row: any[], rowIndex: number) => (
+                                  <tr key={rowIndex} className="border-b border-white/10">
+                                    {row.map((cell: any, cellIndex: number) => (
+                                      <td key={cellIndex} className="p-2">
+                                        {String(cell || '')}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {table.data.length > 10 && (
+                              <div className="text-center text-xs text-white/60 mt-2">
+                                Showing first 10 rows of {table.data.length}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {message.insights && message.insights.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-emerald-300 mb-2">Insights:</div>
+                    <ul className="text-xs space-y-1">
+                      {message.insights.map((insight, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <span className="text-emerald-400 mt-1">•</span>
+                          <span>{insight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="text-xs opacity-70 mt-2">
+                  {formatTimestamp(message.timestamp)}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Input Area */}
+      <div className="border-t border-white/10 p-6">
+        <form onSubmit={handleSubmit} className="flex gap-3">
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Ask about your data, request analysis, or get insights..."
+            className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            disabled={isSending}
+          />
+          <button
+            type="submit"
+            disabled={!inputValue.trim() || isSending}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center gap-2"
+          >
+            {isSending ? (
+              <Loader2 className="animate-spin h-4 w-4" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

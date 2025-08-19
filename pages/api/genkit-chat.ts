@@ -31,12 +31,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Optimize sheetDataSample to only include headers, reducing payload size
     const optimizedSheetDataSample: Record<string, { headers: string[] }> = {};
     if (context?.sheetData) {
+      console.log('🔍 [N8N] Context sheetData received:', Object.keys(context.sheetData));
       for (const [sheetName, sheetData] of Object.entries(context.sheetData)) {
+        console.log(`🔍 [N8N] Processing sheet: ${sheetName}`, {
+          isArray: Array.isArray(sheetData),
+          length: Array.isArray(sheetData) ? sheetData.length : 'N/A',
+          firstRowIsArray: Array.isArray(sheetData) && sheetData.length > 0 ? Array.isArray(sheetData[0]) : false
+        });
         if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
           optimizedSheetDataSample[sheetName] = { headers: sheetData[0].map((h: any) => String(h ?? '')) };
+          console.log(`✅ [N8N] Added headers for ${sheetName}:`, optimizedSheetDataSample[sheetName].headers);
+        } else {
+          console.log(`❌ [N8N] Skipped ${sheetName} - invalid data structure`);
         }
       }
+    } else {
+      console.log('❌ [N8N] No context.sheetData received');
     }
+
+    console.log('🔍 [N8N] Final optimizedSheetDataSample:', Object.keys(optimizedSheetDataSample));
 
     // Prepare the final, lightweight payload for the N8N webhook
     const webhookData = {
@@ -47,6 +60,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       conversationHistory: conversationHistory ? conversationHistory.slice(-5) : [], // Max 5 recent messages
       currentDate: new Date().toISOString(),
     };
+
+    console.log('🚀 [N8N] Final webhook data being sent:', {
+      message: webhookData.message,
+      selectedSheets: webhookData.selectedSheets,
+      sheetDataSampleKeys: Object.keys(webhookData.sheetDataSample),
+      sheetDataSampleStructure: Object.fromEntries(
+        Object.entries(webhookData.sheetDataSample).map(([name, data]) => [
+          name, 
+          { headerCount: data.headers.length, headers: data.headers }
+        ])
+      ),
+      conversationHistoryLength: webhookData.conversationHistory.length
+    });
 
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
     if (!n8nWebhookUrl) {

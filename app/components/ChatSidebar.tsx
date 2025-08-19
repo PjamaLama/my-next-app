@@ -18,24 +18,17 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false }) => {
-  const chatContext = useChat();
-  // Safely extract properties with defaults for missing session management
   const { 
-    chatMessages = [],
-    setChatMessages = () => {},
-    loading = false,
-    error = null,
-    addMessage = async () => {}
-  } = chatContext || {};
-  
-  // Provide safe defaults for missing session management properties
-  const sessions = []; // TODO: Implement session management
-  const currentSessionId = null;
-  const setCurrentSessionId = () => {};
-  const createSession = async () => {};
-  const deleteSession = async () => {};
-  const ensureSession = async () => {};
-  const appendMessage = async () => {};
+    sessions,
+    currentSessionId,
+    setCurrentSessionId,
+    createSession,
+    deleteSession,
+    ensureSession,
+    setChatMessages,
+    appendMessage,
+    chatMessages
+  } = useChat();
   const { user } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();
@@ -277,7 +270,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const handleCreate = async () => {
     setCreating(true);
     try {
-      const id = await createSession();
+      const id = await createSession(undefined, defaultSpreadsheetId, selectedSheetNames);
       if (id) setCurrentSessionId(id);
     } finally {
       setCreating(false);
@@ -325,7 +318,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                 });
                 if (ok) {
                   await deleteSession(s.id);
-                  await ensureSession();
+                  // Pass current spreadsheet context when ensuring session
+                  if (sessions.length <= 1) {
+                    await createSession(undefined, defaultSpreadsheetId, selectedSheetNames);
+                  }
                 }
               }}
               className={`grid place-items-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-300/30 leading-none`}

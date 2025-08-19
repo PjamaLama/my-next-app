@@ -108,6 +108,66 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => { cancelled = true; };
   }, [defaultSpreadsheetId]);
 
+  // Fetch sheet data when selected sheets change
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSheetData = async () => {
+      if (!defaultSpreadsheetId || !selectedSheetNames.length) {
+        console.log('🔍 [SHEET] Skipping sheet data fetch:', { defaultSpreadsheetId, selectedSheetNames });
+        return;
+      }
+
+      console.log('🔍 [SHEET] Fetching sheet data for:', selectedSheetNames);
+
+      try {
+        // Fetch data for each selected sheet
+        const newSheetDataCache: Record<string, string[][]> = {};
+        
+        for (const sheetName of selectedSheetNames) {
+          try {
+            console.log(`🔍 [SHEET] Fetching data for sheet: ${sheetName}`);
+            const response = await fetch('/api/get-sheet-data', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                spreadsheetId: defaultSpreadsheetId, 
+                sheetName,
+                tailRows: 10 // Only fetch first 10 rows for efficiency
+              })
+            });
+            
+            if (response.ok && !cancelled) {
+              const data = await response.json();
+              if (data.data && Array.isArray(data.data)) {
+                newSheetDataCache[sheetName] = data.data;
+                console.log(`✅ [SHEET] Successfully fetched data for ${sheetName}:`, {
+                  rows: data.data.length,
+                  headers: data.data[0]?.length || 0
+                });
+              } else {
+                console.log(`❌ [SHEET] Invalid data structure for ${sheetName}:`, data);
+              }
+            } else {
+              console.log(`❌ [SHEET] Failed to fetch data for ${sheetName}:`, response.status, response.statusText);
+            }
+          } catch (e) {
+            console.warn(`Failed to fetch data for sheet ${sheetName}:`, e);
+          }
+        }
+        
+        if (!cancelled) {
+          console.log('🔍 [SHEET] Updating sheetDataCache with:', Object.keys(newSheetDataCache));
+          setSheetDataCache(prev => ({ ...prev, ...newSheetDataCache }));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch sheet data:', e);
+      }
+    };
+
+    void fetchSheetData();
+    return () => { cancelled = true; };
+  }, [defaultSpreadsheetId, selectedSheetNames]);
+
   const saveDefaultSelections = async (spreadsheetId: string, sheetNames: string[]) => {
     if (!user) return;
     try {
