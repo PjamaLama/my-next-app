@@ -185,11 +185,12 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         content: message,
       });
 
-      // Prepare files data for API - ONLY send extracted data, not raw base64
+      // Prepare files data for API - include file data for PDFs so backend can extract text
       const filesData = uploadedFiles.map(file => ({
         name: file.name,
         mimeType: file.mimeType,
-        // Don't send raw base64 data - only send extracted/processed data
+        // Include file data for PDFs so backend can extract text
+        data: file.mimeType === 'application/pdf' ? file.fileData : undefined,
         extractedData: file.extractedData || {
           type: 'metadata',
           fileName: file.name,
@@ -197,6 +198,16 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           mimeType: file.mimeType
         }
       }));
+
+      // Debug logging for file data
+      console.log('🔍 [CHAT] Files data being prepared:', filesData.map(f => ({
+        name: f.name,
+        mimeType: f.mimeType,
+        hasData: !!f.data,
+        dataLength: f.data ? f.data.length : 0,
+        extractedDataType: f.extractedData?.type,
+        extractedTextLength: f.extractedData?.textLength || 0
+      })));
 
       // Call AI service to get response
       const response = await fetch('/api/genkit-chat', {

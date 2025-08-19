@@ -20,19 +20,67 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Process images and files into a format suitable for N8N
-    // Now we only receive extractedData, not raw base64 data
-    const extractedFileContents = images
-      ? images.map((img: any) => ({
+    // Extract text from PDFs using pdf-parse before sending to N8N
+    const extractedFileContents = [];
+    
+    if (images && images.length > 0) {
+      console.log(`🔍 [BACKEND] Processing ${images.length} files from frontend`);
+      
+      for (const img of images) {
+        console.log(`🔍 [BACKEND] Processing file: ${img.name} (${img.mimeType})`, {
+          hasData: !!img.data,
+          dataLength: img.data ? img.data.length : 0,
+          extractedDataType: img.extractedData?.type,
+          extractedTextLength: img.extractedData?.textLength || 0
+        });
+        
+        let processedFile = {
           type: img.mimeType,
           name: img.name,
-          // No more raw data - only extracted/processed data
           extractedData: img.extractedData || {
             type: 'metadata',
             fileName: img.name,
             mimeType: img.mimeType
           }
-        }))
-      : [];
+        };
+
+        // If this is a PDF with file data, extract text using pdf-parse
+        if (img.mimeType === 'application/pdf' && img.data) {
+          try {
+            console.log(`🔍 [PDF] Extracting text from PDF: ${img.name}`);
+            const pdf = (await import('pdf-parse')).default;
+            const buffer = Buffer.from(img.data, 'base64');
+            const pdfData = await pdf(buffer);
+            const extractedText = pdfData.text || 'No text could be extracted from the PDF';
+            
+            console.log(`🔍 [PDF] Successfully extracted ${extractedText.length} characters from PDF`);
+            
+            processedFile.extractedData = {
+              type: 'document',
+              format: 'pdf',
+              fileName: img.name,
+              fileSize: img.extractedData?.fileSize || 0,
+              mimeType: img.mimeType,
+              extractedText: extractedText,
+              textLength: extractedText.length,
+              hasTextContent: extractedText.length > 0,
+              needsBackendProcessing: false, // Text already extracted
+              pageCount: pdfData.numpages || 0,
+              isScannedDocument: extractedText.length < 50 // Rough heuristic for scanned docs
+            };
+          } catch (pdfError) {
+            console.error(`❌ [PDF] Failed to extract text from PDF ${img.name}:`, pdfError);
+            // Keep the original extractedData but mark as needing backend processing
+            processedFile.extractedData.needsBackendProcessing = true;
+            processedFile.extractedData.extractionError = pdfError instanceof Error ? pdfError.message : 'Unknown error';
+          }
+        } else if (img.mimeType === 'application/pdf') {
+          console.log(`❌ [PDF] PDF ${img.name} missing file data - cannot extract text`);
+        }
+
+        extractedFileContents.push(processedFile);
+      }
+    }
 
     // Include both headers AND row data for AI processing
     const sheetDataForAI: Record<string, { headers: string[]; rows: string[][] }> = {};

@@ -3,34 +3,18 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Upload, X, FileText, Image, File, Loader2 } from 'lucide-react';
 
-// Helper function to extract text from PDF using PDF.js
-const extractPDFText = async (file: File): Promise<string> => {
+// Robust base64 encoding function that works with binary data
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   try {
-    // Dynamic import to avoid SSR issues
-    const pdfjsLib = await import('pdfjs-dist');
-    
-    // Set worker source
-    if (typeof window !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    const uint8Array = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < uint8Array.byteLength; i++) {
+      binary += String.fromCharCode(uint8Array[i]);
     }
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
-    let fullText = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      fullText += pageText + '\n';
-    }
-    
-    return fullText.trim();
+    return btoa(binary);
   } catch (error) {
-    console.warn('PDF text extraction failed:', error);
-    return '';
+    console.error('Base64 encoding failed:', error);
+    throw new Error('Failed to encode file to base64');
   }
 };
 
@@ -67,7 +51,8 @@ export interface UploadedFile {
   name: string;
   mimeType: string;
   size: number;
-  // No more base64 data - we only need extracted data
+  // Include file data for PDFs so backend can extract text
+  fileData?: string; // base64 encoded file data
   extractedData: any; // Structured data extracted from the file
   status: 'uploading' | 'processing' | 'completed' | 'error';
   error?: string;
@@ -155,22 +140,54 @@ export default function FileUpload({
           };
         }
       } else if (file.type === 'application/pdf') {
-        // Extract actual text content from PDF
-        const extractedText = await extractPDFText(file);
-        const hasTextContent = extractedText.length > 0;
-        
-        uploadedFile.extractedData = {
-          type: 'document',
-          format: 'pdf',
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type,
-          extractedText: hasTextContent ? extractedText : `PDF document: ${file.name} (${file.size} bytes)`,
-          textLength: extractedText.length,
-          hasTextContent,
-          needsBackendProcessing: !hasTextContent, // Only if text extraction failed
-          pageCount: extractedText.split('\n').filter(line => line.trim()).length // Rough page count estimate
-        };
+        // Mark PDFs for backend processing - the backend will use pdf-parse for reliable text extraction
+        // Convert file to base64 for backend processing
+        try {
+          console.log(`🔍 [PDF] Starting PDF processing for: ${file.name}, size: ${file.size} bytes`);
+          
+          const arrayBuffer = await file.arrayBuffer();
+          console.log(`🔍 [PDF] ArrayBuffer created, size: ${arrayBuffer.byteLength} bytes`);
+          
+          // Use a more robust base64 encoding method
+          const base64Data = arrayBufferToBase64(arrayBuffer);
+          console.log(`🔍 [PDF] Base64 conversion successful, length: ${base64Data.length} characters`);
+          
+          uploadedFile.extractedData = {
+            type: 'document',
+            format: 'pdf',
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+            extractedText: `PDF document: ${file.name} (${file.size} bytes) - Text extraction will be performed on the backend`,
+            textLength: 0,
+            hasTextContent: false, // Will be determined by backend
+            needsBackendProcessing: true, // Always true for PDFs - backend handles text extraction
+            pageCount: 0, // Will be determined by backend
+            isScannedDocument: false, // Will be determined by backend
+            note: 'PDF text extraction performed on backend using pdf-parse library'
+          };
+          
+          // Store the base64 data for backend processing
+          uploadedFile.fileData = base64Data;
+          console.log(`🔍 [PDF] Successfully processed PDF: ${file.name}, fileData length: ${uploadedFile.fileData.length}`);
+        } catch (conversionError) {
+          console.error(`❌ [PDF] Failed to convert PDF to base64: ${file.name}`, conversionError);
+          // Fallback to metadata only
+          uploadedFile.extractedData = {
+            type: 'document',
+            format: 'pdf',
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+            extractedText: `PDF document: ${file.name} (${file.size} bytes) - Base64 conversion failed: ${conversionError instanceof Error ? conversionError.message : 'Unknown error'}`,
+            textLength: 0,
+            hasTextContent: false,
+            needsBackendProcessing: true,
+            pageCount: 0,
+            isScannedDocument: false,
+            conversionError: conversionError instanceof Error ? conversionError.message : 'Unknown error'
+          };
+        }
       } else if (file.type.startsWith('image/')) {
         // Extract text/description from image
         const extractedText = await extractImageText(file);
