@@ -9,10 +9,11 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  // Sanitized fields that Firestore can handle (no nested arrays)
+  // Enhanced fields to support approve/reject/edit functionality
   tables?: Array<{
     title: string;
     headers: string[];
+    rows: string; // Stored as JSON string in Firestore to avoid nested array issues
     rowCount: number;
     summary: string;
     meta: {
@@ -157,6 +158,13 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         return {
           id: doc.id,
           ...data,
+          // Parse table rows from JSON string back to array
+          tables: Array.isArray(data.tables) ? data.tables.map(table => ({
+            ...table,
+            rows: table.rows && typeof table.rows === 'string' ? 
+              (() => { try { return JSON.parse(table.rows); } catch { return []; } })() : 
+              []
+          })) : data.tables,
           timestamp: data.timestamp?.toDate(), // Convert Firestore Timestamp to Date
         } as ChatMessage;
       });
@@ -178,6 +186,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       return;
     }
 
+    // At this point, ensureSession should have been called, so currentSessionId should exist
+    if (!currentSessionId) {
+      setError("No active chat session. Please try again.");
+      return;
+    }
+
     const messagesColRef = collection(db, 'users', user.uid, 'sessions', currentSessionId, 'messages');
     
     try {
@@ -188,11 +202,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         tables: Array.isArray(message.tables) ? message.tables.map(table => ({
           title: String(table.title || ''),
           headers: Array.isArray(table.headers) ? table.headers.map(h => String(h)) : [],
+          rows: Array.isArray(table.rows) ? JSON.stringify(table.rows) : '[]', // Convert nested arrays to JSON string for Firestore
           rowCount: Number(table.rowCount || 0),
           summary: String(table.summary || ''),
           meta: {
             sheetName: String(table.meta?.sheetName || ''),
-            operations: table.meta?.operations && typeof table.meta.operations === 'object' ? table.meta.operations : {},
+            operations: table.meta?.operations && typeof table.meta?.operations === 'object' ? table.meta.operations : {},
             requiresConfirmation: Boolean(table.meta?.requiresConfirmation),
             isDryRun: Boolean(table.meta?.isDryRun)
           }

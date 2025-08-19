@@ -11,7 +11,7 @@ interface ChatInterfaceProps {
 }
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error } = useChat();
+  const { chatMessages, addMessage, loading, error, ensureSession } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -31,6 +31,9 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     setIsSending(true);
 
     try {
+      // Ensure we have a valid session before adding messages
+      await ensureSession();
+      
       // Add user message to chat
       await addMessage({
         role: 'user',
@@ -74,25 +77,70 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
       if (response.ok) {
         const aiResponse = await response.json();
         
-        // Sanitize the AI response to remove nested arrays that Firestore can't handle
-        const sanitizedTables = aiResponse.tables ? aiResponse.tables.map((table: any) => ({
-          title: table.title || '',
-          headers: Array.isArray(table.headers) ? table.headers : [],
-          rowCount: Array.isArray(table.rows) ? table.rows.length : 0,
-          summary: table.summary || '',
-          meta: table.meta ? {
-            sheetName: table.meta.sheetName || '',
-            operations: table.meta.operations || {},
-            requiresConfirmation: Boolean(table.meta.requiresConfirmation),
-            isDryRun: Boolean(table.meta.isDryRun)
-          } : {}
-        })) : [];
+        // Debug logging to see what n8n is returning
+        console.log('🔍 [N8N Response] Full AI response:', aiResponse);
+        console.log('🔍 [N8N Response] Tables:', aiResponse.tables);
+        if (aiResponse.tables && aiResponse.tables.length > 0) {
+          aiResponse.tables.forEach((table: any, index: number) => {
+            console.log(`🔍 [N8N Response] Table ${index}:`, {
+              title: table.title,
+              headers: table.headers,
+              rows: table.rows,
+              rowCount: table.rowCount,
+              summary: table.summary,
+              meta: table.meta
+            });
+          });
+        }
+        
+        // Preserve table data for approve/reject/edit functionality
+        const preservedTables = aiResponse.tables ? aiResponse.tables.map((table: any) => {
+          // Handle n8n response format where rows might be nested
+          let processedRows = [];
+          if (Array.isArray(table.rows)) {
+            // Check if rows are nested one level too deep (n8n format)
+            if (table.rows.length > 0 && Array.isArray(table.rows[0]) && Array.isArray(table.rows[0][0])) {
+              // Unwrap the extra nesting level
+              processedRows = table.rows[0];
+            } else {
+              processedRows = table.rows;
+            }
+          }
+          
+          return {
+            title: table.title || '',
+            headers: Array.isArray(table.headers) ? table.headers : [],
+            rows: processedRows, // Use processed rows
+            rowCount: processedRows.length,
+            summary: table.summary || '',
+            meta: table.meta ? {
+              sheetName: table.meta.sheetName || '',
+              operations: table.meta.operations || {},
+              requiresConfirmation: Boolean(table.meta.requiresConfirmation),
+              isDryRun: Boolean(table.meta.isDryRun)
+            } : {}
+          };
+        }) : [];
+        
+        console.log('🔍 [N8N Response] Preserved tables:', preservedTables);
+        
+        // Additional debugging for processed rows
+        preservedTables.forEach((table: any, index: number) => {
+          console.log(`🔍 [Processed Table ${index}]`, {
+            title: table.title,
+            headers: table.headers,
+            rows: table.rows,
+            rowCount: table.rowCount,
+            rowsType: Array.isArray(table.rows) ? 'Array' : typeof table.rows,
+            firstRow: Array.isArray(table.rows) && table.rows.length > 0 ? table.rows[0] : 'No rows'
+          });
+        });
         
         // Add AI response to chat
         await addMessage({
           role: 'assistant',
           content: aiResponse.reasoning || 'AI processing completed.',
-          tables: sanitizedTables,
+          tables: preservedTables,
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
           quickReplies: Array.isArray(aiResponse.quickReplies) ? aiResponse.quickReplies : []
         });
@@ -172,31 +220,168 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                             {table.title}
                           </div>
                         )}
-                        {/* Show table metadata since actual data is not available */}
-                        <div className="space-y-2 text-xs">
-                          {table.headers && table.headers.length > 0 && (
-                            <div>
-                              <div className="font-medium text-emerald-300 mb-1">Headers:</div>
-                              <div className="flex flex-wrap gap-1">
-                                {table.headers.map((header: string, i: number) => (
-                                  <span key={i} className="px-2 py-1 bg-white/10 rounded text-white/80">
-                                    {header}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {table.rowCount > 0 && (
-                            <div className="text-white/70">
-                              <span className="font-medium">Rows:</span> {table.rowCount}
-                            </div>
-                          )}
-                          {table.summary && (
-                            <div className="text-white/80">
-                              <span className="font-medium">Summary:</span> {table.summary}
-                            </div>
-                          )}
+                        
+                        {/* Debug information - show what data we actually have */}
+                        <div className="mb-3 p-2 bg-yellow-900/20 border border-yellow-800/30 rounded text-xs text-yellow-200">
+                          <div className="font-medium mb-1">Debug Info:</div>
+                          <div>Headers: {table.headers?.length || 0}</div>
+                          <div>Rows data: {table.rows ? 'Present' : 'Missing'}</div>
+                          <div>Row count: {table.rowCount || 0}</div>
+                          <div>Summary: {table.summary || 'None'}</div>
+                          <div>Rows type: {typeof table.rows}</div>
+                          <div>Rows value: {JSON.stringify(table.rows).substring(0, 100)}...</div>
                         </div>
+                        
+                        {/* Show actual table data if available */}
+                        {(() => {
+                          try {
+                            if (!table.rows) return null;
+                            const parsedRows = JSON.parse(table.rows);
+                            if (Array.isArray(parsedRows) && parsedRows.length > 0) {
+                              return (
+                                <div className="overflow-x-auto mb-3">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="border-b border-white/20">
+                                        {table.headers?.map((header: string, i: number) => (
+                                          <th key={i} className="text-left p-2 font-medium text-white/80">
+                                            {header}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {parsedRows.slice(0, 10).map((row: any[], rowIndex: number) => (
+                                        <tr key={rowIndex} className="border-b border-white/10">
+                                          {row.map((cell: any, cellIndex: number) => (
+                                            <td key={cellIndex} className="p-2 text-white/90">
+                                              {String(cell || '')}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  {parsedRows.length > 10 && (
+                                    <div className="text-center text-xs text-white/60 mt-2">
+                                      Showing first 10 rows of {parsedRows.length}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                          } catch (e) {
+                            console.warn('Failed to parse table rows:', e);
+                          }
+                          return null;
+                        })()}
+                        
+                        {/* Action buttons for approve/reject/edit */}
+                        {(() => {
+                          try {
+                            if (!table.rows) return null;
+                            const parsedRows = JSON.parse(table.rows);
+                            if (Array.isArray(parsedRows) && parsedRows.length > 0) {
+                              return (
+                                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
+                                  <button
+                                    onClick={() => {
+                                      // Trigger edit modal via custom event
+                                      const event = new CustomEvent('chat:open-edit-modal', {
+                                        detail: {
+                                          preview: {
+                                            headers: table.headers,
+                                            rows: parsedRows,
+                                            message: table.summary || `Edit data for ${table.title}`
+                                          }
+                                        }
+                                      });
+                                      window.dispatchEvent(event);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      // Trigger approve action via custom event
+                                      const event = new CustomEvent('chat:approve-update', {
+                                        detail: {
+                                          preview: {
+                                            headers: table.headers,
+                                            rows: parsedRows,
+                                            message: table.summary || `Approve update for ${table.title}`
+                                          }
+                                        }
+                                      });
+                                      window.dispatchEvent(event);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded transition-colors"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      // Trigger reject action via custom event
+                                      const event = new CustomEvent('chat:reject-update', {
+                                        detail: {
+                                          preview: {
+                                            headers: table.headers,
+                                            rows: parsedRows,
+                                            message: table.summary || `Reject update for ${table.title}`
+                                          }
+                                        }
+                                      });
+                                      window.dispatchEvent(event);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              );
+                            }
+                          } catch (e) {
+                            console.warn('Failed to parse table rows for actions:', e);
+                          }
+                          return null;
+                        })()}
+                        
+                        {/* Fallback metadata display if no rows */}
+                        {(() => {
+                          try {
+                            if (!table.rows) return true;
+                            const parsedRows = JSON.parse(table.rows);
+                            return !Array.isArray(parsedRows) || parsedRows.length === 0;
+                          } catch (e) {
+                            return true; // If parsing fails, show fallback
+                          }
+                        })() && (
+                          <div className="space-y-2 text-xs">
+                            {table.headers && table.headers.length > 0 && (
+                              <div>
+                                <div className="font-medium text-emerald-300 mb-1">Headers:</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {table.headers.map((header: string, i: number) => (
+                                    <span key={i} className="px-2 py-1 bg-white/10 rounded text-white/80">
+                                      {header}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {table.rowCount > 0 && (
+                              <div className="text-white/70">
+                                <span className="font-medium">Rows:</span> {table.rowCount}
+                              </div>
+                            )}
+                            {table.summary && (
+                              <div className="text-white/80">
+                                <span className="font-medium">Summary:</span> {table.summary}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
