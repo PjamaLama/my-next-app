@@ -19,12 +19,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Message or images are required' });
     }
 
-    // Process images into a format suitable for N8N
+    // Process images and files into a format suitable for N8N
+    // Now we only receive extractedData, not raw base64 data
     const extractedFileContents = images
       ? images.map((img: any) => ({
           type: img.mimeType,
           name: img.name,
-          data: img.data,
+          // No more raw data - only extracted/processed data
+          extractedData: img.extractedData || {
+            type: 'metadata',
+            fileName: img.name,
+            mimeType: img.mimeType
+          }
         }))
       : [];
 
@@ -66,6 +72,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sheetData: sheetDataForAI, // Full data including headers AND rows
       conversationHistory: conversationHistory ? conversationHistory.slice(-5) : [], // Max 5 recent messages
       currentDate: new Date().toISOString(),
+      // Enhanced file information for better AI processing
+      fileSummary: {
+        totalFiles: extractedFileContents.length,
+        fileTypes: extractedFileContents.map((f: any) => f.type),
+        hasStructuredData: extractedFileContents.some((f: any) => f.extractedData?.type === 'structured'),
+        hasTextData: extractedFileContents.some((f: any) => f.extractedData?.type === 'text'),
+        hasMetadata: extractedFileContents.some((f: any) => f.extractedData?.type === 'metadata')
+      }
     };
 
     console.log('🚀 [N8N] Final webhook data being sent:', {
@@ -82,7 +96,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         ])
       ),
-      conversationHistoryLength: webhookData.conversationHistory.length
+      conversationHistoryLength: webhookData.conversationHistory.length,
+      fileInfo: {
+        totalFiles: webhookData.fileSummary.totalFiles,
+        fileTypes: webhookData.fileSummary.fileTypes,
+        hasStructuredData: webhookData.fileSummary.hasStructuredData,
+        hasTextData: webhookData.fileSummary.hasTextData,
+        hasMetadata: webhookData.fileSummary.hasMetadata
+      }
     });
 
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;

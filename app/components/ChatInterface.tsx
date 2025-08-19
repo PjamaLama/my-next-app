@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Paperclip } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
+import FileUpload, { type UploadedFile } from './FileUpload';
 
 interface ChatInterfaceProps {
   className?: string;
@@ -19,6 +20,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const [processingTables, setProcessingTables] = useState<Set<string>>(new Set());
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editModalData, setEditModalData] = useState<any>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [showFileUpload, setShowFileUpload] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -160,9 +163,13 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     };
   }, [defaultSpreadsheetId, selectedSheetNames, setChatMessages, addMessage]);
 
+  const handleFilesChange = useCallback((files: UploadedFile[]) => {
+    setUploadedFiles(files);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isSending) return;
+    if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending) return;
 
     const message = inputValue.trim();
     setInputValue('');
@@ -178,6 +185,19 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         content: message,
       });
 
+      // Prepare files data for API - ONLY send extracted data, not raw base64
+      const filesData = uploadedFiles.map(file => ({
+        name: file.name,
+        mimeType: file.mimeType,
+        // Don't send raw base64 data - only send extracted/processed data
+        extractedData: file.extractedData || {
+          type: 'metadata',
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.mimeType
+        }
+      }));
+
       // Call AI service to get response
       const response = await fetch('/api/genkit-chat', {
         method: 'POST',
@@ -191,7 +211,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           conversationHistory: chatMessages.slice(-5).map(m => ({
             role: m.role,
             content: m.content
-          }))
+          })),
+          images: filesData
         })
       });
 
@@ -271,6 +292,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
           quickReplies: Array.isArray(aiResponse.quickReplies) ? aiResponse.quickReplies : []
         });
+
+        // Clear uploaded files after successful processing
+        setUploadedFiles([]);
+        setShowFileUpload(false);
       } else {
         // Add error message if AI service fails
         await addMessage({
@@ -517,6 +542,28 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           <SheetChipSelector />
         </div>
         
+        {/* File Upload Section */}
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setShowFileUpload(!showFileUpload)}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <Paperclip className="w-4 h-4" />
+            {showFileUpload ? 'Hide Files' : 'Add Files'}
+          </button>
+          
+          {showFileUpload && (
+            <div className="mt-3">
+              <FileUpload
+                onFilesChange={handleFilesChange}
+                disabled={isSending}
+                maxFiles={5}
+              />
+            </div>
+          )}
+        </div>
+        
         <form onSubmit={handleSubmit} className="flex gap-3">
           <input
             type="text"
@@ -528,7 +575,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           />
           <button
             type="submit"
-            disabled={!inputValue.trim() || isSending}
+            disabled={((!inputValue.trim() && uploadedFiles.length === 0) || isSending)}
             className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center gap-2"
           >
             {isSending ? (
