@@ -34,11 +34,11 @@ export class SheetDataSource extends DataSource {
       .filter(h => h && h.length <= 100 && !/[^a-zA-Z0-9\s]/.test(h));
 
     const assignContext = (headers: string[], raw: any[]) => {
-      // eslint-disable-next-line no-console
+       
       console.log('Fetched headers:', headers);
       try { if (this.contextRef) (this.contextRef as any).sheetHeaders = headers.slice(); } catch {}
       if (!headers.length) {
-        // eslint-disable-next-line no-console
+         
         console.warn(`No valid headers in ${this.sheetName}, got:`, raw);
         try { if (this.contextRef) (this.contextRef as any)._clarifyHeaders = 'No valid headers found in the sheet. Please specify the column names.'; } catch {}
       }
@@ -46,7 +46,7 @@ export class SheetDataSource extends DataSource {
 
     const fetchViaTool = async (): Promise<string[]> => {
       const context = { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, sheetNames: [this.sheetName], isNonTabular: Boolean(this.contextRef?.isNonTabular) } as any;
-      // eslint-disable-next-line no-console
+       
       console.log('[SheetDataSource.getHeaders] context:', context);
       const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -90,7 +90,7 @@ export class SheetDataSource extends DataSource {
       // Fallback to tool
       try { return await fetchViaTool(); } catch { return []; }
     } catch (e) {
-      // eslint-disable-next-line no-console
+       
       console.warn('[SheetDataSource.getHeaders] Failed to fetch first row headers via Google Sheets API', e);
       try { return await fetchViaTool(); } catch { return []; }
     }
@@ -149,7 +149,7 @@ export class SheetDataSource extends DataSource {
     const fetchRange = async (r: string): Promise<string[][]> => {
       try {
         const context = { spreadsheetId: this.spreadsheetId, sheetName: this.sheetName, sheetNames: [this.sheetName], isNonTabular: Boolean(this.contextRef?.isNonTabular) };
-        // eslint-disable-next-line no-console
+         
         console.log('[SheetDataSource.getSampleRows] context:', context);
         const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -193,7 +193,7 @@ export class SheetDataSource extends DataSource {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             const context = { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, sheetNames: [input.sheetName || this.sheetName], sessionKey: this.sessionKey };
-            // eslint-disable-next-line no-console
+             
             console.log('[SheetDataSource.query] context:', context);
             const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -209,7 +209,7 @@ export class SheetDataSource extends DataSource {
             if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
           }
         }
-        // eslint-disable-next-line no-console
+         
         console.warn('[SheetDataSource] query(range) failed after retries', lastErr);
         return null;
       };

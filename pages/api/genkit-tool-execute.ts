@@ -603,7 +603,7 @@ async function handleConvertSheet(args: ToolArgs, res: NextApiResponse) {
       try {
         const metaAnalysis = analyzeSheetStructure(data);
         let headers: string[] = [];
-        let rows: string[][] = [];
+        const rows: string[][] = [];
         if (metaAnalysis.detectedHeaders && metaAnalysis.columnCount > 0) {
           headers = metaAnalysis.detectedHeaders.map(h => String(h ?? '').trim());
           const width = headers.length;
@@ -1427,7 +1427,7 @@ async function handleGenerateReport(args: ToolArgs, context: Context, res: NextA
 
     // Build sections: per-sheet summary + combined summary
     const sections: ReportSection[] = [];
-    let combinedRows: Array<{ sheet: string; row: string[] }> = [];
+    const combinedRows: Array<{ sheet: string; row: string[] }> = [];
     for (const [name, table] of Object.entries(dataMap)) {
       if (!table || table.length <= 1) {
         sections.push({ title: `${name}`, tables: [{ headers: ['Info'], rows: [["No data"]] }] });
@@ -2331,7 +2331,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
     }
 
     // Debug log
-    // eslint-disable-next-line no-console
+     
     console.log('Processed rows:', validRows);
 
     const doCommit = commit === true && dryRun !== true;
@@ -2394,7 +2394,7 @@ async function handleExtractTextOnly(args: ToolArgs, images: ImageData[], res: N
       throw new Error(`ingest-rows failed: ${ingestResp.status} - ${txt}`);
     }
     const result = await ingestResp.json();
-    try { /* eslint-disable no-console */ console.log('Committed rows:', validRows); /* eslint-enable no-console */ } catch {}
+    try {   console.log('Committed rows:', validRows);   } catch {}
     return res.status(200).json({ success: true, message: 'Update applied.', updatedRows: validRows, result });
   } catch (error) {
     console.error('apply_structured_rows error:', error);

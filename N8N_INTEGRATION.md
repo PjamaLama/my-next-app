@@ -52,11 +52,24 @@ The webhook expects a POST request with the following JSON body structure:
 {
   "message": "User's natural language request",
   "selectedSheets": ["Array of sheet names"],
-  "sheetDataSample": {"Sample data from selected sheets"},
-  "conversationHistory": ["Recent conversation context"],
-  "extractedFileContents": ["Array of file contents if files uploaded"]
+  "sheetDataSample": {
+    "SheetName1": {
+      "headers": ["Column1", "Column2", "Column3"]
+    },
+    "SheetName2": {
+      "headers": ["ColA", "ColB", "ColC", "ColD"]
+    }
+  },
+  "conversationHistory": ["Recent conversation context (limited to last 5 messages)"],
+  "extractedFileContents": ["Array of file contents if files uploaded"],
+  "currentDate": "2024-01-15T10:30:00.000Z"
 }
 ```
+
+**Optimizations Applied:**
+- `sheetDataSample` now contains only headers per sheet (no sampleRows) for lightweight payload
+- `conversationHistory` is limited to the last 5 messages if longer than 5
+- `currentDate` field added for temporal context
 
 Note: All data is sent as a proper JSON body with Content-Type: application/json header.
 
@@ -107,8 +120,9 @@ You receive:
 - `message`: The user's natural language request
 - `extractedFileContents`: Array of file contents if files were uploaded
 - `selectedSheets`: Array of sheet names the user wants to update
-- `sheetDataSample`: Sample data from the selected sheets
-- `conversationHistory`: Recent conversation context
+- `sheetDataSample`: Headers-only data from the selected sheets (optimized format: `{"SheetName": {"headers": ["Col1", "Col2"]}}`)
+- `conversationHistory`: Recent conversation context (limited to last 5 messages for efficiency)
+- `currentDate`: Current timestamp for temporal context
 
 ## Your Response Format
 You MUST return valid JSON with this exact structure:

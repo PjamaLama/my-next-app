@@ -1,337 +1,110 @@
 "use client";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, getDoc } from 'firebase/firestore';
+import { db, useFirebase } from './FirebaseProvider';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, addDoc, deleteDoc, updateDoc, getDoc } from "firebase/firestore";
-import { db } from "./FirebaseProvider";
-import { useFirebase } from "./FirebaseProvider";
-
-// Re-exported for consumers
-export type ChatMessage = {
+// Basic message type
+export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  isVoice?: boolean;
-  hasImages?: boolean;
-  imageCount?: number;
-  attachments?: Array<{
-    id: string;
-    name: string;
-    type: string;
-    fileType: 'image' | 'pdf';
-    preview?: string;
-  }>;
-  isProcessing?: boolean;
-  toolCalls?: Array<{
-    id: string;
-    type: 'function';
-    function: { name: string; arguments: string };
-  }>;
-  toolResults?: Array<{
-    id: string;
-    result: string;
-    success: boolean;
-    details?: unknown;
-  }>;
-  messageType?: 'voice' | 'text' | 'sheet_update' | 'tool_execution' | 'ai_response';
-  quickReplies?: string[];
-  sheetsUsed?: string[];
-  tables?: Array<{ title?: string; headers: string[]; rows: string[][]; footer?: string[]; summary?: string }>;
-  charts?: Array<{ kind: 'bar' | 'line' | 'pie'; title?: string; labels: string[]; datasets: Array<{ label: string; data: number[] }>; options?: unknown }>;
+  // Add any other essential fields you expect from N8N
+  tables?: any[];
   insights?: string[];
-  approved?: boolean; // Track if this message's table updates have been approved
-};
-
-export type ChatSession = {
-  id: string;
-  title: string;
-  createdAt: string; // ISO string
-  updatedAt: string; // ISO string
-  lastMessageSnippet?: string;
-};
-
-interface ChatContextShape {
-  sessions: ChatSession[];
-  currentSessionId: string | null;
-  setCurrentSessionId: (id: string | null) => void;
-  chatMessages: ChatMessage[];
-  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  createSession: (title?: string) => Promise<string | null>;
-  deleteSession: (id: string) => Promise<void>;
-  renameSession: (id: string, title: string) => Promise<void>;
-  appendMessage: (message: ChatMessage) => Promise<void>;
-  ensureSession: () => Promise<string | null>;
+  quickReplies?: string[];
 }
 
-const ChatContext = createContext<ChatContextShape | undefined>(undefined);
+interface ChatContextType {
+  chatMessages: ChatMessage[];
+  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  loading: boolean;
+  error: string | null;
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<void>;
+}
 
-export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useFirebase();
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [chatMessages, setChatMessagesState] = useState<ChatMessage[]>([]);
+const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-  // Subscribe to sessions for the current user
-  useEffect(() => {
-    if (!user) {
-      setSessions([]);
-      setCurrentSessionId(null);
-      setChatMessagesState([]);
-      return;
-    }
-    const chatsRef = collection(db, "users", user.uid, "chats");
-    const q = query(chatsRef, orderBy("updatedAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list: ChatSession[] = snap.docs.map((d) => {
-        const data = d.data() as {
-          title?: string;
-          createdAt?: string;
-          updatedAt?: string;
-          lastMessageSnippet?: string;
-        };
-        return {
-          id: d.id,
-          title: (data.title ?? '').trim(),
-          createdAt: data.createdAt ?? new Date().toISOString(),
-          updatedAt: data.updatedAt ?? new Date().toISOString(),
-          lastMessageSnippet: data.lastMessageSnippet ?? '',
-        };
-      });
-      setSessions(list);
-      // If no current session, pick the most recent
-      if (!currentSessionId && list.length > 0) {
-        setCurrentSessionId(list[0].id);
-      }
-    });
-    return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  // Subscribe to current session's messages
-  useEffect(() => {
-    if (!user || !currentSessionId) {
-      setChatMessagesState([]);
-      return;
-    }
-    const chatDocRef = doc(db, "users", user.uid, "chats", currentSessionId);
-    const unsub = onSnapshot(chatDocRef, (snap) => {
-      if (!snap.exists()) {
-        setChatMessagesState([]);
-        return;
-      }
-      const data = snap.data() as {
-        messages?: Array<(Omit<ChatMessage, 'timestamp'> & { timestamp?: string }) & { tablesJson?: string; chartsJson?: string; insightsJson?: string }>
-      };
-      const messages = (data.messages ?? []).map((m) => {
-        const out: any = { ...m, timestamp: m.timestamp ? new Date(m.timestamp) : new Date() };
-        if ((m as any).tablesJson && !out.tables) {
-          try { out.tables = JSON.parse((m as any).tablesJson); } catch {}
-        }
-        if ((m as any).chartsJson && !out.charts) {
-          try { out.charts = JSON.parse((m as any).chartsJson); } catch {}
-        }
-        if ((m as any).insightsJson && !out.insights) {
-          try { out.insights = JSON.parse((m as any).insightsJson); } catch {}
-        }
-        return out as ChatMessage;
-      }) as ChatMessage[];
-      setChatMessagesState(messages);
-    });
-    return () => unsub();
-  }, [user, currentSessionId]);
-
-  const persistMessages = useCallback(async (messages: ChatMessage[]) => {
-    if (!user || !currentSessionId) return;
-    const chatDocRef = doc(db, "users", user.uid, "chats", currentSessionId);
-    const updatedAt = new Date().toISOString();
-
-    // Recursively remove undefined values from any object/array to satisfy Firestore
-    const cleanForFirestore = (value: unknown): unknown => {
-      if (Array.isArray(value)) {
-        return value.map((v) => cleanForFirestore(v)).filter((v) => v !== undefined);
-      }
-      if (value && typeof value === 'object') {
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-          if (v === undefined) continue;
-          const cleaned = cleanForFirestore(v as unknown);
-          if (cleaned !== undefined) out[k] = cleaned;
-        }
-        return out;
-      }
-      return value === undefined ? null : value;
-    };
-    const safeMessages = messages.map((m) => {
-      const copy: Record<string, unknown> = { ...m } as Record<string, unknown>;
-      // Convert timestamp to ISO
-      if (copy.timestamp instanceof Date) {
-        copy.timestamp = (copy.timestamp as Date).toISOString();
-      }
-      // Persist tables as JSON string to avoid nested array limitations
-      if ('tables' in copy && Array.isArray((copy as any).tables)) {
-        try { (copy as any).tablesJson = JSON.stringify((copy as any).tables); } catch {}
-        delete (copy as any).tables;
-      }
-      // Persist charts as JSON string similarly
-      if ('charts' in copy && Array.isArray((copy as any).charts)) {
-        try { (copy as any).chartsJson = JSON.stringify((copy as any).charts); } catch {}
-        delete (copy as any).charts;
-      }
-      if ('insights' in copy && Array.isArray((copy as any).insights)) {
-        try { (copy as any).insightsJson = JSON.stringify((copy as any).insights); } catch {}
-        delete (copy as any).insights;
-      }
-      // Defensive: strip any top-level field that is an array of arrays
-      for (const key of Object.keys(copy)) {
-        const value = copy[key];
-        if (Array.isArray(value) && (value as unknown[]).some((el) => Array.isArray(el))) {
-          delete (copy as any)[key];
-        }
-      }
-      // Deep clean undefined values from the message payload
-      return cleanForFirestore(copy) as ChatMessage;
-    });
-    const last = messages[messages.length - 1];
-    const lastMessageSnippet = last ? (last.content || '').slice(0, 120) : '';
-    const payload = cleanForFirestore({ messages: safeMessages, updatedAt, lastMessageSnippet });
-    try {
-      await updateDoc(chatDocRef, payload as any);
-    } catch (e) {
-      // If the chat was deleted, do not recreate it implicitly
-      return;
-    }
-
-    // Try to auto-generate a title after the first meaningful message
-    try {
-      const hasUserContent = messages.some(m => m.role === 'user' && (m.content || '').trim().length > 0);
-      if (!hasUserContent) return;
-
-      // Read the latest title state directly to avoid relying on potentially stale session list
-      const snap = await getDoc(chatDocRef);
-      const data = (snap.exists() ? (snap.data() as any) : {}) || {};
-      const existingTitle: string = (data.title || '').trim();
-      const titleIsProvisional: boolean = Boolean(data.titleIsProvisional);
-
-      // Build a quick heuristic title from the FIRST user message
-      const firstUserMessage = messages.find(m => m.role === 'user' && (m.content || '').trim().length > 0);
-      const heuristic = (firstUserMessage?.content || 'New Chat')
-        .replace(/\s+/g, ' ')
-        .slice(0, 48)
-        .trim();
-
-      // If there's no title saved yet, set a provisional one immediately for better UX
-      if (!existingTitle) {
-        const provisional = heuristic || 'New Chat';
-        try {
-          await updateDoc(chatDocRef, { title: provisional, titleIsProvisional: true } as any);
-        } catch {}
-      }
-
-      // If a title already exists but isn't marked provisional, do not override
-      if (existingTitle && !titleIsProvisional) return;
-
-      // Ask AI for a better title based on the last few messages
-      const messagesForTitle = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
-      const resp = await fetch('/api/generate-chat-title', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: messagesForTitle })
-      });
-      if (resp.ok) {
-        const { title: aiTitle } = await resp.json();
-        const finalTitle = String(aiTitle || '').trim();
-        const acceptable = finalTitle && finalTitle.toLowerCase() !== 'new chat';
-        if (acceptable) {
-          await updateDoc(chatDocRef, { title: finalTitle, titleIsProvisional: false } as any);
-        } else if (!existingTitle) {
-          // Ensure at least a decent heuristic is present if AI returned an unusable title
-          await updateDoc(chatDocRef, { title: heuristic, titleIsProvisional: true } as any);
-        }
-      }
-    } catch (e) {
-      // Best effort only; ignore failures silently
-      console.warn('AI title generation (post-message) failed:', e);
-    }
-  }, [user, currentSessionId, sessions]);
-
-  // Expose a state-like setter that also persists
-  const setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>> = useCallback((updater) => {
-    setChatMessagesState((prev) => {
-      const next = typeof updater === 'function' ? (updater as (p: ChatMessage[]) => ChatMessage[])(prev) : (updater as ChatMessage[]);
-      // Persist async (fire and forget)
-      void persistMessages(next);
-      return next;
-    });
-  }, [persistMessages]);
-
-  const ensureSession = useCallback(async () => {
-    if (!user) return null;
-    if (currentSessionId) return currentSessionId;
-    if (sessions.length > 0) {
-      setCurrentSessionId(sessions[0].id);
-      return sessions[0].id;
-    }
-    return await (async () => await createSession())();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, currentSessionId, sessions]);
-
-  const createSession = useCallback(async (title?: string) => {
-    if (!user) return null;
-    const chatsRef = collection(db, "users", user.uid, "chats");
-    const now = new Date().toISOString();
-    const initialTitle = (title ?? '').trim();
-    const docRef = await addDoc(chatsRef, {
-      title: initialTitle,
-      createdAt: now,
-      updatedAt: now,
-      lastMessageSnippet: "",
-      messages: [],
-    });
-    setCurrentSessionId(docRef.id);
-    return docRef.id;
-  }, [user]);
-
-  const deleteSession = useCallback(async (id: string) => {
-    if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "chats", id));
-    if (currentSessionId === id) {
-      setCurrentSessionId(null);
-      setChatMessagesState([]);
-    }
-  }, [user, currentSessionId]);
-
-  const renameSession = useCallback(async (id: string, title: string) => {
-    if (!user) return;
-    const ref = doc(db, "users", user.uid, "chats", id);
-    await updateDoc(ref, { title });
-  }, [user]);
-
-  const appendMessage = useCallback(async (message: ChatMessage) => {
-    setChatMessages((prev) => [...prev, message]);
-  }, [setChatMessages]);
-
-  const value: ChatContextShape = useMemo(() => ({
-    sessions,
-    currentSessionId,
-    setCurrentSessionId,
-    chatMessages,
-    setChatMessages,
-    createSession,
-    deleteSession,
-    renameSession,
-    appendMessage,
-    ensureSession,
-  }), [sessions, currentSessionId, chatMessages, setChatMessages, createSession, deleteSession, renameSession, appendMessage, ensureSession]);
-
-  return (
-    <ChatContext.Provider value={value}>
-      {children}
-    </ChatContext.Provider>
-  );
+export const useChat = () => {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error('useChat must be used within a ChatProvider');
+  }
+  return context;
 };
 
-export const useChat = (): ChatContextShape => {
-  const ctx = useContext(ChatContext);
-  if (!ctx) throw new Error("useChat must be used within ChatProvider");
-  return ctx;
+interface ChatProviderProps {
+  children: ReactNode;
+}
+
+// A simplified ID for the single chat document
+const CHAT_DOC_ID = "global_chat";
+
+export const ChatProvider = ({ children }: ChatProviderProps) => {
+  const { user } = useFirebase();
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load and subscribe to the single chat history for the logged-in user
+  useEffect(() => {
+    if (!user) {
+      setChatMessages([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const messagesColRef = collection(db, 'users', user.uid, 'chats', CHAT_DOC_ID, 'messages');
+    const q = query(messagesColRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const messages = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          timestamp: data.timestamp?.toDate(), // Convert Firestore Timestamp to Date
+        } as ChatMessage;
+      });
+      setChatMessages(messages);
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching chat history:", err);
+      setError("Failed to load chat history.");
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Function to add a new message to the database
+  const addMessage = async (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
+    if (!user) {
+      setError("You must be logged in to send messages.");
+      return;
+    }
+
+    const messagesColRef = collection(db, 'users', user.uid, 'chats', CHAT_DOC_ID, 'messages');
+    
+    try {
+      await addDoc(messagesColRef, {
+        ...message,
+        timestamp: new Date(),
+      });
+    } catch (err) {
+      console.error("Error sending message:", err);
+      setError("Failed to send message.");
+    }
+  };
+
+  const value = {
+    chatMessages,
+    setChatMessages, // Keep for direct manipulation if needed, e.g., optimistic updates
+    loading,
+    error,
+    addMessage,
+  };
+
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 };

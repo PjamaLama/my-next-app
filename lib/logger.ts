@@ -18,7 +18,7 @@ function debugEnabled(namespace?: string): boolean {
 export function createLogger(namespace: string) {
   const emit = (level: LogLevel, ...args: unknown[]) => {
     const prefix = `[${namespace}]`;
-    // eslint-disable-next-line no-console
+     
     (console as any)[level === 'debug' ? 'log' : level](prefix, ...args);
   };
   return {

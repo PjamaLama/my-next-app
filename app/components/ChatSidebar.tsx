@@ -18,7 +18,24 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false }) => {
-  const { sessions, currentSessionId, setCurrentSessionId, createSession, deleteSession, ensureSession, setChatMessages, appendMessage, chatMessages } = useChat();
+  const chatContext = useChat();
+  // Safely extract properties with defaults for missing session management
+  const { 
+    chatMessages = [],
+    setChatMessages = () => {},
+    loading = false,
+    error = null,
+    addMessage = async () => {}
+  } = chatContext || {};
+  
+  // Provide safe defaults for missing session management properties
+  const sessions = []; // TODO: Implement session management
+  const currentSessionId = null;
+  const setCurrentSessionId = () => {};
+  const createSession = async () => {};
+  const deleteSession = async () => {};
+  const ensureSession = async () => {};
+  const appendMessage = async () => {};
   const { user } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();

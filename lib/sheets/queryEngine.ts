@@ -26,7 +26,7 @@ export function executeSheetQuery(spec: QuerySpec, rawTable: Table): { headers: 
   // Derive columns (row-level)
   const derivedDefs = (spec.derive || []).filter(d => d && d.as && d.expr);
   const derivedGetters: Array<{ as: string; fn: (row: string[]) => number | string | null } > = derivedDefs.map(d => ({ as: d.as, fn: buildExpressionFn(d.expr, headers) }));
-  let workingHeaders = [...headers];
+  const workingHeaders = [...headers];
   if (derivedGetters.length > 0) {
     derivedGetters.forEach(d => { workingHeaders.push(d.as); });
     rows = rows.map(r => {

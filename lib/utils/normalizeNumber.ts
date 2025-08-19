@@ -68,7 +68,7 @@ export function normalizeNumber(cell: string): NormalizedNumber {
   }
 
   // Normalize spaces (treat as thousands separators)
-  let compact = s.replace(/\s+/g, '');
+  const compact = s.replace(/\s+/g, '');
 
   const hasDot = compact.includes('.');
   const hasComma = compact.includes(',');

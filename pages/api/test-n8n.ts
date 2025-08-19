@@ -73,29 +73,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('🧪 [TEST-N8N] Connectivity test failed:', connectivityError);
       }
 
-      // Test data for N8N webhook - EXACTLY matching genkit-chat format
+      // Test data for N8N webhook - EXACTLY matching optimized genkit-chat format
       const testData = {
         message: "Add fuel entry: 50L diesel, 500km, $80",
         extractedFileContents: [],
         selectedSheets: ["Logbook"],           // Match genkit-chat format
-        sheetDataSample: {                     // Match genkit-chat format
-          "Logbook": [
-            ["Date", "Fuel Type", "Amount (L)", "Distance (km)", "Cost ($)"],
-            ["2024-01-15", "Diesel", "45", "480", "72"]
-          ]
+        sheetDataSample: {                     // Optimized format: headers only, no sampleRows
+          "Logbook": {
+            headers: ["Date", "Fuel Type", "Amount (L)", "Distance (km)", "Cost ($)"]
+          }
         },
         conversationHistory: [
           { role: "user", content: "Add fuel entry: 50L diesel, 500km, $80", timestamp: Date.now() }
-        ]
+        ],
+        currentDate: new Date().toISOString()  // Add currentDate field
       };
 
       console.log('🧪 [TEST-N8N] Testing N8N webhook:', n8nWebhookUrl);
-      console.log('🧪 [TEST-N8N] Test data structure:', {
+      console.log('🧪 [TEST-N8N] Test data structure (optimized):', {
         message: testData.message,
         extractedFileContentsCount: testData.extractedFileContents.length,
         selectedSheets: testData.selectedSheets,
         sheetDataKeys: Object.keys(testData.sheetDataSample),
-        conversationHistoryLength: testData.conversationHistory.length
+        sheetDataStructure: Object.fromEntries(
+          Object.entries(testData.sheetDataSample).map(([name, data]) => [name, { headerCount: data.headers.length }])
+        ),
+        conversationHistoryLength: testData.conversationHistory.length,
+        currentDate: testData.currentDate,
+        optimization: 'headers only, no sampleRows'
       });
       console.log('🧪 [TEST-N8N] Full test data:', JSON.stringify(testData, null, 2));
 
