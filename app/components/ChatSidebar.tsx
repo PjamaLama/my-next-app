@@ -208,7 +208,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         (globalThis as any).__lastUpdateToolCall = undefined;
       } catch {}
       await notify({ title: 'Canceled', description: 'Update canceled.', tone: 'info' });
-      await appendMessage({
+      await appendMessage(currentSessionId || '', {
         id: `local_${Date.now()}`,
         role: 'assistant',
         content: 'Update canceled.',
@@ -267,7 +267,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     // Prompt the user for more details and append as a user message
     const text = typeof window !== 'undefined' ? window.prompt(hint) : '';
     if (text && text.trim()) {
-      await appendMessage({
+      await appendMessage(currentSessionId || '', {
         id: `local_${Date.now()}`,
         role: 'user',
         content: text.trim(),
@@ -303,7 +303,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
   // Copy service account removed from sidebar
 
-  const renderSessionRow = (s: { id: string; title: string; updatedAt: string; lastMessageSnippet?: string }, index: number) => (
+  const renderSessionRow = (s: { id: string; title: string; updatedAt: Date; lastMessageSnippet?: string }, index: number) => (
     <li key={`${s.id}-${index}`}>
       <div className={`group relative`}
            style={{ background: 'transparent' }}>

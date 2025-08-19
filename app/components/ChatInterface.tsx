@@ -375,7 +375,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {rows.slice(0, 10).map((row: any[], rowIndex: number) => (
+                                      {(rows as any[][]).slice(0, 10).map((row: any[], rowIndex: number) => (
                                         <tr key={rowIndex} className="border-b border-white/10">
                                           {row.map((cell: any, cellIndex: number) => (
                                             <td key={cellIndex} className="p-2 text-white/90">
@@ -386,9 +386,9 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       ))}
                                     </tbody>
                                   </table>
-                                  {rows.length > 10 && (
+                                  {(rows as any[]).length > 10 && (
                                     <div className="text-center text-xs text-white/60 mt-2">
-                                      Showing first 10 of {rows.length} rows
+                                      Showing first 10 of {(rows as any[]).length} rows
                                     </div>
                                   )}
                                 </div>
@@ -560,7 +560,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                 const updatedTables = message.tables.map(table => {
                   if (table.title === editModalData.message && 
                       JSON.stringify(table.headers) === JSON.stringify(editModalData.headers)) {
-                    return { ...table, rows: updatedRows };
+                    // Convert rows back to string format to match the interface
+                    return { ...table, rows: JSON.stringify(updatedRows) };
                   }
                   return table;
                 });

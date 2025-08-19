@@ -24,8 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const result = await ingestRows({ 
       spreadsheetId, 
       sheetName: resolvedSheetNames[0], // Use first sheet name
-      rows, 
-      dryRun: !!dryRun 
+      rows
     });
     return res.status(200).json(result);
   } catch (e: any) {

@@ -42,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           // Include both headers and rows for AI processing
           sheetDataForAI[sheetName] = { 
             headers: sheetData[0].map((h: any) => String(h ?? '')),
-            rows: sheetData.slice(1).map(row => row.map(cell => String(cell ?? '')))
+            rows: sheetData.slice(1).map(row => row.map((cell: any) => String(cell ?? '')))
           };
           console.log(`✅ [N8N] Added data for ${sheetName}:`, {
             headerCount: sheetDataForAI[sheetName].headers.length,
