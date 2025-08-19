@@ -95,23 +95,12 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         
         // Preserve table data for approve/reject/edit functionality
         const preservedTables = aiResponse.tables ? aiResponse.tables.map((table: any) => {
-          // Handle n8n response format where rows might be nested
-          let processedRows = [];
-          if (Array.isArray(table.rows)) {
-            // Check if rows are nested one level too deep (n8n format)
-            if (table.rows.length > 0 && Array.isArray(table.rows[0]) && Array.isArray(table.rows[0][0])) {
-              // Unwrap the extra nesting level
-              processedRows = table.rows[0];
-            } else {
-              processedRows = table.rows;
-            }
-          }
-          
+          const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
           return {
             title: table.title || '',
             headers: Array.isArray(table.headers) ? table.headers : [],
-            rows: processedRows, // Use processed rows
-            rowCount: processedRows.length,
+            rows: rows,
+            rowCount: rows.length,
             summary: table.summary || '',
             meta: table.meta ? {
               sheetName: table.meta.sheetName || '',
@@ -119,7 +108,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
               requiresConfirmation: Boolean(table.meta.requiresConfirmation),
               isDryRun: Boolean(table.meta.isDryRun)
             } : {}
-          };
+          }
         }) : [];
         
         console.log('🔍 [N8N Response] Preserved tables:', preservedTables);
@@ -210,7 +199,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                     : 'bg-white/10 text-white border border-white/20'
                 }`}
               >
-                <div className="text-sm">{message.content}</div>
+                <div className="text-sm">
+                  {/* Only show content if there are no tables, otherwise focus on table display */}
+                  {(!message.tables || message.tables.length === 0) && message.content}
+                </div>
                 {message.tables && message.tables.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {message.tables.map((table, index) => (
@@ -221,29 +213,23 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                           </div>
                         )}
                         
-                        {/* Debug information - show what data we actually have */}
-                        <div className="mb-3 p-2 bg-yellow-900/20 border border-yellow-800/30 rounded text-xs text-yellow-200">
-                          <div className="font-medium mb-1">Debug Info:</div>
-                          <div>Headers: {table.headers?.length || 0}</div>
-                          <div>Rows data: {table.rows ? 'Present' : 'Missing'}</div>
-                          <div>Row count: {table.rowCount || 0}</div>
-                          <div>Summary: {table.summary || 'None'}</div>
-                          <div>Rows type: {typeof table.rows}</div>
-                          <div>Rows value: {JSON.stringify(table.rows).substring(0, 100)}...</div>
-                        </div>
+                        {/* Show summary as description if available */}
+                        {table.summary && (
+                          <div className="text-sm text-white/80 mb-3">
+                            {table.summary}
+                          </div>
+                        )}
                         
-                        {/* Show actual table data if available */}
                         {(() => {
-                          try {
-                            if (!table.rows) return null;
-                            const parsedRows = JSON.parse(table.rows);
-                            if (Array.isArray(parsedRows) && parsedRows.length > 0) {
-                              return (
+                          const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
+                          if (rows.length > 0) {
+                            return (
+                              <>
                                 <div className="overflow-x-auto mb-3">
                                   <table className="w-full text-xs">
                                     <thead>
                                       <tr className="border-b border-white/20">
-                                        {table.headers?.map((header: string, i: number) => (
+                                        {Array.isArray(table.headers) && (table.headers as string[]).map((header: string, i: number) => (
                                           <th key={i} className="text-left p-2 font-medium text-white/80">
                                             {header}
                                           </th>
@@ -251,7 +237,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {parsedRows.slice(0, 10).map((row: any[], rowIndex: number) => (
+                                      {rows.slice(0, 10).map((row: any[], rowIndex: number) => (
                                         <tr key={rowIndex} className="border-b border-white/10">
                                           {row.map((cell: any, cellIndex: number) => (
                                             <td key={cellIndex} className="p-2 text-white/90">
@@ -262,36 +248,20 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       ))}
                                     </tbody>
                                   </table>
-                                  {parsedRows.length > 10 && (
+                                  {rows.length > 10 && (
                                     <div className="text-center text-xs text-white/60 mt-2">
-                                      Showing first 10 rows of {parsedRows.length}
+                                      Showing first 10 of {rows.length} rows
                                     </div>
                                   )}
                                 </div>
-                              );
-                            }
-                          } catch (e) {
-                            console.warn('Failed to parse table rows:', e);
-                          }
-                          return null;
-                        })()}
-                        
-                        {/* Action buttons for approve/reject/edit */}
-                        {(() => {
-                          try {
-                            if (!table.rows) return null;
-                            const parsedRows = JSON.parse(table.rows);
-                            if (Array.isArray(parsedRows) && parsedRows.length > 0) {
-                              return (
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
                                   <button
                                     onClick={() => {
-                                      // Trigger edit modal via custom event
                                       const event = new CustomEvent('chat:open-edit-modal', {
                                         detail: {
                                           preview: {
                                             headers: table.headers,
-                                            rows: parsedRows,
+                                            rows: rows,
                                             message: table.summary || `Edit data for ${table.title}`
                                           }
                                         }
@@ -304,12 +274,11 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                   </button>
                                   <button
                                     onClick={() => {
-                                      // Trigger approve action via custom event
                                       const event = new CustomEvent('chat:approve-update', {
                                         detail: {
                                           preview: {
                                             headers: table.headers,
-                                            rows: parsedRows,
+                                            rows: rows,
                                             message: table.summary || `Approve update for ${table.title}`
                                           }
                                         }
@@ -322,12 +291,11 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                   </button>
                                   <button
                                     onClick={() => {
-                                      // Trigger reject action via custom event
                                       const event = new CustomEvent('chat:reject-update', {
                                         detail: {
                                           preview: {
                                             headers: table.headers,
-                                            rows: parsedRows,
+                                            rows: rows,
                                             message: table.summary || `Reject update for ${table.title}`
                                           }
                                         }
@@ -339,49 +307,37 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                     Reject
                                   </button>
                                 </div>
-                              );
-                            }
-                          } catch (e) {
-                            console.warn('Failed to parse table rows for actions:', e);
+                              </>
+                            );
+                          } else {
+                            return (
+                              <div className="space-y-2 text-xs">
+                                {Array.isArray(table.headers) && table.headers.length > 0 && (
+                                  <div>
+                                    <div className="font-medium text-emerald-300 mb-1">Headers:</div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {(table.headers as string[]).map((header: string, i: number) => (
+                                        <span key={i} className="px-2 py-1 bg-white/10 rounded text-white/80">
+                                          {header}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {table.rowCount > 0 && (
+                                  <div className="text-white/70">
+                                    <span className="font-medium">Rows:</span> {table.rowCount}
+                                  </div>
+                                )}
+                                {table.summary && (
+                                  <div className="text-white/80">
+                                    <span className="font-medium">Summary:</span> {table.summary}
+                                  </div>
+                                )}
+                              </div>
+                            );
                           }
-                          return null;
                         })()}
-                        
-                        {/* Fallback metadata display if no rows */}
-                        {(() => {
-                          try {
-                            if (!table.rows) return true;
-                            const parsedRows = JSON.parse(table.rows);
-                            return !Array.isArray(parsedRows) || parsedRows.length === 0;
-                          } catch (e) {
-                            return true; // If parsing fails, show fallback
-                          }
-                        })() && (
-                          <div className="space-y-2 text-xs">
-                            {table.headers && table.headers.length > 0 && (
-                              <div>
-                                <div className="font-medium text-emerald-300 mb-1">Headers:</div>
-                                <div className="flex flex-wrap gap-1">
-                                  {table.headers.map((header: string, i: number) => (
-                                    <span key={i} className="px-2 py-1 bg-white/10 rounded text-white/80">
-                                      {header}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {table.rowCount > 0 && (
-                              <div className="text-white/70">
-                                <span className="font-medium">Rows:</span> {table.rowCount}
-                              </div>
-                            )}
-                            {table.summary && (
-                              <div className="text-white/80">
-                                <span className="font-medium">Summary:</span> {table.summary}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>
