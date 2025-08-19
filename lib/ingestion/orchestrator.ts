@@ -21,6 +21,9 @@ export async function ingestRows(params: {
   rows: Array<RowObject>;
 }): Promise<IngestResult> {
   const { spreadsheetId, sheetName, rows } = params;
+  
+  console.log('🔍 [ORCHESTRATOR] Received params:', { spreadsheetId, sheetName, rowsCount: rows.length, sampleRow: rows[0] });
+  
   const sheets = await getGoogleSheetsClient();
 
   if (!sheetName) {
@@ -28,11 +31,14 @@ export async function ingestRows(params: {
   }
 
   const escapedName = escapeSheetName(sheetName);
+  console.log('🔍 [ORCHESTRATOR] Escaped sheet name:', escapedName);
 
   try {
     // Load headers from the target sheet to ensure correct column order
     const headerResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escapedName}!A1:Z1` });
     const headers = ((headerResp.data.values?.[0] as string[]) || []).map(h => String(h));
+
+    console.log('🔍 [ORCHESTRATOR] Sheet headers:', headers);
 
     if (headers.length === 0) {
       return { success: false, inserts: 0, updates: 0, details: `No headers found in sheet ${sheetName}` };
@@ -42,6 +48,8 @@ export async function ingestRows(params: {
     const valuesToAppend: string[][] = rows.map(obj => 
       headers.map(h => (obj[h] != null ? String(obj[h]) : ''))
     );
+
+    console.log('🔍 [ORCHESTRATOR] Values to append:', valuesToAppend);
 
     if (valuesToAppend.length === 0) {
       return { success: true, inserts: 0, updates: 0, details: 'No rows to append.' };
@@ -56,7 +64,9 @@ export async function ingestRows(params: {
       requestBody: { values: valuesToAppend },
     });
 
-    return { success: true, inserts: valuesToAppend.length, updates: 0 };
+    const result = { success: true, inserts: valuesToAppend.length, updates: 0 };
+    console.log('🔍 [ORCHESTRATOR] Final result:', result);
+    return result;
 
   } catch (e) {
     console.error('Error in ingestRows:', e);

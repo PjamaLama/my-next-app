@@ -21,7 +21,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Delegate to orchestrator which dynamically aligns values to headers from the Sheets API
-    const result = await ingestRows({ spreadsheetId, sheetNames: resolvedSheetNames, rows, dryRun: !!dryRun });
+    const result = await ingestRows({ 
+      spreadsheetId, 
+      sheetName: resolvedSheetNames[0], // Use first sheet name
+      rows, 
+      dryRun: !!dryRun 
+    });
     return res.status(200).json(result);
   } catch (e: any) {
     return res.status(500).json({ error: e?.message || 'Failed to ingest rows' });

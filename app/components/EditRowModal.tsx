@@ -19,6 +19,11 @@ export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activ
   const [rowData, setRowData] = useState<Array<{ column: string; value: unknown }>>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Safety check - if no preview data, don't render
+  if (!preview || !preview.headers) {
+    return null;
+  }
+
   // Get headers from preview or fallback to cached headers
   const cachedHeaders: string[] = typeof window !== 'undefined' && (window as any)?.__sheetDataCache && Array.isArray((window as any).__sheetDataCache?.[activeSheet || '']) && (window as any).__sheetDataCache?.[activeSheet || ''].length > 0
     ? ((window as any).__sheetDataCache?.[activeSheet || ''][0] as string[])

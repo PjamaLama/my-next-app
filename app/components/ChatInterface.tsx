@@ -5,22 +5,160 @@ import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
 import { Send, Loader2 } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
+import EditRowModal from './EditRowModal';
 
 interface ChatInterfaceProps {
   className?: string;
 }
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error, ensureSession } = useChat();
+  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [processingTables, setProcessingTables] = useState<Set<string>>(new Set());
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editModalData, setEditModalData] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // Event listeners for approve/reject/edit actions
+  useEffect(() => {
+    const handleApproveUpdate = async (event: CustomEvent) => {
+      const { preview } = event.detail;
+      if (!preview) return;
+
+      try {
+        setProcessingTables(prev => new Set(prev).add('approve'));
+        
+        // Convert table data to the format expected by the ingestion endpoint
+        const headers = Array.isArray(preview.headers) ? preview.headers : [];
+        const rows = Array.isArray(preview.rows) ? preview.rows : [];
+        
+        if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
+          throw new Error('No spreadsheet or sheet selected');
+        }
+
+        // Convert 2D array to objects with column names
+        const rowObjects = rows.map((row: any[]) => {
+          const obj: Record<string, unknown> = {};
+          headers.forEach((header: string, index: number) => {
+            obj[header] = String(row[index] || '');
+          });
+          return obj;
+        });
+
+        console.log('🔍 [APPROVE] Data being sent to API:', {
+          spreadsheetId: defaultSpreadsheetId,
+          sheetName: selectedSheetNames[0],
+          rows: rowObjects,
+          headers,
+          originalRows: rows
+        });
+
+        // Call the ingestion endpoint to apply changes
+        const response = await fetch('/api/ingest-rows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            spreadsheetId: defaultSpreadsheetId,
+            sheetName: selectedSheetNames[0], // Use first selected sheet
+            rows: rowObjects,
+            dryRun: false
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to apply changes');
+        }
+
+        const result = await response.json();
+        console.log('🔍 [APPROVE] API Response:', result);
+        
+        // Remove the table from the chat after successful approval
+        setChatMessages(prev => prev.map(message => {
+          if (message.tables && message.tables.length > 0) {
+            const filteredTables = message.tables.filter(table => 
+              !(table.title === preview.message && 
+                JSON.stringify(table.headers) === JSON.stringify(preview.headers))
+            );
+            return { ...message, tables: filteredTables };
+          }
+          return message;
+        }));
+
+        // Add success message
+        await addMessage({
+          role: 'assistant',
+          content: `✅ Changes applied successfully! ${result.inserts || 0} rows added to the spreadsheet.`,
+        });
+
+      } catch (error) {
+        console.error('Failed to approve update:', error);
+        await addMessage({
+          role: 'assistant',
+          content: `❌ Failed to apply changes: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        });
+      } finally {
+        setProcessingTables(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('approve');
+          return newSet;
+        });
+      }
+    };
+
+    const handleRejectUpdate = async (event: CustomEvent) => {
+      const { preview } = event.detail;
+      if (!preview) return;
+
+      try {
+        setProcessingTables(prev => new Set(prev).add('reject'));
+        
+        // Remove the table from the chat
+        setChatMessages(prev => prev.map(message => {
+          if (message.tables && message.tables.length > 0) {
+            const filteredTables = message.tables.filter(table => 
+              !(table.title === preview.message && 
+                JSON.stringify(table.headers) === JSON.stringify(preview.headers))
+            );
+            return { ...message, tables: filteredTables };
+          }
+          return message;
+        }));
+
+        // Add rejection message
+        await addMessage({
+          role: 'assistant',
+          content: '❌ Changes rejected. The table has been removed from the chat.',
+        });
+
+      } catch (error) {
+        console.error('Failed to reject update:', error);
+      } finally {
+        setProcessingTables(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('reject');
+          return newSet;
+        });
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener('chat:approve-update', handleApproveUpdate as unknown as EventListener);
+    window.addEventListener('chat:reject-update', handleRejectUpdate as unknown as EventListener);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('chat:approve-update', handleApproveUpdate as unknown as EventListener);
+      window.removeEventListener('chat:reject-update', handleRejectUpdate as unknown as EventListener);
+    };
+  }, [defaultSpreadsheetId, selectedSheetNames, setChatMessages, addMessage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -257,16 +395,14 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
                                   <button
                                     onClick={() => {
-                                      const event = new CustomEvent('chat:open-edit-modal', {
-                                        detail: {
-                                          preview: {
-                                            headers: table.headers,
-                                            rows: rows,
-                                            message: table.summary || `Edit data for ${table.title}`
-                                          }
-                                        }
-                                      });
-                                      window.dispatchEvent(event);
+                                      if (table.headers && table.rows) {
+                                        setEditModalData({
+                                          headers: table.headers,
+                                          rows: table.rows,
+                                          message: table.summary || `Edit data for ${table.title}`
+                                        });
+                                        setEditModalOpen(true);
+                                      }
                                     }}
                                     className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                                   >
@@ -285,9 +421,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       });
                                       window.dispatchEvent(event);
                                     }}
-                                    className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded transition-colors"
+                                    disabled={processingTables.has('approve')}
+                                    className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
                                   >
-                                    Approve
+                                    {processingTables.has('approve') ? 'Applying...' : 'Approve'}
                                   </button>
                                   <button
                                     onClick={() => {
@@ -302,9 +439,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       });
                                       window.dispatchEvent(event);
                                     }}
-                                    className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                                    disabled={processingTables.has('reject')}
+                                    className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
                                   >
-                                    Reject
+                                    {processingTables.has('reject') ? 'Removing...' : 'Reject'}
                                   </button>
                                 </div>
                               </>
@@ -402,6 +540,41 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           </button>
         </form>
       </div>
+      <EditRowModal
+        isOpen={editModalOpen && editModalData !== null}
+        onClose={() => {
+          setEditModalOpen(false);
+          setEditModalData(null);
+        }}
+        preview={editModalData || { headers: [], rows: [], message: '' }}
+        onSubmit={(rowData) => {
+          console.log('Row data edited:', rowData);
+          
+          // Update the table data in the chat message
+          if (editModalData && editModalData.headers) {
+            const updatedRows = [rowData.map(item => item.value)];
+            
+            // Find and update the table in the chat messages
+            setChatMessages(prev => prev.map(message => {
+              if (message.tables && message.tables.length > 0) {
+                const updatedTables = message.tables.map(table => {
+                  if (table.title === editModalData.message && 
+                      JSON.stringify(table.headers) === JSON.stringify(editModalData.headers)) {
+                    return { ...table, rows: updatedRows };
+                  }
+                  return table;
+                });
+                return { ...message, tables: updatedTables };
+              }
+              return message;
+            }));
+          }
+          
+          setEditModalOpen(false);
+          setEditModalData(null);
+        }}
+        activeSheet={selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined}
+      />
     </div>
   );
 }
