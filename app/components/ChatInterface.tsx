@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
 import { Send, Loader2 } from 'lucide-react';
+import SheetChipSelector from './SheetChipSelector';
 
 interface ChatInterfaceProps {
   className?: string;
@@ -171,37 +172,31 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                             {table.title}
                           </div>
                         )}
-                        {table.data && Array.isArray(table.data) && (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="border-b border-white/20">
-                                  {table.headers?.map((header: string, i: number) => (
-                                    <th key={i} className="text-left p-2 font-medium">
-                                      {header}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {table.data.slice(0, 10).map((row: any[], rowIndex: number) => (
-                                  <tr key={rowIndex} className="border-b border-white/10">
-                                    {row.map((cell: any, cellIndex: number) => (
-                                      <td key={cellIndex} className="p-2">
-                                        {String(cell || '')}
-                                      </td>
-                                    ))}
-                                  </tr>
+                        {/* Show table metadata since actual data is not available */}
+                        <div className="space-y-2 text-xs">
+                          {table.headers && table.headers.length > 0 && (
+                            <div>
+                              <div className="font-medium text-emerald-300 mb-1">Headers:</div>
+                              <div className="flex flex-wrap gap-1">
+                                {table.headers.map((header: string, i: number) => (
+                                  <span key={i} className="px-2 py-1 bg-white/10 rounded text-white/80">
+                                    {header}
+                                  </span>
                                 ))}
-                              </tbody>
-                            </table>
-                            {table.data.length > 10 && (
-                              <div className="text-center text-xs text-white/60 mt-2">
-                                Showing first 10 rows of {table.data.length}
                               </div>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          )}
+                          {table.rowCount > 0 && (
+                            <div className="text-white/70">
+                              <span className="font-medium">Rows:</span> {table.rowCount}
+                            </div>
+                          )}
+                          {table.summary && (
+                            <div className="text-white/80">
+                              <span className="font-medium">Summary:</span> {table.summary}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -238,6 +233,11 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
 
       {/* Input Area */}
       <div className="border-t border-white/10 p-6">
+        {/* Sheet Selector - Added above input field */}
+        <div className="mb-4">
+          <SheetChipSelector />
+        </div>
+        
         <form onSubmit={handleSubmit} className="flex gap-3">
           <input
             type="text"

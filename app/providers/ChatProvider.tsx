@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { db, useFirebase } from './FirebaseProvider';
 
 // Basic message type
@@ -68,8 +68,8 @@ interface ChatProviderProps {
   children: ReactNode;
 }
 
-// A simplified ID for the single chat document
-const CHAT_DOC_ID = "global_chat";
+// Each session will have its own chat messages collection
+// No more global chat document
 
 export const ChatProvider = ({ children }: ChatProviderProps) => {
   const { user } = useFirebase();
@@ -79,13 +79,14 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   
   // Session management state
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionId, _setCurrentSessionId] = useState<string | null>(null);
 
   // Load and subscribe to sessions for the logged-in user
   useEffect(() => {
     if (!user) {
       setSessions([]);
-      setCurrentSessionId(null);
+      setChatMessages([]);
+      _setCurrentSessionId(null);
       return;
     }
 
@@ -105,30 +106,49 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
           } as ChatSession;
         });
       
-      setSessions(loadedSessions);
+      // Remove duplicates by ID to prevent React key conflicts
+      const uniqueSessions = loadedSessions.filter((session, index, self) => 
+        index === self.findIndex(s => s.id === session.id)
+      );
+      
+      // Debug logging for session management
+      if (loadedSessions.length !== uniqueSessions.length) {
+        console.warn('🔍 [ChatProvider] Duplicate sessions detected:', {
+          total: loadedSessions.length,
+          unique: uniqueSessions.length,
+          duplicates: loadedSessions.length - uniqueSessions.length
+        });
+      }
+      
+      setSessions(uniqueSessions);
       
       // Set current session if none is selected
-      if (!currentSessionId && loadedSessions.length > 0) {
-        setCurrentSessionId(loadedSessions[0].id);
+      if (!currentSessionId && uniqueSessions.length > 0) {
+        _setCurrentSessionId(uniqueSessions[0].id);
       }
     }, (err) => {
       console.error("Error fetching sessions:", err);
       setError("Failed to load sessions.");
     });
 
-    return () => unsubscribe();
-  }, [user, currentSessionId]);
+    return () => {
+      unsubscribe();
+      // Clean up local state when unmounting
+      setSessions([]);
+      _setCurrentSessionId(null);
+    };
+  }, [user]); // Removed currentSessionId dependency to prevent infinite loop
 
-  // Load and subscribe to the single chat history for the logged-in user
+  // Load and subscribe to chat messages for the current session
   useEffect(() => {
-    if (!user) {
+    if (!user || !currentSessionId) {
       setChatMessages([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    const messagesColRef = collection(db, 'users', user.uid, 'chats', CHAT_DOC_ID, 'messages');
+    const messagesColRef = collection(db, 'users', user.uid, 'sessions', currentSessionId, 'messages');
     const q = query(messagesColRef, orderBy('timestamp', 'asc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -149,7 +169,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, currentSessionId]);
 
   // Function to add a new message to the database
   const addMessage = async (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
@@ -158,7 +178,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       return;
     }
 
-    const messagesColRef = collection(db, 'users', user.uid, 'chats', CHAT_DOC_ID, 'messages');
+    const messagesColRef = collection(db, 'users', user.uid, 'sessions', currentSessionId, 'messages');
     
     try {
       // Additional safety check: ensure no nested arrays exist
@@ -189,6 +209,15 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
   };
 
+  // Custom setCurrentSessionId that clears chat messages when switching sessions
+  const setCurrentSessionId = (sessionId: string | null) => {
+    // Clear current chat messages when switching sessions
+    if (sessionId !== currentSessionId) {
+      setChatMessages([]);
+    }
+    _setCurrentSessionId(sessionId);
+  };
+
   // Session management functions
   const createSession = async (title?: string, spreadsheetId?: string, sheetNames?: string[]): Promise<string> => {
     if (!user) {
@@ -197,6 +226,18 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
 
     try {
+      // Check if we already have a session with the same context to prevent duplicates
+      const existingSession = sessions.find(s => 
+        s.spreadsheetId === spreadsheetId && 
+        JSON.stringify(s.sheetNames) === JSON.stringify(sheetNames)
+      );
+      
+      if (existingSession) {
+        // Return existing session instead of creating a duplicate
+        _setCurrentSessionId(existingSession.id);
+        return existingSession.id;
+      }
+
       const sessionData: any = {
         title: title || `Chat ${sessions.length + 1}`,
         createdAt: new Date(),
@@ -221,7 +262,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       };
       
       setSessions(prev => [...prev, newSession]);
-      setCurrentSessionId(docRef.id);
+      // Clear chat messages when creating a new session
+      setChatMessages([]);
+      _setCurrentSessionId(docRef.id);
       return docRef.id;
     } catch (err) {
       console.error("Error creating session:", err);
@@ -234,12 +277,19 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     if (!user) return;
 
     try {
+      // Delete all messages in the session first
+      const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
+      const messagesSnapshot = await getDocs(messagesColRef);
+      const deletePromises = messagesSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      
+      // Then mark the session as deleted
       const sessionDocRef = doc(db, 'users', user.uid, 'sessions', sessionId);
       await setDoc(sessionDocRef, { deleted: true }, { merge: true });
       
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       if (currentSessionId === sessionId) {
-        setCurrentSessionId(sessions.length > 1 ? sessions[0].id : null);
+        _setCurrentSessionId(sessions.length > 1 ? sessions[0].id : null);
       }
     } catch (err) {
       console.error("Error deleting session:", err);
@@ -255,7 +305,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       return await createSession();
     }
     
-    setCurrentSessionId(sessions[0].id);
+    _setCurrentSessionId(sessions[0].id);
     return sessions[0].id;
   };
 

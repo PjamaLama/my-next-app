@@ -232,7 +232,23 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
   const sortedSessions = useMemo(() => sessions, [sessions]);
   // Show all sessions, even if untitled, to avoid hiding active chats before AI title generation
-  const visibleSessions = useMemo(() => sortedSessions, [sortedSessions]);
+  // Ensure unique sessions to prevent React key conflicts
+  const visibleSessions = useMemo(() => {
+    const uniqueSessions = sortedSessions.filter((session, index, self) => 
+      index === self.findIndex(s => s.id === session.id)
+    );
+    
+    // Debug logging to help identify duplicate issues
+    if (sortedSessions.length !== uniqueSessions.length) {
+      console.warn('🔍 [ChatSidebar] Duplicate sessions detected:', {
+        total: sortedSessions.length,
+        unique: uniqueSessions.length,
+        duplicates: sortedSessions.length - uniqueSessions.length
+      });
+    }
+    
+    return uniqueSessions;
+  }, [sortedSessions]);
 
   // Simple UI for clarifications to maintain conversational flow.
   const clarifyText = useMemo(() => {
@@ -287,8 +303,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
   // Copy service account removed from sidebar
 
-  const renderSessionRow = (s: { id: string; title: string; updatedAt: string; lastMessageSnippet?: string }) => (
-    <li key={s.id}>
+  const renderSessionRow = (s: { id: string; title: string; updatedAt: string; lastMessageSnippet?: string }, index: number) => (
+    <li key={`${s.id}-${index}`}>
       <div className={`group relative`}
            style={{ background: 'transparent' }}>
         <div
@@ -367,7 +383,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
             ) : (
               <ul className="space-y-1">
-              {visibleSessions.map((s) => renderSessionRow(s))}
+              {visibleSessions.map((s, index) => renderSessionRow(s, index))}
               </ul>
             )}
           </div>
@@ -480,7 +496,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
           ) : (
             <ul className="space-y-1">
-              {visibleSessions.map((s) => renderSessionRow(s))}
+              {visibleSessions.map((s, index) => renderSessionRow(s, index))}
             </ul>
           )}
 
