@@ -77,8 +77,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         totalFiles: extractedFileContents.length,
         fileTypes: extractedFileContents.map((f: any) => f.type),
         hasStructuredData: extractedFileContents.some((f: any) => f.extractedData?.type === 'structured'),
-        hasTextData: extractedFileContents.some((f: any) => f.extractedData?.type === 'text'),
-        hasMetadata: extractedFileContents.some((f: any) => f.extractedData?.type === 'metadata')
+        hasTextData: extractedFileContents.some((f: any) => f.extractedData?.extractedText && f.extractedData.extractedText.length > 0),
+        hasMetadata: extractedFileContents.some((f: any) => f.extractedData?.type === 'metadata' || f.extractedData?.type === 'document' || f.extractedData?.type === 'image'),
+        totalTextLength: extractedFileContents.reduce((sum: number, f: any) => sum + (f.extractedData?.textLength || 0), 0),
+        filesWithText: extractedFileContents.filter((f: any) => f.extractedData?.extractedText && f.extractedData.extractedText.length > 0).length,
+        needsBackendProcessing: extractedFileContents.some((f: any) => f.extractedData?.needsBackendProcessing === true)
       }
     };
 
@@ -102,7 +105,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         fileTypes: webhookData.fileSummary.fileTypes,
         hasStructuredData: webhookData.fileSummary.hasStructuredData,
         hasTextData: webhookData.fileSummary.hasTextData,
-        hasMetadata: webhookData.fileSummary.hasMetadata
+        hasMetadata: webhookData.fileSummary.hasMetadata,
+        totalTextLength: webhookData.fileSummary.totalTextLength,
+        filesWithText: webhookData.fileSummary.filesWithText,
+        needsBackendProcessing: webhookData.fileSummary.needsBackendProcessing
       }
     });
 
