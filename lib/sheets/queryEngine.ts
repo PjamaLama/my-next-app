@@ -1,4 +1,4 @@
-import { bestHeaderIndex, parseNumber, structureForDisplay } from '../chat/utils';
+import { bestHeaderIndex, parseNumber, structureForDisplay } from '../utils/chatUtils';
 
 export type QueryAggregateFn = 'sum' | 'avg' | 'min' | 'max' | 'count';
 

@@ -7,7 +7,7 @@ import { useSheet } from "./providers/SheetProvider";
 import { useServiceAccount } from './providers/ServiceAccountProvider';
 import ServiceAccountInfo from './components/ServiceAccountInfo';
 import { db } from "./providers/FirebaseProvider";
-import { executeToolCall } from '../lib/chat/toolExecution';
+
 import {
   collection,
   onSnapshot,
@@ -273,7 +273,7 @@ export default function Home() {
 
   
   // State for missed intent detection and fallback UI
-  const [missedIntentSuggestion, setMissedIntentSuggestion] = useState<string | null>(null);
+
   
   // Background operation state
   const [backgroundOperation, setBackgroundOperation] = useState<{
@@ -1029,7 +1029,6 @@ export default function Home() {
       await ensureSession();
 
       // Add user message to chat
-      const userIntent = detectIntent(textToProcess);
       const userMessage = {
         id: `msg_${Date.now()}`,
         role: 'user' as const,
@@ -1124,7 +1123,6 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: textToProcess,
-          userIntent: userIntent,
           context: contextForChat,
           conversationHistory: chatMessages.slice(-5),
           images: imageData // Include processed images
@@ -1196,83 +1194,32 @@ export default function Home() {
 
       const data = await response.json();
       
-      // Update context with any changes from the API
-      if (data.context) {
-        // Update sheet names if provided
-        if (data.context.sheetNames) {
-          setSelectedSheetNames(data.context.sheetNames);
-        }
-        // Persist recent file analyses for a few minutes for follow-up turns
-        if (data.context.fileAnalysis && data.context.fileAnalysis.lastUpdated) {
-          try {
-            const fa = data.context.fileAnalysis as FileAnalysisContext;
-            setRecentFileAnalysis(fa);
-          } catch {}
-        }
-      }
-      
-      {
-        // Regular AI response with optional quick replies and structured tables
-        const suppressResponseText = Boolean((data as any).suppressResponseText);
-        const aiMessage = {
-          id: `msg_${Date.now()}_ai`,
-          role: 'assistant' as const,
-          content: suppressResponseText ? '' : (data.response || 'I processed your request.'),
-          timestamp: new Date(),
-          messageType: 'ai_response' as const,
-          toolCalls: data.toolCalls || [],
-          toolResults: data.toolResults || [],
-          quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies.slice(0, 3) : undefined,
-          sheetsUsed: Array.isArray(data.sheetsUsed) ? (data.sheetsUsed as string[]) : (selectedSheetNames || []),
-          // Attach tables for rendering
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          tables: Array.isArray((data as any).dataTables) ? (data as any).dataTables : undefined,
-          
-        };
-        setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
-      }
+      // Handle N8N response format
+      const aiMessage = {
+        id: `msg_${Date.now()}_ai`,
+        role: 'assistant' as const,
+        content: data.reasoning || 'I processed your request.',
+        timestamp: new Date(),
+        messageType: 'ai_response' as const,
+        quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies.slice(0, 3) : undefined,
+        sheetsUsed: Array.isArray(data.tables) && data.tables.length > 0 
+          ? data.tables.map((table: any) => table.meta?.sheetName).filter(Boolean)
+          : (selectedSheetNames || []),
+        // Attach tables from N8N response
+        tables: Array.isArray(data.tables) ? data.tables : undefined,
+        insights: Array.isArray(data.insights) ? data.insights : undefined,
+      };
+      setProviderChatMessages(prev => [...prev, aiMessage as unknown as ProviderChatMessage]);
 
-      // Check for missed sheet update intent
-      if (detectMissedSheetIntent(textToProcess, data.response || '')) {
-        setMissedIntentSuggestion(`Did you want me to update your spreadsheet with this data? You said: "${textToProcess.slice(0, 50)}..."`);
-        // Auto-clear the suggestion after 10 seconds
-        setTimeout(() => setMissedIntentSuggestion(null), 10000);
-      }
 
-      // Handle tool results from automatic execution (skip noisy system message for file-only uploads)
-      if (!(data as any).suppressResponseText && data.toolResults && data.toolResults.length > 0) {
-        console.log(`🔍 [CHAT] Received ${data.toolResults.length} tool results from automatic execution`);
-        
-        // Add tool results to chat
-        const toolResultMessage = {
-          id: `msg_${Date.now()}_tool_results`,
-          role: 'system' as const,
-          content: `Tool execution completed`,
-          timestamp: new Date(),
-          toolResults: data.toolResults.map((result: { toolId?: string; result: string; success: boolean; details?: unknown }, index: number) => ({
-            id: result.toolId || `tool_result_${index}`,
-            result: result.result,
-            success: result.success,
-            details: result.details
-          }))
-        };
-        setProviderChatMessages(prev => [...prev, toolResultMessage as unknown as ProviderChatMessage]);
-        // Surface failure details as a toast
-        try {
-          const failures = (data.toolResults as Array<{ success: boolean; result: string; details?: unknown }>).filter(tr => tr && tr.success === false);
-          if (failures.length > 0) {
-            const detailText = failures.map((f, i) => {
-              const d = typeof f.details === 'string' ? f.details : (f.details ? JSON.stringify(f.details) : '');
-              const resultText = f.result || 'Unknown error';
-              return `${i + 1}. ${resultText}${d ? `\n   Details: ${d}` : ''}`;
-            }).join('\n');
-            const msg = `Tool error: One or more actions failed.\n${detailText}`;
-            setSendResult(msg);
-            // Promote to toast
-            setToast({ type: 'error', message: msg });
-            setTimeout(() => setToast(null), 5000);
-          }
-        } catch { /* noop */ }
+
+      // Handle N8N response insights and clarifications
+      if (data.clarifyQuestion) {
+        setToast({ 
+          type: 'success', 
+          message: data.clarifyQuestion 
+        });
+        setTimeout(() => setToast(null), 8000);
       }
 
       console.log(`🔍 [CHAT] Final state - uploadedImages: ${uploadedImages.length}, pendingToolCalls: ${pendingToolCalls.length}`);
@@ -2268,41 +2215,12 @@ export default function Home() {
                     }
                   >
                     <div className="flex items-center gap-2 mb-1 opacity-70">
-                      <span className={`${getMessageTypeColor(message.messageType)} text-[11px]`}>{getMessageTypeIcon(message.messageType)}</span>
+                      <span className="text-gray-600 text-[11px]">💬</span>
                       <span className="text-[11px]">{message.timestamp.toLocaleTimeString()}</span>
                     </div>
                     <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
 
-                    {/* Column options as clickable chips */}
-                    {message.role === 'assistant' && (() => {
-                      const columnOptions = extractColumnOptions(message.content);
-                      if (columnOptions.length === 0) return null;
-                      
-                      return (
-                        <div className="mt-3">
-                          <div className="text-xs text-white/70 mb-2">Select a column:</div>
-                          <div className="flex flex-wrap gap-2">
-                            {columnOptions.map((option, optionIdx) => (
-                              <button
-                                key={optionIdx}
-                                onClick={() => {
-                                  const synth: ChatMessage = {
-                                    id: `msg_${Date.now()}_column_select`,
-                                    role: 'user',
-                                    content: `Use column: ${option}`,
-                                    timestamp: new Date(),
-                                  } as any;
-                                  setProviderChatMessages(prev => [...prev, synth as unknown as ProviderChatMessage]);
-                                }}
-                                className="px-3 py-1.5 rounded-full text-xs border border-sky-400/40 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20 hover:border-sky-400/60 transition-all duration-200"
-                              >
-                                {option}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
+
 
 
 
@@ -2497,7 +2415,7 @@ export default function Home() {
                               <div className="pointer-events-none bg-gradient-to-t from-black/40 to-transparent px-2 pt-6 pb-2">
                                     <div className="pointer-events-auto flex items-center justify-end gap-2">
                                       {/* Show Approve/Reject/Edit buttons for both proposed updates AND extracted data tables, but only if not approved */}
-                                      {!message.approved && ((t.title && /Proposed Sheet Updates/i.test(String(t.title))) || ((t as any).meta?.fileIndex || (t as any).meta?.combined)) ? (
+                                      {!message.approved && ((t.title && /Proposed Sheet Updates/i.test(String(t.title))) || (t as any).meta?.requiresConfirmation || ((t as any).meta?.fileIndex || (t as any).meta?.combined)) ? (
                                         tableActionState[`${message.id}_${tIdx}_approve`] === 'loading' ? (
                                           // Show only loading spinner when accept is in progress
                                           <div className="flex items-center gap-2 text-green-200">
@@ -2530,7 +2448,7 @@ export default function Home() {
                                             </button>
                                           </>
                                         )
-                                      ) : message.approved && (t.title && /Proposed Sheet Updates/i.test(String(t.title))) ? (
+                                      ) : message.approved && ((t.title && /Proposed Sheet Updates/i.test(String(t.title))) || (t as any).meta?.requiresConfirmation) ? (
                                         /* Show approved status for approved updates */
                                         <div className="text-green-400 text-sm font-medium px-3 py-2">
                                           ✓ Approved and applied
@@ -2563,6 +2481,28 @@ export default function Home() {
                             <span className="truncate max-w-[120px]">{name}</span>
                           </span>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Display insights from N8N response */}
+                    {message.role === 'assistant' && Array.isArray(message.insights) && message.insights.length > 0 && (
+                      <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-4 h-4 text-blue-300 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium text-blue-200">Key Insights</div>
+                            <ul className="text-xs text-blue-100 space-y-1">
+                              {message.insights.map((insight, idx) => (
+                                <li key={idx} className="flex items-start gap-2">
+                                  <span className="text-blue-300 mt-1">•</span>
+                                  <span>{insight}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2698,7 +2638,7 @@ export default function Home() {
                       }}
                       placeholder={uploadedImages.length > 0 
                         ? `Add context about your ${uploadedImages.length} attached file${uploadedImages.length !== 1 ? 's' : ''} or press Enter to analyze...`
-                        : getSmartPlaceholder(uploadedImages, defaultSpreadsheetId, selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : null)
+                        : (defaultSpreadsheetId ? "Ask me about your spreadsheet or add data..." : "First, select a spreadsheet above...")
                       }
                       rows={2}
                       className={`w-full p-3 pr-20 bg-transparent border-none resize-none focus:outline-none text-sm placeholder-white/50 text-white ${
@@ -3025,90 +2965,7 @@ export default function Home() {
   );
 }
 
-// Helper functions for Phase 2 - Smart Intent Detection
-const detectDataEntry = (text: string): boolean => {
-  const dataEntryKeywords = [
-    'add', 'update', 'insert', 'create', 'save', 'record', 'log', 'enter',
-    'total', 'amount', 'quantity', 'date', 'name', 'email', 'phone', 'address',
-    'expense', 'income', 'payment', 'sale', 'order', 'customer', 'item'
-  ];
-  
-  const hasNumbers = /\d/.test(text);
-  const hasDataKeywords = dataEntryKeywords.some(keyword => 
-    text.toLowerCase().includes(keyword)
-  );
-  
-  // Consider it data entry if it has numbers AND data keywords, or specific patterns
-  const hasDataPattern = /(\$\d+|\d+\.\d+|\d+\/\d+\/\d+|\w+@\w+\.\w+)/.test(text);
-  
-  return (hasNumbers && hasDataKeywords) || hasDataPattern;
-};
-
-const detectIntent = (text: string): 'data_entry' | 'question' | 'instruction' | 'general' => {
-  const questionWords = ['what', 'how', 'when', 'where', 'why', 'who', 'which', 'can you', 'do you'];
-  const instructionWords = ['please', 'can you', 'help me', 'i need', 'show me'];
-  
-  if (questionWords.some(word => text.toLowerCase().startsWith(word))) {
-    return 'question';
-  }
-  if (detectDataEntry(text)) {
-    return 'data_entry';
-  }
-  if (instructionWords.some(word => text.toLowerCase().includes(word))) {
-    return 'instruction';
-  }
-  return 'general';
-};
-
-const getSmartPlaceholder = (uploadedImages: UploadedImage[], defaultSpreadsheetId: string | null, selectedSheetName: string | null): string => {
-  if (!defaultSpreadsheetId) return "First, select a spreadsheet above...";
-  if (uploadedImages.length > 0) return `Describe what to do with these ${uploadedImages.length} file${uploadedImages.length !== 1 ? 's' : ''}...`;
-  if (!selectedSheetName) return "Ask me about your spreadsheet or add data...";
-  return "Add data, ask questions, or give instructions...";
-};
-
-const getMessageTypeIcon = (messageType?: string): string => {
-  switch (messageType) {
-    case 'voice': return '🎤';
-    case 'text': return '💬';
-    case 'sheet_update': return '📊';
-    case 'tool_execution': return '⚙️';
-    case 'ai_response': return '🤖';
-    default: return '💬';
-  }
-};
-
-const getMessageTypeColor = (messageType?: string): string => {
-  switch (messageType) {
-    case 'voice': return 'text-emerald-700';
-    case 'text': return 'text-emerald-700';
-    case 'sheet_update': return 'text-green-600';
-    case 'tool_execution': return 'text-orange-600';
-    case 'ai_response': return 'text-gray-600';
-    default: return 'text-emerald-700';
-  }
-};
-
-const detectMissedSheetIntent = (userMessage: string, aiResponse: string): boolean => {
-  const hasDataPattern = detectDataEntry(userMessage);
-  const aiDidntMentionSheet = !aiResponse.toLowerCase().includes('sheet') && 
-                              !aiResponse.toLowerCase().includes('spreadsheet') &&
-                              !aiResponse.toLowerCase().includes('update') &&
-                              !aiResponse.toLowerCase().includes('add');
-  
-  return hasDataPattern && aiDidntMentionSheet;
-};
 
 
 
-// Add this function near the top of the component, after the state declarations
-const extractColumnOptions = (content: string): string[] => {
-  const optionsMatch = content.match(/Options include:\s*'([^']+)'(?:,\s*'([^']+)')*(?:,\s*and\s*'([^']+)')?/i);
-  if (!optionsMatch) return [];
-  
-  // Extract all quoted strings after "Options include:"
-  const quotedStrings = content.match(/'([^']+)'/g);
-  if (!quotedStrings) return [];
-  
-  return quotedStrings.map(str => str.replace(/'/g, ''));
-};
+
