@@ -52,8 +52,20 @@ export default function LandingPage({ onSignIn }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-white font-sans overflow-x-hidden">
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.3),rgba(255,255,255,0))] z-0"></div>
+    <div className="min-h-screen bg-[#020202] text-white font-sans overflow-x-hidden relative">
+      <style jsx>{`
+        @keyframes grid-fade-in {
+          from { opacity: 0; transform: scale(0.9); }
+          to { opacity: 0.1; transform: scale(1); }
+        }
+        .animated-grid {
+          background-size: 40px 40px;
+          background-image: linear-gradient(to right, #333 1px, transparent 1px), linear-gradient(to bottom, #333 1px, transparent 1px);
+          animation: grid-fade-in 3s ease-out forwards;
+          opacity: 0.1; /* Start with some opacity */
+        }
+      `}</style>
+      <div className="absolute inset-0 z-0 pointer-events-none animated-grid"></div>
       <div className="container mx-auto px-6 py-8 relative z-10">
         <motion.header
           initial={{ y: -100, opacity: 0 }}
@@ -61,28 +73,28 @@ export default function LandingPage({ onSignIn }) {
           transition={{ duration: 0.5 }}
           className="flex justify-between items-center mb-32"
         >
-          <h1 className="text-3xl font-bold tracking-tighter">SheetyAI</h1>
+          <h1 className="text-3xl font-bold tracking-tighter bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">SheetyAI</h1>
           <motion.button
             onClick={onSignIn}
-            whileHover={{ scale: 1.05, backgroundColor: '#fff', color: '#000' }}
+            whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.5)' }}
             whileTap={{ scale: 0.95 }}
-            className="bg-transparent border border-white/50 hover:bg-white text-white font-semibold py-2 px-5 rounded-full transition-all duration-300"
+            className="bg-transparent border border-white/30 hover:border-white/60 text-white font-semibold py-2 px-5 rounded-full transition-all duration-300 backdrop-blur-sm"
           >
             Sign In
           </motion.button>
         </motion.header>
 
-        <main className="text-center">
+        <main className="text-center pt-16">
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="mb-12"
+            className="mb-16"
           >
-            <h2 className="text-7xl font-extrabold mb-6 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent tracking-tighter">
+            <h2 className="text-7xl font-extrabold mb-8 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight">
               The Future of Spreadsheets is Here
             </h2>
-            <p className="text-xl text-white/60 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-xl text-white/70 max-w-3xl mx-auto leading-relaxed">
               Stop wrestling with complex formulas and manual data entry. SheetyAI brings the power of artificial intelligence to your Google Sheets, automating tasks and unlocking insights like never before.
             </p>
           </motion.div>
@@ -91,9 +103,9 @@ export default function LandingPage({ onSignIn }) {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.4 }}
-            className="mb-24"
+            className="mb-40"
           >
-            <form onSubmit={handleBetaSignUp} className="flex justify-center gap-2 max-w-lg mx-auto">
+            <form onSubmit={handleBetaSignUp} className="flex justify-center gap-3 max-w-lg mx-auto">
               <input
                 type="email"
                 value={email}
@@ -105,7 +117,7 @@ export default function LandingPage({ onSignIn }) {
                 type="submit"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-full transition-colors duration-300 shadow-lg shadow-emerald-600/20"
+                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-full transition-all duration-300 shadow-lg shadow-emerald-500/40"
               >
                 Get Early Access
               </motion.button>
@@ -118,7 +130,7 @@ export default function LandingPage({ onSignIn }) {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="grid md:grid-cols-3 gap-8 text-left"
+            className="grid md:grid-cols-3 gap-10 text-left"
           >
             <motion.div variants={itemVariants} className="p-8 border border-white/10 rounded-2xl bg-black/20 backdrop-blur-md shadow-2xl shadow-black/30">
               <div className="flex items-center gap-4 mb-4">
@@ -160,35 +172,53 @@ export default function LandingPage({ onSignIn }) {
             whileInView={{ opacity: 1 }}
             transition={{ duration: 1, delay: 0.5 }}
             viewport={{ once: true }}
-            className="mt-32"
+            className="mt-48"
           >
-            <h3 className="text-4xl font-bold mb-12 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent">How It Works</h3>
-            <div className="flex flex-col md:flex-row items-center justify-center gap-12">
+            <h3 className="text-5xl font-bold mb-20 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent">How It Works</h3>
+            <div className="flex flex-col md:flex-row items-center justify-center gap-20">
                 <div className="w-full md:w-1/2">
-                    <img src="/templates/convert-to-google-sheets.png" alt="SheetyAI in action" className="rounded-2xl shadow-2xl shadow-black/50"/>
+                    <img src="/templates/convert-to-google-sheets.png" alt="SheetyAI in action" className="rounded-2xl shadow-2xl shadow-black/50 border border-white/10"/>
                 </div>
-                <div className="w-full md:w-1/2 text-left space-y-8">
-                    <div className="flex gap-4 items-start">
+                <div className="w-full md:w-1/2 text-left space-y-12">
+                    <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        whileInView={{ y: 0, opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.5, delay: 0.6 }}
+                        className="flex gap-4 items-start"
+                    >
                         <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><BarChart className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Connect Your Sheet</h4>
                             <p className="text-white/60">Securely connect your Google Sheet and choose the data you want to analyze.</p>
                         </div>
-                    </div>
-                    <div className="flex gap-4 items-start">
+                    </motion.div>
+                    <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        whileInView={{ y: 0, opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.5, delay: 0.8 }}
+                        className="flex gap-4 items-start"
+                    >
                         <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><PieChart className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Ask Your Questions</h4>
                             <p className="text-white/60">Use natural language to ask questions, request charts, or command data manipulations.</p>
                         </div>
-                    </div>
-                    <div className="flex gap-4 items-start">
+                    </motion.div>
+                    <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        whileInView={{ y: 0, opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.5, delay: 1.0 }}
+                        className="flex gap-4 items-start"
+                    >
                         <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><Table className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Get Instant Insights</h4>
                             <p className="text-white/60">Receive AI-generated insights, charts, and summaries directly in the chat.</p>
                         </div>
-                    </div>
+                    </motion.div>
                 </div>
             </div>
           </motion.div>
@@ -199,7 +229,7 @@ export default function LandingPage({ onSignIn }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, delay: 1.5 }}
-          className="text-center mt-32 text-white/40 text-sm"
+          className="text-center mt-48 text-white/40 text-sm"
         >
           <p>&copy; {new Date().getFullYear()} SheetyAI. All rights reserved.</p>
           <div className="mt-2">
