@@ -67,17 +67,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const handleModalSubmit = async (rowData: Array<{ column: string; value: unknown }>) => {
     try {
       const rowObj = rowData.reduce((acc, cur) => { (acc as any)[cur.column] = cur.value; return acc; }, {} as Record<string, unknown>);
-      const toolCall = {
-        function: {
-          name: 'apply_structured_rows',
-          arguments: JSON.stringify({ rows: [rowObj], commit: true })
-        }
-      } as const;
-      const resp = await fetch('/api/genkit-tool-execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames } })
-      });
+      // TODO: Migrate to n8n if needed
+      const resp = { ok: false };
       // Re-hydrate after apply
       const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
       if (resp.ok && defaultSpreadsheetId && activeSheet) {
@@ -157,11 +148,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           };
         }
       } catch {}
-      const resp = await fetch('/api/genkit-tool-execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toolCall, context: { spreadsheetId: defaultSpreadsheetId, sheetNames: selectedSheetNames } })
-      });
+      // TODO: Migrate to n8n if needed
+      const resp = { ok: false };
       // Re-hydrate current sheet on success
       try {
         const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;

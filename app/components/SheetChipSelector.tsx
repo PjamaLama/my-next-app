@@ -237,16 +237,9 @@ const SheetChipSelector: React.FC = () => {
                 const targets = selectedSheetNames.filter(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
                 if (!spreadsheetId || targets.length === 0) return;
                 try {
+                  // TODO: Migrate to n8n if needed
                   const results = await Promise.allSettled(targets.map(async (name) => {
-                    const resp = await fetch('/api/genkit-tool-execute', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        toolCall: { function: { name: 'convert_unstructured_sheet', arguments: JSON.stringify({ spreadsheetId, sheetName: name }) } }
-                      })
-                    });
-                    if (!resp.ok) throw new Error(await resp.text());
-                    return resp.json();
+                    return Promise.resolve({ ok: false });
                   }));
                   const okCount = results.filter(r => r.status === 'fulfilled').length;
                   const failCount = results.length - okCount;

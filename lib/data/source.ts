@@ -195,13 +195,8 @@ export class SheetDataSource extends DataSource {
             const context = { spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, sheetNames: [input.sheetName || this.sheetName], sessionKey: this.sessionKey };
              
             console.log('[SheetDataSource.query] context:', context);
-            const res = await fetch(`${this.apiBase}/api/genkit-tool-execute`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                toolCall: { function: { name: 'sheet_query', arguments: JSON.stringify({ spreadsheetId: this.spreadsheetId, sheetName: input.sheetName || this.sheetName, range: input.range }) } },
-                context
-              })
-            });
+            // TODO: Migrate to n8n if needed
+            const res = { ok: false };
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
           } catch (e) {

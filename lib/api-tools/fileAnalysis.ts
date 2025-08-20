@@ -160,20 +160,7 @@ export async function handleExtractTextOnly(args: any, images: ImageData[], res:
         }
         let structured: Array<Record<string, unknown>> | undefined;
         try {
-          const { genkit } = await import('genkit');
-          const { googleAI, gemini15Flash } = await import('@genkit-ai/googleai');
-          const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-          if (apiKey) {
-            const ai = genkit({ plugins: [googleAI({ apiKey })], model: gemini15Flash });
-            const prompt = `You receive raw text extracted from a user-uploaded file. Extract ALL structured entries relevant for spreadsheet rows and return STRICT JSON as {"extracted_rows": [ ... ]}. Normalize dates and numbers. Raw text:\n\n${extractedText.slice(0, 6000)}`;
-            const { text } = await ai.generate(prompt);
-            if (text) {
-              let cleaned = text.trim();
-              if (cleaned.startsWith('```')) cleaned = cleaned.replace(/```json|```/g, '').trim();
-              const parsed = JSON.parse(cleaned);
-              if (parsed && Array.isArray(parsed.extracted_rows)) structured = parsed.extracted_rows as Array<Record<string, unknown>>;
-            }
-          }
+          // TODO: Migrate to n8n if needed
         } catch {}
         extractionResults.push({ index: i + 1, type: image.mimeType, success: true, extractedText, textLength: extractedText.length, structured });
       } catch (error) {
