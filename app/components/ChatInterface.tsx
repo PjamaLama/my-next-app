@@ -44,8 +44,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         const headers = Array.isArray(preview.headers) ? preview.headers : [];
         const rows = Array.isArray(preview.rows) ? preview.rows : [];
         
-        if (!defaultSpreadsheetId || !selectedSheetNames || selectedSheetNames.length === 0) {
-          throw new Error('No spreadsheet or sheet selected');
+        if (!defaultSpreadsheetId || (!preview.sheetName && (!selectedSheetNames || selectedSheetNames.length === 0))) {
+          throw new Error('No spreadsheet or sheet selected. Please select a sheet or ensure the table has a target sheet.');
         }
 
         // Convert 2D array to objects with column names
@@ -59,10 +59,13 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
 
         console.log('🔍 [APPROVE] Data being sent to API:', {
           spreadsheetId: defaultSpreadsheetId,
-          sheetName: selectedSheetNames[0],
+          sheetName: preview.sheetName || selectedSheetNames[0], // Use preview sheet name if available
           rows: rowObjects,
           headers,
-          originalRows: rows
+          originalRows: rows,
+          tableTitle: preview.title,
+          targetSheet: preview.sheetName || selectedSheetNames[0],
+          fallbackSheet: selectedSheetNames?.[0]
         });
 
         // Call the ingestion endpoint to apply changes
@@ -71,7 +74,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             spreadsheetId: defaultSpreadsheetId,
-            sheetName: selectedSheetNames[0], // Use first selected sheet
+            sheetName: preview.sheetName || selectedSheetNames[0], // Use preview sheet name if available
             rows: rowObjects,
             dryRun: false
           })
@@ -105,9 +108,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         }
 
         // Add success message
+        const targetSheetName = preview.sheetName || selectedSheetNames[0];
         await addMessage({
           role: 'assistant',
-          content: `✅ Changes applied successfully! ${result.inserts || 0} rows added to the spreadsheet.`,
+          content: `✅ Changes applied successfully! ${result.inserts || 0} rows added to sheet "${targetSheetName}" in the spreadsheet.`,
         });
 
       } catch (error) {
@@ -442,6 +446,16 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
+                                  {/* Sheet targeting info */}
+                                  <div className="text-xs text-white/60 mr-auto">
+                                    📊 Target: <span className="text-emerald-300 font-medium">
+                                      {table.meta?.sheetName || selectedSheetNames?.[0] || 'No sheet selected'}
+                                    </span>
+                                    {!table.meta?.sheetName && !selectedSheetNames?.[0] && (
+                                      <span className="text-yellow-400 ml-2">⚠️ Select a sheet first</span>
+                                    )}
+                                  </div>
+                                  
                                   <button
                                     onClick={() => {
                                       if (table.headers && rows) {
@@ -467,6 +481,12 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                   </button>
                                   <button
                                     onClick={() => {
+                                      console.log('🔍 [APPROVE BUTTON] Table info:', {
+                                        title: table.title,
+                                        tableSheet: table.meta?.sheetName,
+                                        globalSheet: selectedSheetNames?.[0],
+                                        willUseSheet: table.meta?.sheetName || selectedSheetNames?.[0]
+                                      });
                                       const event = new CustomEvent('chat:approve-update', {
                                         detail: {
                                           preview: {
@@ -476,13 +496,15 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                             messageId: message.id,
                                             tableIndex: index,
                                             title: table.title,
+                                            sheetName: table.meta?.sheetName || undefined,
                                           }
                                         }
                                       });
                                       window.dispatchEvent(event);
                                     }}
-                                    disabled={processingTables.has('approve')}
+                                    disabled={processingTables.has('approve') || (!table.meta?.sheetName && !selectedSheetNames?.[0])}
                                     className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                    title={(!table.meta?.sheetName && !selectedSheetNames?.[0]) ? 'Select a sheet first to approve this table' : 'Approve and submit this data to the sheet'}
                                   >
                                     {processingTables.has('approve') ? 'Applying...' : 'Approve'}
                                   </button>
@@ -497,6 +519,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                             messageId: message.id,
                                             tableIndex: index,
                                             title: table.title,
+                                            sheetName: table.meta?.sheetName || undefined,
                                           }
                                         }
                                       });
