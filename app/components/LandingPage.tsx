@@ -1,40 +1,63 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Database, Feather, Zap, BarChart, PieChart, Table } from 'lucide-react';
 
-export default function LandingPage({ onSignIn }) {
-  const [email, setEmail] = useState('');
+export default function LandingPage({ onSignIn, user }) {
   const [message, setMessage] = useState('');
+  const [remainingSpots, setRemainingSpots] = useState<number | null>(null);
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
-  const handleBetaSignUp = async (e) => {
-    e.preventDefault();
+  useEffect(() => {
+    const fetchRemainingSpots = async () => {
+      try {
+        // User needs to replace this with their deployed Firebase Cloud Function URL
+        const response = await fetch('YOUR_FIREBASE_CLOUD_FUNCTION_URL/getBetaSpotsCount');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        // Assuming the Cloud Function returns { count: number }
+        setRemainingSpots(100 - data.count);
+      } catch (error) {
+        console.error('Error fetching remaining spots:', error);
+        setRemainingSpots(null);
+      }
+    };
+    fetchRemainingSpots();
+  }, []);
+
+  const handleBetaSignupWithGoogle = async () => {
+    setIsSigningUp(true);
     setMessage('');
-
-    if (!email) {
-      setMessage('Please enter your email.');
-      return;
-    }
-
     try {
-      const response = await fetch('/api/beta-signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
-      });
+      // This will trigger the Google Sign-in flow via the parent component (app/page.tsx)
+      await onSignIn();
 
-      const data = await response.json();
-
-      if (response.ok) {
-        setMessage(data.message);
-        setEmail('');
+      // After successful sign-in, call a Firebase Cloud Function to register the user for beta
+      // This is a placeholder. User needs to implement the actual Cloud Function call.
+      if (user) { // Check if user object is available after sign-in
+        // Example: const response = await fetch('/api/register-beta-user', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ uid: user.uid, email: user.email }),
+        // });
+        // const data = await response.json();
+        // if (response.ok) {
+        //   setMessage(data.message);
+        //   setRemainingSpots(data.remainingSpots);
+        // } else {
+        //   setMessage(data.message || 'Failed to register for beta.');
+        // }
+        setMessage('Successfully signed in. Beta registration logic needs to be implemented.');
       } else {
-        setMessage(data.message || 'An error occurred.');
+        setMessage('Sign-in cancelled or failed.');
       }
     } catch (error) {
-      setMessage('An error occurred.');
+      console.error('Google Sign-in or beta registration failed:', error);
+      setMessage('Sign-in or beta registration failed.');
+    } finally {
+      setIsSigningUp(false);
     }
   };
 
@@ -103,27 +126,34 @@ export default function LandingPage({ onSignIn }) {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.4 }}
-            className="mb-40"
+            className="mb-64"
           >
-            <form onSubmit={handleBetaSignUp} className="flex justify-center gap-3 max-w-lg mx-auto">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email to join the private beta"
-                className="w-full px-5 py-4 bg-black/20 border border-white/10 rounded-full text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-300 backdrop-blur-sm"
-              />
+            {user ? (
+              <p className="text-xl text-white/70">You are signed in. Beta registration logic will be implemented here.</p>
+            ) : (
               <motion.button
-                type="submit"
+                onClick={handleBetaSignupWithGoogle}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-full transition-all duration-300 shadow-lg shadow-emerald-500/40"
+                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 shadow-lg shadow-emerald-500/40 flex items-center justify-center mx-auto"
+                disabled={isSigningUp}
               >
-                Get Early Access
+                {isSigningUp ? (
+                  <svg className="animate-spin h-5 w-5 mr-3 text-white" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  'Sign in with Google to Join Beta'
+                )}
               </motion.button>
-            </form>
+            )}
             {message && <p className="mt-4 text-emerald-300 font-medium">{message}</p>}
-            <p className="mt-3 text-sm text-white/40">Limited spots available for our exclusive beta.</p>
+            {remainingSpots !== null && (
+              <p className="mt-3 text-sm text-white/50">
+                {remainingSpots > 0 ? `${remainingSpots} spots left in the private beta.` : 'Beta is currently full.'}
+              </p>
+            )}
           </motion.div>
 
           <motion.div

@@ -30,7 +30,7 @@ export default function Home() {
   }
 
   if (!user) {
-    return <LandingPage onSignIn={handleSignIn} />;
+    return <LandingPage onSignIn={handleSignIn} user={user} />;
   }
 
   // Show loading state while spreadsheets are being fetched

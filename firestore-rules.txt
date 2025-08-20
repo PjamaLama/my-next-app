@@ -1,0 +1,73 @@
+// firestore.rules
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Per-user subtree (covers: users/{uid}/sessions, users/{uid}/options,
+    // users/{uid}/private/profile, users/{uid}/private/sessions/{id}/messages, etc.)
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Public metadata (fixes onSnapshot to meta/beta)
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Recent activity: user can read their own docs; create requires matching userId
+    match /recentActivity/{activityId} {
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+
+      allow read, update, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // Sheets sync area (if used on client): only authenticated users
+    match /sheets/{sheetId}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Feedback system: users can read all feedback, create their own, and vote
+    match /feedback/{feedbackId} {
+      allow read: if true; // Public read for feedback browsing
+      allow create: if request.auth != null; // Any authenticated user can create feedback
+      allow update: if request.auth != null && 
+        (resource.data.createdBy?.uid == request.auth.uid || 
+         request.resource.data.createdBy?.uid == request.auth.uid);
+      allow delete: if false; // No deletion allowed
+    }
+
+    // Feedback votes: users can only vote once per feedback item
+    match /feedback/{feedbackId}/votes/{voteId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == request.resource.data.userId);
+    }
+
+    // If you actually use these top-level collections, keep them; otherwise you can remove.
+
+    // Executions (optional - remove if not used)
+    match /executions/{executionId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null
+        && (
+          (request.resource.data.userId != null && request.resource.data.userId == request.auth.uid) ||
+          (resource != null && resource.data.userId == request.auth.uid)
+        );
+    }
+
+    // Chat sessions (optional - remove if not used, since you use users/{uid}/sessions)
+    match /chat_sessions/{sessionId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if request.auth != null
+        && (
+          resource == null || resource.data.userId == request.auth.uid ||
+          (request.resource.data.userId != null && request.resource.data.userId == request.auth.uid)
+        );
+    }
+  }
+}
