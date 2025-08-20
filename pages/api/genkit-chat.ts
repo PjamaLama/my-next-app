@@ -238,7 +238,7 @@ Content: ${fileContent.extractedData.extractedText}`;
     }
 
     // Send headers + one sample row per sheet to provide context without duplication
-    const sheetInfo: Record<string, { headers: string[], sampleRow: string[] }> = {};
+    const sheetInfo: Record<string, { headers: string[], sampleRows: string[][] }> = {};
     if (context?.sheetData) {
       console.log('🔍 [N8N] Context sheetData received:', Object.keys(context.sheetData));
       for (const [sheetName, sheetData] of Object.entries(context.sheetData)) {
@@ -249,16 +249,19 @@ Content: ${fileContent.extractedData.extractedText}`;
         });
         if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
           const headers = sheetData[0].map((h: any) => String(h ?? ''));
-          // Get the last row as sample row instead of the second row
-          const sampleRow = sheetData.length > 1 ? sheetData[sheetData.length - 1].map((cell: any) => String(cell ?? '')) : [];
+          // Get the last 3 rows as sample data
+          const sampleRows = sheetData.length > 1 ?
+            sheetData.slice(Math.max(1, sheetData.length - 3)).map((row: any) =>
+              Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
+            ) : [];
           
           sheetInfo[sheetName] = {
             headers: headers,
-            sampleRow: sampleRow
+            sampleRows: sampleRows
           };
           console.log(`✅ [N8N] Added data for ${sheetName}:`, {
             headerCount: headers.length,
-            sampleRowCount: sampleRow.length
+            sampleRowsCount: sampleRows.length
           });
         } else {
           console.log(`❌ [N8N] Skipped ${sheetName} - invalid data structure`);
@@ -316,7 +319,7 @@ Content: ${fileContent.extractedData.extractedText}`;
           name,
           {
             headerCount: (sheetData as any).headers?.length || 0,
-            sampleRowCount: (sheetData as any).sampleRow?.length || 0
+            sampleRowsCount: (sheetData as any).sampleRows?.length || 0
           }
         ])
       ),
