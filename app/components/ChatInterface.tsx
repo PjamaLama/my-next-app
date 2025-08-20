@@ -78,6 +78,20 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const [isRecording, setIsRecording] = useState(false);
   const speechRecognitionRef = useRef<any>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    const loadVoices = () => {
+      const availableVoices = window.speechSynthesis.getVoices();
+      if (availableVoices.length > 0) {
+        setVoices(availableVoices);
+        console.log('Available voices:', availableVoices);
+      }
+    };
+
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+  }, []);
 
   const handleReadAloud = (text: string, messageId: string) => {
     if (speakingMessageId === messageId) {
@@ -87,6 +101,15 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     }
 
     const utterance = new SpeechSynthesisUtterance(text);
+    const selectedVoice = voices.find(voice => voice.name.includes('Google')) || 
+                          voices.find(voice => voice.name.includes('Microsoft') && voice.lang.includes('en')) || 
+                          voices.find(voice => voice.lang === 'en-GB') ||
+                          voices.find(voice => voice.lang.startsWith('en'));
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+
     utterance.onend = () => {
       setSpeakingMessageId(null);
     };
