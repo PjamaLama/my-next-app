@@ -82,8 +82,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Include both headers AND row data for AI processing
-    const sheetDataForAI: Record<string, { headers: string[]; rows: string[][] }> = {};
+    // Send headers only to reduce payload
+    const sheetHeaders: Record<string, string[]> = {};
+    const sheetSampleRows: Record<string, string[][]> = {};
     if (context?.sheetData) {
       console.log('🔍 [N8N] Context sheetData received:', Object.keys(context.sheetData));
       for (const [sheetName, sheetData] of Object.entries(context.sheetData)) {
@@ -93,14 +94,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           firstRowIsArray: Array.isArray(sheetData) && sheetData.length > 0 ? Array.isArray(sheetData[0]) : false
         });
         if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
-          // Include both headers and rows for AI processing
-          sheetDataForAI[sheetName] = { 
-            headers: sheetData[0].map((h: any) => String(h ?? '')),
-            rows: sheetData.slice(1).map(row => row.map((cell: any) => String(cell ?? '')))
-          };
+          sheetHeaders[sheetName] = sheetData[0].map((h: any) => String(h ?? ''));
+          sheetSampleRows[sheetName] = sheetData.slice(1, 6).map(row => row.map((cell: any) => String(cell ?? '')));
           console.log(`✅ [N8N] Added data for ${sheetName}:`, {
-            headerCount: sheetDataForAI[sheetName].headers.length,
-            rowCount: sheetDataForAI[sheetName].rows.length
+            headerCount: sheetHeaders[sheetName].length,
+            sampleRowCount: sheetSampleRows[sheetName].length
           });
         } else {
           console.log(`❌ [N8N] Skipped ${sheetName} - invalid data structure`);
@@ -110,14 +108,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('❌ [N8N] No context.sheetData received');
     }
 
-    console.log('🔍 [N8N] Final sheetDataForAI:', Object.keys(sheetDataForAI));
-
-    // Prepare the final payload for the N8N webhook with full data
+    // Prepare the final payload for the N8N webhook with simplified data
     const webhookData = {
       message: message || '',
       extractedFileContents,
       selectedSheets: context?.sheetNames || [],
-      sheetData: sheetDataForAI, // Full data including headers AND rows
+      sheetHeaders: sheetHeaders,
+      sheetSampleRows: sheetSampleRows,
       conversationHistory: conversationHistory ? conversationHistory.slice(-5) : [], // Max 5 recent messages
       currentDate: new Date().toISOString(),
       // Enhanced file information for better AI processing
@@ -136,14 +133,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('🚀 [N8N] Final webhook data being sent:', {
       message: webhookData.message,
       selectedSheets: webhookData.selectedSheets,
-      sheetDataKeys: Object.keys(webhookData.sheetData),
+      sheetHeaderKeys: Object.keys(webhookData.sheetHeaders),
+      sheetSampleRowKeys: Object.keys(webhookData.sheetSampleRows),
       sheetDataStructure: Object.fromEntries(
-        Object.entries(webhookData.sheetData).map(([name, data]) => [
-          name, 
-          { 
-            headerCount: data.headers.length, 
-            rowCount: data.rows.length,
-            sampleRows: data.rows.slice(0, 3) // Log first 3 rows for debugging
+        Object.entries(webhookData.sheetHeaders).map(([name, headers]) => [
+          name,
+          {
+            headerCount: headers.length,
+            sampleRowCount: webhookData.sheetSampleRows[name]?.length || 0
           }
         ])
       ),
