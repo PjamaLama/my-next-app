@@ -263,30 +263,41 @@ Content: ${fileContent.extractedData.extractedText}`;
       console.log('❌ [N8N] No context.sheetData received');
     }
 
+    const initialFileSummary = {
+      totalFiles: extractedFileContents.length,
+      fileTypes: extractedFileContents.map((f: any) => f.type),
+      hasStructuredData: extractedFileContents.some((f: any) => f.extractedData?.type === 'structured'),
+      hasTextData: extractedFileContents.some((f: any) => f.extractedData?.extractedText && f.extractedData.extractedText.length > 0),
+      hasMetadata: extractedFileContents.some((f: any) => f.extractedData?.type === 'metadata' || f.extractedData?.type === 'document' || f.extractedData?.type === 'image'),
+      totalTextLength: extractedFileContents.reduce((sum: number, f: any) => sum + (f.extractedData?.textLength || 0), 0),
+      filesWithText: extractedFileContents.filter((f: any) => f.extractedData?.extractedText && f.extractedData.extractedText.length > 0).length,
+      needsBackendProcessing: extractedFileContents.some((f: any) => f.extractedData?.needsBackendProcessing === true),
+      // Gemini processing information
+      geminiProcessed: extractedFileContents.filter((f: any) => f.extractedData?.geminiProcessed === true).length,
+      geminiErrors: extractedFileContents.filter((f: any) => f.extractedData?.geminiError).length,
+      hasGeminiStructuredData: extractedFileContents.some((f: any) => f.extractedData?.geminiStructuredData)
+    };
+
+    const structuredExtracts = extractedFileContents
+      .filter((f: any) => f.extractedData?.geminiStructuredData)
+      .map((f: any) => f.extractedData.geminiStructuredData);
+
     // Prepare the final payload for the N8N webhook with simplified data
     const webhookData = {
       message: message || '',
-      extractedFileContents,
+      // Omit raw text to avoid duplication if Gemini structured data is available
+      extractedFileContents: initialFileSummary.hasGeminiStructuredData ? [] : extractedFileContents,
       selectedSheets: context?.sheetNames || [],
       sheetHeaders: sheetHeaders,
       sheetSampleRows: sheetSampleRows,
       conversationHistory: conversationHistory ? conversationHistory.slice(-5) : [], // Max 5 recent messages
-      currentDate: new Date().toISOString(),
       // Enhanced file information for better AI processing
       fileSummary: {
-        totalFiles: extractedFileContents.length,
-        fileTypes: extractedFileContents.map((f: any) => f.type),
-        hasStructuredData: extractedFileContents.some((f: any) => f.extractedData?.type === 'structured'),
-        hasTextData: extractedFileContents.some((f: any) => f.extractedData?.extractedText && f.extractedData.extractedText.length > 0),
-        hasMetadata: extractedFileContents.some((f: any) => f.extractedData?.type === 'metadata' || f.extractedData?.type === 'document' || f.extractedData?.type === 'image'),
-        totalTextLength: extractedFileContents.reduce((sum: number, f: any) => sum + (f.extractedData?.textLength || 0), 0),
-        filesWithText: extractedFileContents.filter((f: any) => f.extractedData?.extractedText && f.extractedData.extractedText.length > 0).length,
-        needsBackendProcessing: extractedFileContents.some((f: any) => f.extractedData?.needsBackendProcessing === true),
-        // Gemini processing information
-        geminiProcessed: extractedFileContents.filter((f: any) => f.extractedData?.geminiProcessed === true).length,
-        geminiErrors: extractedFileContents.filter((f: any) => f.extractedData?.geminiError).length,
-        hasGeminiStructuredData: extractedFileContents.some((f: any) => f.extractedData?.geminiStructuredData)
-      }
+        totalFiles: initialFileSummary.totalFiles,
+        hasGeminiStructuredData: initialFileSummary.hasGeminiStructuredData,
+        geminiErrors: initialFileSummary.geminiErrors,
+      },
+      structuredExtracts: structuredExtracts, // Add this new field
     };
 
     console.log('🚀 [N8N] Final webhook data being sent:', {
@@ -333,7 +344,7 @@ Content: ${fileContent.extractedData.extractedText}`;
     const n8nResponse = await fetch(n8nWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(webhookData),
+      body: JSON.stringify(webhookData, null, 0), // Remove redundant fields and minify JSON to lighten payload
       signal: AbortSignal.timeout(30000), // 30-second timeout
     });
 
