@@ -63,6 +63,11 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
+      console.log('🔍 [FirebaseProvider] Auth state changed:', { 
+        hasUser: !!user, 
+        userId: user?.uid,
+        email: user?.email 
+      });
       setUser(user);
       setLoading(false);
       // Persist last used Google identity for "Continue with Google" UX

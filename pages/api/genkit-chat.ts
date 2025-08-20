@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const config = {
   api: {
@@ -30,6 +31,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`🔍 [BACKEND] Processing file: ${img.name} (${img.mimeType})`, {
           hasData: !!img.data,
           dataLength: img.data ? img.data.length : 0,
+          hasFileData: !!img.extractedData?.fileData,
+          fileDataLength: img.extractedData?.fileData ? img.extractedData.fileData.length : 0,
           extractedDataType: img.extractedData?.type,
           extractedTextLength: img.extractedData?.textLength || 0
         });
@@ -37,6 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let processedFile = {
           type: img.mimeType,
           name: img.name,
+          mimeType: img.mimeType, // Add mimeType for Gemini processing
           extractedData: img.extractedData || {
             type: 'metadata',
             fileName: img.name,
@@ -45,11 +49,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
 
         // If this is a PDF with file data, extract text using pdf-parse
-        if (img.mimeType === 'application/pdf' && img.data) {
+        if (img.mimeType === 'application/pdf' && (img.data || img.extractedData?.fileData)) {
           try {
             console.log(`🔍 [PDF] Extracting text from PDF: ${img.name}`);
             const pdf = (await import('pdf-parse')).default;
-            const buffer = Buffer.from(img.data, 'base64');
+            const pdfBase64Data = img.data || img.extractedData?.fileData;
+            const buffer = Buffer.from(pdfBase64Data, 'base64');
             const pdfData = await pdf(buffer);
             const extractedText = pdfData.text || 'No text could be extracted from the PDF';
             
@@ -77,8 +82,158 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } else if (img.mimeType === 'application/pdf') {
           console.log(`❌ [PDF] PDF ${img.name} missing file data - cannot extract text`);
         }
+        
+        // If this is an image, prepare for Gemini Vision processing
+        if (img.mimeType.startsWith('image/') && (img.data || img.extractedData?.fileData)) {
+          console.log(`🖼️ [IMAGE] Preparing image ${img.name} for Gemini Vision analysis`);
+          processedFile.extractedData = {
+            type: 'image',
+            format: img.mimeType.split('/')[1],
+            fileName: img.name,
+            fileSize: img.extractedData?.fileSize || 0,
+            mimeType: img.mimeType,
+            extractedText: `Image: ${img.name} - Ready for Gemini Vision analysis`,
+            textLength: 0,
+            hasTextContent: false, // Will be determined by Gemini Vision
+            needsBackendProcessing: true, // Images need Gemini Vision processing
+            imageData: img.data || img.extractedData?.fileData, // Store base64 for Gemini Vision API
+            note: 'Image ready for Gemini Vision analysis'
+          };
+        }
 
         extractedFileContents.push(processedFile);
+      }
+    }
+
+    // Process extracted text with Gemini to create structured data
+    if (extractedFileContents.length > 0) {
+      console.log('🤖 [GEMINI] Processing extracted file contents with Gemini...');
+      
+      // Check if API key is available
+      if (!process.env.GOOGLE_GENAI_API_KEY) {
+        console.error('Missing GOOGLE_GENAI_API_KEY environment variable');
+        return res.status(500).json({ 
+          error: 'Gemini API key not configured',
+          details: 'Please ensure GOOGLE_GENAI_API_KEY is set in your environment variables'
+        });
+      }
+
+      try {
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        // Process each file with Gemini (text or vision)
+        for (const fileContent of extractedFileContents) {
+          console.log(`🤖 [GEMINI] Processing ${fileContent.name}`, {
+            mimeType: fileContent.mimeType,
+            type: fileContent.type,
+            hasExtractedText: !!fileContent.extractedData?.extractedText,
+            extractedTextLength: fileContent.extractedData?.extractedText?.length || 0
+          });
+          
+          try {
+            let structuredData;
+            
+            if (fileContent.mimeType.startsWith('image/') && fileContent.extractedData?.imageData && fileContent.extractedData.imageData !== 'undefined') {
+              // Use Gemini Vision API for images
+              console.log(`🖼️ [GEMINI VISION] Processing image ${fileContent.name} with Vision API`);
+              
+              const imagePart = {
+                inlineData: {
+                  data: fileContent.extractedData.imageData,
+                  mimeType: fileContent.mimeType,
+                },
+              };
+              
+              const visionPrompt = `Analyze this image and extract structured data. Look for:
+- Receipts: date, vendor, total amount, items, tax
+- Invoices: invoice number, date, vendor, amounts, line items
+- Forms: form fields, dates, names, amounts
+- Any other structured information
+
+Output as JSON array of objects with appropriate keys. Normalize dates to YYYY-MM-DD, amounts to numbers.`;
+
+              const result = await model.generateContent([visionPrompt, imagePart]);
+              const response = result.response;
+              const text = response.text();
+
+              if (!text || text.trim().length === 0) {
+                throw new Error('Gemini Vision API returned empty response');
+              }
+
+              try {
+                const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+                if (jsonMatch && jsonMatch[1]) {
+                  structuredData = JSON.parse(jsonMatch[1]);
+                } else {
+                  structuredData = JSON.parse(text);
+                }
+              } catch (jsonError) {
+                console.error('Failed to parse Gemini Vision JSON response:', jsonError);
+                console.error('Gemini Vision raw text response:', text);
+                structuredData = { rawText: text };
+              }
+              
+              // Update extracted text with Gemini's analysis
+              fileContent.extractedData.extractedText = text;
+              fileContent.extractedData.textLength = text.length;
+              fileContent.extractedData.hasTextContent = text.length > 0;
+              
+            } else if (fileContent.extractedData?.extractedText && fileContent.extractedData.extractedText.length > 0 && fileContent.extractedData.extractedText !== 'undefined') {
+              // Use Gemini text API for text-based files
+              console.log(`📝 [GEMINI TEXT] Processing text from ${fileContent.name} with ${fileContent.extractedData.extractedText.length} characters`);
+              
+              const prompt = `Extract structured data from this file content. Output as JSON array of objects with keys like date, vendor, amount, category, details. Infer categories (e.g., Food, Fuel, Accommodation). Normalize dates to YYYY-MM-DD, amounts to numbers.
+
+File: ${fileContent.name}
+Content: ${fileContent.extractedData.extractedText}`;
+
+              const result = await model.generateContent(prompt);
+              const response = result.response;
+              const text = response.text();
+
+              if (!text || text.trim().length === 0) {
+                throw new Error('Gemini API returned empty response');
+              }
+
+              try {
+                const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+                if (jsonMatch && jsonMatch[1]) {
+                  structuredData = JSON.parse(jsonMatch[1]);
+                } else {
+                  structuredData = JSON.parse(text);
+                }
+              } catch (jsonError) {
+                console.error('Failed to parse Gemini JSON response:', jsonError);
+                console.error('Gemini raw text response:', text);
+                structuredData = { rawText: text };
+              }
+            } else {
+              console.log(`⏭️ [GEMINI] Skipping ${fileContent.name} - no content to process`);
+              continue;
+            }
+
+            // Update the file content with Gemini's structured data
+            fileContent.extractedData.geminiStructuredData = structuredData;
+            fileContent.extractedData.geminiProcessed = true;
+            
+            console.log(`✅ [GEMINI] Successfully processed ${fileContent.name}:`, {
+              structuredDataType: Array.isArray(structuredData) ? 'array' : typeof structuredData,
+              structuredDataLength: Array.isArray(structuredData) ? structuredData.length : 'N/A'
+            });
+
+          } catch (geminiError) {
+            console.error(`❌ [GEMINI] Error processing file ${fileContent.name}:`, geminiError);
+            fileContent.extractedData.geminiError = (geminiError as Error).message;
+            fileContent.extractedData.geminiProcessed = false;
+          }
+        }
+      } catch (error) {
+        console.error('❌ [GEMINI] Failed to initialize Gemini:', error);
+        return res.status(500).json({ 
+          error: 'Failed to process files with Gemini',
+          details: (error as Error).message
+        });
       }
     }
 
@@ -126,7 +281,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         hasMetadata: extractedFileContents.some((f: any) => f.extractedData?.type === 'metadata' || f.extractedData?.type === 'document' || f.extractedData?.type === 'image'),
         totalTextLength: extractedFileContents.reduce((sum: number, f: any) => sum + (f.extractedData?.textLength || 0), 0),
         filesWithText: extractedFileContents.filter((f: any) => f.extractedData?.extractedText && f.extractedData.extractedText.length > 0).length,
-        needsBackendProcessing: extractedFileContents.some((f: any) => f.extractedData?.needsBackendProcessing === true)
+        needsBackendProcessing: extractedFileContents.some((f: any) => f.extractedData?.needsBackendProcessing === true),
+        // Gemini processing information
+        geminiProcessed: extractedFileContents.filter((f: any) => f.extractedData?.geminiProcessed === true).length,
+        geminiErrors: extractedFileContents.filter((f: any) => f.extractedData?.geminiError).length,
+        hasGeminiStructuredData: extractedFileContents.some((f: any) => f.extractedData?.geminiStructuredData)
       }
     };
 
@@ -153,7 +312,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         hasMetadata: webhookData.fileSummary.hasMetadata,
         totalTextLength: webhookData.fileSummary.totalTextLength,
         filesWithText: webhookData.fileSummary.filesWithText,
-        needsBackendProcessing: webhookData.fileSummary.needsBackendProcessing
+        needsBackendProcessing: webhookData.fileSummary.needsBackendProcessing,
+        // Include Gemini processing stats
+        geminiProcessed: webhookData.fileSummary.geminiProcessed,
+        geminiErrors: webhookData.fileSummary.geminiErrors,
+        hasGeminiStructuredData: webhookData.fileSummary.hasGeminiStructuredData
       }
     });
 

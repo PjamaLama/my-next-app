@@ -47,6 +47,7 @@ interface ChatContextType {
   
   // Session management
   sessions: ChatSession[];
+  sessionsLoading: boolean; // Add this to track session loading state
   currentSessionId: string | null;
   setCurrentSessionId: (sessionId: string | null) => void;
   createSession: (title?: string, spreadsheetId?: string, sheetNames?: string[]) => Promise<string>;
@@ -80,17 +81,23 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   
   // Session management state
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState<boolean>(true); // Add this state
   const [currentSessionId, _setCurrentSessionId] = useState<string | null>(null);
 
   // Load and subscribe to sessions for the logged-in user
   useEffect(() => {
     if (!user) {
+      console.log('🔍 [ChatProvider] No user, clearing sessions');
       setSessions([]);
       setChatMessages([]);
       _setCurrentSessionId(null);
+      setSessionsLoading(false);
       return;
     }
 
+    console.log('🔍 [ChatProvider] User authenticated, loading sessions for:', user.uid);
+    setSessionsLoading(true); // Start loading sessions
+    
     const sessionsColRef = collection(db, 'users', user.uid, 'sessions');
     const q = query(sessionsColRef, orderBy('createdAt', 'desc'));
 
@@ -121,22 +128,34 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         });
       }
       
+      console.log('🔍 [ChatProvider] Loaded sessions:', uniqueSessions.map(s => ({ id: s.id, title: s.title })));
+      
       setSessions(uniqueSessions);
       
       // Set current session if none is selected
       if (!currentSessionId && uniqueSessions.length > 0) {
+        console.log('🔍 [ChatProvider] Setting current session to first available:', uniqueSessions[0].id);
         _setCurrentSessionId(uniqueSessions[0].id);
+      } else if (currentSessionId) {
+        console.log('🔍 [ChatProvider] Current session already set:', currentSessionId);
+      } else {
+        console.log('🔍 [ChatProvider] No sessions available, currentSessionId remains null');
       }
+      
+      setSessionsLoading(false); // Sessions loaded
     }, (err) => {
       console.error("Error fetching sessions:", err);
       setError("Failed to load sessions.");
+      setSessionsLoading(false); // Stop loading on error
     });
 
     return () => {
+      console.log('🔍 [ChatProvider] Cleaning up session subscription');
       unsubscribe();
       // Clean up local state when unmounting
       setSessions([]);
       _setCurrentSessionId(null);
+      setSessionsLoading(false);
     };
   }, [user]); // Removed currentSessionId dependency to prevent infinite loop
 
@@ -181,18 +200,53 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
 
   // Function to add a new message to the database
   const addMessage = async (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
+    console.log('🔍 [addMessage] Starting with:', { 
+      hasUser: !!user, 
+      currentSessionId, 
+      sessionsCount: sessions.length,
+      sessionsLoading,
+      messageRole: message.role 
+    });
+    
     if (!user) {
-      setError("You must be logged in to send messages.");
+      const errorMsg = "You must be logged in to send messages.";
+      console.error('🔍 [addMessage] Error:', errorMsg);
+      setError(errorMsg);
       return;
     }
 
-    // At this point, ensureSession should have been called, so currentSessionId should exist
-    if (!currentSessionId) {
-      setError("No active chat session. Please try again.");
+    // Check if sessions are still loading
+    if (sessionsLoading) {
+      const errorMsg = "Please wait for chat sessions to load before sending messages.";
+      console.error('🔍 [addMessage] Error:', errorMsg);
+      setError(errorMsg);
       return;
     }
 
-    const messagesColRef = collection(db, 'users', user.uid, 'sessions', currentSessionId, 'messages');
+    // Get the session ID, creating one if needed
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      console.log('🔍 [addMessage] No current session, calling ensureSession');
+      try {
+        sessionId = await ensureSession();
+        console.log('🔍 [addMessage] ensureSession returned:', sessionId);
+      } catch (error) {
+        console.error("🔍 [addMessage] Failed to ensure session:", error);
+        setError("Failed to create chat session. Please try again.");
+        return;
+      }
+    }
+
+    if (!sessionId) {
+      const errorMsg = "No active chat session. Please try again.";
+      console.error('🔍 [addMessage] Error:', errorMsg);
+      setError(errorMsg);
+      return;
+    }
+
+    console.log('🔍 [addMessage] Using session ID:', sessionId);
+    
+    const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
     
     try {
       // Additional safety check: ensure no nested arrays exist
@@ -217,9 +271,11 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         timestamp: new Date(),
       };
 
+      console.log('🔍 [addMessage] Adding message to Firestore with session ID:', sessionId);
       await addDoc(messagesColRef, sanitizedMessage);
+      console.log('🔍 [addMessage] Message successfully added to Firestore');
     } catch (err) {
-      console.error("Error sending message:", err);
+      console.error("🔍 [addMessage] Error sending message:", err);
       setError("Failed to send message.");
     }
   };
@@ -236,11 +292,15 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   // Session management functions
   const createSession = async (title?: string, spreadsheetId?: string, sheetNames?: string[]): Promise<string> => {
     if (!user) {
-      setError("You must be logged in to create sessions.");
-      return "";
+      const errorMsg = "You must be logged in to create sessions.";
+      console.error('🔍 [createSession] Error:', errorMsg);
+      setError(errorMsg);
+      throw new Error(errorMsg);
     }
 
     try {
+      console.log('🔍 [createSession] Starting with:', { title, spreadsheetId, sheetNames, existingSessionsCount: sessions.length });
+      
       // Check if we already have a session with the same context to prevent duplicates
       const existingSession = sessions.find(s => 
         s.spreadsheetId === spreadsheetId && 
@@ -248,6 +308,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       );
       
       if (existingSession) {
+        console.log('🔍 [createSession] Found existing session:', existingSession.id);
         // Return existing session instead of creating a duplicate
         _setCurrentSessionId(existingSession.id);
         return existingSession.id;
@@ -268,6 +329,8 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         sessionData.sheetNames = sheetNames;
       }
 
+      console.log('🔍 [createSession] Creating session with data:', sessionData);
+      
       const sessionsColRef = collection(db, 'users', user.uid, 'sessions');
       const docRef = await addDoc(sessionsColRef, sessionData);
       
@@ -276,15 +339,18 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         ...sessionData,
       };
       
+      console.log('🔍 [createSession] Successfully created session:', docRef.id);
+      
       setSessions(prev => [...prev, newSession]);
       // Clear chat messages when creating a new session
       setChatMessages([]);
       _setCurrentSessionId(docRef.id);
       return docRef.id;
     } catch (err) {
-      console.error("Error creating session:", err);
-      setError("Failed to create session.");
-      return "";
+      const errorMsg = "Failed to create session.";
+      console.error('🔍 [createSession] Error:', err);
+      setError(errorMsg);
+      throw new Error(errorMsg);
     }
   };
 
@@ -313,15 +379,69 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   };
 
   const ensureSession = async (): Promise<string> => {
-    if (currentSessionId) return currentSessionId;
+    console.log('🔍 [ensureSession] Starting with:', { currentSessionId, sessionsCount: sessions.length, sessionsLoading });
     
-    if (sessions.length === 0) {
-      // Create a session without spreadsheet context as a fallback
-      return await createSession();
+    // Wait for sessions to finish loading
+    if (sessionsLoading) {
+      console.log('🔍 [ensureSession] Sessions still loading, waiting...');
+      // Wait for sessions to load (with a timeout to prevent infinite waiting)
+      let attempts = 0;
+      const maxAttempts = 50; // 5 seconds max wait
+      while (sessionsLoading && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+      if (sessionsLoading) {
+        throw new Error('Timeout waiting for sessions to load');
+      }
     }
     
-    _setCurrentSessionId(sessions[0].id);
-    return sessions[0].id;
+    if (currentSessionId) {
+      console.log('🔍 [ensureSession] Using existing session:', currentSessionId);
+      return currentSessionId;
+    }
+    
+    if (sessions.length === 0) {
+      console.log('🔍 [ensureSession] No sessions exist, creating new one');
+      // Try to create a session with retries
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          const newSessionId = await createSession();
+          console.log('🔍 [ensureSession] Created new session:', newSessionId);
+          
+          if (newSessionId) {
+            // Ensure the currentSessionId is set to the newly created session
+            _setCurrentSessionId(newSessionId);
+            console.log('🔍 [ensureSession] Set currentSessionId to:', newSessionId);
+            return newSessionId;
+          } else {
+            throw new Error('createSession returned empty string');
+          }
+        } catch (error) {
+          attempts++;
+          console.error(`🔍 [ensureSession] Attempt ${attempts} failed:`, error);
+          
+          if (attempts >= maxAttempts) {
+            console.error('🔍 [ensureSession] All attempts failed');
+            throw new Error('Failed to create new chat session after multiple attempts');
+          }
+          
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      throw new Error('Failed to create new chat session');
+    }
+    
+    // Use the first available session
+    const firstSessionId = sessions[0].id;
+    console.log('🔍 [ensureSession] Using first available session:', firstSessionId);
+    _setCurrentSessionId(firstSessionId);
+    return firstSessionId;
   };
 
   const appendMessage = async (sessionId: string, message: Omit<ChatMessage, 'id' | 'timestamp'>): Promise<void> => {
@@ -362,6 +482,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     
     // Session management
     sessions,
+    sessionsLoading, // Expose sessionsLoading
     currentSessionId,
     setCurrentSessionId,
     createSession,

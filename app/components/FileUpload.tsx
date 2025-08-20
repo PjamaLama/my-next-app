@@ -18,30 +18,45 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   }
 };
 
-// Helper function to extract text from images using OCR-like approach
+// Helper function to extract text from images using Gemini Vision API
 const extractImageText = async (file: File): Promise<string> => {
   try {
-    // For now, we'll use a basic approach
-    // In production, you might want to use a real OCR service
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = document.createElement('img') as HTMLImageElement;
+    // Convert image to base64 for Gemini Vision API
+    const arrayBuffer = await file.arrayBuffer();
+    const base64Data = arrayBufferToBase64(arrayBuffer);
     
-    return new Promise((resolve) => {
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx?.drawImage(img, 0, 0);
-        
-        // Basic text detection (this is simplified - real OCR would be better)
-        // For now, we'll return metadata about the image
-        resolve(`Image: ${img.width}x${img.height} pixels, ${file.size} bytes`);
-      };
-      
-      img.src = URL.createObjectURL(file);
-    });
+    // For now, we'll mark this as needing Gemini processing
+    // The actual Gemini Vision processing will happen in the backend
+    return `Image: ${file.name} - Ready for Gemini Vision analysis`;
   } catch (error) {
-    console.warn('Image text extraction failed:', error);
+    console.warn('Image processing failed:', error);
+    return '';
+  }
+};
+
+// Add this function for PDF text extraction
+const extractPDFText = async (file: File): Promise<string> => {
+  try {
+    // For now, we'll use a simple approach that works with text-based PDFs
+    // You can install pdfjs-dist for better PDF parsing if needed
+    
+    // Try to read as text first (works for text-based PDFs)
+    const text = await file.text();
+    
+    // Basic PDF text extraction - look for text content
+    if (text.includes('(') && text.includes(')')) {
+      // This looks like PDF content, try to extract readable text
+      const lines = text.split('\n')
+        .filter(line => line.trim().length > 0)
+        .filter(line => !line.startsWith('%') && !line.startsWith('/'))
+        .slice(0, 50); // Take first 50 meaningful lines
+      
+      return lines.join('\n');
+    }
+    
+    return text;
+  } catch (error) {
+    console.warn('PDF text extraction failed, treating as scanned document:', error);
     return '';
   }
 };
@@ -140,17 +155,13 @@ export default function FileUpload({
           };
         }
       } else if (file.type === 'application/pdf') {
-        // Mark PDFs for backend processing - the backend will use pdf-parse for reliable text extraction
-        // Convert file to base64 for backend processing
+        // Store PDF file data for backend processing with pdf-parse
         try {
-          console.log(`🔍 [PDF] Starting PDF processing for: ${file.name}, size: ${file.size} bytes`);
+          console.log(`🔍 [PDF] Preparing PDF ${file.name} for backend processing`);
           
+          // Convert file to base64 for backend processing
           const arrayBuffer = await file.arrayBuffer();
-          console.log(`🔍 [PDF] ArrayBuffer created, size: ${arrayBuffer.byteLength} bytes`);
-          
-          // Use a more robust base64 encoding method
           const base64Data = arrayBufferToBase64(arrayBuffer);
-          console.log(`🔍 [PDF] Base64 conversion successful, length: ${base64Data.length} characters`);
           
           uploadedFile.extractedData = {
             type: 'document',
@@ -158,39 +169,43 @@ export default function FileUpload({
             fileName: file.name,
             fileSize: file.size,
             mimeType: file.type,
-            extractedText: `PDF document: ${file.name} (${file.size} bytes) - Text extraction will be performed on the backend`,
+            extractedText: `PDF document: ${file.name} - Ready for backend processing`,
             textLength: 0,
-            hasTextContent: false, // Will be determined by backend
-            needsBackendProcessing: true, // Always true for PDFs - backend handles text extraction
-            pageCount: 0, // Will be determined by backend
-            isScannedDocument: false, // Will be determined by backend
-            note: 'PDF text extraction performed on backend using pdf-parse library'
+            hasTextContent: false, // Will be determined by backend pdf-parse
+            needsBackendProcessing: true, // Backend will use pdf-parse
+            pageCount: 0,
+            isScannedDocument: false,
+            note: 'PDF ready for backend pdf-parse processing'
           };
           
           // Store the base64 data for backend processing
           uploadedFile.fileData = base64Data;
-          console.log(`🔍 [PDF] Successfully processed PDF: ${file.name}, fileData length: ${uploadedFile.fileData.length}`);
+          console.log(`🔍 [PDF] Successfully prepared PDF: ${file.name}, fileData length: ${uploadedFile.fileData.length}`);
         } catch (conversionError) {
           console.error(`❌ [PDF] Failed to convert PDF to base64: ${file.name}`, conversionError);
-          // Fallback to metadata only
           uploadedFile.extractedData = {
             type: 'document',
             format: 'pdf',
             fileName: file.name,
             fileSize: file.size,
             mimeType: file.type,
-            extractedText: `PDF document: ${file.name} (${file.size} bytes) - Base64 conversion failed: ${conversionError instanceof Error ? conversionError.message : 'Unknown error'}`,
+            extractedText: `PDF document: ${file.name} - Base64 conversion failed`,
             textLength: 0,
             hasTextContent: false,
             needsBackendProcessing: true,
             pageCount: 0,
-            isScannedDocument: false,
+            isScannedDocument: true,
             conversionError: conversionError instanceof Error ? conversionError.message : 'Unknown error'
           };
         }
       } else if (file.type.startsWith('image/')) {
-        // Extract text/description from image
+        // Process image for Gemini Vision API analysis
         const extractedText = await extractImageText(file);
+        
+        // Convert image to base64 for Gemini Vision processing
+        const arrayBuffer = await file.arrayBuffer();
+        const base64Data = arrayBufferToBase64(arrayBuffer);
+        
         uploadedFile.extractedData = {
           type: 'image',
           format: file.type.split('/')[1],
@@ -199,9 +214,13 @@ export default function FileUpload({
           mimeType: file.type,
           extractedText: extractedText,
           textLength: extractedText.length,
-          hasTextContent: extractedText.length > 0,
-          needsBackendProcessing: false // Images are processed client-side
+          hasTextContent: false, // Will be determined by Gemini Vision
+          needsBackendProcessing: true, // Images need Gemini Vision processing
+          note: 'Image ready for Gemini Vision analysis'
         };
+        
+        // Store the base64 data for backend processing
+        uploadedFile.fileData = base64Data;
       } else if (file.type.includes('spreadsheet')) {
         // For Excel files, extract metadata and prepare for backend processing
         uploadedFile.extractedData = {

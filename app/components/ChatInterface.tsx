@@ -13,7 +13,7 @@ interface ChatInterfaceProps {
 }
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages } = useChat();
+  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -23,6 +23,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false); // New state
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -167,47 +169,58 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     setUploadedFiles(files);
   }, []);
 
+  const handleQuickReplyClick = (reply: string) => {
+    if (isSending || isProcessingFiles || sessionsLoading) return; // Added sessionsLoading
+    setInputValue(reply);
+    setTimeout(() => {
+      formRef.current?.requestSubmit();
+    }, 100);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending) return;
+    if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading) return; // Added sessionsLoading
 
-    const message = inputValue.trim();
+    const message = inputValue.trim() || 'Extract data from uploaded files and add to selected sheets';
     setInputValue('');
     setIsSending(true);
+    setIsProcessingFiles(true); // Start processing files
+
+    let structuredExtracts: any[] = [];
 
     try {
-      // Ensure we have a valid session before adding messages
       await ensureSession();
-      
+
+      // If files are uploaded, prepare them for processing
+      if (uploadedFiles.length > 0) {
+        // Convert files to format expected by genkit-chat API
+        // For PDFs and images, we need the actual file data for backend processing
+        structuredExtracts = uploadedFiles.map(file => {
+          const fileData: any = {
+            name: file.name,
+            mimeType: file.mimeType,
+            extractedData: file.extractedData,
+          };
+          
+          // For PDFs and images, include the actual file data for backend processing
+          if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
+            // Include base64 data if available
+            if (file.fileData) {
+              fileData.data = file.fileData;
+            }
+          }
+          
+          return fileData;
+        });
+        
+        console.log('🔍 [EXTRACT] Prepared files for backend processing:', structuredExtracts);
+      }
+
       // Add user message to chat
       await addMessage({
         role: 'user',
         content: message,
       });
-
-      // Prepare files data for API - include file data for PDFs so backend can extract text
-      const filesData = uploadedFiles.map(file => ({
-        name: file.name,
-        mimeType: file.mimeType,
-        // Include file data for PDFs so backend can extract text
-        data: file.mimeType === 'application/pdf' ? file.fileData : undefined,
-        extractedData: file.extractedData || {
-          type: 'metadata',
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.mimeType
-        }
-      }));
-
-      // Debug logging for file data
-      console.log('🔍 [CHAT] Files data being prepared:', filesData.map(f => ({
-        name: f.name,
-        mimeType: f.mimeType,
-        hasData: !!f.data,
-        dataLength: f.data ? f.data.length : 0,
-        extractedDataType: f.extractedData?.type,
-        extractedTextLength: f.extractedData?.textLength || 0
-      })));
 
       // Call AI service to get response
       const response = await fetch('/api/genkit-chat', {
@@ -223,25 +236,9 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             role: m.role,
             content: m.content
           })),
-          images: filesData
+          // Pass files as images for processing by genkit-chat
+          images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
         })
-      });
-
-      // Debug logging
-      console.log('🔍 [CHAT] Sending to genkit-chat:', {
-        message,
-        selectedSheetNames,
-        sheetDataCacheKeys: Object.keys(sheetDataCache || {}),
-        sheetDataCacheSample: Object.fromEntries(
-          Object.entries(sheetDataCache || {}).map(([name, data]) => [
-            name, 
-            { 
-              isArray: Array.isArray(data), 
-              length: Array.isArray(data) ? data.length : 'N/A',
-              hasHeaders: Array.isArray(data) && data.length > 0 ? Array.isArray(data[0]) : false
-            }
-          ])
-        )
       });
 
       if (response.ok) {
@@ -323,6 +320,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
       });
     } finally {
       setIsSending(false);
+      setIsProcessingFiles(false); // End processing files
     }
   };
 
@@ -334,12 +332,12 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     }).format(timestamp);
   };
 
-  if (loading) {
+  if (loading || sessionsLoading) {
     return (
       <div className={`flex-1 flex items-center justify-center ${className}`}>
         <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
           <Loader2 className="animate-spin h-5 w-5" />
-          <span>Loading chat...</span>
+          <span>{sessionsLoading ? 'Loading sessions...' : 'Loading chat...'}</span>
         </div>
       </div>
     );
@@ -378,7 +376,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                   {(!message.tables || message.tables.length === 0) && message.content}
                 </div>
                 {message.tables && message.tables.length > 0 && (
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-3 space-y-4">
                     {message.tables.map((table, index) => (
                       <div key={index} className="bg-white/10 rounded p-3">
                         {table.title && (
@@ -529,6 +527,19 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                     </ul>
                   </div>
                 )}
+                {message.quickReplies && message.quickReplies.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap gap-2">
+                    {message.quickReplies.map((reply, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleQuickReplyClick(reply)}
+                        className="px-3 py-1.5 text-xs font-medium bg-sky-600 hover:bg-sky-700 text-white rounded-full transition-colors"
+                      >
+                        {reply}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="text-xs opacity-70 mt-2">
                   {formatTimestamp(message.timestamp)}
                 </div>
@@ -546,12 +557,29 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         </div>
       )}
 
+      {/* Sessions Loading Error */}
+      {!sessionsLoading && sessions.length === 0 && (
+        <div className="mx-6 mb-4 p-3 bg-yellow-500/10 border border-yellow-400/30 rounded-lg text-yellow-200 text-sm">
+          Unable to load chat sessions. Please refresh the page or try again.
+        </div>
+      )}
+
       {/* Input Area */}
       <div className="border-t border-white/10 p-6">
         {/* Sheet Selector - Added above input field */}
         <div className="mb-4">
           <SheetChipSelector />
         </div>
+        
+        {/* Sessions Loading Indicator */}
+        {sessionsLoading && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-400/30 rounded-lg text-blue-200 text-sm">
+            <div className="flex items-center gap-2">
+              <Loader2 className="animate-spin h-4 w-4" />
+              <span>Setting up your chat session...</span>
+            </div>
+          </div>
+        )}
         
         {/* File Upload Section */}
         <div className="mb-4">
@@ -575,7 +603,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           )}
         </div>
         
-        <form onSubmit={handleSubmit} className="flex gap-3">
+        <form ref={formRef} onSubmit={handleSubmit} className="flex gap-3">
           <input
             type="text"
             value={inputValue}
@@ -586,7 +614,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           />
           <button
             type="submit"
-            disabled={((!inputValue.trim() && uploadedFiles.length === 0) || isSending)}
+            disabled={((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading)}
             className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center gap-2"
           >
             {isSending ? (
