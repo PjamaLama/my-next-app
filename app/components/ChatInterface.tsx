@@ -63,22 +63,23 @@ const extractPDFText = async (file: File): Promise<string> => {
 };
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId } = useChat();
+  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [processingTables, setProcessingTables] = useState<Set<string>>(new Set());
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editModalData, setEditModalData] = useState<any>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const [processingTables, setProcessingTables] = useState<Set<string>>(new Set());
   const [isRecording, setIsRecording] = useState(false);
   const speechRecognitionRef = useRef<any>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -671,7 +672,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       if (table.headers && rows) {
                                         const headers = Array.isArray(table.headers) ? table.headers : [];
                                         // Pass all rows, transformed to the expected format for EditRowModal
-                                        const normalizedRows = rows.map((row: any[]) =>
+                                        const normalizedRows = (rows as any[]).map((row: any[]) =>
                                           headers.map((h, i) => ({ column: h, value: String(row?.[i] ?? '') }))
                                         );
                                         setEditModalData({
@@ -787,13 +788,52 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
 
       {error && (
         <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
-          {error}
+          <div className="flex items-center justify-between">
+            <span>{error}</span>
+            {retryCount < 3 && (
+              <button 
+                onClick={retrySessionLoad}
+                className="ml-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 rounded text-xs transition-colors"
+              >
+                Retry
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {!sessionsLoading && sessions.length === 0 && (
-        <div className="mx-6 mb-4 p-3 bg-yellow-500/10 border border-yellow-400/30 rounded-lg text-yellow-200 text-sm">
-          Unable to load chat sessions. Please refresh the page or try again.
+      {!sessionsLoading && sessions.length === 0 && !error && (
+        <div className="mx-6 mb-4 p-3 bg-blue-500/10 border border-blue-400/30 rounded-lg text-blue-200 text-sm">
+          <div className="flex items-center justify-between">
+            <span>Setting up your first chat session...</span>
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!sessionsLoading && sessions.length === 0 && error && (
+        <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
+          <div className="flex items-center justify-between">
+            <span>Failed to create chat session automatically</span>
+            <button 
+              onClick={async () => {
+                setIsCreatingSession(true);
+                try {
+                  await clearErrorAndCreateSession();
+                } catch (err) {
+                  console.error('Failed to create session:', err);
+                } finally {
+                  setIsCreatingSession(false);
+                }
+              }}
+              disabled={isCreatingSession}
+              className="ml-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 rounded text-xs transition-colors disabled:opacity-50"
+            >
+              {isCreatingSession ? 'Creating...' : 'Create New Chat'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -920,4 +960,3 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     </div>
   );
 }
-""

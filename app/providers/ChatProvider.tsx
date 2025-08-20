@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { db, useFirebase } from './FirebaseProvider';
 
@@ -42,6 +42,7 @@ interface ChatContextType {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   loading: boolean;
   error: string | null;
+  setError: React.Dispatch<React.SetStateAction<string | null>>;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<void>;
   // Persist edits/removals to a message's tables so UI state survives snapshots
   updateMessageTables: (messageId: string, tables: Array<{
@@ -67,6 +68,13 @@ interface ChatContextType {
   deleteSession: (sessionId: string) => Promise<void>;
   ensureSession: () => Promise<string>;
   appendMessage: (sessionId: string, message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<void>;
+  
+  // Error recovery
+  retrySessionLoad: () => void;
+  retryCount: number;
+  
+  // Error handling
+  clearErrorAndCreateSession: () => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -96,6 +104,22 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState<boolean>(true); // Add this state
   const [currentSessionId, _setCurrentSessionId] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0); // Add retry counter
+  const [lastError, setLastError] = useState<Error | null>(null); // Track last error for retry logic
+
+  // Retry function for failed session loads
+  const retrySessionLoad = useCallback(() => {
+    if (retryCount < 3) { // Limit retries to 3 attempts
+      console.log(`🔍 [ChatProvider] Retrying session load (attempt ${retryCount + 1}/3)`);
+      setRetryCount(prev => prev + 1);
+      setError(null);
+      // Force re-run of the useEffect by updating a dependency
+      setSessionsLoading(true);
+    } else {
+      console.error('🔍 [ChatProvider] Max retry attempts reached');
+      setError("Failed to load sessions after multiple attempts. Please refresh the page.");
+    }
+  }, [retryCount]);
 
   // Load and subscribe to sessions for the logged-in user
   useEffect(() => {
@@ -151,15 +175,46 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         setCurrentSessionId(uniqueSessions[0].id);
       } else if (currentSessionId) {
         console.log('🔍 [ChatProvider] Current session already set:', currentSessionId);
+      } else if (uniqueSessions.length === 0) {
+        // No sessions exist - create a new one automatically
+        console.log('🔍 [ChatProvider] No sessions found, creating new session automatically');
+        createSession('New Chat').then(newSessionId => {
+          console.log('🔍 [ChatProvider] Auto-created new session:', newSessionId);
+          setCurrentSessionId(newSessionId);
+        }).catch(error => {
+          console.error('🔍 [ChatProvider] Failed to auto-create session:', error);
+          setError('Failed to create initial chat session. Please refresh the page.');
+        });
       } else {
         console.log('🔍 [ChatProvider] No sessions available, currentSessionId remains null');
       }
       
       setSessionsLoading(false); // Sessions loaded
+      setError(null); // Clear any previous errors on successful load
     }, (err) => {
       console.error("Error fetching sessions:", err);
-      setError("Failed to load sessions.");
+      setLastError(err);
+      
+      // Provide more specific error messages based on error type
+      let errorMessage = "Failed to load sessions.";
+      if (err.code === 'permission-denied') {
+        errorMessage = "Access denied. Please check your permissions.";
+      } else if (err.code === 'unavailable') {
+        errorMessage = "Service temporarily unavailable. Please try again.";
+      } else if (err.code === 'resource-exhausted') {
+        errorMessage = "Service quota exceeded. Please try again later.";
+      } else if (err.code === 'unauthenticated') {
+        errorMessage = "Authentication required. Please sign in again.";
+      }
+      
+      setError(errorMessage);
       setSessionsLoading(false); // Stop loading on error
+      
+      // Auto-retry for certain error types
+      if (err.code === 'unavailable' && retryCount < 3) {
+        console.log('🔍 [ChatProvider] Auto-retrying for unavailable service...');
+        setTimeout(() => retrySessionLoad(), 2000); // Retry after 2 seconds
+      }
     });
 
     return () => {
@@ -202,9 +257,23 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       });
       setChatMessages(messages);
       setLoading(false);
+      setError(null); // Clear any previous errors on successful load
     }, (err) => {
       console.error("Error fetching chat history:", err);
-      setError("Failed to load chat history.");
+      
+      // Provide more specific error messages based on error type
+      let errorMessage = "Failed to load chat history.";
+      if (err.code === 'permission-denied') {
+        errorMessage = "Access denied to chat history. Please check your permissions.";
+      } else if (err.code === 'unavailable') {
+        errorMessage = "Chat history temporarily unavailable. Please try again.";
+      } else if (err.code === 'resource-exhausted') {
+        errorMessage = "Service quota exceeded. Please try again later.";
+      } else if (err.code === 'unauthenticated') {
+        errorMessage = "Authentication required. Please sign in again.";
+      }
+      
+      setError(errorMessage);
       setLoading(false);
     });
 
@@ -550,11 +619,25 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
   };
 
+  const clearErrorAndCreateSession = async () => {
+    setError(null);
+    try {
+      const newSessionId = await createSession('New Chat');
+      setCurrentSessionId(newSessionId);
+      console.log('🔍 [ChatProvider] Successfully created new session:', newSessionId);
+    } catch (error) {
+      console.error('🔍 [ChatProvider] Failed to create session:', error);
+      setError('Failed to create chat session. Please try again.');
+      throw error; // Re-throw so calling component can handle it
+    }
+  };
+
   const value = {
     chatMessages,
     setChatMessages, // Keep for direct manipulation if needed, e.g., optimistic updates
     loading,
     error,
+    setError, // Expose setError
     addMessage,
     updateMessageTables,
     
@@ -567,6 +650,13 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     deleteSession,
     ensureSession,
     appendMessage,
+    
+    // Error recovery
+    retrySessionLoad,
+    retryCount,
+    
+    // Error handling
+    clearErrorAndCreateSession,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
