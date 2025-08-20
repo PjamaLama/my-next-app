@@ -237,9 +237,8 @@ Content: ${fileContent.extractedData.extractedText}`;
       }
     }
 
-    // Send headers only to reduce payload
-    const sheetHeaders: Record<string, string[]> = {};
-    const sheetSampleRows: Record<string, string[][]> = {};
+    // Send headers + one sample row per sheet to provide context without duplication
+    const sheetInfo: Record<string, { headers: string[], sampleRow: string[] }> = {};
     if (context?.sheetData) {
       console.log('🔍 [N8N] Context sheetData received:', Object.keys(context.sheetData));
       for (const [sheetName, sheetData] of Object.entries(context.sheetData)) {
@@ -249,11 +248,16 @@ Content: ${fileContent.extractedData.extractedText}`;
           firstRowIsArray: Array.isArray(sheetData) && sheetData.length > 0 ? Array.isArray(sheetData[0]) : false
         });
         if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
-          sheetHeaders[sheetName] = sheetData[0].map((h: any) => String(h ?? ''));
-          sheetSampleRows[sheetName] = sheetData.slice(1, 6).map(row => row.map((cell: any) => String(cell ?? '')));
+          const headers = sheetData[0].map((h: any) => String(h ?? ''));
+          const sampleRow = sheetData.length > 1 ? sheetData[1].map((cell: any) => String(cell ?? '')) : [];
+          
+          sheetInfo[sheetName] = {
+            headers: headers,
+            sampleRow: sampleRow
+          };
           console.log(`✅ [N8N] Added data for ${sheetName}:`, {
-            headerCount: sheetHeaders[sheetName].length,
-            sampleRowCount: sheetSampleRows[sheetName].length
+            headerCount: headers.length,
+            sampleRowCount: sampleRow.length
           });
         } else {
           console.log(`❌ [N8N] Skipped ${sheetName} - invalid data structure`);
@@ -288,8 +292,7 @@ Content: ${fileContent.extractedData.extractedText}`;
       // Omit raw text to avoid duplication if Gemini structured data is available
       extractedFileContents: initialFileSummary.hasGeminiStructuredData ? [] : extractedFileContents,
       selectedSheets: context?.sheetNames || [],
-      sheetHeaders: sheetHeaders,
-      sheetSampleRows: sheetSampleRows,
+      sheetInfo: sheetInfo, // Send headers + one sample row per sheet to provide context without duplication
       conversationHistory: conversationHistory ? conversationHistory.slice(-5) : [], // Max 5 recent messages
       // Enhanced file information for better AI processing
       fileSummary: {
