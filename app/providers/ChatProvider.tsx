@@ -44,6 +44,20 @@ interface ChatContextType {
   loading: boolean;
   error: string | null;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<void>;
+  // Persist edits/removals to a message's tables so UI state survives snapshots
+  updateMessageTables: (messageId: string, tables: Array<{
+    title: string;
+    headers: string[];
+    rows: any; // 2D array in-memory; will be stringified when saving
+    rowCount: number;
+    summary: string;
+    meta?: {
+      sheetName?: string;
+      operations?: Record<string, any>;
+      requiresConfirmation?: boolean;
+      isDryRun?: boolean;
+    }
+  }>) => Promise<void>;
   
   // Session management
   sessions: ChatSession[];
@@ -473,12 +487,59 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
   };
 
+  // Persist updated tables for a specific message in the current session
+  const updateMessageTables = async (
+    messageId: string,
+    tables: Array<{
+      title: string;
+      headers: string[];
+      rows: any;
+      rowCount: number;
+      summary: string;
+      meta?: {
+        sheetName?: string;
+        operations?: Record<string, any>;
+        requiresConfirmation?: boolean;
+        isDryRun?: boolean;
+      }
+    }>
+  ): Promise<void> => {
+    if (!user || !currentSessionId) return;
+
+    try {
+      const messageDocRef = doc(db, 'users', user.uid, 'sessions', currentSessionId, 'messages', messageId);
+
+      // Sanitize tables for Firestore: stringify rows, coerce types
+      const sanitizedTables = Array.isArray(tables)
+        ? tables.map((table) => ({
+            title: String(table.title || ''),
+            headers: Array.isArray(table.headers) ? table.headers.map((h) => String(h)) : [],
+            rows: Array.isArray(table.rows) ? JSON.stringify(table.rows) : '[]',
+            rowCount: Number(table.rowCount || (Array.isArray(table.rows) ? table.rows.length : 0)),
+            summary: String(table.summary || ''),
+            meta: {
+              sheetName: String(table.meta?.sheetName || ''),
+              operations: table.meta?.operations && typeof table.meta.operations === 'object' ? table.meta.operations : {},
+              requiresConfirmation: Boolean(table.meta?.requiresConfirmation),
+              isDryRun: Boolean(table.meta?.isDryRun),
+            },
+          }))
+        : [];
+
+      await setDoc(messageDocRef, { tables: sanitizedTables }, { merge: true });
+    } catch (err) {
+      console.error('Failed to update message tables:', err);
+      setError('Failed to update message tables.');
+    }
+  };
+
   const value = {
     chatMessages,
     setChatMessages, // Keep for direct manipulation if needed, e.g., optimistic updates
     loading,
     error,
     addMessage,
+    updateMessageTables,
     
     // Session management
     sessions,

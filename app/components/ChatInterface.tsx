@@ -13,7 +13,7 @@ interface ChatInterfaceProps {
 }
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions } = useChat();
+  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -86,16 +86,23 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         console.log('🔍 [APPROVE] API Response:', result);
         
         // Remove the table from the chat after successful approval
-        setChatMessages(prev => prev.map(message => {
-          if (message.tables && message.tables.length > 0) {
-            const filteredTables = message.tables.filter(table => 
-              !(table.title === preview.message && 
-                JSON.stringify(table.headers) === JSON.stringify(preview.headers))
-            );
-            return { ...message, tables: filteredTables };
+        if (preview.messageId != null && typeof preview.tableIndex === 'number') {
+          setChatMessages(prev => prev.map(message => {
+            if (message.id !== preview.messageId || !message.tables) return message;
+            const filteredTables = message.tables.filter((_, i) => i !== preview.tableIndex);
+            return { ...message, tables: filteredTables } as any;
+          }));
+          // persist removal
+          try {
+            const target = chatMessages.find(m => m.id === preview.messageId);
+            if (target && Array.isArray(target.tables)) {
+              const filteredTables = target.tables.filter((_, i) => i !== preview.tableIndex);
+              await updateMessageTables(target.id, filteredTables as any);
+            }
+          } catch (e) {
+            console.error('Failed to persist approval table removal:', e);
           }
-          return message;
-        }));
+        }
 
         // Add success message
         await addMessage({
@@ -126,16 +133,23 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         setProcessingTables(prev => new Set(prev).add('reject'));
         
         // Remove the table from the chat
-        setChatMessages(prev => prev.map(message => {
-          if (message.tables && message.tables.length > 0) {
-            const filteredTables = message.tables.filter(table => 
-              !(table.title === preview.message && 
-                JSON.stringify(table.headers) === JSON.stringify(preview.headers))
-            );
-            return { ...message, tables: filteredTables };
+        if (preview.messageId != null && typeof preview.tableIndex === 'number') {
+          setChatMessages(prev => prev.map(message => {
+            if (message.id !== preview.messageId || !message.tables) return message;
+            const filteredTables = message.tables.filter((_, i) => i !== preview.tableIndex);
+            return { ...message, tables: filteredTables } as any;
+          }));
+          // persist removal
+          try {
+            const target = chatMessages.find(m => m.id === preview.messageId);
+            if (target && Array.isArray(target.tables)) {
+              const filteredTables = target.tables.filter((_, i) => i !== preview.tableIndex);
+              await updateMessageTables(target.id, filteredTables as any);
+            }
+          } catch (e) {
+            console.error('Failed to persist rejection table removal:', e);
           }
-          return message;
-        }));
+        }
 
         // Add rejection message
         await addMessage({
@@ -163,7 +177,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
       window.removeEventListener('chat:approve-update', handleApproveUpdate as unknown as EventListener);
       window.removeEventListener('chat:reject-update', handleRejectUpdate as unknown as EventListener);
     };
-  }, [defaultSpreadsheetId, selectedSheetNames, setChatMessages, addMessage]);
+  }, [defaultSpreadsheetId, selectedSheetNames, setChatMessages, addMessage, updateMessageTables, chatMessages]);
 
   const handleFilesChange = useCallback((files: UploadedFile[]) => {
     setUploadedFiles(files);
@@ -430,11 +444,19 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
                                   <button
                                     onClick={() => {
-                                      if (table.headers && table.rows) {
+                                      if (table.headers && rows) {
+                                        const headers = Array.isArray(table.headers) ? table.headers : [];
+                                        const firstRow = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+                                        const normalizedRows = [
+                                          headers.map((h, i) => ({ column: h, value: String(firstRow?.[i] ?? '') }))
+                                        ];
                                         setEditModalData({
-                                          headers: table.headers,
-                                          rows: table.rows,
-                                          message: table.summary || `Edit data for ${table.title}`
+                                          headers,
+                                          rows: normalizedRows,
+                                          message: table.summary || `Edit data for ${table.title}`,
+                                          messageId: message.id,
+                                          tableIndex: index,
+                                          title: table.title,
                                         });
                                         setEditModalOpen(true);
                                       }
@@ -450,7 +472,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                           preview: {
                                             headers: table.headers,
                                             rows: rows,
-                                            message: table.summary || `Approve update for ${table.title}`
+                                            message: table.summary || `Approve update for ${table.title}`,
+                                            messageId: message.id,
+                                            tableIndex: index,
+                                            title: table.title,
                                           }
                                         }
                                       });
@@ -468,7 +493,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                           preview: {
                                             headers: table.headers,
                                             rows: rows,
-                                            message: table.summary || `Reject update for ${table.title}`
+                                            message: table.summary || `Reject update for ${table.title}`,
+                                            messageId: message.id,
+                                            tableIndex: index,
+                                            title: table.title,
                                           }
                                         }
                                       });
@@ -634,28 +662,41 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           setEditModalData(null);
         }}
         preview={editModalData || { headers: [], rows: [], message: '' }}
-        onSubmit={(rowData) => {
+        onSubmit={async (rowData) => {
           console.log('Row data edited:', rowData);
           
           // Update the table data in the chat message
           if (editModalData && editModalData.headers) {
-            const updatedRows = [rowData.map(item => item.value)];
-            
-            // Find and update the table in the chat messages
-            setChatMessages(prev => prev.map(message => {
-              if (message.tables && message.tables.length > 0) {
-                const updatedTables = message.tables.map(table => {
-                  if (table.title === editModalData.message && 
-                      JSON.stringify(table.headers) === JSON.stringify(editModalData.headers)) {
-                    // Convert rows back to string format to match the interface
-                    return { ...table, rows: JSON.stringify(updatedRows) };
-                  }
-                  return table;
-                });
-                return { ...message, tables: updatedTables };
-              }
-              return message;
+            const updatedRow = rowData.map(item => item.value);
+            const messageId = editModalData.messageId as string | undefined;
+            const tableIndex = editModalData.tableIndex as number | undefined;
+
+            setChatMessages(prev => prev.map(msg => {
+              if (msg.id !== messageId || !Array.isArray(msg.tables)) return msg;
+              const tables = msg.tables.map((t, i) => {
+                if (i !== tableIndex) return t;
+                const currentRows = Array.isArray(t.rows) ? t.rows : [];
+                const newRows = currentRows.length > 0 ? [updatedRow, ...currentRows.slice(1)] : [updatedRow];
+                return { ...t, rows: newRows, rowCount: newRows.length } as any;
+              });
+              return { ...msg, tables };
             }));
+
+            // Persist to Firestore so it survives snapshot reloads
+            try {
+              const targetMessage = chatMessages.find(m => m.id === messageId);
+              if (targetMessage && Array.isArray(targetMessage.tables)) {
+                const tablesForSave = targetMessage.tables.map((t, i) => {
+                  if (i !== tableIndex) return t as any;
+                  const currentRows = Array.isArray(t.rows) ? t.rows : [];
+                  const newRows = currentRows.length > 0 ? [updatedRow, ...currentRows.slice(1)] : [updatedRow];
+                  return { ...t, rows: newRows, rowCount: newRows.length } as any;
+                });
+                await updateMessageTables(targetMessage.id, tablesForSave as any);
+              }
+            } catch (e) {
+              console.error('Failed to persist edited rows:', e);
+            }
           }
           
           setEditModalOpen(false);

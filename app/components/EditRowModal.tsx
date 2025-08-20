@@ -10,6 +10,9 @@ interface EditRowModalProps {
     headers: string[];
     rows: Array<Array<{ column: string; value: unknown }>>;
     message?: string;
+    messageId?: string;
+    tableIndex?: number;
+    title?: string;
   };
   onSubmit: (rowData: Array<{ column: string; value: unknown }>) => void;
   activeSheet?: string;
