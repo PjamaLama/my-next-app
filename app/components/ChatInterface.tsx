@@ -233,11 +233,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             sheetData: sheetDataCache || {}
           },
           // Simply limit history to last 5 to reduce payload size
-          const limitedConversationHistory = chatMessages.slice(-5).map(m => ({
+          conversationHistory: chatMessages.slice(-5).map(m => ({
             role: m.role,
             content: m.content
-          }));
-          conversationHistory: limitedConversationHistory,
+          })),
           // Pass files as images for processing by genkit-chat
           images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
         })

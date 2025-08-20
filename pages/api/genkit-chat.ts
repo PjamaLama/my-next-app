@@ -306,31 +306,22 @@ Content: ${fileContent.extractedData.extractedText}`;
     console.log('🚀 [N8N] Final webhook data being sent:', {
       message: webhookData.message,
       selectedSheets: webhookData.selectedSheets,
-      sheetHeaderKeys: Object.keys(webhookData.sheetHeaders),
-      sheetSampleRowKeys: Object.keys(webhookData.sheetSampleRows),
+      sheetInfoKeys: Object.keys(webhookData.sheetInfo),
       sheetDataStructure: Object.fromEntries(
-        Object.entries(webhookData.sheetHeaders).map(([name, headers]) => [
+        Object.entries(webhookData.sheetInfo).map(([name, sheetData]) => [
           name,
           {
-            headerCount: headers.length,
-            sampleRowCount: webhookData.sheetSampleRows[name]?.length || 0
+            headerCount: (sheetData as any).headers?.length || 0,
+            sampleRowCount: (sheetData as any).sampleRow?.length || 0
           }
         ])
       ),
       conversationHistoryLength: webhookData.conversationHistory.length,
       fileInfo: {
         totalFiles: webhookData.fileSummary.totalFiles,
-        fileTypes: webhookData.fileSummary.fileTypes,
-        hasStructuredData: webhookData.fileSummary.hasStructuredData,
-        hasTextData: webhookData.fileSummary.hasTextData,
-        hasMetadata: webhookData.fileSummary.hasMetadata,
-        totalTextLength: webhookData.fileSummary.totalTextLength,
-        filesWithText: webhookData.fileSummary.filesWithText,
-        needsBackendProcessing: webhookData.fileSummary.needsBackendProcessing,
-        // Include Gemini processing stats
-        geminiProcessed: webhookData.fileSummary.geminiProcessed,
+        hasGeminiStructuredData: webhookData.fileSummary.hasGeminiStructuredData,
         geminiErrors: webhookData.fileSummary.geminiErrors,
-        hasGeminiStructuredData: webhookData.fileSummary.hasGeminiStructuredData
+        structuredExtractsCount: webhookData.structuredExtracts?.length || 0
       }
     });
 

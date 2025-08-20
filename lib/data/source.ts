@@ -196,9 +196,8 @@ export class SheetDataSource extends DataSource {
              
             console.log('[SheetDataSource.query] context:', context);
             // TODO: Migrate to n8n if needed
-            const res = { ok: false };
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return await res.json();
+            // Placeholder for future implementation
+            throw new Error('SheetDataSource.query not yet implemented - migration to n8n pending');
           } catch (e) {
             lastErr = e;
             if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
