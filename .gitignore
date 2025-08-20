@@ -50,3 +50,6 @@ google-credentials.json
 .env.local
 .env.production.local
 .env.development.local
+
+# Firebase Functions (separate project)
+/functions
