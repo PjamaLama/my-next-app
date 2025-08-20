@@ -2,8 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Database, Feather, Zap, BarChart, PieChart, Table } from 'lucide-react';
+import { User } from 'firebase/auth';
 
-export default function LandingPage({ onSignIn, user }) {
+interface LandingPageProps {
+  onSignIn: () => Promise<void>;
+  user: User | null;
+}
+
+export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   const [message, setMessage] = useState('');
   const [remainingSpots, setRemainingSpots] = useState<number | null>(null);
   const [userCount, setUserCount] = useState<number | null>(null);
