@@ -75,10 +75,55 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const speechRecognitionRef = useRef<any>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        setInputValue(finalTranscript + interimTranscript);
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+      };
+      
+      speechRecognitionRef.current = recognition;
+    }
+  }, []);
+
+  const handleToggleRecording = () => {
+    if (isRecording) {
+      speechRecognitionRef.current?.stop();
+    } else {
+      speechRecognitionRef.current?.start();
+    }
+    setIsRecording(!isRecording);
+  };
 
   useEffect(() => {
     console.log('🔍 [ChatInterface] Session change effect triggered:', { currentSessionId, sessionsLoading });
@@ -147,7 +192,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         console.error('Failed to approve update:', error);
         await addMessage({
           role: 'assistant',
-          content: `❌ Failed to apply changes: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+          content: `❌ Failed to apply changes: ${error instanceof Error ? error.message : 'Unknown error'}`,
         });
       } finally {
         setProcessingTables(prev => {
@@ -758,9 +803,13 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           />
           <button
             type="button"
-            onClick={() => { /* TODO: Implement voice recording */ }}
-            className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
-            disabled={isSending}
+            onClick={handleToggleRecording}
+            className={`p-3 rounded-lg transition-colors ${
+              isRecording 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-white/10 hover:bg-white/20 text-white'
+            }`}
+            disabled={isSending || !speechRecognitionRef.current}
           >
             <Mic className="w-5 h-5" />
           </button>
@@ -832,3 +881,4 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     </div>
   );
 }
+""
