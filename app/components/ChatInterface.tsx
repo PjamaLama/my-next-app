@@ -572,7 +572,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         {chatMessages.length === 0 ? (
           <div className="text-center text-white/60 py-12">
             <div className="text-2xl mb-2">👋</div>
-            <h3 className="text-lg font-semibold mb-2">Welcome to Report AI!</h3>
+            <h3 className="text-lg font-semibold mb-2">Welcome to SheetyAI!</h3>
             <p className="text-sm">
               Start a conversation to analyze your spreadsheet data, ask questions, or get insights.
             </p>
