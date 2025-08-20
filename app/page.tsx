@@ -101,10 +101,8 @@ export default function Home() {
   if (defaultSpreadsheetId) {
     // Show chat interface when spreadsheet is connected
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-        <div className="h-full">
-          <ChatInterface />
-        </div>
+      <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
+        <ChatInterface />
       </div>
     );
   }
