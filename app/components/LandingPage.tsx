@@ -6,25 +6,44 @@ import { Database, Feather, Zap, BarChart, PieChart, Table } from 'lucide-react'
 export default function LandingPage({ onSignIn, user }) {
   const [message, setMessage] = useState('');
   const [remainingSpots, setRemainingSpots] = useState<number | null>(null);
+  const [userCount, setUserCount] = useState<number | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
 
   useEffect(() => {
     const fetchRemainingSpots = async () => {
       try {
-        // User needs to replace this with their deployed Firebase Cloud Function URL
-        const response = await fetch('YOUR_FIREBASE_CLOUD_FUNCTION_URL/getBetaSpotsCount');
+        // Use the existing beta-stats API endpoint
+        const response = await fetch('/api/beta-stats');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        // Assuming the Cloud Function returns { count: number }
-        setRemainingSpots(100 - data.count);
+        // The API returns { spotsLeft: number }
+        setRemainingSpots(data.spotsLeft);
       } catch (error) {
         console.error('Error fetching remaining spots:', error);
         setRemainingSpots(null);
       }
     };
+
+    const fetchUserCount = async () => {
+      try {
+        const response = await fetch('/api/user-count');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.success) {
+          setUserCount(data.userCount);
+        }
+      } catch (error) {
+        console.error('Error fetching user count:', error);
+        setUserCount(null);
+      }
+    };
+
     fetchRemainingSpots();
+    fetchUserCount();
   }, []);
 
   const handleBetaSignupWithGoogle = async () => {
@@ -34,22 +53,22 @@ export default function LandingPage({ onSignIn, user }) {
       // This will trigger the Google Sign-in flow via the parent component (app/page.tsx)
       await onSignIn();
 
-      // After successful sign-in, call a Firebase Cloud Function to register the user for beta
-      // This is a placeholder. User needs to implement the actual Cloud Function call.
+      // After successful sign-in, call the Firebase-based beta signup API
       if (user) { // Check if user object is available after sign-in
-        // Example: const response = await fetch('/api/register-beta-user', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ uid: user.uid, email: user.email }),
-        // });
-        // const data = await response.json();
-        // if (response.ok) {
-        //   setMessage(data.message);
-        //   setRemainingSpots(data.remainingSpots);
-        // } else {
-        //   setMessage(data.message || 'Failed to register for beta.');
-        // }
-        setMessage('Successfully signed in. Beta registration logic needs to be implemented.');
+        const response = await fetch('/api/beta-signup-firebase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: user.uid, email: user.email }),
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+          setMessage(data.message);
+          if (data.remainingSpots !== undefined) {
+            setRemainingSpots(data.remainingSpots);
+          }
+        } else {
+          setMessage(data.message || 'Failed to register for beta.');
+        }
       } else {
         setMessage('Sign-in cancelled or failed.');
       }
@@ -152,6 +171,11 @@ export default function LandingPage({ onSignIn, user }) {
             {remainingSpots !== null && (
               <p className="mt-3 text-sm text-white/50">
                 {remainingSpots > 0 ? `${remainingSpots} spots left in the private beta.` : 'Beta is currently full.'}
+              </p>
+            )}
+            {userCount !== null && (
+              <p className="mt-2 text-sm text-white/40">
+                {userCount} users have already joined the platform
               </p>
             )}
           </motion.div>
