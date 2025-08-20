@@ -52,24 +52,64 @@ The webhook expects a POST request with the following JSON body structure:
 {
   "message": "User's natural language request",
   "selectedSheets": ["Array of sheet names"],
-  "sheetDataSample": {
+  "sheetInfo": {
     "SheetName1": {
-      "headers": ["Column1", "Column2", "Column3"]
+      "headers": ["Column1", "Column2", "Column3"],
+      "sampleRow": ["Sample1", "Sample2", "Sample3"]
     },
     "SheetName2": {
-      "headers": ["ColA", "ColB", "ColC", "ColD"]
+      "headers": ["ColA", "ColB", "ColC", "ColD"],
+      "sampleRow": ["SampleA", "SampleB", "SampleC", "SampleD"]
     }
   },
   "conversationHistory": ["Recent conversation context (limited to last 5 messages)"],
-  "extractedFileContents": ["Array of file contents if files uploaded"],
-  "currentDate": "2024-01-15T10:30:00.000Z"
+  "fileSummary": {
+    "totalFiles": 2,
+    "hasGeminiStructuredData": true,
+    "geminiErrors": 0
+  },
+  "structuredExtracts": [
+    {
+      "fileName": "receipt1.jpg",
+      "mimeType": "image/jpeg",
+      "structuredData": [
+        {
+          "date": "2025-01-15",
+          "vendor": "BP Highway Junction",
+          "amount": 663.37,
+          "category": "Fuel",
+          "details": "ULT DSL050, 33.930L Fuel, Pump: 4 Nozzle: 1"
+        }
+      ]
+    },
+    {
+      "fileName": "receipt2.pdf",
+      "mimeType": "application/pdf",
+      "structuredData": [
+        {
+          "date": "2025-01-14",
+          "vendor": "Capricorn Motors",
+          "amount": 1396.14,
+          "category": "Fuel",
+          "details": "ULT DSL050, 61.100L Fuel, Pump: 10 Nozzle: 1"
+        }
+      ]
+    }
+  ]
 }
 ```
 
+**Key Changes:**
+- `extractedFileContents` removed - no more raw text
+- `sheetDataSample` renamed to `sheetInfo` and includes sample rows
+- `structuredExtracts` added with one entry per uploaded file
+- `fileSummary` provides metadata about uploaded files
+
 **Optimizations Applied:**
-- `sheetDataSample` now contains only headers per sheet (no sampleRows) for lightweight payload
+- `sheetInfo` contains headers and one sample row per sheet for context
 - `conversationHistory` is limited to the last 5 messages if longer than 5
-- `currentDate` field added for temporal context
+- `structuredExtracts` provides clean, structured data per file without raw text
+- `fileSummary` gives quick overview of file processing status
 
 Note: All data is sent as a proper JSON body with Content-Type: application/json header.
 
@@ -118,11 +158,11 @@ You are an AI assistant that helps users update Google Sheets through natural la
 ## Input Context
 You receive:
 - `message`: The user's natural language request
-- `extractedFileContents`: Array of file contents if files were uploaded
+- `structuredExtracts`: Array of structured data from uploaded files (one entry per file)
 - `selectedSheets`: Array of sheet names the user wants to update
-- `sheetDataSample`: Headers-only data from the selected sheets (optimized format: `{"SheetName": {"headers": ["Col1", "Col2"]}}`)
+- `sheetInfo`: Headers and sample row data from the selected sheets
 - `conversationHistory`: Recent conversation context (limited to last 5 messages for efficiency)
-- `currentDate`: Current timestamp for temporal context
+- `fileSummary`: Summary of uploaded files and processing status
 
 ## Your Response Format
 You MUST return valid JSON with this exact structure:

@@ -285,13 +285,16 @@ Content: ${fileContent.extractedData.extractedText}`;
 
     const structuredExtracts = extractedFileContents
       .filter((f: any) => f.extractedData?.geminiStructuredData)
-      .map((f: any) => f.extractedData.geminiStructuredData);
+      .map((f: any) => ({
+        fileName: f.name,
+        mimeType: f.mimeType,
+        structuredData: f.extractedData.geminiStructuredData
+      }));
 
     // Prepare the final payload for the N8N webhook with simplified data
     const webhookData = {
       message: message || '',
-      // Omit raw text to avoid duplication if Gemini structured data is available
-      extractedFileContents: initialFileSummary.hasGeminiStructuredData ? [] : extractedFileContents,
+      // Remove raw text completely - only send structured data
       selectedSheets: context?.sheetNames || [],
       sheetInfo: sheetInfo, // Send headers + one sample row per sheet to provide context without duplication
       conversationHistory: conversationHistory ? conversationHistory.slice(-5) : [], // Max 5 recent messages
@@ -301,7 +304,7 @@ Content: ${fileContent.extractedData.extractedText}`;
         hasGeminiStructuredData: initialFileSummary.hasGeminiStructuredData,
         geminiErrors: initialFileSummary.geminiErrors,
       },
-      structuredExtracts: structuredExtracts, // Add this new field
+      structuredExtracts: structuredExtracts, // Add this new field with one entry per file
     };
 
     console.log('🚀 [N8N] Final webhook data being sent:', {
@@ -322,7 +325,8 @@ Content: ${fileContent.extractedData.extractedText}`;
         totalFiles: webhookData.fileSummary.totalFiles,
         hasGeminiStructuredData: webhookData.fileSummary.hasGeminiStructuredData,
         geminiErrors: webhookData.fileSummary.geminiErrors,
-        structuredExtractsCount: webhookData.structuredExtracts?.length || 0
+        structuredExtractsCount: webhookData.structuredExtracts?.length || 0,
+        structuredExtractsFiles: webhookData.structuredExtracts?.map((extract: any) => extract.fileName) || []
       }
     });
 
