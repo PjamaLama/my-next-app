@@ -1,9 +1,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import type { NextApiRequest, NextApiResponse } from 'next';
 
-const a = 1;
-
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }

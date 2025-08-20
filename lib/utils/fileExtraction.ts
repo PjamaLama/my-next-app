@@ -1,5 +1,3 @@
-import { UploadedFile } from '@/app/components/FileUpload';
-
 export interface ExtractedData {
   type: 'structured' | 'text' | 'metadata';
   headers?: string[];
@@ -201,31 +199,16 @@ export async function processMultipleFiles(files: File[]): Promise<FileExtractio
 /**
  * Convert extracted data to a format suitable for N8N
  */
-export function prepareDataForN8N(extractedResults: FileExtractionResult[] | UploadedFile[]) {
+export function prepareDataForN8N(extractedResults: FileExtractionResult[]) {
   const structuredData: any[] = [];
   const textData: string[] = [];
   const metadata: any[] = [];
   
   extractedResults.forEach(result => {
-    // Handle both FileExtractionResult and UploadedFile types
-    let fileName: string;
-    let mimeType: string;
-    let success: boolean;
-    let extractedData: ExtractedData | undefined;
-    
-    if ('fileName' in result) {
-      // FileExtractionResult type
-      fileName = result.fileName;
-      mimeType = result.mimeType;
-      success = result.success;
-      extractedData = result.extractedData;
-    } else {
-      // UploadedFile type
-      fileName = result.name;
-      mimeType = result.mimeType;
-      success = result.status === 'completed';
-      extractedData = result.extractedData;
-    }
+    const fileName = result.fileName;
+    const mimeType = result.mimeType;
+    const success = result.success;
+    const extractedData = result.extractedData;
     
     if (success && extractedData) {
       switch (extractedData.type) {
@@ -264,10 +247,7 @@ export function prepareDataForN8N(extractedResults: FileExtractionResult[] | Upl
     metadata,
     summary: {
       totalFiles: extractedResults.length,
-      successfulExtractions: extractedResults.filter(r => {
-        if ('success' in r) return r.success;
-        return r.status === 'completed';
-      }).length,
+      successfulExtractions: extractedResults.filter(r => r.success).length,
       structuredFiles: structuredData.length,
       textFiles: textData.length,
       metadataFiles: metadata.length

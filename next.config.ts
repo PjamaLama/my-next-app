@@ -40,7 +40,7 @@ const nextConfig: NextConfig = {
     NEXT_TELEMETRY_DISABLED: '1',
     NEXT_TRACE_PROFILING_DISABLED: '1',
   },
-  // Webpack configuration to handle Node.js polyfills
+  // Webpack configuration to handle Node.js polyfills and exclude functions
   webpack: (config, { isServer }) => {
     if (!isServer) {
       // Disable Node.js polyfills for client-side bundle
@@ -85,6 +85,13 @@ const nextConfig: NextConfig = {
         worker_threads: false,
       };
     }
+    
+    // Exclude functions directory from webpack compilation
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'functions': false
+    };
+    
     return config;
   },
   // Enable service worker support
