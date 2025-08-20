@@ -512,3 +512,37 @@ html.theme-dark {
    Works for WebKit, Firefox, and legacy Edge/IE */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Typing indicator animation */
+.dot-flashing {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background-color: #a3a3a3; /* Gray color for dots */
+  color: #a3a3a3;
+  animation: dotFlashing 1s infinite alternate;
+  animation-delay: 0s;
+}
+
+.dot-flashing + .dot-flashing {
+  margin-left: 4px; /* Space between dots */
+}
+
+.dot-flashing:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot-flashing:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dotFlashing {
+  0% {
+    background-color: #a3a3a3;
+  }
+  50%,
+  100% {
+    background-color: #e0e0e0; /* Lighter gray when "flashing" */
+  }
+}

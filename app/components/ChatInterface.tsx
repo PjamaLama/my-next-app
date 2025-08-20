@@ -672,7 +672,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       if (table.headers && rows) {
                                         const headers = Array.isArray(table.headers) ? table.headers : [];
                                         // Pass all rows, transformed to the expected format for EditRowModal
-                                        const normalizedRows = (rows as any[]).map((row: any[]) =>
+                                        const normalizedRows = (rows as any[][]).map((row: any[]) =>
                                           headers.map((h, i) => ({ column: h, value: String(row?.[i] ?? '') }))
                                         );
                                         setEditModalData({
@@ -782,6 +782,17 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
               </div>
             </div>
           ))
+        )}
+        {isSending && ( // Use the 'isSending' state for AI thinking indicator
+          <div className="flex justify-start">
+            <div className="max-w-[80%] rounded-lg px-4 py-3 bg-white/10 text-white border border-white/20">
+              <div className="flex items-center space-x-1">
+                <span className="dot-flashing"></span>
+                <span className="dot-flashing"></span>
+                <span className="dot-flashing"></span>
+              </div>
+            </div>
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
