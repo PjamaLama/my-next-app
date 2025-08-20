@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
-import { Send, Loader2, Paperclip, File as FileIcon, X, Mic, Volume2 } from 'lucide-react';
+import { Send, Loader2, Paperclip, File as FileIcon, X, Mic, Volume2, Square } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 
@@ -63,7 +63,7 @@ const extractPDFText = async (file: File): Promise<string> => {
 };
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession } = useChat();
+  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -460,6 +460,9 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     setIsSending(true);
     setIsProcessingFiles(true);
 
+    const controller = new AbortController();
+    setAbortController(controller); // Set the abort controller in the ChatProvider
+
     let structuredExtracts: any[] = [];
 
     try {
@@ -500,7 +503,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             content: m.content
           })),
           images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
-        })
+        }),
+        signal: controller.signal, // Pass the signal to the fetch request
       });
 
       if (response.ok) {
@@ -536,15 +540,24 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           content: 'Sorry, I encountered an error processing your request. Please try again.',
         });
       }
-    } catch (err) {
-      console.error('Failed to send message:', err);
-      await addMessage({
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Chat generation aborted by user.');
+        await addMessage({
+          role: 'assistant',
+          content: 'Chat generation stopped.',
+        });
+      } else {
+        console.error('Failed to send message:', err);
+        await addMessage({
+          role: 'assistant',
+          content: 'Sorry, I encountered an error. Please try again.',
+        });
+      }
     } finally {
       setIsSending(false);
       setIsProcessingFiles(false);
+      setAbortController(null); // Clear the abort controller
     }
   };
 
@@ -913,12 +926,13 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             <Paperclip className="w-5 h-5" />
           </button>
           <button
-            type="submit"
-            disabled={((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading)}
+            type={isSending ? "button" : "submit"}
+            onClick={isSending ? cancelChatGeneration : handleSubmit}
+            disabled={(!inputValue.trim() && uploadedFiles.length === 0) || sessionsLoading}
             className="p-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center"
           >
             {isSending ? (
-              <Loader2 className="animate-spin h-5 w-5" />
+              <Square className="h-5 w-5" /> // Stop icon
             ) : (
               <Send className="w-5 h-5" />
             )}

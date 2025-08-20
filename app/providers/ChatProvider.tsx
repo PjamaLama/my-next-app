@@ -75,6 +75,11 @@ interface ChatContextType {
   
   // Error handling
   clearErrorAndCreateSession: () => Promise<void>;
+
+  // AbortController for cancelling ongoing requests
+  abortController: AbortController | null;
+  setAbortController: (controller: AbortController | null) => void;
+  cancelChatGeneration: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -106,6 +111,15 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   const [currentSessionId, _setCurrentSessionId] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0); // Add retry counter
   const [lastError, setLastError] = useState<Error | null>(null); // Track last error for retry logic
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  const cancelChatGeneration = useCallback(() => {
+    if (abortController) {
+      console.log('🔍 [ChatProvider] Aborting ongoing chat generation...');
+      abortController.abort();
+      setAbortController(null);
+    }
+  }, [abortController]);
 
   // Retry function for failed session loads
   const retrySessionLoad = useCallback(() => {
@@ -657,6 +671,11 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     
     // Error handling
     clearErrorAndCreateSession,
+
+    // AbortController for cancelling ongoing requests
+    abortController,
+    setAbortController,
+    cancelChatGeneration,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
