@@ -148,7 +148,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       // Set current session if none is selected
       if (!currentSessionId && uniqueSessions.length > 0) {
         console.log('🔍 [ChatProvider] Setting current session to first available:', uniqueSessions[0].id);
-        _setCurrentSessionId(uniqueSessions[0].id);
+        setCurrentSessionId(uniqueSessions[0].id);
       } else if (currentSessionId) {
         console.log('🔍 [ChatProvider] Current session already set:', currentSessionId);
       } else {
@@ -167,7 +167,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       unsubscribe();
       // Clean up local state when unmounting
       setSessions([]);
-      _setCurrentSessionId(null);
+      setCurrentSessionId(null);
       setSessionsLoading(false);
     };
   }, [user]); // Removed currentSessionId dependency to prevent infinite loop
@@ -294,11 +294,15 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
 
   // Custom setCurrentSessionId that clears chat messages when switching sessions
   const setCurrentSessionId = (sessionId: string | null) => {
+    console.log('🔍 [setCurrentSessionId] Called with:', sessionId, 'current:', currentSessionId);
     // Clear current chat messages when switching sessions
     if (sessionId !== currentSessionId) {
+      console.log('🔍 [setCurrentSessionId] Session ID changed, clearing chat messages');
       setChatMessages([]);
     }
+    console.log('🔍 [setCurrentSessionId] Calling _setCurrentSessionId with:', sessionId);
     _setCurrentSessionId(sessionId);
+    console.log('🔍 [setCurrentSessionId] _setCurrentSessionId called');
   };
 
   // Session management functions
@@ -314,17 +318,18 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       console.log('🔍 [createSession] Starting with:', { title, spreadsheetId, sheetNames, existingSessionsCount: sessions.length });
       
       // Check if we already have a session with the same context to prevent duplicates
-      const existingSession = sessions.find(s => 
-        s.spreadsheetId === spreadsheetId && 
-        JSON.stringify(s.sheetNames) === JSON.stringify(sheetNames)
-      );
+      // Allow multiple sessions for the same spreadsheet context - users might want separate chats
+      // const existingSession = sessions.find(s => 
+      //   s.spreadsheetId === spreadsheetId && 
+      //   JSON.stringify(s.sheetNames) === JSON.stringify(sheetNames)
+      // );
       
-      if (existingSession) {
-        console.log('🔍 [createSession] Found existing session:', existingSession.id);
-        // Return existing session instead of creating a duplicate
-        _setCurrentSessionId(existingSession.id);
-        return existingSession.id;
-      }
+      // if (existingSession) {
+      //   console.log('🔍 [createSession] Found existing session:', existingSession.id);
+      //   // Return existing session instead of creating a duplicate
+      //   setCurrentSessionId(existingSession.id);
+      //   return existingSession.id;
+      // }
 
       const sessionData: any = {
         title: title || `Chat ${sessions.length + 1}`,
@@ -344,7 +349,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       console.log('🔍 [createSession] Creating session with data:', sessionData);
       
       const sessionsColRef = collection(db, 'users', user.uid, 'sessions');
+      console.log('🔍 [createSession] Adding document to Firestore collection');
       const docRef = await addDoc(sessionsColRef, sessionData);
+      console.log('🔍 [createSession] Document added with ID:', docRef.id);
       
       const newSession: ChatSession = {
         id: docRef.id,
@@ -352,11 +359,23 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       };
       
       console.log('🔍 [createSession] Successfully created session:', docRef.id);
+      console.log('🔍 [createSession] New session object:', newSession);
       
-      setSessions(prev => [...prev, newSession]);
+      console.log('🔍 [createSession] Updating local sessions state');
+      setSessions(prev => {
+        const newSessions = [...prev, newSession];
+        console.log('🔍 [createSession] Updated sessions array:', newSessions);
+        return newSessions;
+      });
+      
       // Clear chat messages when creating a new session
+      console.log('🔍 [createSession] Clearing chat messages');
       setChatMessages([]);
-      _setCurrentSessionId(docRef.id);
+      
+      console.log('🔍 [createSession] Setting current session ID to:', docRef.id);
+      setCurrentSessionId(docRef.id);
+      
+      console.log('🔍 [createSession] Returning session ID:', docRef.id);
       return docRef.id;
     } catch (err) {
       const errorMsg = "Failed to create session.";
@@ -382,7 +401,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       if (currentSessionId === sessionId) {
-        _setCurrentSessionId(sessions.length > 1 ? sessions[0].id : null);
+        setCurrentSessionId(sessions.length > 1 ? sessions[0].id : null);
       }
     } catch (err) {
       console.error("Error deleting session:", err);
@@ -426,7 +445,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
           
           if (newSessionId) {
             // Ensure the currentSessionId is set to the newly created session
-            _setCurrentSessionId(newSessionId);
+            setCurrentSessionId(newSessionId);
             console.log('🔍 [ensureSession] Set currentSessionId to:', newSessionId);
             return newSessionId;
           } else {
@@ -452,7 +471,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     // Use the first available session
     const firstSessionId = sessions[0].id;
     console.log('🔍 [ensureSession] Using first available session:', firstSessionId);
-    _setCurrentSessionId(firstSessionId);
+    setCurrentSessionId(firstSessionId);
     return firstSessionId;
   };
 

@@ -272,10 +272,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   };
 
   const handleCreate = async () => {
+    console.log('🔍 [ChatSidebar] Plus button clicked, starting handleCreate');
     setCreating(true);
     try {
+      console.log('🔍 [ChatSidebar] Calling createSession with:', { defaultSpreadsheetId, selectedSheetNames });
       const id = await createSession(undefined, defaultSpreadsheetId, selectedSheetNames);
-      if (id) setCurrentSessionId(id);
+      console.log('🔍 [ChatSidebar] createSession returned:', id);
+      if (id) {
+        console.log('🔍 [ChatSidebar] Setting current session ID to:', id);
+        setCurrentSessionId(id);
+      } else {
+        console.log('🔍 [ChatSidebar] createSession returned falsy value');
+      }
+    } catch (error) {
+      console.error('🔍 [ChatSidebar] Error in handleCreate:', error);
     } finally {
       setCreating(false);
     }

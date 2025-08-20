@@ -13,7 +13,7 @@ interface ChatInterfaceProps {
 }
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables } = useChat();
+  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -30,6 +30,17 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // Listen for session changes and ensure the current session is active
+  useEffect(() => {
+    console.log('🔍 [ChatInterface] Session change effect triggered:', { currentSessionId, sessionsLoading });
+    if (currentSessionId && !sessionsLoading) {
+      console.log('🔍 [ChatInterface] Session changed to:', currentSessionId);
+      console.log('🔍 [ChatInterface] Current chat messages count:', chatMessages.length);
+      // The ChatProvider will automatically load messages for the new session
+      // No need to call ensureSession() here as it's designed for creating sessions, not switching
+    }
+  }, [currentSessionId, sessionsLoading, chatMessages.length]);
 
   // Event listeners for approve/reject/edit actions
   useEffect(() => {
