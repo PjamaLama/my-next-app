@@ -24,7 +24,6 @@ export interface ChatMessage {
     };
   }>;
   insights?: string[];
-  quickReplies?: string[];
 }
 
 // Session interface for chat sessions
@@ -281,7 +280,6 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
           }
         })) : [],
         insights: Array.isArray(message.insights) ? message.insights.map(i => String(i)) : [],
-        quickReplies: Array.isArray(message.quickReplies) ? message.quickReplies.map(q => String(q)) : [],
         timestamp: new Date(),
       };
 

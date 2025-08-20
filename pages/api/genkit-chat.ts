@@ -364,7 +364,6 @@ Content: ${fileContent.extractedData.extractedText}`;
           reasoning: 'The AI service is currently unavailable. Please ensure the workflow is active and try again.',
           clarifyQuestion: 'The AI service seems to be offline. Would you like to try again?',
           insights: ['N8N webhook returned a 404 Not Found error.'],
-          quickReplies: ['Try again'],
         });
       }
 
@@ -388,7 +387,6 @@ Content: ${fileContent.extractedData.extractedText}`;
       hasTables: !!n8nData.tables,
       tablesCount: n8nData.tables ? n8nData.tables.length : 0,
       hasInsights: !!n8nData.insights,
-      hasQuickReplies: !!n8nData.quickReplies
     });
 
     // Transform the N8N response to the format expected by the frontend
@@ -412,7 +410,6 @@ Content: ${fileContent.extractedData.extractedText}`;
       })) : [],
       clarifyQuestion: n8nData.clarifyQuestion || null,
       insights: Array.isArray(n8nData.insights) ? n8nData.insights : [],
-      quickReplies: Array.isArray(n8nData.quickReplies) ? n8nData.quickReplies : [],
     };
 
     return res.status(200).json({ success: true, ...transformedResult });
@@ -425,7 +422,6 @@ Content: ${fileContent.extractedData.extractedText}`;
         reasoning: 'The AI service is taking longer than expected to process your request. This might be due to the complexity of the files or high server load.',
         clarifyQuestion: 'Would you like to try again, or would you prefer to wait a moment and try again?',
         insights: ['Request timed out after 2 minutes. This is common with complex file processing.'],
-        quickReplies: ['Try again', 'Wait and retry', 'Check file size'],
       });
     }
     

@@ -187,14 +187,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     setUploadedFiles(files);
   }, []);
 
-  const handleQuickReplyClick = (reply: string) => {
-    if (isSending || isProcessingFiles || sessionsLoading) return; // Added sessionsLoading
-    setInputValue(reply);
-    setTimeout(() => {
-      formRef.current?.requestSubmit();
-    }, 100);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading) return; // Added sessionsLoading
@@ -317,7 +309,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           content: aiResponse.reasoning || 'AI processing completed.',
           tables: preservedTables,
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
-          quickReplies: Array.isArray(aiResponse.quickReplies) ? aiResponse.quickReplies : []
         });
 
         // Clear uploaded files after successful processing
@@ -394,6 +385,19 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                   {/* Only show content if there are no tables, otherwise focus on table display */}
                   {(!message.tables || message.tables.length === 0) && message.content}
                 </div>
+                {message.insights && message.insights.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-emerald-300 mb-2">Insights:</div>
+                    <ul className="text-xs space-y-1">
+                      {message.insights.map((insight, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <span className="text-emerald-400 mt-1">•</span>
+                          <span>{insight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {message.tables && message.tables.length > 0 && (
                   <div className="mt-3 space-y-4">
                     {message.tables.map((table, index) => (
@@ -563,32 +567,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                           }
                         })()}
                       </div>
-                    ))}
-                  </div>
-                )}
-                {message.insights && message.insights.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-emerald-300 mb-2">Insights:</div>
-                    <ul className="text-xs space-y-1">
-                      {message.insights.map((insight, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <span className="text-emerald-400 mt-1">•</span>
-                          <span>{insight}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {message.quickReplies && message.quickReplies.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap gap-2">
-                    {message.quickReplies.map((reply, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleQuickReplyClick(reply)}
-                        className="px-3 py-1.5 text-xs font-medium bg-sky-600 hover:bg-sky-700 text-white rounded-full transition-colors"
-                      >
-                        {reply}
-                      </button>
                     ))}
                   </div>
                 )}
