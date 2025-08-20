@@ -249,7 +249,8 @@ Content: ${fileContent.extractedData.extractedText}`;
         });
         if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
           const headers = sheetData[0].map((h: any) => String(h ?? ''));
-          const sampleRow = sheetData.length > 1 ? sheetData[1].map((cell: any) => String(cell ?? '')) : [];
+          // Get the last row as sample row instead of the second row
+          const sampleRow = sheetData.length > 1 ? sheetData[sheetData.length - 1].map((cell: any) => String(cell ?? '')) : [];
           
           sheetInfo[sheetName] = {
             headers: headers,
