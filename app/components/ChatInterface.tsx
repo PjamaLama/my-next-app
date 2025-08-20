@@ -140,7 +140,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             interimTranscript += event.results[i][0].transcript;
           }
         }
-        setInputValue(finalTranscript + interimTranscript);
+        setInputValue(prevValue => prevValue + finalTranscript + interimTranscript);
       };
 
       recognition.onend = () => {
