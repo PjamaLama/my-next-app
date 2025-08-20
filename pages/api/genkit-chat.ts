@@ -336,15 +336,22 @@ Content: ${fileContent.extractedData.extractedText}`;
       throw new Error('N8N webhook service is not configured.');
     }
 
+    console.log('🔍 [N8N] Using webhook URL:', n8nWebhookUrl);
+
     // Log the action as requested
     console.log('🚀 [N8N] Using n8n for AI processing. Calling webhook...');
+
+    // Log payload size for debugging
+    const payloadString = JSON.stringify(webhookData, null, 0);
+    const payloadSizeKB = Math.round(payloadString.length / 1024);
+    console.log(`🔍 [N8N] Payload size: ${payloadSizeKB} KB`);
 
     // Call the N8N webhook
     const n8nResponse = await fetch(n8nWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(webhookData, null, 0), // Remove redundant fields and minify JSON to lighten payload
-      signal: AbortSignal.timeout(30000), // 30-second timeout
+      signal: AbortSignal.timeout(120000), // Increase timeout to 2 minutes for N8N processing
     });
 
     if (!n8nResponse.ok) {
@@ -366,22 +373,62 @@ Content: ${fileContent.extractedData.extractedText}`;
 
     const result = await n8nResponse.json();
 
+    console.log('🔍 [N8N] Raw response received:', {
+      isArray: Array.isArray(result),
+      length: Array.isArray(result) ? result.length : 'N/A',
+      type: typeof result,
+      keys: !Array.isArray(result) ? Object.keys(result) : 'N/A'
+    });
+
     // N8N may return an array of results; we typically want the first one.
     const n8nData = Array.isArray(result) ? result[0] : result;
+
+    console.log('🔍 [N8N] Processed response data:', {
+      hasReasoning: !!n8nData.reasoning,
+      hasTables: !!n8nData.tables,
+      tablesCount: n8nData.tables ? n8nData.tables.length : 0,
+      hasInsights: !!n8nData.insights,
+      hasQuickReplies: !!n8nData.quickReplies
+    });
 
     // Transform the N8N response to the format expected by the frontend
     const transformedResult = {
       intent: n8nData.isExtraction ? 'extraction' : 'update_data',
       reasoning: n8nData.reasoning || 'AI processing completed.',
-      tables: n8nData.tables || [],
+      tables: n8nData.tables ? n8nData.tables.map((table: any) => ({
+        ...table,
+        rowCount: Array.isArray(table.rows) ? table.rows.length : 0,
+        // Ensure all required properties are present
+        title: table.title || 'Proposed Updates',
+        headers: Array.isArray(table.headers) ? table.headers : [],
+        rows: Array.isArray(table.rows) ? table.rows : [],
+        summary: table.summary || '',
+        meta: {
+          sheetName: table.meta?.sheetName || '',
+          operations: table.meta?.operations || { add: 0, update: 0 },
+          requiresConfirmation: Boolean(table.meta?.requiresConfirmation),
+          isDryRun: Boolean(table.meta?.isDryRun)
+        }
+      })) : [],
       clarifyQuestion: n8nData.clarifyQuestion || null,
-      insights: n8nData.insights || [],
-      quickReplies: n8nData.quickReplies || [],
+      insights: Array.isArray(n8nData.insights) ? n8nData.insights : [],
+      quickReplies: Array.isArray(n8nData.quickReplies) ? n8nData.quickReplies : [],
     };
 
     return res.status(200).json({ success: true, ...transformedResult });
   } catch (error) {
     console.error('❌ [API] Chat API error:', error);
+    
+    // Handle timeout errors specifically
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      return res.status(200).json({
+        reasoning: 'The AI service is taking longer than expected to process your request. This might be due to the complexity of the files or high server load.',
+        clarifyQuestion: 'Would you like to try again, or would you prefer to wait a moment and try again?',
+        insights: ['Request timed out after 2 minutes. This is common with complex file processing.'],
+        quickReplies: ['Try again', 'Wait and retry', 'Check file size'],
+      });
+    }
+    
     return res.status(500).json({
       error: 'Failed to process chat message.',
       details: error instanceof Error ? error.message : String(error),
