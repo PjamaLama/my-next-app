@@ -80,6 +80,7 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const finalTranscriptRef = useRef('');
 
   useEffect(() => {
     const loadVoices = () => {
@@ -132,15 +133,14 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
 
       recognition.onresult = (event: any) => {
         let interimTranscript = '';
-        let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+            finalTranscriptRef.current += event.results[i][0].transcript;
           } else {
             interimTranscript += event.results[i][0].transcript;
           }
         }
-        setInputValue(prevValue => prevValue + finalTranscript + interimTranscript);
+        setInputValue(finalTranscriptRef.current + interimTranscript);
       };
 
       recognition.onend = () => {
