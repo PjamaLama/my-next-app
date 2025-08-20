@@ -3,14 +3,64 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
-import { Send, Loader2, Paperclip } from 'lucide-react';
+import { Send, Loader2, Paperclip, File as FileIcon, X, Mic } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
-import FileUpload, { type UploadedFile } from './FileUpload';
 
 interface ChatInterfaceProps {
   className?: string;
 }
+
+export interface UploadedFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  fileData?: string;
+  extractedData: any;
+  status: 'uploading' | 'processing' | 'completed' | 'error';
+  error?: string;
+}
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  try {
+    const uint8Array = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < uint8Array.byteLength; i++) {
+      binary += String.fromCharCode(uint8Array[i]);
+    }
+    return btoa(binary);
+  } catch (error) {
+    console.error('Base64 encoding failed:', error);
+    throw new Error('Failed to encode file to base64');
+  }
+};
+
+const extractImageText = async (file: File): Promise<string> => {
+  try {
+    return `Image: ${file.name} - Ready for Gemini Vision analysis`;
+  } catch (error) {
+    console.warn('Image processing failed:', error);
+    return '';
+  }
+};
+
+const extractPDFText = async (file: File): Promise<string> => {
+  try {
+    const text = await file.text();
+    if (text.includes('(') && text.includes(')')) {
+      const lines = text.split('\n')
+        .filter(line => line.trim().length > 0)
+        .filter(line => !line.startsWith('%') && !line.startsWith('/'))
+        .slice(0, 50);
+      return lines.join('\n');
+    }
+    return text;
+  } catch (error) {
+    console.warn('PDF text extraction failed, treating as scanned document:', error);
+    return '';
+  }
+};
 
 export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId } = useChat();
@@ -21,28 +71,23 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editModalData, setEditModalData] = useState<any>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [showFileUpload, setShowFileUpload] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const [isProcessingFiles, setIsProcessingFiles] = useState(false); // New state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Listen for session changes and ensure the current session is active
   useEffect(() => {
     console.log('🔍 [ChatInterface] Session change effect triggered:', { currentSessionId, sessionsLoading });
     if (currentSessionId && !sessionsLoading) {
       console.log('🔍 [ChatInterface] Session changed to:', currentSessionId);
       console.log('🔍 [ChatInterface] Current chat messages count:', chatMessages.length);
-      // The ChatProvider will automatically load messages for the new session
-      // No need to call ensureSession() here as it's designed for creating sessions, not switching
     }
   }, [currentSessionId, sessionsLoading, chatMessages.length]);
 
-  // Event listeners for approve/reject/edit actions
   useEffect(() => {
     const handleApproveUpdate = async (event: CustomEvent) => {
       const { preview } = event.detail;
@@ -50,16 +95,11 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
 
       try {
         setProcessingTables(prev => new Set(prev).add('approve'));
-        
-        // Convert table data to the format expected by the ingestion endpoint
         const headers = Array.isArray(preview.headers) ? preview.headers : [];
         const rows = Array.isArray(preview.rows) ? preview.rows : [];
-        
         if (!defaultSpreadsheetId || (!preview.sheetName && (!selectedSheetNames || selectedSheetNames.length === 0))) {
           throw new Error('No spreadsheet or sheet selected. Please select a sheet or ensure the table has a target sheet.');
         }
-
-        // Convert 2D array to objects with column names
         const rowObjects = rows.map((row: any[]) => {
           const obj: Record<string, unknown> = {};
           headers.forEach((header: string, index: number) => {
@@ -67,46 +107,27 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           });
           return obj;
         });
-
-        console.log('🔍 [APPROVE] Data being sent to API:', {
-          spreadsheetId: defaultSpreadsheetId,
-          sheetName: preview.sheetName || selectedSheetNames[0], // Use preview sheet name if available
-          rows: rowObjects,
-          headers,
-          originalRows: rows,
-          tableTitle: preview.title,
-          targetSheet: preview.sheetName || selectedSheetNames[0],
-          fallbackSheet: selectedSheetNames?.[0]
-        });
-
-        // Call the ingestion endpoint to apply changes
         const response = await fetch('/api/ingest-rows', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             spreadsheetId: defaultSpreadsheetId,
-            sheetName: preview.sheetName || selectedSheetNames[0], // Use preview sheet name if available
+            sheetName: preview.sheetName || selectedSheetNames[0],
             rows: rowObjects,
             dryRun: false
           })
         });
-
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || 'Failed to apply changes');
         }
-
         const result = await response.json();
-        console.log('🔍 [APPROVE] API Response:', result);
-        
-        // Remove the table from the chat after successful approval
         if (preview.messageId != null && typeof preview.tableIndex === 'number') {
           setChatMessages(prev => prev.map(message => {
             if (message.id !== preview.messageId || !message.tables) return message;
             const filteredTables = message.tables.filter((_, i) => i !== preview.tableIndex);
             return { ...message, tables: filteredTables } as any;
           }));
-          // persist removal
           try {
             const target = chatMessages.find(m => m.id === preview.messageId);
             if (target && Array.isArray(target.tables)) {
@@ -117,19 +138,16 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             console.error('Failed to persist approval table removal:', e);
           }
         }
-
-        // Add success message
         const targetSheetName = preview.sheetName || selectedSheetNames[0];
         await addMessage({
           role: 'assistant',
           content: `✅ Changes applied successfully! ${result.inserts || 0} rows added to sheet "${targetSheetName}" in the spreadsheet.`,
         });
-
       } catch (error) {
         console.error('Failed to approve update:', error);
         await addMessage({
           role: 'assistant',
-          content: `❌ Failed to apply changes: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          content: `❌ Failed to apply changes: ${error instanceof Error ? error.message : 'Unknown error'}`, 
         });
       } finally {
         setProcessingTables(prev => {
@@ -143,18 +161,14 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
     const handleRejectUpdate = async (event: CustomEvent) => {
       const { preview } = event.detail;
       if (!preview) return;
-
       try {
         setProcessingTables(prev => new Set(prev).add('reject'));
-        
-        // Remove the table from the chat
         if (preview.messageId != null && typeof preview.tableIndex === 'number') {
           setChatMessages(prev => prev.map(message => {
             if (message.id !== preview.messageId || !message.tables) return message;
             const filteredTables = message.tables.filter((_, i) => i !== preview.tableIndex);
             return { ...message, tables: filteredTables } as any;
           }));
-          // persist removal
           try {
             const target = chatMessages.find(m => m.id === preview.messageId);
             if (target && Array.isArray(target.tables)) {
@@ -165,13 +179,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             console.error('Failed to persist rejection table removal:', e);
           }
         }
-
-        // Add rejection message
         await addMessage({
           role: 'assistant',
           content: '❌ Changes rejected. The table has been removed from the chat.',
         });
-
       } catch (error) {
         console.error('Failed to reject update:', error);
       } finally {
@@ -183,67 +194,213 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
       }
     };
 
-    // Add event listeners
     window.addEventListener('chat:approve-update', handleApproveUpdate as unknown as EventListener);
     window.addEventListener('chat:reject-update', handleRejectUpdate as unknown as EventListener);
 
-    // Cleanup
     return () => {
       window.removeEventListener('chat:approve-update', handleApproveUpdate as unknown as EventListener);
       window.removeEventListener('chat:reject-update', handleRejectUpdate as unknown as EventListener);
     };
   }, [defaultSpreadsheetId, selectedSheetNames, setChatMessages, addMessage, updateMessageTables, chatMessages]);
 
-  const handleFilesChange = useCallback((files: UploadedFile[]) => {
-    setUploadedFiles(files);
+  const processFile = useCallback(async (file: File): Promise<UploadedFile> => {
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const uploadedFile: UploadedFile = {
+      id,
+      name: file.name,
+      mimeType: file.type,
+      size: file.size,
+      status: 'uploading',
+      extractedData: {
+        type: 'metadata',
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type
+      }
+    };
+    try {
+      uploadedFile.status = 'processing';
+      if (file.type === 'text/csv') {
+        try {
+          const text = await file.text();
+          const lines = text.split('\n').filter(line => line.trim());
+          if (lines.length > 0) {
+            const headers = lines[0].split(',').map(h => h.trim());
+            const rows = lines.slice(1).map(line =>
+              line.split(',').map(cell => cell.trim())
+            );
+            const sampleRows = rows.slice(0, 5);
+            uploadedFile.extractedData = {
+              type: 'structured',
+              format: 'csv',
+              fileName: file.name,
+              fileSize: file.size,
+              headers,
+              rows,
+              rowCount: rows.length,
+              columnCount: headers.length,
+              sampleRows,
+              hasData: rows.length > 0,
+              extractedText: `CSV with ${rows.length} rows and ${headers.length} columns. Headers: ${headers.join(', ')}. Sample data: ${sampleRows.slice(0, 2).map(row => row.slice(0, 3).join(', ')).join('; ')}`,
+              textLength: text.length,
+              preview: {
+                headers: headers.slice(0, 5),
+                sampleData: sampleRows.slice(0, 3)
+              }
+            };
+          }
+        } catch (error) {
+          console.warn('CSV parsing failed:', error);
+          uploadedFile.extractedData = {
+            type: 'error',
+            format: 'csv',
+            fileName: file.name,
+            fileSize: file.size,
+            error: 'Failed to parse CSV file'
+          };
+        }
+      } else if (file.type === 'application/pdf') {
+        try {
+          console.log(`🔍 [PDF] Preparing PDF ${file.name} for backend processing`);
+          const arrayBuffer = await file.arrayBuffer();
+          const base64Data = arrayBufferToBase64(arrayBuffer);
+          uploadedFile.extractedData = {
+            type: 'document',
+            format: 'pdf',
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+            extractedText: `PDF document: ${file.name} - Ready for backend processing`,
+            textLength: 0,
+            hasTextContent: false,
+            needsBackendProcessing: true,
+            pageCount: 0,
+            isScannedDocument: false,
+            note: 'PDF ready for backend pdf-parse processing'
+          };
+          uploadedFile.fileData = base64Data;
+          console.log(`🔍 [PDF] Successfully prepared PDF: ${file.name}, fileData length: ${uploadedFile.fileData.length}`);
+        } catch (conversionError) {
+          console.error(`❌ [PDF] Failed to convert PDF to base64: ${file.name}`, conversionError);
+          uploadedFile.extractedData = {
+            type: 'document',
+            format: 'pdf',
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+            extractedText: `PDF document: ${file.name} - Base64 conversion failed`,
+            textLength: 0,
+            hasTextContent: false,
+            needsBackendProcessing: true,
+            pageCount: 0,
+            isScannedDocument: true,
+            conversionError: conversionError instanceof Error ? conversionError.message : 'Unknown error'
+          };
+        }
+      } else if (file.type.startsWith('image/')) {
+        const extractedText = await extractImageText(file);
+        const arrayBuffer = await file.arrayBuffer();
+        const base64Data = arrayBufferToBase64(arrayBuffer);
+        uploadedFile.extractedData = {
+          type: 'image',
+          format: file.type.split('/')[1],
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          extractedText: extractedText,
+          textLength: extractedText.length,
+          hasTextContent: false,
+          needsBackendProcessing: true,
+          note: 'Image ready for Gemini Vision analysis'
+        };
+        uploadedFile.fileData = base64Data;
+      } else if (file.type.includes('spreadsheet')) {
+        uploadedFile.extractedData = {
+          type: 'spreadsheet',
+          format: file.type.includes('openxmlformats') ? 'xlsx' : 'xls',
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          extractedText: `Excel spreadsheet: ${file.name}`,
+          textLength: file.name.length,
+          hasData: true,
+          needsBackendProcessing: true
+        };
+      }
+      uploadedFile.status = 'completed';
+      return uploadedFile;
+    } catch (error) {
+      uploadedFile.status = 'error';
+      uploadedFile.error = error instanceof Error ? error.message : 'Failed to process file';
+      return uploadedFile;
+    }
+  }, []);
+
+  const handleFileSelect = useCallback(async (files: FileList) => {
+    const fileArray = Array.from(files);
+    const acceptedTypes = ['image/*', 'application/pdf', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+    const validFiles = fileArray.filter(file => {
+      return acceptedTypes.some(type => {
+        if (type.includes('*')) {
+          return file.type.startsWith(type.replace('*', ''));
+        }
+        return file.type === type;
+      });
+    });
+
+    if (uploadedFiles.length + validFiles.length > 5) {
+      alert(`You can only upload up to 5 files at a time.`);
+      return;
+    }
+
+    const newFiles: UploadedFile[] = [];
+    for (const file of validFiles) {
+      const processedFile = await processFile(file);
+      newFiles.push(processedFile);
+    }
+
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+  }, [uploadedFiles, processFile]);
+
+  const removeFile = useCallback((id: string) => {
+    setUploadedFiles(prev => prev.filter(f => f.id !== id));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading) return; // Added sessionsLoading
+    if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading) return;
 
     const message = inputValue.trim() || 'Extract data from uploaded files and add to selected sheets';
     setInputValue('');
     setIsSending(true);
-    setIsProcessingFiles(true); // Start processing files
+    setIsProcessingFiles(true);
 
     let structuredExtracts: any[] = [];
 
     try {
       await ensureSession();
 
-      // If files are uploaded, prepare them for processing
       if (uploadedFiles.length > 0) {
-        // Convert files to format expected by genkit-chat API
-        // For PDFs and images, we need the actual file data for backend processing
         structuredExtracts = uploadedFiles.map(file => {
           const fileData: any = {
             name: file.name,
             mimeType: file.mimeType,
             extractedData: file.extractedData,
           };
-          
-          // For PDFs and images, include the actual file data for backend processing
           if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
-            // Include base64 data if available
             if (file.fileData) {
               fileData.data = file.fileData;
             }
           }
-          
           return fileData;
         });
-        
-        console.log('🔍 [EXTRACT] Prepared files for backend processing:', structuredExtracts);
       }
 
-      // Add user message to chat
       await addMessage({
         role: 'user',
         content: message,
       });
 
-      // Call AI service to get response
       const response = await fetch('/api/genkit-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -253,36 +410,16 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             sheetNames: selectedSheetNames || [],
             sheetData: sheetDataCache || {}
           },
-          // Simply limit history to last 5 to reduce payload size
           conversationHistory: chatMessages.slice(-5).map(m => ({
             role: m.role,
             content: m.content
           })),
-          // Pass files as images for processing by genkit-chat
           images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
         })
       });
 
       if (response.ok) {
         const aiResponse = await response.json();
-        
-        // Debug logging to see what n8n is returning
-        console.log('🔍 [N8N Response] Full AI response:', aiResponse);
-        console.log('🔍 [N8N Response] Tables:', aiResponse.tables);
-        if (aiResponse.tables && aiResponse.tables.length > 0) {
-          aiResponse.tables.forEach((table: any, index: number) => {
-            console.log(`🔍 [N8N Response] Table ${index}:`, {
-              title: table.title,
-              headers: table.headers,
-              rows: table.rows,
-              rowCount: table.rowCount,
-              summary: table.summary,
-              meta: table.meta
-            });
-          });
-        }
-        
-        // Preserve table data for approve/reject/edit functionality
         const preservedTables = aiResponse.tables ? aiResponse.tables.map((table: any) => {
           const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
           return {
@@ -300,21 +437,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           }
         }) : [];
         
-        console.log('🔍 [N8N Response] Preserved tables:', preservedTables);
-        
-        // Additional debugging for processed rows
-        preservedTables.forEach((table: any, index: number) => {
-          console.log(`🔍 [Processed Table ${index}]`, {
-            title: table.title,
-            headers: table.headers,
-            rows: table.rows,
-            rowCount: table.rowCount,
-            rowsType: Array.isArray(table.rows) ? 'Array' : typeof table.rows,
-            firstRow: Array.isArray(table.rows) && table.rows.length > 0 ? table.rows[0] : 'No rows'
-          });
-        });
-        
-        // Add AI response to chat
         await addMessage({
           role: 'assistant',
           content: aiResponse.reasoning || 'AI processing completed.',
@@ -322,11 +444,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
         });
 
-        // Clear uploaded files after successful processing
         setUploadedFiles([]);
-        setShowFileUpload(false);
       } else {
-        // Add error message if AI service fails
         await addMessage({
           role: 'assistant',
           content: 'Sorry, I encountered an error processing your request. Please try again.',
@@ -334,14 +453,13 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
       }
     } catch (err) {
       console.error('Failed to send message:', err);
-      // Add error message to chat
       await addMessage({
         role: 'assistant',
         content: 'Sorry, I encountered an error. Please try again.',
       });
     } finally {
       setIsSending(false);
-      setIsProcessingFiles(false); // End processing files
+      setIsProcessingFiles(false);
     }
   };
 
@@ -366,7 +484,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {chatMessages.length === 0 ? (
           <div className="text-center text-white/60 py-12">
@@ -393,7 +510,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                 }`}
               >
                 <div className="text-sm">
-                  {/* Only show content if there are no tables, otherwise focus on table display */}
                   {(!message.tables || message.tables.length === 0) && message.content}
                 </div>
                 {message.insights && message.insights.length > 0 && (
@@ -418,14 +534,11 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                             {table.title}
                           </div>
                         )}
-                        
-                        {/* Show summary as description if available */}
                         {table.summary && (
                           <div className="text-sm text-white/80 mb-3">
                             {table.summary}
                           </div>
                         )}
-                        
                         {(() => {
                           const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
                           if (rows.length > 0) {
@@ -461,7 +574,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
-                                  {/* Sheet targeting info */}
                                   <div className="text-xs text-white/60 mr-auto">
                                     📊 Target: <span className="text-emerald-300 font-medium">
                                       {table.meta?.sheetName || selectedSheetNames?.[0] || 'No sheet selected'}
@@ -470,7 +582,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                       <span className="text-yellow-400 ml-2">⚠️ Select a sheet first</span>
                                     )}
                                   </div>
-                                  
                                   <button
                                     onClick={() => {
                                       if (table.headers && rows) {
@@ -496,12 +607,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                   </button>
                                   <button
                                     onClick={() => {
-                                      console.log('🔍 [APPROVE BUTTON] Table info:', {
-                                        title: table.title,
-                                        tableSheet: table.meta?.sheetName,
-                                        globalSheet: selectedSheetNames?.[0],
-                                        willUseSheet: table.meta?.sheetName || selectedSheetNames?.[0]
-                                      });
                                       const event = new CustomEvent('chat:approve-update', {
                                         detail: {
                                           preview: {
@@ -591,28 +696,23 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Error Display */}
       {error && (
         <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
           {error}
         </div>
       )}
 
-      {/* Sessions Loading Error */}
       {!sessionsLoading && sessions.length === 0 && (
         <div className="mx-6 mb-4 p-3 bg-yellow-500/10 border border-yellow-400/30 rounded-lg text-yellow-200 text-sm">
           Unable to load chat sessions. Please refresh the page or try again.
         </div>
       )}
 
-      {/* Input Area */}
       <div className="border-t border-white/10 p-6">
-        {/* Sheet Selector - Added above input field */}
         <div className="mb-4">
           <SheetChipSelector />
         </div>
         
-        {/* Sessions Loading Indicator */}
         {sessionsLoading && (
           <div className="mb-4 p-3 bg-blue-500/10 border border-blue-400/30 rounded-lg text-blue-200 text-sm">
             <div className="flex items-center gap-2">
@@ -622,29 +722,32 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           </div>
         )}
         
-        {/* File Upload Section */}
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={() => setShowFileUpload(!showFileUpload)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <Paperclip className="w-4 h-4" />
-            {showFileUpload ? 'Hide Files' : 'Add Files'}
-          </button>
-          
-          {showFileUpload && (
-            <div className="mt-3">
-              <FileUpload
-                onFilesChange={handleFilesChange}
-                disabled={isSending}
-                maxFiles={5}
-              />
-            </div>
-          )}
-        </div>
+        {uploadedFiles.length > 0 && (
+          <div className="mb-4 space-y-2">
+            {uploadedFiles.map((file) => (
+              <div key={file.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg text-white/80">
+                <div className="flex items-center gap-2">
+                  <FileIcon className="w-4 h-4" />
+                  <span className="text-sm">{file.name}</span>
+                </div>
+                <button onClick={() => removeFile(file.id)} className="p-1 hover:bg-white/10 rounded">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         
-        <form ref={formRef} onSubmit={handleSubmit} className="flex gap-3">
+        <form ref={formRef} onSubmit={handleSubmit} className="flex gap-3 items-center">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
+            className="hidden"
+            disabled={isSending}
+          />
           <input
             type="text"
             value={inputValue}
@@ -654,16 +757,31 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             disabled={isSending}
           />
           <button
+            type="button"
+            onClick={() => { /* TODO: Implement voice recording */ }}
+            className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+            disabled={isSending}
+          >
+            <Mic className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+            disabled={isSending}
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+          <button
             type="submit"
             disabled={((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading)}
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center gap-2"
+            className="p-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center"
           >
             {isSending ? (
-              <Loader2 className="animate-spin h-4 w-4" />
+              <Loader2 className="animate-spin h-5 w-5" />
             ) : (
-              <Send className="h-4 w-4" />
+              <Send className="w-5 h-5" />
             )}
-            Send
           </button>
         </form>
       </div>
@@ -675,9 +793,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
         }}
         preview={editModalData || { headers: [], rows: [], message: '' }}
         onSubmit={async (rowData) => {
-          console.log('Row data edited:', rowData);
-          
-          // Update the table data in the chat message
           if (editModalData && editModalData.headers) {
             const updatedRow = rowData.map(item => item.value);
             const messageId = editModalData.messageId as string | undefined;
@@ -694,7 +809,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
               return { ...msg, tables };
             }));
 
-            // Persist to Firestore so it survives snapshot reloads
             try {
               const targetMessage = chatMessages.find(m => m.id === messageId);
               if (targetMessage && Array.isArray(targetMessage.tables)) {
@@ -710,7 +824,6 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
               console.error('Failed to persist edited rows:', e);
             }
           }
-          
           setEditModalOpen(false);
           setEditModalData(null);
         }}
