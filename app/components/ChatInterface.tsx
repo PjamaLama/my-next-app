@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
-import { Send, Loader2, Paperclip, File as FileIcon, X, Mic } from 'lucide-react';
+import { Send, Loader2, Paperclip, File as FileIcon, X, Mic, Volume2 } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 
@@ -77,6 +77,22 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const speechRecognitionRef = useRef<any>(null);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+
+  const handleReadAloud = (text: string, messageId: string) => {
+    if (speakingMessageId === messageId) {
+      window.speechSynthesis.cancel();
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onend = () => {
+      setSpeakingMessageId(null);
+    };
+    setSpeakingMessageId(messageId);
+    window.speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -731,8 +747,13 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                     ))}
                   </div>
                 )}
-                <div className="text-xs opacity-70 mt-2">
-                  {formatTimestamp(message.timestamp)}
+                <div className="flex items-center justify-between text-xs opacity-70 mt-2">
+                  <span>{formatTimestamp(message.timestamp)}</span>
+                  {message.role === 'assistant' && (
+                    <button onClick={() => handleReadAloud(message.content, message.id)} className="ml-2">
+                      <Volume2 className={`w-4 h-4 ${speakingMessageId === message.id ? 'text-emerald-400' : ''}`} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
