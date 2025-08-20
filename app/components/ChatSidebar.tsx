@@ -103,7 +103,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
       }
     } catch (error) {
       console.error('Error handling modal submit:', error);
-      await notify({ title: 'Error', description: 'Failed to save changes.', tone: 'error' });
+      await notify({ title: 'Error', description: 'Failed to save changes.', tone: 'danger' });
     }
     setModalOpen(false);
   };
