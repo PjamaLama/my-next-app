@@ -1,0 +1,8 @@
+# Ignore parent directory files
+../**/*
+# Ignore built files
+lib/**/*
+# Ignore generated files
+generated/**/*
+# Ignore node_modules
+node_modules/**/*
