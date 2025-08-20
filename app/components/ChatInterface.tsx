@@ -804,14 +804,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           <button
             type="button"
             onClick={handleToggleRecording}
-            className={`p-3 rounded-lg transition-colors ${
-              isRecording 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-white/10 hover:bg-white/20 text-white'
-            }`}
+            className={`p-3 rounded-lg transition-colors bg-white/10 hover:bg-white/20 text-white`}
             disabled={isSending || !speechRecognitionRef.current}
           >
-            <Mic className="w-5 h-5" />
+            <Mic className={`w-5 h-5 ${isRecording ? 'text-red-400 animate-pulse' : ''}`} />
           </button>
           <button
             type="button"
