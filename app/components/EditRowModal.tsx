@@ -8,18 +8,18 @@ interface EditRowModalProps {
   onClose: () => void;
   preview: {
     headers: string[];
-    rows: Array<Array<{ column: string; value: unknown }>>;
+    rows: Array<Array<{ column: string; value: unknown }>>; // Now expects multiple rows
     message?: string;
     messageId?: string;
     tableIndex?: number;
     title?: string;
   };
-  onSubmit: (rowData: Array<{ column: string; value: unknown }>) => void;
+  onSubmit: (editedRows: Array<Array<{ column: string; value: unknown }>>) => void; // Now submits multiple rows
   activeSheet?: string;
 }
 
 export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activeSheet }: EditRowModalProps) {
-  const [rowData, setRowData] = useState<Array<{ column: string; value: unknown }>>([]);
+  const [editedRowsData, setEditedRowsData] = useState<Array<Array<{ column: string; value: unknown }>>>([]); // State for multiple rows
   const [isSaving, setIsSaving] = useState(false);
 
   // Safety check - if no preview data, don't render
@@ -33,24 +33,24 @@ export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activ
     : [];
   const headers: string[] = Array.isArray(preview.headers) && preview.headers.length > 0 ? preview.headers : cachedHeaders;
 
-  // Initialize rowData when preview changes
+  // Initialize editedRowsData when preview changes
   useEffect(() => {
     if (preview.rows && preview.rows.length > 0) {
-      setRowData([...preview.rows[0]]);
+      setEditedRowsData(preview.rows.map(row => [...row])); // Initialize with all rows
     }
   }, [preview]);
 
-  const handleInputChange = (index: number, value: string) => {
-    const newRowData = [...rowData];
-    newRowData[index] = { ...newRowData[index], value };
-    setRowData(newRowData);
+  const handleInputChange = (rowIndex: number, cellIndex: number, value: string) => {
+    const newEditedRowsData = [...editedRowsData];
+    newEditedRowsData[rowIndex][cellIndex] = { ...newEditedRowsData[rowIndex][cellIndex], value };
+    setEditedRowsData(newEditedRowsData);
   };
 
   const handleSave = () => {
     setIsSaving(true);
     try {
-      // Pass the edited data back to parent component instead of submitting to backend
-      onSubmit(rowData);
+      // Pass all edited rows data back to parent component
+      onSubmit(editedRowsData);
       onClose();
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -100,25 +100,30 @@ export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activ
             </div>
           )}
 
-          {/* Input fields */}
-          <div className="space-y-4">
-            {headers.map((header, index) => (
-              <div key={index}>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  {header}
-                </label>
-                <input
-                  type="text"
-                  value={String(rowData[index]?.value || '')}
-                  onChange={(e) => handleInputChange(index, e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  placeholder={`Enter ${header.toLowerCase()}`}
-                  autoComplete="off"
-                  spellCheck="false"
-                />
+          {/* Input fields for each row */}
+          {editedRowsData.map((row, rowIndex) => (
+            <div key={rowIndex} className="mb-8 p-4 border border-gray-700 rounded-lg bg-gray-800">
+              <h3 className="text-lg font-semibold text-white mb-4">Row {rowIndex + 1}</h3>
+              <div className="space-y-4">
+                {headers.map((header, cellIndex) => (
+                  <div key={`${rowIndex}-${cellIndex}`}>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      {header}
+                    </label>
+                    <input
+                      type="text"
+                      value={String(row[cellIndex]?.value || '')}
+                      onChange={(e) => handleInputChange(rowIndex, cellIndex, e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                      placeholder={`Enter ${header.toLowerCase()}`}
+                      autoComplete="off"
+                      spellCheck="false"
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
 
         {/* Footer - always visible */}

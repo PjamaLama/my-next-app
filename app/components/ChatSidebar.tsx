@@ -64,11 +64,32 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
   // Adding spreadsheet handled inside SpreadsheetManagerModal
   // Wired Edit for user modifications before commit; keeps flow elegant.
-  const handleModalSubmit = async (rowData: Array<{ column: string; value: unknown }>) => {
+  const handleModalSubmit = async (editedRows: Array<Array<{ column: string; value: unknown }>>) => {
     try {
-      const rowObj = rowData.reduce((acc, cur) => { (acc as any)[cur.column] = cur.value; return acc; }, {} as Record<string, unknown>);
-      // TODO: Migrate to n8n if needed
-      const resp = { ok: false };
+      // Transform editedRows back to simple array of arrays (just values)
+      const updatedRows = editedRows.map(row => row.map(item => item.value));
+      // TODO: Integrate with backend submission logic (e.g., n8n or direct API call)
+      // For now, we'll just log the updated rows and close the modal.
+      console.log('Updated rows from modal:', updatedRows);
+
+      // Example of how you might use updatedRows to update chat messages or trigger an action
+      // This part needs to be aligned with your application's data flow.
+      // If this modal is meant to update a table in a chat message, you'd need to
+      // dispatch an event or call a context function similar to ChatInterface.tsx.
+      // Since ChatSidebar doesn't have direct access to chatMessages state,
+      // a custom event or a shared context function would be appropriate.
+
+      // Example: Dispatch a custom event to update chat messages (similar to ChatInterface)
+      // This assumes there's a listener in ChatInterface or a higher-level component.
+      // const messageId = modalPreview?.messageId;
+      // const tableIndex = modalPreview?.tableIndex;
+      // if (messageId != null && typeof tableIndex === 'number') {
+      //   window.dispatchEvent(new CustomEvent('chat:update-table-rows', {
+      //     detail: { messageId, tableIndex, updatedRows }
+      //   }));
+      // }
+
+      const resp = { ok: false }; // Keep existing placeholder for now
       // Re-hydrate after apply
       const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
       if (resp.ok && defaultSpreadsheetId && activeSheet) {
@@ -80,7 +101,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         if (json && json.data) setSheetDataCache((prev) => ({ ...prev, [activeSheet]: json.data }));
         await notify({ title: 'Success', description: 'Update applied.', tone: 'success' });
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error handling modal submit:', error);
+      await notify({ title: 'Error', description: 'Failed to save changes.', tone: 'error' });
+    }
     setModalOpen(false);
   };
 
@@ -94,9 +118,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         : [];
       const headers: string[] = Array.isArray(preview?.headers) && preview.headers.length > 0 ? preview.headers : cachedHeaders;
       const rows2D: any[] = Array.isArray(preview?.rows) ? preview.rows : [];
-      const first = Array.isArray(rows2D) && rows2D.length > 0 ? rows2D[0] : [];
+      // Pass all rows, transformed to the expected format for EditRowModal
       const rows: Array<Array<{ column: string; value: unknown }>> = headers.length > 0
-        ? [headers.map((h, i) => ({ column: h, value: String(first?.[i] ?? '') }))]
+        ? rows2D.map((row: any[]) => headers.map((h, i) => ({ column: h, value: String(row?.[i] ?? '') })))
         : [];
       setModalPreview({ headers, rows, message: preview?.message });
       setModalOpen(true);

@@ -670,10 +670,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
                                     onClick={() => {
                                       if (table.headers && rows) {
                                         const headers = Array.isArray(table.headers) ? table.headers : [];
-                                        const firstRow = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
-                                        const normalizedRows = [
-                                          headers.map((h, i) => ({ column: h, value: String(firstRow?.[i] ?? '') }))
-                                        ];
+                                        // Pass all rows, transformed to the expected format for EditRowModal
+                                        const normalizedRows = rows.map((row: any[]) =>
+                                          headers.map((h, i) => ({ column: h, value: String(row?.[i] ?? '') }))
+                                        );
                                         setEditModalData({
                                           headers,
                                           rows: normalizedRows,
@@ -881,9 +881,10 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
           setEditModalData(null);
         }}
         preview={editModalData || { headers: [], rows: [], message: '' }}
-        onSubmit={async (rowData) => {
+        onSubmit={async (editedRows) => {
           if (editModalData && editModalData.headers) {
-            const updatedRow = rowData.map(item => item.value);
+            // Transform editedRows back to simple array of arrays (just values)
+            const updatedRows = editedRows.map(row => row.map(item => item.value));
             const messageId = editModalData.messageId as string | undefined;
             const tableIndex = editModalData.tableIndex as number | undefined;
 
@@ -891,9 +892,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
               if (msg.id !== messageId || !Array.isArray(msg.tables)) return msg;
               const tables = msg.tables.map((t, i) => {
                 if (i !== tableIndex) return t;
-                const currentRows = Array.isArray(t.rows) ? t.rows : [];
-                const newRows = currentRows.length > 0 ? [updatedRow, ...currentRows.slice(1)] : [updatedRow];
-                return { ...t, rows: newRows, rowCount: newRows.length } as any;
+                // Replace the entire set of rows for this table
+                return { ...t, rows: updatedRows, rowCount: updatedRows.length } as any;
               });
               return { ...msg, tables };
             }));
@@ -903,9 +903,8 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
               if (targetMessage && Array.isArray(targetMessage.tables)) {
                 const tablesForSave = targetMessage.tables.map((t, i) => {
                   if (i !== tableIndex) return t as any;
-                  const currentRows = Array.isArray(t.rows) ? t.rows : [];
-                  const newRows = currentRows.length > 0 ? [updatedRow, ...currentRows.slice(1)] : [updatedRow];
-                  return { ...t, rows: newRows, rowCount: newRows.length } as any;
+                  // Replace the entire set of rows for this table
+                  return { ...t, rows: updatedRows, rowCount: updatedRows.length } as any;
                 });
                 await updateMessageTables(targetMessage.id, tablesForSave as any);
               }
