@@ -260,7 +260,7 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
         </div>
 
         {/* Content */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 overflow-y-auto max-h-[calc(90vh-200px)]">
           <div className="flex justify-center mb-4">
             {step.icon}
           </div>
