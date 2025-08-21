@@ -79,7 +79,8 @@ const SheetChipSelector: React.FC = () => {
       setHasInitialized(true);
     } catch (e) {
       console.warn('Failed to refresh sheet names:', e);
-      setError(e.message);
+      const errorMessage = e instanceof Error ? e.message : 'Failed to refresh sheet names';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
