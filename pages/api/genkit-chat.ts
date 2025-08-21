@@ -20,6 +20,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Message or images are required' });
     }
 
+    // Send headers + one sample row per sheet to provide context without duplication
+    const sheetInfo: Record<string, { headers: string[], sampleRows: string[][] }> = {};
+    let sheetContextString = '';
+
+    if (context?.sheetData) {
+      console.log('🔍 [N8N] Context sheetData received:', Object.keys(context.sheetData));
+      for (const [sheetName, sheetData] of Object.entries(context.sheetData)) {
+        console.log(`🔍 [N8N] Processing sheet: ${sheetName}`, {
+          isArray: Array.isArray(sheetData),
+          length: Array.isArray(sheetData) ? sheetData.length : 'N/A',
+          firstRowIsArray: Array.isArray(sheetData) && sheetData.length > 0 ? Array.isArray(sheetData[0]) : false
+        });
+        if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
+          const headers = sheetData[0].map((h: any) => String(h ?? ''));
+          // Get the last 3 rows as sample data
+          const sampleRows = sheetData.length > 1 ?
+            sheetData.slice(Math.max(1, sheetData.length - 3)).map((row: any) =>
+              Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
+            ) : [];
+          
+          sheetInfo[sheetName] = {
+            headers: headers,
+            sampleRows: sampleRows
+          };
+          console.log(`✅ [N8N] Added data for ${sheetName}:`, {
+            headerCount: headers.length,
+            sampleRowsCount: sampleRows.length
+          });
+
+          sheetContextString += `\nSheet Name: ${sheetName}\nHeaders: ${headers.join(', ')}\nSample Rows:\n`;
+          sampleRows.forEach(row => {
+            sheetContextString += `- ${row.join(', ')}\n`;
+          });
+
+        } else {
+          console.log(`❌ [N8N] Skipped ${sheetName} - invalid data structure`);
+        }
+      }
+    } else {
+      console.log('❌ [N8N] No context.sheetData received');
+    }
+
     // Process images and files into a format suitable for N8N
     // Extract text from PDFs using pdf-parse before sending to N8N
     const extractedFileContents = [];
@@ -151,6 +193,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 - Forms: form fields, dates, names, amounts
 - Any other structured information
 
+Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
+${sheetContextString}
+
 Output as JSON array of objects with appropriate keys. Normalize dates to YYYY-MM-DD, amounts to numbers.`;
 
               const result = await model.generateContent([visionPrompt, imagePart]);
@@ -184,6 +229,9 @@ Output as JSON array of objects with appropriate keys. Normalize dates to YYYY-M
               console.log(`📝 [GEMINI TEXT] Processing text from ${fileContent.name} with ${fileContent.extractedData.extractedText.length} characters`);
               
               const prompt = `Extract structured data from this file content. Output as JSON array of objects with keys like date, vendor, amount, category, details. Infer categories (e.g., Food, Fuel, Accommodation). Normalize dates to YYYY-MM-DD, amounts to numbers.
+
+Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
+${sheetContextString}
 
 File: ${fileContent.name}
 Content: ${fileContent.extractedData.extractedText}`;
@@ -235,40 +283,6 @@ Content: ${fileContent.extractedData.extractedText}`;
           details: (error as Error).message
         });
       }
-    }
-
-    // Send headers + one sample row per sheet to provide context without duplication
-    const sheetInfo: Record<string, { headers: string[], sampleRows: string[][] }> = {};
-    if (context?.sheetData) {
-      console.log('🔍 [N8N] Context sheetData received:', Object.keys(context.sheetData));
-      for (const [sheetName, sheetData] of Object.entries(context.sheetData)) {
-        console.log(`🔍 [N8N] Processing sheet: ${sheetName}`, {
-          isArray: Array.isArray(sheetData),
-          length: Array.isArray(sheetData) ? sheetData.length : 'N/A',
-          firstRowIsArray: Array.isArray(sheetData) && sheetData.length > 0 ? Array.isArray(sheetData[0]) : false
-        });
-        if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
-          const headers = sheetData[0].map((h: any) => String(h ?? ''));
-          // Get the last 3 rows as sample data
-          const sampleRows = sheetData.length > 1 ?
-            sheetData.slice(Math.max(1, sheetData.length - 3)).map((row: any) =>
-              Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
-            ) : [];
-          
-          sheetInfo[sheetName] = {
-            headers: headers,
-            sampleRows: sampleRows
-          };
-          console.log(`✅ [N8N] Added data for ${sheetName}:`, {
-            headerCount: headers.length,
-            sampleRowsCount: sampleRows.length
-          });
-        } else {
-          console.log(`❌ [N8N] Skipped ${sheetName} - invalid data structure`);
-        }
-      }
-    } else {
-      console.log('❌ [N8N] No context.sheetData received');
     }
 
     const initialFileSummary = {
