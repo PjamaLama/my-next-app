@@ -2,9 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
-import { ThumbsUp, ThumbsDown, Plus, ExternalLink } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Plus, Grid3X3, Layers } from 'lucide-react';
 import { compressImageFile } from '@/lib/imageCompression';
-import Link from 'next/link';
+import SwipeableFeedbackStack from './SwipeableFeedbackStack';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
@@ -30,6 +30,7 @@ export default function FeedbackButton() {
   const [similar, setSimilar] = useState<SimilarItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<'submit' | 'browse'>('submit');
+  const [browseViewMode, setBrowseViewMode] = useState<'list' | 'swipe'>('list');
   const [allItems, setAllItems] = useState<SimilarItem[]>([]);
   const [allLoading, setAllLoading] = useState(false);
   const [browseQuery, setBrowseQuery] = useState('');
@@ -262,13 +263,6 @@ export default function FeedbackButton() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Link
-                  href="/feedback"
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-zinc-800/50 hover:bg-zinc-700/50 text-white/70 hover:text-white rounded-lg transition-colors"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  View All
-                </Link>
                 <button className="text-white/70 hover:text-white p-1" onClick={() => setOpen(false)} aria-label="Close">
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -491,6 +485,33 @@ export default function FeedbackButton() {
                     className="w-full pl-4 pr-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
                   />
                 </div>
+                
+                {/* View Mode Toggle */}
+                <div className="flex items-center bg-zinc-800/50 rounded-lg p-1">
+                  <button
+                    onClick={() => setBrowseViewMode('list')}
+                    className={`p-2 rounded transition-colors ${
+                      browseViewMode === 'list' 
+                        ? 'bg-emerald-600 text-white' 
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                    }`}
+                    title="List view"
+                  >
+                    <Layers className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setBrowseViewMode('swipe')}
+                    className={`p-2 rounded transition-colors ${
+                      browseViewMode === 'swipe' 
+                        ? 'bg-emerald-600 text-white' 
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                    }`}
+                    title="Swipe view"
+                  >
+                    <Grid3X3 className="w-4 h-4" />
+                  </button>
+                </div>
+                
                 <button
                   type="button"
                   onClick={() => {
@@ -508,8 +529,34 @@ export default function FeedbackButton() {
                 </button>
               </div>
               
-              {/* Feedback List */}
-              <div className="max-h-[50vh] overflow-auto pr-1 space-y-3">
+              {/* Content based on view mode */}
+              {browseViewMode === 'swipe' ? (
+                <div className="max-h-[50vh] overflow-hidden">
+                  {allLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+                      <span className="ml-3 text-white/60">Loading...</span>
+                    </div>
+                  ) : (
+                    <SwipeableFeedbackStack
+                      items={allItems.filter((i) => {
+                        const q = browseQuery.trim().toLowerCase();
+                        if (!q) return true;
+                        const text = `${i.title} ${i.description || ''}`.toLowerCase();
+                        return text.includes(q);
+                      })}
+                      onVote={vote}
+                      onSkip={(id) => {
+                        // Skip logic - could be used for analytics or just to move to next item
+                        console.log('Skipped item:', id);
+                      }}
+                      className="max-w-full"
+                    />
+                  )}
+                </div>
+              ) : (
+                /* Traditional List View */
+                <div className="max-h-[50vh] overflow-auto pr-1 space-y-3">
                 {allLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
@@ -556,8 +603,9 @@ export default function FeedbackButton() {
                         </div>
                       </div>
                     ))
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
             )}
           </div>

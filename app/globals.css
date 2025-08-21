@@ -90,6 +90,64 @@ button:active {
   100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7), 0 0 0 4px rgba(239, 68, 68, 0.2); }
 }
 
+/* Swipe feedback animations */
+@keyframes swipe-right {
+  0% { transform: translateX(0) rotate(0deg); }
+  100% { transform: translateX(200px) rotate(25deg); }
+}
+
+@keyframes swipe-left {
+  0% { transform: translateX(0) rotate(0deg); }
+  100% { transform: translateX(-200px) rotate(-25deg); }
+}
+
+@keyframes swipe-up {
+  0% { transform: translateY(0) scale(1); }
+  100% { transform: translateY(-200px) scale(0.8); }
+}
+
+@keyframes vote-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes count-up {
+  0% { transform: scale(1); color: inherit; }
+  50% { transform: scale(1.1); color: #10b981; }
+  100% { transform: scale(1); color: inherit; }
+}
+
+@keyframes count-down {
+  0% { transform: scale(1); color: inherit; }
+  50% { transform: scale(1.1); color: #ef4444; }
+  100% { transform: scale(1); color: inherit; }
+}
+
+.swipe-right {
+  animation: swipe-right 0.3s ease-out forwards;
+}
+
+.swipe-left {
+  animation: swipe-left 0.3s ease-out forwards;
+}
+
+.swipe-up {
+  animation: swipe-up 0.3s ease-out forwards;
+}
+
+.vote-pop {
+  animation: vote-pop 0.6s ease-in-out;
+}
+
+.animate-count-up {
+  animation: count-up 0.6s ease-in-out;
+}
+
+.animate-count-down {
+  animation: count-down 0.6s ease-in-out;
+}
+
 @keyframes glow-yellow {
   0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7), 0 0 0 4px rgba(234, 179, 8, 0.2); }
   70% { box-shadow: 0 0 0 8px rgba(234, 179, 8, 0), 0 0 0 12px rgba(234, 179, 8, 0); }
