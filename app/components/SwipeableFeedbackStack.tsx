@@ -138,13 +138,11 @@ export default function SwipeableFeedbackStack({
         console.log(`Moving from card ${prev} to ${nextIndex} (total: ${items.length})`);
         return nextIndex;
       });
-      // Reset the card state
-      setTimeout(() => {
-        setSwipeDirection(null);
-        x.set(0);
-        y.set(0);
-      }, 50);
-    }, 300);
+      // Reset the card state immediately
+      setSwipeDirection(null);
+      x.set(0);
+      y.set(0);
+    }, 200);
   };
 
   const resetStack = () => {

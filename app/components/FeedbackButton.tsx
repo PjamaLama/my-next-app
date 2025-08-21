@@ -26,8 +26,7 @@ export default function FeedbackButton() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<FeedbackType>('feature');
-  const [loading, setLoading] = useState(false);
-  const [similar, setSimilar] = useState<SimilarItem[]>([]);
+
   const [submitting, setSubmitting] = useState(false);
 
   const [allItems, setAllItems] = useState<SimilarItem[]>([]);
@@ -60,29 +59,7 @@ export default function FeedbackButton() {
     } catch {}
   }, [title, description, type, attachments]);
 
-  useEffect(() => {
-    const q = title.trim() + ' ' + description.trim();
-    const run = async () => {
-      if (q.length < 8) {
-        setSimilar([]);
-        return;
-      }
-      setLoading(true);
-      try {
-        const params = new URLSearchParams({ action: 'search', q });
-        if (user?.uid) params.set('userId', user.uid);
-        const res = await fetch(`/api/feedback?${params.toString()}`);
-        const data = await res.json();
-        setSimilar((data?.data || []).slice(0, 5));
-      } catch (_) {
-        setSimilar([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    const id = setTimeout(run, 350);
-    return () => clearTimeout(id);
-  }, [title, description, user?.uid]);
+
 
   // Listen for global open event to trigger from anywhere (e.g., sidebar button)
   useEffect(() => {
@@ -134,17 +111,6 @@ export default function FeedbackButton() {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
     try {
-      // If there is a strong match, confirm with the user first
-      const strong = similar.find((s) => (s.title || '').toLowerCase().includes(title.trim().toLowerCase()));
-      if (strong) {
-        const confirmUse = confirm('We found an existing similar request. Upvote that instead?');
-        if (confirmUse) {
-          if (strong.id) await vote(strong.id, 1);
-          setOpen(false);
-          setSubmitting(false);
-          return;
-        }
-      }
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -182,7 +148,6 @@ export default function FeedbackButton() {
 
     setVoting((m) => ({ ...m, [id]: true }));
 
-    const originalSimilar = similar;
     const originalAllItems = allItems;
 
     // Optimistic UI update
@@ -203,7 +168,6 @@ export default function FeedbackButton() {
       return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
     };
 
-    setSimilar(prev => prev.map(optimisticUpdater));
     setAllItems(prev => prev.map(optimisticUpdater));
     setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
     setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
@@ -228,12 +192,10 @@ export default function FeedbackButton() {
         return { ...i, votesCount: serverState.votesCount, userVote: serverState.userVote };
       };
 
-      setSimilar(prev => prev.map(serverUpdater));
       setAllItems(prev => prev.map(serverUpdater));
 
     } catch (_) {
       // Revert on error
-      setSimilar(originalSimilar);
       setAllItems(originalAllItems);
       alert('Failed to vote. Please try again.');
     } finally {
@@ -410,49 +372,7 @@ export default function FeedbackButton() {
                 </div>
               </div>
 
-                {/* Similar requests */}
-                {(loading || similar.length > 0) && (
-                  <div className="p-4 bg-zinc-800/30 rounded-xl border border-white/10">
-                    <div className="text-sm text-white/80 mb-3 font-medium">Similar requests</div>
-                    <div className="space-y-2 max-h-40 overflow-auto pr-1">
-                      {loading && <div className="text-xs text-white/50">Searching…</div>}
-                      {!loading && similar.length === 0 && <div className="text-xs text-white/50">No similar items found</div>}
-                      {similar.map((item) => (
-                        <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-3 hover:bg-white/5 transition-all duration-200 feedback-interactive">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
-                            {item.description ? (
-                              <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
-                            ) : null}
-                          </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <button
-                              type="button"
-                              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
-                              onClick={() => vote(item.id, 1)}
-                              disabled={!user || !!voting[item.id]}
-                              title={user ? 'Upvote' : 'Sign in to vote'}
-                            >
-                              <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
-                            </button>
-                            <button
-                              type="button"
-                              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
-                              onClick={() => vote(item.id, -1)}
-                              disabled={!user || !!voting[item.id]}
-                              title={user ? 'Downvote' : 'Sign in to vote'}
-                            >
-                              <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
-                            </button>
-                            {typeof item.votesCount === 'number' ? (
-                              <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{item.votesCount.toLocaleString()}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+
 
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between pt-6 border-t border-white/10">
