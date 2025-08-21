@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, PanInfo, useMotionValue, useTransform, useSpring } from 'framer-motion';
-import { ThumbsUp, ThumbsDown, SkipForward, X } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Forward, X } from 'lucide-react';
 
 interface FeedbackItem {
   id: string;
@@ -10,6 +10,12 @@ interface FeedbackItem {
   description?: string;
   votesCount?: number;
   userVote?: 1 | -1 | 0;
+  createdBy?: {
+    uid?: string;
+    displayName?: string;
+    email?: string;
+  };
+  createdAt?: any; // Can be Firestore timestamp or Date
 }
 
 interface SwipeableFeedbackStackProps {
@@ -21,6 +27,37 @@ interface SwipeableFeedbackStackProps {
 
 const SWIPE_THRESHOLD = 100;
 const SWIPE_UP_THRESHOLD = 80;
+
+// Helper function to format dates
+const formatDate = (date: any): string => {
+  if (!date) return '';
+  
+  let dateObj: Date;
+  if (date.toDate) {
+    // Firestore timestamp
+    dateObj = date.toDate();
+  } else if (date instanceof Date) {
+    dateObj = date;
+  } else if (typeof date === 'string') {
+    dateObj = new Date(date);
+  } else {
+    return '';
+  }
+  
+  const now = new Date();
+  const diffMs = now.getTime() - dateObj.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return 'Today';
+  } else if (diffDays === 1) {
+    return 'Yesterday';
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  } else {
+    return dateObj.toLocaleDateString();
+  }
+};
 
 export default function SwipeableFeedbackStack({ 
   items, 
@@ -76,10 +113,17 @@ export default function SwipeableFeedbackStack({
     
     setIsVoting(true);
     try {
+      // Call the vote function from FeedbackButton
       await onVote(currentItem.id, value);
+      
+      // Move to next card after voting
       nextCard();
     } catch (error) {
       console.error('Vote failed:', error);
+      // Reset the card position on error
+      x.set(0);
+      y.set(0);
+      setSwipeDirection(null);
     } finally {
       setIsVoting(false);
     }
@@ -87,11 +131,16 @@ export default function SwipeableFeedbackStack({
 
   const nextCard = () => {
     setTimeout(() => {
-      setCurrentIndex(prev => Math.min(prev + 1, items.length - 1));
+      setCurrentIndex(prev => {
+        const nextIndex = prev + 1;
+        console.log(`Moving from card ${prev} to ${nextIndex} (total: ${items.length})`);
+        // If we've reached the end, the component will show "All caught up!"
+        return nextIndex;
+      });
       setSwipeDirection(null);
       x.set(0);
       y.set(0);
-    }, 300);
+    }, 400);
   };
 
   const resetStack = () => {
@@ -119,47 +168,47 @@ export default function SwipeableFeedbackStack({
 
   return (
     <div className={`relative ${className}`}>
-      {/* Instructions */}
-      <div className="text-center mb-6">
-        <div className="flex items-center justify-center gap-6 text-sm text-white/60">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-emerald-600/20 flex items-center justify-center">
-              <ThumbsUp className="w-4 h-4 text-emerald-400" />
-            </div>
-            <span>Swipe right to vote up</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-rose-600/20 flex items-center justify-center">
-              <ThumbsDown className="w-4 h-4 text-rose-400" />
-            </div>
-            <span>Swipe left to vote down</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center">
-              <SkipForward className="w-4 h-4 text-blue-400" />
-            </div>
-            <span>Swipe up to skip</span>
-          </div>
-        </div>
-      </div>
+             {/* Instructions */}
+       <div className="text-center mb-4">
+         <div className="flex items-center justify-center gap-4 text-xs text-white/60">
+           <div className="flex items-center gap-1">
+             <div className="w-6 h-6 rounded-full bg-emerald-600/20 flex items-center justify-center">
+               <ThumbsUp className="w-3 h-3 text-emerald-400" />
+             </div>
+             <span>Swipe right to vote up</span>
+           </div>
+           <div className="flex items-center gap-1">
+             <div className="w-6 h-6 rounded-full bg-rose-600/20 flex items-center justify-center">
+               <ThumbsDown className="w-3 h-3 text-rose-400" />
+             </div>
+             <span>Swipe left to vote down</span>
+           </div>
+           <div className="flex items-center gap-1">
+             <div className="w-6 h-6 rounded-full bg-blue-600/20 flex items-center justify-center">
+               <Forward className="w-3 h-3 text-blue-400" />
+             </div>
+             <span>Swipe up to skip</span>
+           </div>
+         </div>
+       </div>
 
-      {/* Progress indicator */}
-      <div className="flex justify-center mb-4">
-        <div className="flex gap-1">
-          {items.map((_, index) => (
-            <div
-              key={index}
-              className={`w-2 h-2 rounded-full transition-colors ${
-                index === currentIndex 
-                  ? 'bg-emerald-500' 
-                  : index < currentIndex 
-                    ? 'bg-emerald-300/50' 
-                    : 'bg-white/20'
-              }`}
-            />
-          ))}
-        </div>
-      </div>
+             {/* Progress indicator */}
+       <div className="flex justify-center mb-3">
+         <div className="flex gap-1">
+           {items.map((_, index) => (
+             <div
+               key={index}
+               className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                 index === currentIndex 
+                   ? 'bg-emerald-500' 
+                   : index < currentIndex 
+                     ? 'bg-emerald-300/50' 
+                     : 'bg-white/20'
+               }`}
+             />
+           ))}
+         </div>
+       </div>
 
       {/* Card */}
       <div className="relative">
@@ -177,125 +226,128 @@ export default function SwipeableFeedbackStack({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
         >
-          <div className="relative bg-zinc-900/80 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl min-h-[400px] flex flex-col">
+                     <div className="relative bg-zinc-900/80 backdrop-blur-sm border border-white/10 rounded-xl p-3 shadow-xl min-h-[220px] flex flex-col">
             {/* Vote indicators */}
-            {swipeDirection === 'right' && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="absolute top-4 right-4 z-10"
-              >
-                <div className="w-16 h-16 rounded-full bg-emerald-600/90 flex items-center justify-center">
-                  <ThumbsUp className="w-8 h-8 text-white" />
-                </div>
-              </motion.div>
-            )}
-            
-            {swipeDirection === 'left' && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="absolute top-4 left-4 z-10"
-              >
-                <div className="w-16 h-16 rounded-full bg-rose-600/90 flex items-center justify-center">
-                  <ThumbsDown className="w-8 h-8 text-white" />
-                </div>
-              </motion.div>
-            )}
+                         {swipeDirection === 'right' && (
+               <motion.div
+                 initial={{ opacity: 0, scale: 0.8 }}
+                 animate={{ opacity: 1, scale: 1 }}
+                 className="absolute top-3 right-3 z-10"
+               >
+                 <div className="w-12 h-12 rounded-full bg-emerald-600/90 flex items-center justify-center">
+                   <ThumbsUp className="w-6 h-6 text-white" />
+                 </div>
+               </motion.div>
+             )}
+             
+             {swipeDirection === 'left' && (
+               <motion.div
+                 initial={{ opacity: 0, scale: 0.8 }}
+                 animate={{ opacity: 1, scale: 1 }}
+                 className="absolute top-3 left-3 z-10"
+               >
+                 <div className="w-12 h-12 rounded-full bg-rose-600/90 flex items-center justify-center">
+                   <ThumbsDown className="w-6 h-6 text-white" />
+                 </div>
+               </motion.div>
+             )}
 
-            {/* Card content */}
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  currentItem.type === 'feature' ? 'bg-yellow-500/20' :
-                  currentItem.type === 'bug' ? 'bg-red-500/20' :
-                  'bg-blue-500/20'
-                }`}>
-                  {currentItem.type === 'feature' ? '💡' : 
-                   currentItem.type === 'bug' ? '🐛' : '❓'}
-                </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  currentItem.type === 'feature' ? 'bg-yellow-500/20 text-yellow-300' :
-                  currentItem.type === 'bug' ? 'bg-red-500/20 text-red-300' :
-                  'bg-blue-500/20 text-blue-300'
-                }`}>
-                  {currentItem.type}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-1">
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  currentItem.status === 'open' ? 'bg-blue-500/20 text-blue-300' :
-                  currentItem.status === 'in_progress' ? 'bg-yellow-500/20 text-yellow-300' :
-                  currentItem.status === 'closed' ? 'bg-gray-500/20 text-gray-300' :
-                  'bg-green-500/20 text-green-300'
-                }`}>
-                  {currentItem.status || 'open'}
-                </span>
-              </div>
-            </div>
+                         {/* Card content */}
+             <div className="flex items-start justify-between gap-2 mb-2">
+               <div className="flex items-center gap-1">
+                 <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs">
+                   💬
+                 </div>
+                 <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300">
+                   Feedback
+                 </span>
+               </div>
+               
+               <div className="flex items-center gap-1">
+                 <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300">
+                   Open
+                 </span>
+               </div>
+             </div>
 
-            <h3 className="text-xl font-semibold text-white leading-snug mb-3">
-              {currentItem.title}
-            </h3>
+             <h3 className="text-base font-semibold text-white leading-tight mb-2">
+               {currentItem.title}
+             </h3>
 
-            {currentItem.description && (
-              <p className="text-white/70 text-sm mb-4 flex-1">
-                {currentItem.description}
+             <p className="text-white/70 text-sm mb-2 flex-1 line-clamp-2">
+                {currentItem.description || 'No description provided'}
               </p>
-            )}
 
-            <div className="mt-auto space-y-3">
-              {/* Metadata */}
-              <div className="flex items-center justify-between text-xs text-white/50">
-                <div className="flex items-center gap-3">
-                  {currentItem.createdBy?.displayName && (
-                    <span>By {currentItem.createdBy.displayName}</span>
-                  )}
-                  {currentItem.createdAt && (
-                    <span>{new Date(currentItem.createdAt).toLocaleDateString()}</span>
-                  )}
-                </div>
-                <span className="font-semibold">
-                  {(currentItem.votesCount || 0).toLocaleString()} votes
-                </span>
-              </div>
+             <div className="mt-auto space-y-1.5">
+               {/* Metadata */}
+               <div className="flex items-center justify-between text-xs text-white/50">
+                 <div className="flex flex-col gap-0.5">
+                   <span>
+                     {currentItem.createdBy?.displayName 
+                       ? `By ${currentItem.createdBy.displayName}` 
+                       : 'Anonymous user'}
+                   </span>
+                   <span>
+                     {currentItem.createdAt 
+                       ? formatDate(currentItem.createdAt)
+                       : 'Recently'}
+                   </span>
+                 </div>
+                 <span className="font-semibold">
+                   {(currentItem.votesCount || 0).toLocaleString()} votes
+                 </span>
+               </div>
 
-              {/* Manual vote buttons */}
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => handleVote(-1)}
-                  disabled={isVoting}
-                  className="w-12 h-12 rounded-full bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 hover:text-rose-300 flex items-center justify-center transition-colors disabled:opacity-50"
-                >
-                  <ThumbsDown className="w-5 h-5" />
-                </button>
-                
-                <button
-                  onClick={() => onSkip?.(currentItem.id)}
-                  disabled={isVoting}
-                  className="w-12 h-12 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 flex items-center justify-center transition-colors disabled:opacity-50"
-                >
-                  <SkipForward className="w-5 h-5" />
-                </button>
-                
-                <button
-                  onClick={() => handleVote(1)}
-                  disabled={isVoting}
-                  className="w-12 h-12 rounded-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-colors disabled:opacity-50"
-                >
-                  <ThumbsUp className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
+               {/* Manual vote buttons */}
+               <div className="flex items-center justify-center gap-1.5">
+                 <button
+                   onClick={() => {
+                     setSwipeDirection('left');
+                     x.set(-300);
+                     handleVote(-1);
+                   }}
+                   disabled={isVoting}
+                   className="w-8 h-8 rounded-full bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 hover:text-rose-300 flex items-center justify-center transition-colors disabled:opacity-50"
+                 >
+                   <ThumbsDown className="w-3.5 h-3.5" />
+                 </button>
+                 
+                 <button
+                   onClick={() => {
+                     setSwipeDirection('up');
+                     y.set(-300);
+                     if (onSkip) {
+                       onSkip(currentItem.id);
+                     }
+                     nextCard();
+                   }}
+                   disabled={isVoting}
+                   className="w-8 h-8 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 flex items-center justify-center transition-colors disabled:opacity-50"
+                 >
+                   <Forward className="w-3.5 h-3.5" />
+                 </button>
+                 
+                 <button
+                   onClick={() => {
+                     setSwipeDirection('right');
+                     x.set(300);
+                     handleVote(1);
+                   }}
+                   disabled={isVoting}
+                   className="w-8 h-8 rounded-full bg-emerald-600/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-colors disabled:opacity-50"
+                 >
+                   <ThumbsUp className="w-3.5 h-3.5" />
+                 </button>
+               </div>
+             </div>
           </div>
         </motion.div>
       </div>
 
-      {/* Card counter */}
-      <div className="text-center mt-4 text-sm text-white/60">
-        {currentIndex + 1} of {items.length}
-      </div>
+             {/* Card counter */}
+       <div className="text-center mt-3 text-xs text-white/60">
+         {currentIndex + 1} of {items.length}
+       </div>
     </div>
   );
 }

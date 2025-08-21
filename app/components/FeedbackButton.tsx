@@ -130,7 +130,7 @@ export default function FeedbackButton() {
     }
   };
 
-  const canSubmit = useMemo(() => title.trim().length >= 4, [title]);
+  const canSubmit = useMemo(() => title.trim().length >= 4 && description.trim().length >= 10, [title, description]);
 
   const submit = async () => {
     if (!canSubmit || submitting) return;
@@ -250,7 +250,7 @@ export default function FeedbackButton() {
       {open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-          <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(720px,94vw)] p-5 modal-content">
+                     <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(900px,95vw)] h-[min(800px,90vh)] p-6 modal-content">
             {/* Header with enhanced design */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -352,13 +352,14 @@ export default function FeedbackButton() {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">Description</label>
+                  <label className="block text-sm font-medium text-white/80 mb-2">Description *</label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="More details about your feedback (optional)"
+                    placeholder="Please provide details about your feedback"
                     rows={4}
                     className="w-full px-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
+                    required
                   />
                 </div>
                 
@@ -486,31 +487,7 @@ export default function FeedbackButton() {
                   />
                 </div>
                 
-                {/* View Mode Toggle */}
-                <div className="flex items-center bg-zinc-800/50 rounded-lg p-1">
-                  <button
-                    onClick={() => setBrowseViewMode('list')}
-                    className={`p-2 rounded transition-colors ${
-                      browseViewMode === 'list' 
-                        ? 'bg-emerald-600 text-white' 
-                        : 'text-white/60 hover:text-white hover:bg-white/10'
-                    }`}
-                    title="List view"
-                  >
-                    <Layers className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setBrowseViewMode('swipe')}
-                    className={`p-2 rounded transition-colors ${
-                      browseViewMode === 'swipe' 
-                        ? 'bg-emerald-600 text-white' 
-                        : 'text-white/60 hover:text-white hover:bg-white/10'
-                    }`}
-                    title="Swipe view"
-                  >
-                    <Grid3X3 className="w-4 h-4" />
-                  </button>
-                </div>
+                
                 
                 <button
                   type="button"
@@ -529,83 +506,30 @@ export default function FeedbackButton() {
                 </button>
               </div>
               
-              {/* Content based on view mode */}
-              {browseViewMode === 'swipe' ? (
-                <div className="max-h-[50vh] overflow-hidden">
-                  {allLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
-                      <span className="ml-3 text-white/60">Loading...</span>
-                    </div>
-                  ) : (
-                    <SwipeableFeedbackStack
-                      items={allItems.filter((i) => {
-                        const q = browseQuery.trim().toLowerCase();
-                        if (!q) return true;
-                        const text = `${i.title} ${i.description || ''}`.toLowerCase();
-                        return text.includes(q);
-                      })}
-                      onVote={vote}
-                      onSkip={(id) => {
-                        // Skip logic - could be used for analytics or just to move to next item
-                        console.log('Skipped item:', id);
-                      }}
-                      className="max-w-full"
-                    />
-                  )}
-                </div>
-              ) : (
-                /* Traditional List View */
-                <div className="max-h-[50vh] overflow-auto pr-1 space-y-3">
+                             {/* Swipeable Feedback Stack */}
+               <div className="max-h-[60vh] overflow-hidden">
                 {allLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
-                    <span className="ml-3 text-white/60">Loading...</span>
+                  <div className="flex items-center justify-center py-6">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500"></div>
+                    <span className="ml-2 text-white/60">Loading...</span>
                   </div>
                 ) : (
-                  (allItems || [])
-                    .filter((i) => {
+                  <SwipeableFeedbackStack
+                    items={allItems.filter((i) => {
                       const q = browseQuery.trim().toLowerCase();
                       if (!q) return true;
                       const text = `${i.title} ${i.description || ''}`.toLowerCase();
                       return text.includes(q);
-                    })
-                    .map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-4 hover:bg-white/5 transition-all duration-200 feedback-interactive">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
-                          {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <button
-                            type="button"
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
-                            onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id]}
-                            title={user ? 'Upvote' : 'Sign in to vote'}
-                          >
-                            <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
-                          </button>
-                          <button
-                            type="button"
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
-                            onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id]}
-                            title={user ? 'Downvote' : 'Sign in to vote'}
-                          >
-                            <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
-                          </button>
-                          {typeof (item as any).votesCount === 'number' ? (
-                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-2 py-1 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{(item as any).votesCount.toLocaleString()}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
+                    })}
+                    onVote={vote}
+                    onSkip={(id) => {
+                      // Skip logic - could be used for analytics or just to move to next item
+                      console.log('Skipped item:', id);
+                    }}
+                    className="max-w-full"
+                  />
+                )}
+              </div>
             </div>
             )}
           </div>
