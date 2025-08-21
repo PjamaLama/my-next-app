@@ -138,10 +138,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             className="mb-4"
           >
             <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-4 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight">
-              The Future of Spreadsheets is Here
+              Turn Your Spreadsheets Into Powerful AI Assistants
             </h2>
             <p className="text-base sm:text-lg md:text-xl text-white/80 max-w-3xl mx-auto leading-relaxed px-4 sm:px-0">
-              Stop wrestling with complex formulas and manual data entry. SheetyAI brings the power of artificial intelligence to your Google Sheets, automating tasks and unlocking insights like never before.
+              Tired of spending hours on spreadsheet work that should take minutes? SheetyAI transforms your Google Sheets into intelligent workbooks that understand your data, answer your questions, and create insights automatically.
             </p>
           </motion.div>
 
@@ -191,7 +191,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   ) : (
-                    <span className="relative z-10">🔥 Join Beta</span>
+                    <span className="relative z-10">🔥 Get Early Access Now</span>
                   )}
                 </motion.button>
 
@@ -273,10 +273,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 <div className="p-3 bg-emerald-900/50 border border-emerald-500/30 rounded-lg backdrop-blur-sm">
                   <Zap className="w-6 h-6 text-emerald-400" />
                 </div>
-                <h3 className="text-xl font-bold">Automated Analysis</h3>
+                <h3 className="text-xl font-bold">📊 Instant Data Analysis</h3>
               </div>
               <p className="text-white/70">
-                Let our AI analyze your data, identify trends, and provide actionable insights in seconds.
+                Skip the complex formulas. Just upload your data and get meaningful insights, trends, and patterns identified automatically—no spreadsheet expertise required.
               </p>
             </motion.div>
             <motion.div variants={itemVariants} className="p-8 border border-white/20 rounded-2xl bg-black/30 backdrop-blur-md shadow-2xl shadow-black/50 hover:bg-black/40 transition-all duration-300 hover:border-white/30">
@@ -284,21 +284,21 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 <div className="p-3 bg-sky-900/50 border border-sky-500/30 rounded-lg backdrop-blur-sm">
                   <Feather className="w-6 h-6 text-sky-400" />
                 </div>
-                <h3 className="text-xl font-bold">Natural Language Queries</h3>
+                <h3 className="text-xl font-bold">💬 Chat With Your Data</h3>
               </div>
               <p className="text-white/70">
-                Talk to your data. Ask complex questions in plain English and get immediate answers.
+                Ask questions like "Which products sold best last quarter?" or "Show me sales trends by region" and get instant, accurate answers in plain English.
               </p>
             </motion.div>
-            <motion.div variants={itemVariants} className="p-8 border border-white/20 rounded-2xl bg-black/30 backdrop-blur-md shadow-2xl shadow-black/50 hover:bg-black/40 transition-all duration-300 hover:border-white/30">
+            <motion.div variants={itemVariants} className="p-8 border border-white/20 rounded-2xl bg-black/30 backdrop-blur-md shadow-2xl shadow-black/50 hover:bg-black/40 transition-all duration-300 hover:border-white/40 transition-all duration-300 hover:border-white/30">
               <div className="flex items-center gap-4 mb-4">
                 <div className="p-3 bg-purple-900/50 border border-purple-500/30 rounded-lg backdrop-blur-sm">
                   <Database className="w-6 h-6 text-purple-400" />
                 </div>
-                <h3 className="text-xl font-bold">Smart Reporting</h3>
+                <h3 className="text-xl font-bold">📈 Beautiful Reports in Seconds</h3>
               </div>
               <p className="text-white/70">
-                Generate stunning, customizable reports and dashboards with the click of a button.
+                Transform raw data into professional charts, graphs, and dashboards with a simple request. Perfect for presentations and team updates.
               </p>
             </motion.div>
           </motion.div>
@@ -311,8 +311,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             className="mt-48 relative overflow-hidden rounded-3xl p-12"
           >
             <div className="relative z-10">
-              <h3 className="text-5xl font-bold mb-20 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent">How It Works</h3>
-              <div className="grid md:grid-cols-2 gap-12">
+              <h3 className="text-5xl font-bold mb-20 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent">Simple 3-Step Process</h3>
+              <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
                 <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     whileInView={{ y: 0, opacity: 1 }}
@@ -322,8 +322,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                     <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><BarChart className="w-6 h-6 text-white"/></div>
                     <div>
-                        <h4 className="font-bold text-lg text-white">Connect Your Sheet</h4>
-                        <p className="text-white/80">Securely connect your Google Sheet and choose the data you want to analyze.</p>
+                        <h4 className="font-bold text-lg text-white">1. Connect & Upload</h4>
+                        <p className="text-white/80">Link your Google Sheets securely. Your data stays private and protected.</p>
                     </div>
                 </motion.div>
                 <motion.div
@@ -335,8 +335,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                     <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><PieChart className="w-6 h-6 text-white"/></div>
                     <div>
-                        <h4 className="font-bold text-lg text-white">Ask Your Questions</h4>
-                        <p className="text-white/80">Use natural language to ask questions, request charts, or command data manipulations.</p>
+                        <h4 className="font-bold text-lg text-white">2. Ask Anything</h4>
+                        <p className="text-white/80">Type questions naturally: "What's my top-performing category?" or "Create a sales forecast chart."</p>
                     </div>
                 </motion.div>
                 <motion.div
@@ -348,51 +348,80 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                     <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Table className="w-6 h-6 text-white"/></div>
                     <div>
-                        <h4 className="font-bold text-lg text-white">Get Instant Insights</h4>
-                        <p className="text-white/80">Receive AI-generated insights, charts, and summaries directly in the chat.</p>
+                        <h4 className="font-bold text-lg text-white">3. Get Results Instantly</h4>
+                        <p className="text-white/80">Receive professional insights, visualizations, and actionable recommendations immediately.</p>
                     </div>
                 </motion.div>
-                <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    whileInView={{ y: 0, opacity: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: 1.2 }}
-                    className="flex gap-4 items-start"
-                >
-                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Zap className="w-6 h-6 text-white"/></div>
-                    <div>
-                        <h4 className="font-bold text-lg text-white">Real-time Processing</h4>
-                        <p className="text-white/80">Get instant responses and see your data transform in real-time as you interact.</p>
-                    </div>
-                </motion.div>
-                <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    whileInView={{ y: 0, opacity: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: 1.4 }}
-                    className="flex gap-4 items-start"
-                >
-                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Database className="w-6 h-6 text-white"/></div>
-                    <div>
-                        <h4 className="font-bold text-lg text-white">Smart Analytics</h4>
-                        <p className="text-white/80">AI-powered insights that help you understand patterns and trends in your data.</p>
-                    </div>
-                </motion.div>
-                <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    whileInView={{ y: 0, opacity: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: 1.6 }}
-                    className="flex gap-4 items-start"
-                >
-                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Feather className="w-6 h-6 text-white"/></div>
-                    <div>
-                        <h4 className="font-bold text-lg text-white">Export & Share</h4>
-                        <p className="text-white/80">Easily export your AI-generated reports and share insights with your team.</p>
-                    </div>
-                </motion.div>
+
               </div>
             </div>
+            
+            {/* Why Beta Users Love SheetyAI */}
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              whileInView={{ y: 0, opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 1.8 }}
+              className="mt-20"
+            >
+              <h3 className="text-4xl font-bold mb-12 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent text-center">Why Beta Users Love SheetyAI</h3>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-3xl mb-3">✨</div>
+                  <p className="text-white/80 font-medium">Save 5+ hours per week on data analysis</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-3xl mb-3">✨</div>
+                  <p className="text-white/80 font-medium">No learning curve - works like having a conversation</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-3xl mb-3">✨</div>
+                  <p className="text-white/80 font-medium">Professional results without being a spreadsheet expert</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-3xl mb-3">✨</div>
+                  <p className="text-white/80 font-medium">Real-time insights as your data updates</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-3xl mb-3">✨</div>
+                  <p className="text-white/80 font-medium">Easy sharing - export and present with confidence</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-3xl mb-3">✨</div>
+                  <p className="text-white/80 font-medium">Secure & private - your data never leaves your control</p>
+                </div>
+              </div>
+            </motion.div>
+            
+            {/* Perfect For Section */}
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              whileInView={{ y: 0, opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 2.0 }}
+              className="mt-20"
+            >
+              <h3 className="text-4xl font-bold mb-12 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent text-center">🎯 Perfect For:</h3>
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-2xl mb-3">💼</div>
+                  <p className="text-white/80 font-medium">Small business owners tracking sales and inventory</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-2xl mb-3">📊</div>
+                  <p className="text-white/80 font-medium">Marketing teams analyzing campaign performance</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-2xl mb-3">📋</div>
+                  <p className="text-white/80 font-medium">Project managers monitoring team progress</p>
+                </div>
+                <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
+                  <div className="text-2xl mb-3">👥</div>
+                  <p className="text-white/80 font-medium">Anyone who works with data but isn't a spreadsheet wizard</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
             
             {/* Second CTA Button for scrollers */}
             <motion.div
@@ -418,11 +447,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 ) : (
-                  <span className="relative z-10">🔥 Join Beta</span>
+                  <span className="relative z-10">🔥 Get Early Access Now</span>
                 )}
               </motion.button>
             </motion.div>
-          </motion.div>
 
         </main>
 
