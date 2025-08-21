@@ -232,17 +232,21 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             whileInView={{ opacity: 1 }}
             transition={{ duration: 1, delay: 0.5 }}
             viewport={{ once: true }}
-            className="mt-48"
+            className="mt-48 relative overflow-hidden rounded-3xl p-12"
+            style={{
+              backgroundImage: 'url(/templates/gify3.gif)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat'
+            }}
           >
-            <h3 className="text-5xl font-bold mb-20 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent">How It Works</h3>
-            <div className="flex flex-col md:flex-row items-center justify-center gap-20">
-                <div className="w-full md:w-1/2">
-                    <img 
-                        src="/templates/gify3.gif" 
-                        alt="SheetyAI in action" 
-                        className="w-full h-auto max-w-lg mx-auto rounded-2xl shadow-2xl shadow-black/50 border border-white/10"
-                    />
-                </div>
+            {/* Semi-transparent overlay */}
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+            
+            {/* Content with relative positioning */}
+            <div className="relative z-10">
+              <h3 className="text-5xl font-bold mb-20 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent">How It Works</h3>
+              <div className="flex flex-col md:flex-row items-center justify-center gap-20">
                 <div className="w-full md:w-1/2 text-left space-y-12">
                     <motion.div
                         initial={{ y: 20, opacity: 0 }}
@@ -284,6 +288,35 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         </div>
                     </motion.div>
                 </div>
+                <div className="w-full md:w-1/2 text-left space-y-12">
+                    <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        whileInView={{ y: 0, opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.5, delay: 1.2 }}
+                        className="flex gap-4 items-start"
+                    >
+                        <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><Zap className="w-6 h-6 text-white"/></div>
+                        <div>
+                            <h4 className="font-bold text-lg">Real-time Processing</h4>
+                            <p className="text-white/60">Get instant responses and see your data transform in real-time as you interact.</p>
+                        </div>
+                    </motion.div>
+                    <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        whileInView={{ y: 0, opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.5, delay: 1.4 }}
+                        className="flex gap-4 items-start"
+                    >
+                        <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><Database className="w-6 h-6 text-white"/></div>
+                        <div>
+                            <h4 className="font-bold text-lg">Smart Analytics</h4>
+                            <p className="text-white/60">AI-powered insights that help you understand patterns and trends in your data.</p>
+                        </div>
+                    </motion.div>
+                </div>
+              </div>
             </div>
           </motion.div>
 
