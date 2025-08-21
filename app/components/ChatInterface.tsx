@@ -490,6 +490,20 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     setIsSending(true);
     setIsProcessingFiles(true);
 
+    const structuredExtracts = uploadedFiles.map(file => {
+      const fileData: any = {
+        name: file.name,
+        mimeType: file.mimeType,
+        extractedData: file.extractedData,
+      };
+      if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
+        if (file.fileData) {
+          fileData.data = file.fileData;
+        }
+      }
+      return fileData;
+    });
+
     // Move files to "being sent" state for visual transition
     if (uploadedFiles.length > 0) {
       setFilesBeingSent([...uploadedFiles]);
@@ -499,26 +513,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     const controller = new AbortController();
     setAbortController(controller); // Set the abort controller in the ChatProvider
 
-    let structuredExtracts: any[] = [];
-
     try {
       await ensureSession();
-
-      if (filesBeingSent.length > 0) {
-        structuredExtracts = filesBeingSent.map(file => {
-          const fileData: any = {
-            name: file.name,
-            mimeType: file.mimeType,
-            extractedData: file.extractedData,
-          };
-          if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
-            if (file.fileData) {
-              fileData.data = file.fileData;
-            }
-          }
-          return fileData;
-        });
-      }
 
       await addMessage({
         role: 'user',

@@ -196,7 +196,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
 ${sheetContextString}
 
-Output as JSON array of objects with appropriate keys. Normalize dates to YYYY-MM-DD, amounts to numbers.`;
+Respond with a valid JSON array of objects. Each object should have appropriate keys. Normalize dates to YYYY-MM-DD and amounts to numbers. Do not include any text outside of the JSON response.`;
 
               const result = await model.generateContent([visionPrompt, imagePart]);
               const response = result.response;
@@ -228,7 +228,7 @@ Output as JSON array of objects with appropriate keys. Normalize dates to YYYY-M
               // Use Gemini text API for text-based files
               console.log(`📝 [GEMINI TEXT] Processing text from ${fileContent.name} with ${fileContent.extractedData.extractedText.length} characters`);
               
-              const prompt = `Extract structured data from this file content. Output as JSON array of objects with keys like date, vendor, amount, category, details. Infer categories (e.g., Food, Fuel, Accommodation). Normalize dates to YYYY-MM-DD, amounts to numbers.
+              const prompt = `Extract structured data from this file content. Output as a valid JSON array of objects with keys like date, vendor, amount, category, details. Infer categories (e.g., Food, Fuel, Accommodation). Normalize dates to YYYY-MM-DD and amounts to numbers. Do not include any text outside of the JSON response.
 
 Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
 ${sheetContextString}
@@ -248,8 +248,6 @@ Content: ${fileContent.extractedData.extractedText}`;
                 const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
                 if (jsonMatch && jsonMatch[1]) {
                   structuredData = JSON.parse(jsonMatch[1]);
-                } else {
-                  structuredData = JSON.parse(text);
                 }
               } catch (jsonError) {
                 console.error('Failed to parse Gemini JSON response:', jsonError);
