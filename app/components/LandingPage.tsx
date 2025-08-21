@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Database, Feather, Zap, BarChart, PieChart, Table } from 'lucide-react';
 import { User } from 'firebase/auth';
+import SpaceBackground from './SpaceBackground';
 
 interface LandingPageProps {
   onSignIn: () => Promise<void>;
@@ -100,9 +101,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-white font-sans overflow-x-hidden relative">
+    <div className="min-h-screen text-white font-sans overflow-x-hidden relative">
+      <SpaceBackground />
       
-             <div className="w-full py-8 px-6 sm:px-8 relative z-10">
+      <div className="w-full py-8 px-6 sm:px-8 relative z-10">
         <motion.header
           initial={{ y: -100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -118,14 +120,14 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             />
             <h1 className="text-3xl font-bold tracking-tighter bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">SheetyAI</h1>
           </div>
-          <motion.button
-            onClick={onSignIn}
-            whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.5)' }}
-            whileTap={{ scale: 0.95 }}
-            className="bg-transparent border border-white/30 hover:border-white/60 text-white font-semibold py-2 px-5 rounded-full transition-all duration-300 backdrop-blur-sm"
-          >
-            Sign In
-          </motion.button>
+            <motion.button
+              onClick={onSignIn}
+              whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.5)' }}
+              whileTap={{ scale: 0.95 }}
+              className="bg-transparent border border-white/30 hover:border-white/60 text-white font-semibold py-2 px-5 rounded-full transition-all duration-300 backdrop-blur-sm hover:bg-white/5"
+            >
+              Sign In
+            </motion.button>
         </motion.header>
 
         <main className="text-center pt-16">
@@ -138,7 +140,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             <h2 className="text-7xl font-extrabold mb-8 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight">
               The Future of Spreadsheets is Here
             </h2>
-            <p className="text-xl text-white/70 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-xl text-white/80 max-w-3xl mx-auto leading-relaxed">
               Stop wrestling with complex formulas and manual data entry. SheetyAI brings the power of artificial intelligence to your Google Sheets, automating tasks and unlocking insights like never before.
             </p>
           </motion.div>
@@ -156,7 +158,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 onClick={handleBetaSignupWithGoogle}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 shadow-lg shadow-emerald-500/40 flex items-center justify-center mx-auto"
+                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 shadow-lg shadow-emerald-500/40 flex items-center justify-center mx-auto backdrop-blur-sm border border-emerald-400/30"
                 disabled={isSigningUp}
               >
                 {isSigningUp ? (
@@ -188,36 +190,36 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             animate="visible"
             className="grid md:grid-cols-3 gap-10 text-left"
           >
-            <motion.div variants={itemVariants} className="p-8 border border-white/10 rounded-2xl bg-black/20 backdrop-blur-md shadow-2xl shadow-black/30">
+            <motion.div variants={itemVariants} className="p-8 border border-white/20 rounded-2xl bg-black/30 backdrop-blur-md shadow-2xl shadow-black/50 hover:bg-black/40 transition-all duration-300 hover:border-white/30">
               <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 bg-emerald-900/50 border border-emerald-500/30 rounded-lg">
+                <div className="p-3 bg-emerald-900/50 border border-emerald-500/30 rounded-lg backdrop-blur-sm">
                   <Zap className="w-6 h-6 text-emerald-400" />
                 </div>
                 <h3 className="text-xl font-bold">Automated Analysis</h3>
               </div>
-              <p className="text-white/60">
+              <p className="text-white/70">
                 Let our AI analyze your data, identify trends, and provide actionable insights in seconds.
               </p>
             </motion.div>
-            <motion.div variants={itemVariants} className="p-8 border border-white/10 rounded-2xl bg-black/20 backdrop-blur-md shadow-2xl shadow-black/30">
+            <motion.div variants={itemVariants} className="p-8 border border-white/20 rounded-2xl bg-black/30 backdrop-blur-md shadow-2xl shadow-black/50 hover:bg-black/40 transition-all duration-300 hover:border-white/30">
               <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 bg-sky-900/50 border border-sky-500/30 rounded-lg">
+                <div className="p-3 bg-sky-900/50 border border-sky-500/30 rounded-lg backdrop-blur-sm">
                   <Feather className="w-6 h-6 text-sky-400" />
                 </div>
                 <h3 className="text-xl font-bold">Natural Language Queries</h3>
               </div>
-              <p className="text-white/60">
+              <p className="text-white/70">
                 Talk to your data. Ask complex questions in plain English and get immediate answers.
               </p>
             </motion.div>
-            <motion.div variants={itemVariants} className="p-8 border border-white/10 rounded-2xl bg-black/20 backdrop-blur-md shadow-2xl shadow-black/30">
+            <motion.div variants={itemVariants} className="p-8 border border-white/20 rounded-2xl bg-black/30 backdrop-blur-md shadow-2xl shadow-black/50 hover:bg-black/40 transition-all duration-300 hover:border-white/30">
               <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 bg-purple-900/50 border border-purple-500/30 rounded-lg">
+                <div className="p-3 bg-purple-900/50 border border-purple-500/30 rounded-lg backdrop-blur-sm">
                   <Database className="w-6 h-6 text-purple-400" />
                 </div>
                 <h3 className="text-xl font-bold">Smart Reporting</h3>
               </div>
-              <p className="text-white/60">
+              <p className="text-white/70">
                 Generate stunning, customizable reports and dashboards with the click of a button.
               </p>
             </motion.div>
@@ -237,7 +239,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             }}
           >
             {/* Semi-transparent overlay */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-3xl"></div>
             
             {/* Content with relative positioning */}
             <div className="relative z-10">
@@ -251,10 +253,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         transition={{ duration: 0.5, delay: 0.6 }}
                         className="flex gap-4 items-start"
                     >
-                        <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><BarChart className="w-6 h-6 text-white"/></div>
+                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><BarChart className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Connect Your Sheet</h4>
-                            <p className="text-white/60">Securely connect your Google Sheet and choose the data you want to analyze.</p>
+                            <p className="text-white/70">Securely connect your Google Sheet and choose the data you want to analyze.</p>
                         </div>
                     </motion.div>
                     <motion.div
@@ -264,10 +266,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         transition={{ duration: 0.5, delay: 0.8 }}
                         className="flex gap-4 items-start"
                     >
-                        <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><PieChart className="w-6 h-6 text-white"/></div>
+                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><PieChart className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Ask Your Questions</h4>
-                            <p className="text-white/60">Use natural language to ask questions, request charts, or command data manipulations.</p>
+                            <p className="text-white/70">Use natural language to ask questions, request charts, or command data manipulations.</p>
                         </div>
                     </motion.div>
                     <motion.div
@@ -277,10 +279,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         transition={{ duration: 0.5, delay: 1.0 }}
                         className="flex gap-4 items-start"
                     >
-                        <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><Table className="w-6 h-6 text-white"/></div>
+                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><Table className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Get Instant Insights</h4>
-                            <p className="text-white/60">Receive AI-generated insights, charts, and summaries directly in the chat.</p>
+                            <p className="text-white/70">Receive AI-generated insights, charts, and summaries directly in the chat.</p>
                         </div>
                     </motion.div>
                 </div>
@@ -292,10 +294,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         transition={{ duration: 0.5, delay: 1.2 }}
                         className="flex gap-4 items-start"
                     >
-                        <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><Zap className="w-6 h-6 text-white"/></div>
+                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><Zap className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Real-time Processing</h4>
-                            <p className="text-white/60">Get instant responses and see your data transform in real-time as you interact.</p>
+                            <p className="text-white/70">Get instant responses and see your data transform in real-time as you interact.</p>
                         </div>
                     </motion.div>
                     <motion.div
@@ -305,7 +307,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         transition={{ duration: 0.5, delay: 1.4 }}
                         className="flex gap-4 items-start"
                     >
-                        <div className="p-3 bg-gray-800 border border-white/20 rounded-lg mt-1"><Database className="w-6 h-6 text-white"/></div>
+                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><Database className="w-6 h-6 text-white"/></div>
                         <div>
                             <h4 className="font-bold text-lg">Smart Analytics</h4>
                             <p className="text-white/60">AI-powered insights that help you understand patterns and trends in your data.</p>
