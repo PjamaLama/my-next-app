@@ -210,6 +210,9 @@ export default function AdminPage() {
           <p className="text-xs text-white/60 mt-2">Grant/revoke will adjust testerCount atomically.</p>
         </div>
 
+        {/* Tutorial management */}
+        <AdminTutorialPanel />
+
         {/* Feedback management */}
         <AdminFeedbackPanel />
       </div>
@@ -322,6 +325,194 @@ function AdminFeedbackPanel() {
             </div>)
           )}
           {filtered.length === 0 && <div className="text-white/60 text-sm">No feedback</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminTutorialPanel() {
+  const { user } = useFirebase();
+  const [videos, setVideos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingVideo, setEditingVideo] = useState<any>(null);
+
+  const loadVideos = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/tutorial-videos', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to load videos');
+      const data = await res.json();
+      setVideos(data.videos || []);
+    } catch (error) {
+      console.error('Failed to load tutorial videos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadVideos();
+  }, [user]);
+
+  const updateVideo = async (video: any) => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/tutorial-videos', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          action: 'updateVideo',
+          video
+        })
+      });
+      if (!res.ok) throw new Error('Failed to update video');
+      await loadVideos();
+      setEditingVideo(null);
+    } catch (error) {
+      console.error('Failed to update video:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetToDefaults = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/tutorial-videos', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          action: 'resetToDefaults'
+        })
+      });
+      if (!res.ok) throw new Error('Failed to reset videos');
+      await loadVideos();
+    } catch (error) {
+      console.error('Failed to reset videos:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSave = (video: any) => {
+    updateVideo(video);
+  };
+
+  const handleCancel = () => {
+    setEditingVideo(null);
+  };
+
+  const startEdit = (video: any) => {
+    setEditingVideo({ ...video });
+  };
+
+  return (
+    <div className="glass rounded-xl p-5 border border-white/10 mt-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div className="text-white/80 text-sm">Tutorial Videos</div>
+        <button
+          onClick={resetToDefaults}
+          disabled={saving}
+          className={`px-3 py-2 rounded bg-amber-600 hover:bg-amber-500 text-sm ${saving ? 'opacity-60' : ''}`}
+        >
+          {saving ? 'Resetting...' : 'Reset to Defaults'}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-white/60 text-sm">Loading tutorial videos...</div>
+      ) : (
+        <div className="space-y-4">
+          {videos.map((video) => (
+            <div key={video.id} className="border border-white/10 rounded-xl p-4">
+              {editingVideo?.id === video.id ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-white/60 mb-1">Title</label>
+                      <input
+                        type="text"
+                        value={editingVideo.title}
+                        onChange={(e) => setEditingVideo({ ...editingVideo, title: e.target.value })}
+                        className="w-full rounded bg-white/10 border border-white/10 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-white/60 mb-1">YouTube Video ID</label>
+                      <input
+                        type="text"
+                        value={editingVideo.youtubeId}
+                        onChange={(e) => setEditingVideo({ ...editingVideo, youtubeId: e.target.value })}
+                        placeholder="dQw4w9WgXcQ"
+                        className="w-full rounded bg-white/10 border border-white/10 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-white/60 mb-1">Description</label>
+                    <textarea
+                      value={editingVideo.description}
+                      onChange={(e) => setEditingVideo({ ...editingVideo, description: e.target.value })}
+                      rows={2}
+                      className="w-full rounded bg-white/10 border border-white/10 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSave(editingVideo)}
+                      disabled={saving}
+                      className={`px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-sm ${saving ? 'opacity-60' : ''}`}
+                    >
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={handleCancel}
+                      className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold mb-1">{video.title}</div>
+                    <div className="text-xs text-white/60 mb-2">{video.description}</div>
+                    <div className="text-xs text-white/40">
+                      YouTube ID: {video.youtubeId}
+                      {video.updatedAt && (
+                        <span className="ml-2">
+                          • Updated: {new Date(video.updatedAt.toDate()).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => startEdit(video)}
+                    className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-sm"
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
