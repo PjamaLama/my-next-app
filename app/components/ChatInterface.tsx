@@ -504,6 +504,35 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       return fileData;
     });
 
+    // 🚀 ENHANCED LOGGING: Log what's being sent to the backend
+    console.log(' [FRONTEND] Sending files to backend for AI processing:', {
+      message: message,
+      totalFiles: structuredExtracts.length,
+      fileDetails: structuredExtracts.map((file: any) => ({
+        name: file.name,
+        mimeType: file.mimeType,
+        type: file.extractedData?.type,
+        hasFileData: !!file.data,
+        fileDataLength: file.data ? file.data.length : 0,
+        extractedDataKeys: Object.keys(file.extractedData || {}),
+        extractedDataSample: file.extractedData ? {
+          type: file.extractedData.type,
+          format: file.extractedData.format,
+          hasText: !!file.extractedData.extractedText,
+          textLength: file.extractedData.extractedText?.length || 0,
+          textSample: file.extractedData.extractedText?.substring(0, 100) + '...',
+          headers: file.extractedData.headers,
+          rowCount: file.extractedData.rowCount,
+          columnCount: file.extractedData.columnCount
+        } : 'none'
+      })),
+      sheetContext: {
+        selectedSheets: selectedSheetNames || [],
+        sheetDataKeys: Object.keys(sheetDataCache || {}),
+        conversationHistoryLength: chatMessages.length
+      }
+    });
+
     // Move files to "being sent" state for visual transition
     if (uploadedFiles.length > 0) {
       setFilesBeingSent([...uploadedFiles]);
@@ -521,22 +550,31 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         content: message,
       });
 
+      const requestBody = {
+        message,
+        context: {
+          sheetNames: selectedSheetNames || [],
+          sheetData: sheetDataCache || {}
+        },
+        // Truncate conversation history for performance and to reduce token count.
+        conversationHistory: chatMessages.slice(-8).map(m => ({
+          role: m.role,
+          content: m.content
+        })),
+        images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
+      };
+
+      // 🚀 ENHANCED LOGGING: Log the complete request payload
+      console.log('🚀 [FRONTEND] Complete request payload to /api/genkit-chat:', {
+        requestBody,
+        payloadSize: JSON.stringify(requestBody).length,
+        timestamp: new Date().toISOString()
+      });
+
       const response = await fetch('/api/genkit-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          context: {
-            sheetNames: selectedSheetNames || [],
-            sheetData: sheetDataCache || {}
-          },
-          // Truncate conversation history for performance and to reduce token count.
-          conversationHistory: chatMessages.slice(-8).map(m => ({
-            role: m.role,
-            content: m.content
-          })),
-          images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal, // Pass the signal to the fetch request
       });
 

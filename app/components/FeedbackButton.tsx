@@ -35,8 +35,6 @@ export default function FeedbackButton() {
   const { user } = useFirebase();
   const [voting, setVoting] = useState<Record<string, boolean>>({});
   const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
-  const [cooldownUntil, setCooldownUntil] = useState<Record<string, number>>({});
-  const isCooling = (id: string) => (cooldownUntil[id] || 0) > Date.now();
 
   // Attachments
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -180,34 +178,67 @@ export default function FeedbackButton() {
       alert('Please sign in to vote.');
       return;
     }
+    if (voting[id]) return;
+
+    setVoting((m) => ({ ...m, [id]: true }));
+
+    const originalSimilar = similar;
+    const originalAllItems = allItems;
+
+    // Optimistic UI update
+    const optimisticUpdater = (i: SimilarItem) => {
+      if (i.id !== id) return i;
+      const prevVote = i.userVote ?? 0;
+      let newVote: 1 | -1 | 0;
+      let delta: number;
+
+      if (prevVote === value) { // un-voting
+        newVote = 0;
+        delta = -value;
+      } else { // new vote or switching vote
+        newVote = value;
+        delta = newVote - prevVote;
+      }
+      
+      return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
+    };
+
+    setSimilar(prev => prev.map(optimisticUpdater));
+    setAllItems(prev => prev.map(optimisticUpdater));
+    setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
+    setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
+
     try {
-      if (voting[id] || isCooling(id)) return;
-      // trigger quick visual feedback
-      setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
-      setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
-      setVoting((m) => ({ ...m, [id]: true }));
       const res = await fetch('/api/feedback', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, userId: user.uid, value }),
       });
+
+      if (!res.ok) {
+        throw new Error('Failed to vote');
+      }
+
       const json = await res.json();
-      const newVote = (json?.data?.userVote ?? 0) as 1 | -1 | 0;
-      setSimilar((prev) => prev.map((i) => {
+      const serverState = json?.data;
+
+      // Sync with server state
+      const serverUpdater = (i: SimilarItem) => {
         if (i.id !== id) return i;
-        const prevVote = i.userVote ?? 0;
-        const delta = newVote - prevVote;
-        return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
-      }));
-      setAllItems((prev) => prev.map((i) => {
-        if (i.id !== id) return i;
-        const prevVote = i.userVote ?? 0;
-        const delta = newVote - prevVote;
-        return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
-      }));
+        return { ...i, votesCount: serverState.votesCount, userVote: serverState.userVote };
+      };
+
+      setSimilar(prev => prev.map(serverUpdater));
+      setAllItems(prev => prev.map(serverUpdater));
+
+    } catch (_) {
+      // Revert on error
+      setSimilar(originalSimilar);
+      setAllItems(originalAllItems);
+      alert('Failed to vote. Please try again.');
+    } finally {
       setVoting((m) => ({ ...m, [id]: false }));
-      setCooldownUntil((m) => ({ ...m, [id]: Date.now() + COOLDOWN_MS }));
-    } catch (_) {}
+    }
   };
 
   return (
@@ -260,7 +291,7 @@ export default function FeedbackButton() {
                             type="button"
                              className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                              <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
@@ -269,7 +300,7 @@ export default function FeedbackButton() {
                             type="button"
                              className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                              <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
@@ -369,7 +400,7 @@ export default function FeedbackButton() {
                             type="button"
                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                             <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
@@ -378,7 +409,7 @@ export default function FeedbackButton() {
                             type="button"
                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                             <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
@@ -458,7 +489,7 @@ export default function FeedbackButton() {
                             type="button"
                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
                           >
                             <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
@@ -467,7 +498,7 @@ export default function FeedbackButton() {
                             type="button"
                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id] || isCooling(item.id)}
+                            disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
                           >
                             <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />

@@ -8,6 +8,192 @@ export const config = {
   },
 };
 
+// 🚀 UNIFIED FILE PROCESSOR
+interface UnifiedFileProcessor {
+  processFile(file: any, sheetContext: string): Promise<any>;
+  extractText(file: any): Promise<string>;
+  createStructuredPrompt(fileType: string, extractedText: string, sheetContext: string): string;
+  parseAIResponse(response: string): any;
+}
+
+class GeminiFileProcessor implements UnifiedFileProcessor {
+  private model: any;
+  
+  constructor(apiKey: string) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    this.model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  }
+
+  async processFile(file: any, sheetContext: string): Promise<any> {
+    console.log(`🤖 [UNIFIED PROCESSOR] Processing ${file.name} (${file.mimeType})`);
+    
+    try {
+      // Step 1: Extract text content from file
+      const extractedText = await this.extractText(file);
+      
+      if (!extractedText || extractedText.trim().length === 0) {
+        console.log(`⏭️ [UNIFIED PROCESSOR] No extractable text from ${file.name}`);
+        return {
+          success: false,
+          error: 'No extractable text content'
+        };
+      }
+
+      // Step 2: Create appropriate prompt based on file type
+      const prompt = this.createStructuredPrompt(file.mimeType, extractedText, sheetContext);
+      
+      // Step 3: Send to Gemini API
+      const structuredData = await this.sendToGemini(file, prompt, extractedText);
+      
+      return {
+        success: true,
+        structuredData,
+        extractedText,
+        textLength: extractedText.length
+      };
+      
+    } catch (error) {
+      console.error(`❌ [UNIFIED PROCESSOR] Failed to process ${file.name}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  async extractText(file: any): Promise<string> {
+    // Handle different file types with unified extraction logic
+    if (file.mimeType === 'application/pdf') {
+      return await this.extractPDFText(file);
+    } else if (file.mimeType.startsWith('image/')) {
+      return await this.extractImageText(file);
+    } else if (file.mimeType === 'text/csv') {
+      return await this.extractCSVText(file);
+    } else {
+      // For other text-based files, use existing extracted text
+      return file.extractedData?.extractedText || '';
+    }
+  }
+
+  private async extractPDFText(file: any): Promise<string> {
+    try {
+      console.log(`🔍 [UNIFIED PROCESSOR] Extracting text from PDF: ${file.name}`);
+      const pdf = (await import('pdf-parse')).default;
+      const pdfBase64Data = file.data || file.extractedData?.fileData;
+      const buffer = Buffer.from(pdfBase64Data, 'base64');
+      const pdfData = await pdf(buffer);
+      return pdfData.text || 'No text could be extracted from the PDF';
+    } catch (error) {
+      console.error(`❌ [UNIFIED PROCESSOR] PDF extraction failed for ${file.name}:`, error);
+      throw new Error(`PDF text extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async extractImageText(file: any): Promise<string> {
+    // For images, we'll use Gemini Vision to extract text
+    // This is handled in the main processing flow
+    return `Image: ${file.name} - Ready for Gemini Vision analysis`;
+  }
+
+  private async extractCSVText(file: any): Promise<string> {
+    // For CSV files, use the already extracted structured data
+    if (file.extractedData?.headers && file.extractedData?.rows) {
+      const headers = file.extractedData.headers.join(', ');
+      const sampleRows = file.extractedData.rows.slice(0, 3).map((row: string[]) => row.join(', '));
+      return `CSV with headers: ${headers}. Sample rows: ${sampleRows.join('; ')}`;
+    }
+    return file.extractedData?.extractedText || '';
+  }
+
+  createStructuredPrompt(fileType: string, extractedText: string, sheetContext: string): string {
+    const basePrompt = `Extract structured data from this ${fileType} content. Output as a valid JSON array of objects with keys like date, vendor, amount, category, details. Infer categories (e.g., Food, Fuel, Accommodation). Normalize dates to YYYY-MM-DD and amounts to numbers. Do not include any text outside of the JSON response.
+
+Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
+${sheetContext}
+
+Content: ${extractedText}`;
+
+    // Customize prompt based on file type
+    if (fileType.startsWith('image/')) {
+      return `Analyze this image and extract structured data. Look for:
+- Receipts: date, vendor, total amount, items, tax
+- Invoices: invoice number, date, vendor, amounts, line items
+- Forms: form fields, dates, names, amounts
+- Any other structured information
+
+${basePrompt}`;
+    }
+    
+    return basePrompt;
+  }
+
+  async sendToGemini(file: any, prompt: string, extractedText: string): Promise<any> {
+    try {
+      let result;
+      
+      if (file.mimeType.startsWith('image/') && file.data) {
+        // Use Gemini Vision API for images
+        console.log(`🖼️ [UNIFIED PROCESSOR] Using Gemini Vision for ${file.name}`);
+        
+        const imagePart = {
+          inlineData: {
+            data: file.data,
+            mimeType: file.mimeType,
+          },
+        };
+        
+        result = await this.model.generateContent([prompt, imagePart]);
+      } else {
+        // Use Gemini Text API for text-based files
+        console.log(`📝 [UNIFIED PROCESSOR] Using Gemini Text for ${file.name}`);
+        result = await this.model.generateContent(prompt);
+      }
+
+      const response = result.response;
+      const text = response.text();
+      
+      // 🚀 ENHANCED LOGGING: Log the AI reasoning process
+      console.log('🚀 [AI REASONING] Unified Gemini Processing:', {
+        fileName: file.name,
+        mimeType: file.mimeType,
+        prompt: prompt,
+        responseLength: text.length,
+        rawResponse: text,
+        hasJson: text.includes('{') && text.includes('}'),
+        timestamp: new Date().toISOString()
+      });
+
+      return this.parseAIResponse(text);
+      
+    } catch (error) {
+      console.error(`❌ [UNIFIED PROCESSOR] Gemini API call failed for ${file.name}:`, error);
+      throw new Error(`Gemini processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  parseAIResponse(response: string): any {
+    try {
+      // Try to extract JSON from markdown code blocks first
+      const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch && jsonMatch[1]) {
+        const parsed = JSON.parse(jsonMatch[1]);
+        console.log('🚀 [AI REASONING] Successfully parsed JSON from markdown block');
+        return parsed;
+      }
+      
+      // Try direct JSON parsing
+      const parsed = JSON.parse(response);
+      console.log('🚀 [AI REASONING] Successfully parsed direct JSON response');
+      return parsed;
+      
+    } catch (jsonError) {
+      console.error('❌ [UNIFIED PROCESSOR] Failed to parse AI response:', jsonError);
+      console.error('Raw response:', response);
+      return { rawText: response, parseError: jsonError instanceof Error ? jsonError.message : 'Unknown error' };
+    }
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -147,9 +333,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Process extracted text with Gemini to create structured data
+    //  UNIFIED PROCESSING: Replace the fragmented Gemini processing with unified approach
     if (extractedFileContents.length > 0) {
-      console.log('🤖 [GEMINI] Processing extracted file contents with Gemini...');
+      console.log('🤖 [UNIFIED PROCESSOR] Processing all files with unified Gemini processor...');
       
       // Check if API key is available
       if (!process.env.GOOGLE_GENAI_API_KEY) {
@@ -161,123 +347,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       try {
-        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-        // Process each file with Gemini (text or vision)
+        const processor = new GeminiFileProcessor(process.env.GOOGLE_GENAI_API_KEY);
+        
+        // Process all files with the unified processor
         for (const fileContent of extractedFileContents) {
-          console.log(`🤖 [GEMINI] Processing ${fileContent.name}`, {
-            mimeType: fileContent.mimeType,
-            type: fileContent.type,
-            hasExtractedText: !!fileContent.extractedData?.extractedText,
-            extractedTextLength: fileContent.extractedData?.extractedText?.length || 0
-          });
+          console.log(`🤖 [UNIFIED PROCESSOR] Starting processing for ${fileContent.name}`);
           
-          try {
-            let structuredData;
-            
-            if (fileContent.mimeType.startsWith('image/') && fileContent.extractedData?.imageData && fileContent.extractedData.imageData !== 'undefined') {
-              // Use Gemini Vision API for images
-              console.log(`🖼️ [GEMINI VISION] Processing image ${fileContent.name} with Vision API`);
-              
-              const imagePart = {
-                inlineData: {
-                  data: fileContent.extractedData.imageData,
-                  mimeType: fileContent.mimeType,
-                },
-              };
-              
-              const visionPrompt = `Analyze this image and extract structured data. Look for:
-- Receipts: date, vendor, total amount, items, tax
-- Invoices: invoice number, date, vendor, amounts, line items
-- Forms: form fields, dates, names, amounts
-- Any other structured information
-
-Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
-${sheetContextString}
-
-Respond with a valid JSON array of objects. Each object should have appropriate keys. Normalize dates to YYYY-MM-DD and amounts to numbers. Do not include any text outside of the JSON response.`;
-
-              const result = await model.generateContent([visionPrompt, imagePart]);
-              const response = result.response;
-              const text = response.text();
-
-              if (!text || text.trim().length === 0) {
-                throw new Error('Gemini Vision API returned empty response');
-              }
-
-              try {
-                const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-                if (jsonMatch && jsonMatch[1]) {
-                  structuredData = JSON.parse(jsonMatch[1]);
-                } else {
-                  structuredData = JSON.parse(text);
-                }
-              } catch (jsonError) {
-                console.error('Failed to parse Gemini Vision JSON response:', jsonError);
-                console.error('Gemini Vision raw text response:', text);
-                structuredData = { rawText: text };
-              }
-              
-              // Update extracted text with Gemini's analysis
-              fileContent.extractedData.extractedText = text;
-              fileContent.extractedData.textLength = text.length;
-              fileContent.extractedData.hasTextContent = text.length > 0;
-              
-            } else if (fileContent.extractedData?.extractedText && fileContent.extractedData.extractedText.length > 0 && fileContent.extractedData.extractedText !== 'undefined') {
-              // Use Gemini text API for text-based files
-              console.log(`📝 [GEMINI TEXT] Processing text from ${fileContent.name} with ${fileContent.extractedData.extractedText.length} characters`);
-              
-              const prompt = `Extract structured data from this file content. Output as a valid JSON array of objects with keys like date, vendor, amount, category, details. Infer categories (e.g., Food, Fuel, Accommodation). Normalize dates to YYYY-MM-DD and amounts to numbers. Do not include any text outside of the JSON response.
-
-Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
-${sheetContextString}
-
-File: ${fileContent.name}
-Content: ${fileContent.extractedData.extractedText}`;
-
-              const result = await model.generateContent(prompt);
-              const response = result.response;
-              const text = response.text();
-
-              if (!text || text.trim().length === 0) {
-                throw new Error('Gemini API returned empty response');
-              }
-
-              try {
-                const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-                if (jsonMatch && jsonMatch[1]) {
-                  structuredData = JSON.parse(jsonMatch[1]);
-                }
-              } catch (jsonError) {
-                console.error('Failed to parse Gemini JSON response:', jsonError);
-                console.error('Gemini raw text response:', text);
-                structuredData = { rawText: text };
-              }
-            } else {
-              console.log(`⏭️ [GEMINI] Skipping ${fileContent.name} - no content to process`);
-              continue;
-            }
-
-            // Update the file content with Gemini's structured data
-            fileContent.extractedData.geminiStructuredData = structuredData;
+          const result = await processor.processFile(fileContent, sheetContextString);
+          
+          if (result.success) {
+            // Update the file content with unified processing results
+            fileContent.extractedData.geminiStructuredData = result.structuredData;
             fileContent.extractedData.geminiProcessed = true;
+            fileContent.extractedData.extractedText = result.extractedText;
+            fileContent.extractedData.textLength = result.textLength;
+            fileContent.extractedData.hasTextContent = result.textLength > 0;
             
-            console.log(`✅ [GEMINI] Successfully processed ${fileContent.name}:`, {
-              structuredDataType: Array.isArray(structuredData) ? 'array' : typeof structuredData,
-              structuredDataLength: Array.isArray(structuredData) ? structuredData.length : 'N/A'
+            console.log(`✅ [UNIFIED PROCESSOR] Successfully processed ${fileContent.name}:`, {
+              structuredDataType: Array.isArray(result.structuredData) ? 'array' : typeof result.structuredData,
+              structuredDataLength: Array.isArray(result.structuredData) ? result.structuredData.length : 'N/A',
+              textLength: result.textLength
             });
-
-          } catch (geminiError) {
-            console.error(`❌ [GEMINI] Error processing file ${fileContent.name}:`, geminiError);
-            fileContent.extractedData.geminiError = (geminiError as Error).message;
+          } else {
+            fileContent.extractedData.geminiError = result.error;
             fileContent.extractedData.geminiProcessed = false;
+            console.error(`❌ [UNIFIED PROCESSOR] Failed to process ${fileContent.name}:`, result.error);
           }
         }
+        
+        // 🚀 ENHANCED LOGGING: Log the unified processing summary
+        console.log('🤖 [UNIFIED PROCESSOR] Processing Summary:', {
+          totalFiles: extractedFileContents.length,
+          successfulFiles: extractedFileContents.filter(f => f.extractedData?.geminiProcessed).length,
+          failedFiles: extractedFileContents.filter(f => f.extractedData?.geminiError).length,
+          fileResults: extractedFileContents.map(f => ({
+            name: f.name,
+            mimeType: f.mimeType,
+            success: f.extractedData?.geminiProcessed || false,
+            error: f.extractedData?.geminiError || null,
+            dataType: f.extractedData?.geminiStructuredData ? 
+              (Array.isArray(f.extractedData.geminiStructuredData) ? 'array' : typeof f.extractedData.geminiStructuredData) : 'none',
+            dataLength: f.extractedData?.geminiStructuredData ? 
+              (Array.isArray(f.extractedData.geminiStructuredData) ? f.extractedData.geminiStructuredData.length : 'N/A') : 'none'
+          }))
+        });
+        
       } catch (error) {
-        console.error('❌ [GEMINI] Failed to initialize Gemini:', error);
+        console.error('❌ [UNIFIED PROCESSOR] Failed to initialize unified processor:', error);
         return res.status(500).json({ 
-          error: 'Failed to process files with Gemini',
+          error: 'Failed to process files with unified processor',
           details: (error as Error).message
         });
       }
@@ -305,6 +423,41 @@ Content: ${fileContent.extractedData.extractedText}`;
         mimeType: f.mimeType,
         structuredData: f.extractedData.geminiStructuredData
       }));
+
+    // 🚀 ENHANCED LOGGING: Log the final data being sent to N8N
+    console.log('🚀 [AI REASONING] Final Data Summary for AI Processing:', {
+      totalFiles: extractedFileContents.length,
+      fileDetails: extractedFileContents.map((f: any) => ({
+        name: f.name,
+        mimeType: f.mimeType,
+        type: f.extractedData?.type,
+        hasGeminiData: !!f.extractedData?.geminiStructuredData,
+        geminiDataType: f.extractedData?.geminiStructuredData ? 
+          (Array.isArray(f.extractedData.geminiStructuredData) ? 'array' : typeof f.extractedData.geminiStructuredData) : 'none',
+        geminiDataLength: f.extractedData?.geminiStructuredData ? 
+          (Array.isArray(f.extractedData.geminiStructuredData) ? f.extractedData.geminiStructuredData.length : 'N/A') : 'none',
+        sampleGeminiData: f.extractedData?.geminiStructuredData ? 
+          (Array.isArray(f.extractedData.geminiStructuredData) ? 
+            f.extractedData.geminiStructuredData.slice(0, 1) : 
+            f.extractedData.geminiStructuredData) : 'none'
+      })),
+      sheetContext: {
+        sheetCount: Object.keys(sheetInfo).length,
+        sheetNames: Object.keys(sheetInfo),
+        totalHeaders: Object.values(sheetInfo).reduce((sum: number, sheet: any) => 
+          sum + (sheet.headers?.length || 0), 0),
+        sampleHeaders: Object.values(sheetInfo).slice(0, 2).map((sheet: any) => 
+          (sheet as any).headers?.slice(0, 5) || [])
+      },
+      conversationHistory: {
+        messageCount: conversationHistory?.length || 0,
+        recentMessages: conversationHistory?.slice(-3).map((m: any) => ({
+          role: m.role,
+          contentLength: m.content?.length || 0,
+          contentSample: m.content?.substring(0, 100) + '...'
+        })) || []
+      }
+    });
 
     // Prepare the final payload for the N8N webhook with simplified data
     const webhookData = {

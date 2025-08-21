@@ -53,44 +53,64 @@ export default function FeedbackBoardPage() {
     });
   }, [items, query, filter]);
 
-  const upvoteAndFocus = async (id: string) => {
-    setVoteAnim((m) => ({ ...m, [id]: 'up' }));
-    setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
-    await vote(id, 1);
-  };
-
   const vote = async (id: string, value: 1 | -1) => {
     if (!user) {
       alert('Please sign in to vote.');
       return;
     }
     if (voting[id]) return;
-    const prevVote = (items.find(i => i.id === id)?.userVote ?? 0) as 1 | -1 | 0;
-    const optimistic = prevVote === value ? 0 : value;
-    // Apply optimistic update immediately
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, votesCount: (i.votesCount || 0) + (optimistic - prevVote), userVote: optimistic } : i));
+
+    setVoting((m) => ({ ...m, [id]: true }));
+
+    const originalItems = items;
+
+    // Optimistic UI update
+    const optimisticUpdater = (i: FeedbackItem) => {
+      if (i.id !== id) return i;
+      const prevVote = i.userVote ?? 0;
+      let newVote: 1 | -1 | 0;
+      let delta: number;
+
+      if (prevVote === value) { // un-voting
+        newVote = 0;
+        delta = -value;
+      } else { // new vote or switching vote
+        newVote = value;
+        delta = newVote - prevVote;
+      }
+      
+      return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
+    };
+
+    setItems(prev => prev.map(optimisticUpdater));
     setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
     setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
-    setVoting((m) => ({ ...m, [id]: true }));
+
     try {
       const res = await fetch('/api/feedback', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, userId: user.uid, value }),
       });
-      const json = await res.json();
-      const newVote = (json?.data?.userVote ?? 0) as 1 | -1 | 0;
-      // Reconcile if server differs
-      if (newVote !== optimistic) {
-        setItems((prev) => prev.map((i) => {
-          if (i.id !== id) return i;
-          const current = i.userVote ?? 0;
-          const delta = newVote - current;
-          return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
-        }));
+
+      if (!res.ok) {
+        throw new Error('Failed to vote');
       }
-    } catch (_) {}
-    finally {
+
+      const json = await res.json();
+      const serverState = json?.data;
+
+      // Sync with server state
+      setItems(prev => prev.map(i => {
+        if (i.id !== id) return i;
+        return { ...i, votesCount: serverState.votesCount, userVote: serverState.userVote };
+      }));
+
+    } catch (_) {
+      // Revert on error
+      setItems(originalItems);
+      alert('Failed to vote. Please try again.');
+    } finally {
       setVoting((m) => ({ ...m, [id]: false }));
     }
   };
