@@ -104,12 +104,12 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
     <div className="min-h-screen text-white font-sans overflow-x-hidden relative">
       <SpaceBackground />
       
-      <div className="w-full py-8 px-6 sm:px-8 relative z-10">
+      <div className="w-full py-2 px-6 sm:px-8 relative z-10">
         <motion.header
           initial={{ y: -100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5 }}
-          className="flex justify-between items-center mb-32"
+          className="flex justify-between items-center mb-4 px-4 sm:px-0"
         >
           <div className="flex items-center gap-3">
             <img 
@@ -130,17 +130,17 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             </motion.button>
         </motion.header>
 
-        <main className="text-center pt-16">
+        <main className="text-center pt-0">
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="mb-16"
+            className="mb-4"
           >
-            <h2 className="text-7xl font-extrabold mb-8 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight">
+            <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-4 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight">
               The Future of Spreadsheets is Here
             </h2>
-            <p className="text-xl text-white/80 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg md:text-xl text-white/80 max-w-3xl mx-auto leading-relaxed px-4 sm:px-0">
               Stop wrestling with complex formulas and manual data entry. SheetyAI brings the power of artificial intelligence to your Google Sheets, automating tasks and unlocking insights like never before.
             </p>
           </motion.div>
@@ -149,38 +149,116 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.4 }}
-            className="mb-64"
+            className="mb-32"
           >
             {user ? (
               <p className="text-xl text-white/70">You are signed in. Beta registration logic will be implemented here.</p>
             ) : (
-              <motion.button
-                onClick={handleBetaSignupWithGoogle}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 shadow-lg shadow-emerald-500/40 flex items-center justify-center mx-auto backdrop-blur-sm border border-emerald-400/30"
-                disabled={isSigningUp}
-              >
-                {isSigningUp ? (
-                  <svg className="animate-spin h-5 w-5 mr-3 text-white" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : (
-                  'Sign in with Google to Join Beta'
+              <div className="text-center">
+                {/* YouTube Video */}
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.5, delay: 0.4 }}
+                  className="mb-8"
+                >
+                  <div className="relative w-full max-w-4xl mx-auto aspect-video bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl border border-white/20 backdrop-blur-sm overflow-hidden mx-4 sm:mx-auto">
+                    <iframe
+                      src="https://www.youtube.com/embed/ZDazRU_PqGc"
+                      title="SheetyAI Demo Video"
+                      className="w-full h-full rounded-2xl"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                </motion.div>
+
+                {/* Main CTA Button */}
+                            <motion.button
+              onClick={handleBetaSignupWithGoogle}
+              whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
+              whileTap={{ scale: 0.95 }}
+              className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group"
+              disabled={isSigningUp}
+            >
+                  {/* Shimmer effect */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                  
+                  {isSigningUp ? (
+                    <svg className="animate-spin h-6 w-6 mr-3 text-white" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <span className="relative z-10">🔥 Join Beta</span>
+                  )}
+                </motion.button>
+
+                {/* Info Badges - Positioned below button as subtle info */}
+                <div className="mt-8 space-y-3">
+                  {/* Limited Time Badge */}
+                  <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.6, delay: 0.6 }}
+                    className="inline-flex items-center gap-2 text-orange-300/80 text-sm font-medium"
+                  >
+                    <span>🚀</span>
+                    <span>Limited Time: Private Beta Access</span>
+                  </motion.div>
+
+                  {/* Scarcity Badge */}
+                  {remainingSpots !== null && (
+                    <motion.div
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ duration: 0.5, delay: 0.8 }}
+                      className="block"
+                    >
+                      {remainingSpots > 0 ? (
+                        <div className="inline-flex items-center gap-2 text-red-300/80 text-sm font-medium">
+                          <span>⏰</span>
+                          <span>
+                            Only <span className="text-white font-semibold">{remainingSpots}</span> spots remaining!
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-2 text-yellow-300/80 text-sm font-medium">
+                          <span>🚫</span>
+                          <span>Beta is currently full</span>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+
+                  {/* Social Proof Badge */}
+                  {userCount !== null && (
+                    <motion.div
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ duration: 0.5, delay: 1.0 }}
+                      className="inline-flex items-center gap-2 text-blue-300/80 text-sm font-medium"
+                    >
+                      <span>👥</span>
+                      <span>
+                        <span className="text-white font-semibold">{userCount}</span> users already joined
+                      </span>
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* Success Message */}
+                {message && (
+                  <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="mt-6 inline-block bg-emerald-500/20 border border-emerald-400/30 rounded-full px-4 py-2 backdrop-blur-sm"
+                  >
+                    <p className="text-emerald-300 font-semibold text-sm">{message}</p>
+                  </motion.div>
                 )}
-              </motion.button>
-            )}
-            {message && <p className="mt-4 text-emerald-300 font-medium">{message}</p>}
-            {remainingSpots !== null && (
-              <p className="mt-3 text-sm text-white/50">
-                {remainingSpots > 0 ? `${remainingSpots} spots left in the private beta.` : 'Beta is currently full.'}
-              </p>
-            )}
-            {userCount !== null && (
-              <p className="mt-2 text-sm text-white/40">
-                {userCount} users have already joined the platform
-              </p>
+              </div>
             )}
           </motion.div>
 
@@ -231,91 +309,119 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             transition={{ duration: 1, delay: 0.5 }}
             viewport={{ once: true }}
             className="mt-48 relative overflow-hidden rounded-3xl p-12"
-            style={{
-              backgroundImage: 'url(/templates/gify3.gif)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat'
-            }}
           >
-            {/* Semi-transparent overlay */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-3xl"></div>
-            
-            {/* Content with relative positioning */}
             <div className="relative z-10">
               <h3 className="text-5xl font-bold mb-20 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent">How It Works</h3>
-              <div className="flex flex-col md:flex-row items-center justify-center gap-20">
-                <div className="w-full md:w-1/2 text-left space-y-12">
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        whileInView={{ y: 0, opacity: 1 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.5, delay: 0.6 }}
-                        className="flex gap-4 items-start"
-                    >
-                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><BarChart className="w-6 h-6 text-white"/></div>
-                        <div>
-                            <h4 className="font-bold text-lg">Connect Your Sheet</h4>
-                            <p className="text-white/70">Securely connect your Google Sheet and choose the data you want to analyze.</p>
-                        </div>
-                    </motion.div>
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        whileInView={{ y: 0, opacity: 1 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.5, delay: 0.8 }}
-                        className="flex gap-4 items-start"
-                    >
-                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><PieChart className="w-6 h-6 text-white"/></div>
-                        <div>
-                            <h4 className="font-bold text-lg">Ask Your Questions</h4>
-                            <p className="text-white/70">Use natural language to ask questions, request charts, or command data manipulations.</p>
-                        </div>
-                    </motion.div>
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        whileInView={{ y: 0, opacity: 1 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.5, delay: 1.0 }}
-                        className="flex gap-4 items-start"
-                    >
-                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><Table className="w-6 h-6 text-white"/></div>
-                        <div>
-                            <h4 className="font-bold text-lg">Get Instant Insights</h4>
-                            <p className="text-white/70">Receive AI-generated insights, charts, and summaries directly in the chat.</p>
-                        </div>
-                    </motion.div>
-                </div>
-                <div className="w-full md:w-1/2 text-left space-y-12">
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        whileInView={{ y: 0, opacity: 1 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.5, delay: 1.2 }}
-                        className="flex gap-4 items-start"
-                    >
-                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><Zap className="w-6 h-6 text-white"/></div>
-                        <div>
-                            <h4 className="font-bold text-lg">Real-time Processing</h4>
-                            <p className="text-white/70">Get instant responses and see your data transform in real-time as you interact.</p>
-                        </div>
-                    </motion.div>
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        whileInView={{ y: 0, opacity: 1 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.5, delay: 1.4 }}
-                        className="flex gap-4 items-start"
-                    >
-                        <div className="p-3 bg-gray-800/50 border border-white/20 rounded-lg mt-1 backdrop-blur-sm"><Database className="w-6 h-6 text-white"/></div>
-                        <div>
-                            <h4 className="font-bold text-lg">Smart Analytics</h4>
-                            <p className="text-white/60">AI-powered insights that help you understand patterns and trends in your data.</p>
-                        </div>
-                    </motion.div>
-                </div>
+              <div className="grid md:grid-cols-2 gap-12">
+                <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    whileInView={{ y: 0, opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 0.6 }}
+                    className="flex gap-4 items-start"
+                >
+                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><BarChart className="w-6 h-6 text-white"/></div>
+                    <div>
+                        <h4 className="font-bold text-lg text-white">Connect Your Sheet</h4>
+                        <p className="text-white/80">Securely connect your Google Sheet and choose the data you want to analyze.</p>
+                    </div>
+                </motion.div>
+                <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    whileInView={{ y: 0, opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 0.8 }}
+                    className="flex gap-4 items-start"
+                >
+                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><PieChart className="w-6 h-6 text-white"/></div>
+                    <div>
+                        <h4 className="font-bold text-lg text-white">Ask Your Questions</h4>
+                        <p className="text-white/80">Use natural language to ask questions, request charts, or command data manipulations.</p>
+                    </div>
+                </motion.div>
+                <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    whileInView={{ y: 0, opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 1.0 }}
+                    className="flex gap-4 items-start"
+                >
+                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Table className="w-6 h-6 text-white"/></div>
+                    <div>
+                        <h4 className="font-bold text-lg text-white">Get Instant Insights</h4>
+                        <p className="text-white/80">Receive AI-generated insights, charts, and summaries directly in the chat.</p>
+                    </div>
+                </motion.div>
+                <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    whileInView={{ y: 0, opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 1.2 }}
+                    className="flex gap-4 items-start"
+                >
+                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Zap className="w-6 h-6 text-white"/></div>
+                    <div>
+                        <h4 className="font-bold text-lg text-white">Real-time Processing</h4>
+                        <p className="text-white/80">Get instant responses and see your data transform in real-time as you interact.</p>
+                    </div>
+                </motion.div>
+                <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    whileInView={{ y: 0, opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 1.4 }}
+                    className="flex gap-4 items-start"
+                >
+                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Database className="w-6 h-6 text-white"/></div>
+                    <div>
+                        <h4 className="font-bold text-lg text-white">Smart Analytics</h4>
+                        <p className="text-white/80">AI-powered insights that help you understand patterns and trends in your data.</p>
+                    </div>
+                </motion.div>
+                <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    whileInView={{ y: 0, opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 1.6 }}
+                    className="flex gap-4 items-start"
+                >
+                    <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Feather className="w-6 h-6 text-white"/></div>
+                    <div>
+                        <h4 className="font-bold text-lg text-white">Export & Share</h4>
+                        <p className="text-white/80">Easily export your AI-generated reports and share insights with your team.</p>
+                    </div>
+                </motion.div>
               </div>
             </div>
+            
+            {/* Second CTA Button for scrollers */}
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              whileInView={{ y: 0, opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 1.8 }}
+              className="mt-16 text-center"
+            >
+              <motion.button
+                onClick={handleBetaSignupWithGoogle}
+                whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
+                whileTap={{ scale: 0.95 }}
+                className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group"
+                disabled={isSigningUp}
+              >
+                {/* Shimmer effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                
+                {isSigningUp ? (
+                  <svg className="animate-spin h-6 w-6 mr-3 text-white" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  <span className="relative z-10">🔥 Join Beta</span>
+                )}
+              </motion.button>
+            </motion.div>
           </motion.div>
 
         </main>
