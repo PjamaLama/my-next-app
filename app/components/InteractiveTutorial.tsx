@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Play, ChevronLeft, ChevronRight, CheckCircle, BookOpen, Download, Settings, FileText } from 'lucide-react';
 import { useTutorial } from '../providers/TutorialProvider';
+import { useServiceAccount } from '../providers/ServiceAccountProvider';
+import ServiceAccountInfo from './ServiceAccountInfo';
+
+const ServiceAccountInfoWrapper = () => {
+  const { serviceAccountEmail, isLoading } = useServiceAccount();
+  if (isLoading) {
+    return <div className="text-white/70">Loading service account email...</div>;
+  }
+  return <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />;
+};
 
 interface TutorialStep {
   id: string;
@@ -63,36 +73,15 @@ const defaultTutorialSteps: TutorialStep[] = [
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
               <div>
-                <p className="font-medium">Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline">Google Cloud Console</a></p>
-                <p className="text-sm text-white/60">Create a new project or select existing one</p>
+                <p className="font-medium">Copy the service account email below</p>
+                <ServiceAccountInfoWrapper />
               </div>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
               <div>
-                <p className="font-medium">Enable Google Sheets API</p>
-                <p className="text-sm text-white/60">Search for "Google Sheets API" and enable it</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
-              <div>
-                <p className="font-medium">Create Service Account</p>
-                <p className="text-sm text-white/60">Go to IAM & Admin → Service Accounts → Create</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">4</div>
-              <div>
-                <p className="font-medium">Download JSON Key</p>
-                <p className="text-sm text-white/60">Create and download the private key file</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">5</div>
-              <div>
-                <p className="font-medium">Share Your Sheet</p>
-                <p className="text-sm text-white/60">Share your Google Sheet with the service account email</p>
+                <p className="font-medium">Share your Google Sheet with this email as "Editor"</p>
+                <p className="text-sm text-white/60">This allows the AI to securely access and analyze your data.</p>
               </div>
             </div>
           </div>
