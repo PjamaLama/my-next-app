@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useFirebase } from '../providers/FirebaseProvider';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -14,11 +15,18 @@ declare global {
 }
 
 export default function PWAInstaller() {
+  const { user } = useFirebase();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
+    // Don't show PWA installer on landing page (unauthenticated users)
+    if (!user) {
+      return;
+    }
+
     // Register service worker
     if ('serviceWorker' in navigator) {
       // Bust SW cache with a versioned URL to ensure the latest logic (v3)
@@ -42,7 +50,37 @@ export default function PWAInstaller() {
     const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setShowInstallPrompt(true);
+      
+      // Check if we should show the prompt
+      const lastDismissed = localStorage.getItem('installPromptLastDismissed');
+      const lastShown = localStorage.getItem('installPromptLastShown');
+      const now = Date.now();
+      
+      // Don't show if dismissed in last 7 days
+      if (lastDismissed && (now - parseInt(lastDismissed)) < 7 * 24 * 60 * 60 * 1000) {
+        return;
+      }
+      
+      // Don't show if shown in last 24 hours
+      if (lastShown && (now - parseInt(lastShown)) < 24 * 60 * 60 * 1000) {
+        return;
+      }
+      
+      // Wait for user interaction and add a delay
+      const checkInteraction = () => {
+        if (hasInteracted) {
+          // Add 3 second delay after interaction
+          setTimeout(() => {
+            setShowInstallPrompt(true);
+            localStorage.setItem('installPromptLastShown', now.toString());
+          }, 3000);
+        } else {
+          // Check again in 1 second
+          setTimeout(checkInteraction, 1000);
+        }
+      };
+      
+      checkInteraction();
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -56,11 +94,27 @@ export default function PWAInstaller() {
 
     window.addEventListener('appinstalled', handleAppInstalled);
 
+    // Track user interactions to determine when to show the prompt
+    const trackInteraction = () => {
+      if (!hasInteracted) {
+        setHasInteracted(true);
+      }
+    };
+
+    // Listen for various user interactions
+    const events = ['click', 'scroll', 'keydown', 'touchstart'];
+    events.forEach(event => {
+      document.addEventListener(event, trackInteraction, { once: true });
+    });
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      events.forEach(event => {
+        document.removeEventListener(event, trackInteraction);
+      });
     };
-  }, []);
+  }, [user, hasInteracted]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -84,12 +138,16 @@ export default function PWAInstaller() {
 
   const handleDismiss = () => {
     setShowInstallPrompt(false);
-    // Hide for this session
-    sessionStorage.setItem('installPromptDismissed', 'true');
+    // Hide for 7 days
+    localStorage.setItem('installPromptLastDismissed', Date.now().toString());
   };
 
-  // Don't show if already installed or dismissed this session
-  if (isInstalled || !showInstallPrompt || sessionStorage.getItem('installPromptDismissed')) {
+  // Don't show if:
+  // - Not authenticated (landing page)
+  // - Already installed
+  // - No prompt available
+  // - Dismissed recently
+  if (!user || isInstalled || !showInstallPrompt || !deferredPrompt) {
     return null;
   }
 
