@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useFirebase } from './FirebaseProvider';
 import { db } from './FirebaseProvider';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { analyzeSheetStructure, SheetStructureMeta } from '../../lib/sheetStructure';
 
 interface SheetContextType {
   defaultSpreadsheetId: string;
@@ -122,6 +123,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         // Fetch data for each selected sheet
         const newSheetDataCache: Record<string, string[][]> = {};
+        const newSheetStructureCache: Record<string, SheetStructureMeta> = {};
         
         for (const sheetName of selectedSheetNames) {
           try {
@@ -140,6 +142,8 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const data = await response.json();
               if (data.data && Array.isArray(data.data)) {
                 newSheetDataCache[sheetName] = data.data;
+                const structure = analyzeSheetStructure(data.data);
+                newSheetStructureCache[sheetName] = structure;
                 console.log(`✅ [SHEET] Successfully fetched data for ${sheetName}:`, {
                   rows: data.data.length,
                   headers: data.data[0]?.length || 0
@@ -158,6 +162,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!cancelled) {
           console.log('🔍 [SHEET] Updating sheetDataCache with:', Object.keys(newSheetDataCache));
           setSheetDataCache(prev => ({ ...prev, ...newSheetDataCache }));
+          setSheetStructureCache(prev => ({ ...prev, ...newSheetStructureCache }));
         }
       } catch (e) {
         console.warn('Failed to fetch sheet data:', e);

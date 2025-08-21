@@ -9,6 +9,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
+  status?: 'pending' | 'sent' | 'error';
   // Enhanced fields to support approve/reject/edit functionality
   tables?: Array<{
     title: string;
@@ -43,7 +44,7 @@ interface ChatContextType {
   loading: boolean;
   error: string | null;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<void>;
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp' | 'status'>) => Promise<void>;
   // Persist edits/removals to a message's tables so UI state survives snapshots
   updateMessageTables: (messageId: string, tables: Array<{
     title: string;
@@ -295,64 +296,46 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   }, [user, currentSessionId]);
 
   // Function to add a new message to the database
-  const addMessage = async (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
-    console.log('🔍 [addMessage] Starting with:', { 
-      hasUser: !!user, 
-      currentSessionId, 
-      sessionsCount: sessions.length,
-      sessionsLoading,
-      messageRole: message.role 
-    });
-    
+  const addMessage = async (message: Omit<ChatMessage, 'id' | 'timestamp' | 'status'>) => {
     if (!user) {
-      const errorMsg = "You must be logged in to send messages.";
-      console.error('🔍 [addMessage] Error:', errorMsg);
-      setError(errorMsg);
+      setError("You must be logged in to send messages.");
       return;
     }
 
-    // Check if sessions are still loading
-    if (sessionsLoading) {
-      const errorMsg = "Please wait for chat sessions to load before sending messages.";
-      console.error('🔍 [addMessage] Error:', errorMsg);
-      setError(errorMsg);
-      return;
-    }
-
-    // Get the session ID, creating one if needed
     let sessionId = currentSessionId;
     if (!sessionId) {
-      console.log('🔍 [addMessage] No current session, calling ensureSession');
       try {
         sessionId = await ensureSession();
-        console.log('🔍 [addMessage] ensureSession returned:', sessionId);
       } catch (error) {
-        console.error("🔍 [addMessage] Failed to ensure session:", error);
         setError("Failed to create chat session. Please try again.");
         return;
       }
     }
 
     if (!sessionId) {
-      const errorMsg = "No active chat session. Please try again.";
-      console.error('🔍 [addMessage] Error:', errorMsg);
-      setError(errorMsg);
+      setError("No active chat session. Please try again.");
       return;
     }
 
-    console.log('🔍 [addMessage] Using session ID:', sessionId);
-    
-    const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
-    
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: ChatMessage = {
+      ...message,
+      id: tempId,
+      timestamp: new Date(),
+      status: 'pending',
+    };
+
+    setChatMessages(prevMessages => [...prevMessages, optimisticMessage]);
+
     try {
-      // Additional safety check: ensure no nested arrays exist
+      const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
+      
       const sanitizedMessage = {
         ...message,
-        // Ensure arrays are properly flattened
         tables: Array.isArray(message.tables) ? message.tables.map(table => ({
           title: String(table.title || ''),
           headers: Array.isArray(table.headers) ? table.headers.map(h => String(h)) : [],
-          rows: Array.isArray(table.rows) ? JSON.stringify(table.rows) : '[]', // Convert nested arrays to JSON string for Firestore
+          rows: Array.isArray(table.rows) ? JSON.stringify(table.rows) : '[]',
           rowCount: Number(table.rowCount || 0),
           summary: String(table.summary || ''),
           meta: {
@@ -366,12 +349,19 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         timestamp: new Date(),
       };
 
-      console.log('🔍 [addMessage] Adding message to Firestore with session ID:', sessionId);
+      // The onSnapshot listener will automatically update the message list
+      // once this write is complete, replacing the optimistic message.
       await addDoc(messagesColRef, sanitizedMessage);
-      console.log('🔍 [addMessage] Message successfully added to Firestore');
+
     } catch (err) {
-      console.error("🔍 [addMessage] Error sending message:", err);
+      console.error("Error sending message:", err);
       setError("Failed to send message.");
+      // Update the optimistic message to show an error state
+      setChatMessages(prevMessages =>
+        prevMessages.map(msg =>
+          msg.id === tempId ? { ...msg, status: 'error' } : msg
+        )
+      );
     }
   };
 
