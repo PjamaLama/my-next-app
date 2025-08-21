@@ -3,12 +3,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
-import { Send, Loader2, Paperclip, File as FileIcon, X, Mic, Volume2, Square } from 'lucide-react';
+import { Send, Loader2, Paperclip, File as FileIcon, X, Mic, Volume2, Square, BookOpen } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 
 interface ChatInterfaceProps {
   className?: string;
+  onShowTutorial?: () => void;
 }
 
 export interface UploadedFile {
@@ -62,7 +63,7 @@ const extractPDFText = async (file: File): Promise<string> => {
   }
 };
 
-export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
+export default function ChatInterface({ className = '', onShowTutorial }: ChatInterfaceProps) {
   const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const [inputValue, setInputValue] = useState('');
@@ -593,6 +594,17 @@ export default function ChatInterface({ className = '' }: ChatInterfaceProps) {
             <div className="mt-4 text-xs text-white/40">
               Try asking: "What's in my data?" or "Show me a summary of sales"
             </div>
+            {onShowTutorial && (
+              <div className="mt-6">
+                <button
+                  onClick={onShowTutorial}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  Show Tutorial
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           chatMessages.map((message) => (

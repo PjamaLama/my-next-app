@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useChat } from "../providers/ChatProvider";
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { Plus, Trash2, MessageSquare, Table as TableIcon, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Table as TableIcon, ExternalLink, BookOpen } from 'lucide-react';
 import { useSheet } from "../providers/SheetProvider";
 import { useFirebase } from "../providers/FirebaseProvider";
 import { useDialog } from "../providers/DialogProvider";
@@ -15,9 +15,10 @@ dayjs.extend(relativeTime);
 interface ChatSidebarProps {
   embedded?: boolean;
   peek?: boolean; // compact mode that still shows titles
+  onShowTutorial?: () => void;
 }
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false }) => {
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = false, onShowTutorial }) => {
   const { 
     sessions,
     currentSessionId,
@@ -386,7 +387,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             {!peek && 'Chats'}
              <span className="text-xs text-white/60">{!peek && `(${visibleSessions.length})`}</span>
           </div>
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
+          {onShowTutorial && (
+            <button
+              onClick={onShowTutorial}
+              className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent`}
+              title="Tutorial"
+              aria-label="Show tutorial"
+            >
+              <BookOpen className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+            </button>
+          )}
           <button
             onClick={handleCreate}
             className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent`}
@@ -499,7 +510,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           {!peek && 'Chats'}
           <span className="text-xs text-white/60">{!peek && `(${visibleSessions.length})`}</span>
         </div>
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
+          {onShowTutorial && (
+            <button
+              onClick={onShowTutorial}
+              className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent`}
+              title="Tutorial"
+              aria-label="Show tutorial"
+            >
+              <BookOpen className={`${peek ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+            </button>
+          )}
           <button
             onClick={handleCreate}
             className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/40`}

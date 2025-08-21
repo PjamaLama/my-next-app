@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { LogOut, ChevronLeft, ChevronRight, Megaphone } from 'lucide-react';
 import Image from 'next/image';
 import { useFirebase } from '../providers/FirebaseProvider';
+import { useTutorial } from '../providers/TutorialProvider';
 
 const ChatSidebar = dynamic(() => import('./ChatSidebar'), { ssr: false });
 
@@ -13,6 +14,7 @@ const PEEK_WIDTH = 220;
 
 const SidePanel: React.FC = () => {
   const { user, signOutUser } = useFirebase();
+  const { showTutorial } = useTutorial();
   const [peek, setPeek] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -120,7 +122,7 @@ const SidePanel: React.FC = () => {
 
         {/* Chats */}
         <div className="flex-1 min-h-0">
-          <ChatSidebar embedded peek={peek} />
+          <ChatSidebar embedded peek={peek} onShowTutorial={showTutorial} />
         </div>
 
         {/* Footer actions */}

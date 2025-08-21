@@ -6,6 +6,7 @@ import { FirebaseProvider } from './providers/FirebaseProvider';
 import { SheetProvider } from './providers/SheetProvider';
 import { ServiceAccountProvider } from './providers/ServiceAccountProvider';
 import { ChatProvider } from './providers/ChatProvider';
+import { TutorialProvider } from './providers/TutorialProvider';
 import SidePanel from './components/SidePanel';
 import FeedbackButton from './components/FeedbackButton';
 import FeedbackNudge from './components/FeedbackNudge';
@@ -19,16 +20,18 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
         <SheetProvider>
           <ServiceAccountProvider>
             <ChatProvider>
-              {/* Sidebar + NavBar hidden on landing by ClientGatedLayout/SidePanel */}
-              <SidePanel />
-              <div className="transition-all min-h-screen flex flex-col">
-                <ClientGatedLayout>
-                  {children}
-                </ClientGatedLayout>
-                <FeedbackNudge />
-                <FeedbackButton />
-                <PWAInstaller />
-              </div>
+              <TutorialProvider>
+                {/* Sidebar + NavBar hidden on landing by ClientGatedLayout/SidePanel */}
+                <SidePanel />
+                <div className="transition-all min-h-screen flex flex-col">
+                  <ClientGatedLayout>
+                    {children}
+                  </ClientGatedLayout>
+                  <FeedbackNudge />
+                  <FeedbackButton />
+                  <PWAInstaller />
+                </div>
+              </TutorialProvider>
             </ChatProvider>
           </ServiceAccountProvider>
         </SheetProvider>

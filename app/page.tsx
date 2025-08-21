@@ -1,14 +1,25 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
+import { useTutorial } from "./providers/TutorialProvider";
 import ChatInterface from "./components/ChatInterface";
-
 import LandingPage from "./components/LandingPage";
+import InteractiveTutorial from "./components/InteractiveTutorial";
 
 export default function Home() {
   const { user, loading, signInWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, sheetsPrefetched } = useSheet();
+  const { showTutorial, hideTutorial, isTutorialVisible } = useTutorial();
+
+  useEffect(() => {
+    // Check if the user has seen the tutorial before
+    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial');
+    if (!hasSeenTutorial && user) {
+      // Show tutorial for first-time users after they're authenticated
+      showTutorial();
+    }
+  }, [user, showTutorial]);
 
   const handleSignIn = async () => {
     try {
@@ -16,6 +27,16 @@ export default function Home() {
     } catch (error) {
       console.error("Sign in error:", error);
     }
+  };
+
+  const handleCloseTutorial = () => {
+    hideTutorial();
+    localStorage.setItem('hasSeenTutorial', 'true'); // Mark tutorial as seen
+  };
+
+  const handleOpenGoogleSheets = () => {
+    // Open Google Sheets in a new tab
+    window.open('https://sheets.google.com', '_blank');
   };
 
   if (loading) {
@@ -47,10 +68,10 @@ export default function Home() {
 
   // User is logged in and spreadsheets are loaded
   if (defaultSpreadsheetId) {
-    // Show chat interface when spreadsheet is connected
     return (
       <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-        <ChatInterface />
+        {isTutorialVisible && <InteractiveTutorial onClose={handleCloseTutorial} />}
+        <ChatInterface onShowTutorial={showTutorial} />
       </div>
     );
   }
@@ -58,6 +79,7 @@ export default function Home() {
   // Show connect spreadsheet prompt when no spreadsheet is connected
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
+      {isTutorialVisible && <InteractiveTutorial onClose={handleCloseTutorial} />}
       <div className="max-w-4xl mx-auto p-6">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome back!</h1>
@@ -72,7 +94,10 @@ export default function Home() {
             Connect your first Google Sheet to unlock AI-powered data analysis, 
             automated reporting, and intelligent insights.
           </p>
-          <button className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200">
+          <button 
+            onClick={handleOpenGoogleSheets}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200"
+          >
             Connect Spreadsheet
           </button>
         </div>
