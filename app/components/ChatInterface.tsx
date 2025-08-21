@@ -78,6 +78,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [filesBeingSent, setFilesBeingSent] = useState<UploadedFile[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -445,11 +446,33 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       newFiles.push(processedFile);
     }
 
+    // Add new files with a staggered entrance effect
     setUploadedFiles(prev => [...prev, ...newFiles]);
+    
+    // Add entrance animation after a brief delay to ensure DOM update
+    setTimeout(() => {
+      newFiles.forEach((file, index) => {
+        const fileElement = document.querySelector(`[data-file-id="${file.id}"]`) as HTMLElement;
+        if (fileElement) {
+          fileElement.classList.add('file-transition-in');
+          // Stagger the animations slightly
+          fileElement.style.animationDelay = `${index * 0.1}s`;
+        }
+      });
+    }, 50);
   }, [uploadedFiles, processFile]);
 
   const removeFile = useCallback((id: string) => {
-    setUploadedFiles(prev => prev.filter(f => f.id !== id));
+    // Add transition effect before removing
+    const fileElement = document.querySelector(`[data-file-id="${id}"]`) as HTMLElement;
+    if (fileElement) {
+      fileElement.classList.add('file-transition-out');
+      setTimeout(() => {
+        setUploadedFiles(prev => prev.filter(f => f.id !== id));
+      }, 300); // Match the animation duration
+    } else {
+      setUploadedFiles(prev => prev.filter(f => f.id !== id));
+    }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -461,6 +484,12 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     setIsSending(true);
     setIsProcessingFiles(true);
 
+    // Move files to "being sent" state for visual transition
+    if (uploadedFiles.length > 0) {
+      setFilesBeingSent([...uploadedFiles]);
+      setUploadedFiles([]);
+    }
+
     const controller = new AbortController();
     setAbortController(controller); // Set the abort controller in the ChatProvider
 
@@ -469,8 +498,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     try {
       await ensureSession();
 
-      if (uploadedFiles.length > 0) {
-        structuredExtracts = uploadedFiles.map(file => {
+      if (filesBeingSent.length > 0) {
+        structuredExtracts = filesBeingSent.map(file => {
           const fileData: any = {
             name: file.name,
             mimeType: file.mimeType,
@@ -534,7 +563,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
         });
 
-        setUploadedFiles([]);
+        setFilesBeingSent([]); // Clear the "being sent" files
       } else {
         await addMessage({
           role: 'assistant',
@@ -554,6 +583,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           role: 'assistant',
           content: 'Sorry, I encountered an error. Please try again.',
         });
+      }
+      // Restore files to upload area if there was an error
+      if (filesBeingSent.length > 0) {
+        setUploadedFiles(prev => [...prev, ...filesBeingSent]);
+        setFilesBeingSent([]);
       }
     } finally {
       setIsSending(false);
@@ -819,6 +853,34 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             </div>
           </div>
         )}
+        
+        {/* Files being sent visual transition */}
+        {filesBeingSent.length > 0 && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] rounded-lg px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white file-pulse shadow-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="relative">
+                  <Paperclip className="w-4 h-4" />
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full animate-ping"></div>
+                </div>
+                <span className="text-sm font-medium">Processing files...</span>
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+              <div className="space-y-2">
+                {filesBeingSent.map((file) => (
+                  <div key={file.id} className="flex items-center gap-2 text-xs bg-white/10 rounded px-2 py-1">
+                    <FileIcon className="w-3 h-3" />
+                    <span className="truncate">{file.name}</span>
+                    <div className="ml-auto">
+                      <div className="w-2 h-2 bg-emerald-300 rounded-full animate-pulse"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
@@ -889,8 +951,17 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         
         {uploadedFiles.length > 0 && (
           <div className="mb-4 space-y-2">
+            <div className="text-xs text-white/60 mb-2 flex items-center gap-2">
+              <span>📎 Files ready to send ({uploadedFiles.length})</span>
+              {isProcessingFiles && (
+                <div className="flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Processing...</span>
+                </div>
+              )}
+            </div>
             {uploadedFiles.map((file) => (
-              <div key={file.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg text-white/80">
+              <div key={file.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg text-white/80 file-transition-in" data-file-id={file.id}>
                 <div className="flex items-center gap-2">
                   <FileIcon className="w-4 h-4" />
                   <span className="text-sm">{file.name}</span>
