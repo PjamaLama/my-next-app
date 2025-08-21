@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
-import { ThumbsUp, ThumbsDown, Plus, Grid3X3, Layers } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { compressImageFile } from '@/lib/imageCompression';
 import SwipeableFeedbackStack from './SwipeableFeedbackStack';
 
@@ -28,6 +28,7 @@ export default function FeedbackButton() {
   const [type, setType] = useState<FeedbackType>('feature');
 
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const [allItems, setAllItems] = useState<SimilarItem[]>([]);
   const [allLoading, setAllLoading] = useState(false);
@@ -124,11 +125,16 @@ export default function FeedbackButton() {
       });
       const json = await res.json();
       if (json?.success) {
-        setTitle('');
-        setDescription('');
-        setType('feature');
-        setAttachments([]);
-        setOpen(false);
+        setSubmitted(true);
+        // Show success state for 2 seconds
+        setTimeout(() => {
+          setTitle('');
+          setDescription('');
+          setType('feature');
+          setAttachments([]);
+          setSubmitted(false);
+          setOpen(false);
+        }, 2000);
       } else {
         alert(json?.error || 'Failed to submit feedback');
       }
@@ -210,7 +216,7 @@ export default function FeedbackButton() {
       {open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-                     <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(1200px,98vw)] h-[min(800px,90vh)] p-6 modal-content">
+                     <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(1200px,98vw)] h-[min(850px,92vh)] p-6 modal-content">
             {/* Header with enhanced design */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -235,11 +241,9 @@ export default function FeedbackButton() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Left Column - Submit Feedback */}
               <div className="space-y-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-emerald-600/20 flex items-center justify-center">
-                    <Plus className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-white">Submit Feedback</h3>
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-white mb-1">Submit Feedback</h3>
+                  <p className="text-sm text-white/60">Share your ideas, report bugs, or give us general feedback</p>
                 </div>
 
                 {/* Form Fields */}
@@ -375,7 +379,7 @@ export default function FeedbackButton() {
 
 
                 {/* Action Buttons */}
-                <div className="flex items-center justify-between pt-6 border-t border-white/10">
+                <div className="flex items-center justify-between pt-6 pb-4 border-t border-white/10">
                   <div className="flex items-center gap-2 text-xs text-white/50">
                     {!canSubmit && (
                       <div className="flex items-center gap-1">
@@ -396,23 +400,39 @@ export default function FeedbackButton() {
                     </button>
                     <button
                       type="button"
-                      className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-xl ${
-                        !canSubmit || submitting
+                      className={`relative px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl overflow-hidden ${
+                        submitted
+                          ? 'bg-emerald-500 text-white shadow-emerald-500/30'
+                          : !canSubmit || submitting
                           ? 'bg-zinc-700 text-white/50 cursor-not-allowed'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/25 hover:shadow-emerald-500/30 transform hover:scale-[1.02]'
+                          : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-emerald-500/25 hover:shadow-emerald-500/40 transform hover:scale-[1.02] active:scale-[0.98]'
                       }`}
                       onClick={submit}
-                      disabled={!canSubmit || submitting}
+                      disabled={!canSubmit || submitting || submitted}
                     >
-                      <div className="flex items-center gap-2">
-                        {submitting ? (
+                      {/* Background gradient animation */}
+                      {!submitted && !submitting && canSubmit && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-emerald-300 opacity-0 hover:opacity-20 transition-opacity duration-300"></div>
+                      )}
+                      
+                      <div className="relative flex items-center justify-center gap-2.5">
+                        {submitted ? (
                           <>
-                            <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                            <div className="animate-bounce">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"></path>
+                              </svg>
+                            </div>
+                            <span className="font-bold">Success! Thank you!</span>
+                          </>
+                        ) : submitting ? (
+                          <>
+                            <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full"></div>
                             <span>Submitting...</span>
                           </>
                         ) : (
                           <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
                             </svg>
                             <span>Submit Feedback</span>
@@ -426,11 +446,9 @@ export default function FeedbackButton() {
 
               {/* Right Column - Browse & Vote */}
               <div className="space-y-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center">
-                    <ThumbsUp className="w-4 h-4 text-blue-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-white">Browse & Vote</h3>
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-white mb-1">Browse & Vote</h3>
+                  <p className="text-sm text-white/60">Review and vote on feedback from the community</p>
                 </div>
 
                 {/* Browse Controls */}
@@ -455,6 +473,7 @@ export default function FeedbackButton() {
                   ) : (
                     <SwipeableFeedbackStack
                       items={allItems.filter((i) => {
+                        // Apply search filter only
                         const q = browseQuery.trim().toLowerCase();
                         if (!q) return true;
                         const text = `${i.title} ${i.description || ''}`.toLowerCase();
