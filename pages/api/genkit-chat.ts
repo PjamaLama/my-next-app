@@ -25,11 +25,22 @@ class GeminiFileProcessor implements UnifiedFileProcessor {
   }
 
   async processFile(file: any, sheetContext: string): Promise<any> {
-    console.log(`🤖 [UNIFIED PROCESSOR] Processing ${file.name} (${file.mimeType})`);
+    console.log(`🤖 [UNIFIED PROCESSOR] Processing ${file.name} (${file.mimeType})`, {
+      hasData: !!file.data,
+      dataLength: file.data ? file.data.length : 0,
+      hasExtractedData: !!file.extractedData,
+      extractedTextLength: file.extractedData?.extractedText?.length || 0,
+      extractedDataType: file.extractedData?.type
+    });
     
     try {
       // Step 1: Extract text content from file
       const extractedText = await this.extractText(file);
+      
+      console.log(`📝 [UNIFIED PROCESSOR] Extracted text from ${file.name}:`, {
+        textLength: extractedText?.length || 0,
+        textSample: extractedText ? extractedText.substring(0, 100) + '...' : 'none'
+      });
       
       if (!extractedText || extractedText.trim().length === 0) {
         console.log(`⏭️ [UNIFIED PROCESSOR] No extractable text from ${file.name}`);
@@ -64,6 +75,12 @@ class GeminiFileProcessor implements UnifiedFileProcessor {
   async extractText(file: any): Promise<string> {
     // Handle different file types with unified extraction logic
     if (file.mimeType === 'application/pdf') {
+      // For PDFs, use already extracted text from the main processing loop
+      if (file.extractedData?.extractedText && file.extractedData.extractedText.length > 0) {
+        console.log(`📄 [UNIFIED PROCESSOR] Using pre-extracted PDF text for ${file.name} (${file.extractedData.extractedText.length} chars)`);
+        return file.extractedData.extractedText;
+      }
+      // Fallback to re-extraction if needed
       return await this.extractPDFText(file);
     } else if (file.mimeType.startsWith('image/')) {
       return await this.extractImageText(file);
@@ -80,6 +97,11 @@ class GeminiFileProcessor implements UnifiedFileProcessor {
       console.log(`🔍 [UNIFIED PROCESSOR] Extracting text from PDF: ${file.name}`);
       const pdf = (await import('pdf-parse')).default;
       const pdfBase64Data = file.data || file.extractedData?.fileData;
+      
+      if (!pdfBase64Data) {
+        throw new Error('No PDF data available for text extraction');
+      }
+      
       const buffer = Buffer.from(pdfBase64Data, 'base64');
       const pdfData = await pdf(buffer);
       return pdfData.text || 'No text could be extracted from the PDF';
@@ -269,6 +291,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           type: img.mimeType,
           name: img.name,
           mimeType: img.mimeType, // Add mimeType for Gemini processing
+          data: img.data, // Include the raw data for unified processor
           extractedData: img.extractedData || {
             type: 'metadata',
             fileName: img.name,
@@ -301,6 +324,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               pageCount: pdfData.numpages || 0,
               isScannedDocument: extractedText.length < 50 // Rough heuristic for scanned docs
             };
+            
+            // Also store the raw data for the unified processor
+            processedFile.data = img.data;
+            
           } catch (pdfError) {
             console.error(`❌ [PDF] Failed to extract text from PDF ${img.name}:`, pdfError);
             // Keep the original extractedData but mark as needing backend processing
@@ -352,6 +379,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Process all files with the unified processor
         for (const fileContent of extractedFileContents) {
           console.log(`🤖 [UNIFIED PROCESSOR] Starting processing for ${fileContent.name}`);
+          
+          // Skip files that already have extracted text (like PDFs that were processed above)
+          if (fileContent.extractedData?.extractedText && fileContent.extractedData.extractedText.length > 0 && 
+              fileContent.mimeType === 'application/pdf') {
+            console.log(`⏭️ [UNIFIED PROCESSOR] Skipping ${fileContent.name} - PDF text already extracted (${fileContent.extractedData.extractedText.length} chars)`);
+            
+            // Still process with Gemini to get structured data
+            const result = await processor.processFile(fileContent, sheetContextString);
+            
+            if (result.success) {
+              fileContent.extractedData.geminiStructuredData = result.structuredData;
+              fileContent.extractedData.geminiProcessed = true;
+            } else {
+              fileContent.extractedData.geminiError = result.error;
+              fileContent.extractedData.geminiProcessed = false;
+            }
+            continue;
+          }
           
           const result = await processor.processFile(fileContent, sheetContextString);
           
