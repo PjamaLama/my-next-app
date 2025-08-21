@@ -63,18 +63,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               order: 0,
             },
             {
+              id: 'setup',
+              title: 'Setup & Templates',
+              description: 'Download templates and configure your service account',
+              youtubeId: 'dQw4w9WgXcQ',
+              order: 1,
+            },
+            {
               id: 'connect',
               title: 'Connect Your Spreadsheet',
               description: 'Link your Google Sheets to begin analyzing',
               youtubeId: 'dQw4w9WgXcQ',
-              order: 1,
+              order: 2,
             },
             {
               id: 'chat',
               title: 'Chat with Your Data',
               description: 'Ask questions and get intelligent insights',
               youtubeId: 'dQw4w9WgXcQ',
-              order: 2,
+              order: 3,
             },
           ],
         });
@@ -135,11 +142,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             updatedAt: new Date(),
           },
           {
+            id: 'setup',
+            title: 'Setup & Templates',
+            description: 'Download templates and configure your service account',
+            youtubeId: 'dQw4w9WgXcQ',
+            order: 1,
+            updatedAt: new Date(),
+          },
+          {
             id: 'connect',
             title: 'Connect Your Spreadsheet',
             description: 'Link your Google Sheets to begin analyzing',
             youtubeId: 'dQw4w9WgXcQ',
-            order: 1,
+            order: 2,
             updatedAt: new Date(),
           },
           {
@@ -147,7 +162,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             title: 'Chat with Your Data',
             description: 'Ask questions and get intelligent insights',
             youtubeId: 'dQw4w9WgXcQ',
-            order: 2,
+            order: 3,
             updatedAt: new Date(),
           },
         ];

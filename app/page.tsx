@@ -5,7 +5,6 @@ import { useSheet } from "./providers/SheetProvider";
 import { useTutorial } from "./providers/TutorialProvider";
 import ChatInterface from "./components/ChatInterface";
 import LandingPage from "./components/LandingPage";
-import InteractiveTutorial from "./components/InteractiveTutorial";
 
 export default function Home() {
   const { user, loading, signInWithGoogle } = useFirebase();
@@ -70,7 +69,6 @@ export default function Home() {
   if (defaultSpreadsheetId) {
     return (
       <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-        {isTutorialVisible && <InteractiveTutorial onClose={handleCloseTutorial} />}
         <ChatInterface onShowTutorial={showTutorial} />
       </div>
     );
@@ -78,28 +76,22 @@ export default function Home() {
 
   // Show connect spreadsheet prompt when no spreadsheet is connected
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-      {isTutorialVisible && <InteractiveTutorial onClose={handleCloseTutorial} />}
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome back!</h1>
-          <p className="text-white/70">
-            Connect a Google Sheet to get started with AI-powered data management.
-          </p>
-        </div>
-
-        <div className="bg-white/5 border border-white/10 rounded-lg p-6 text-center">
-          <h2 className="text-xl font-semibold mb-4">Get Started</h2>
-          <p className="text-white/70 mb-6">
-            Connect your first Google Sheet to unlock AI-powered data analysis, 
-            automated reporting, and intelligent insights.
-          </p>
-          <button 
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white p-6">
+      <div className="text-center max-w-2xl">
+        <h1 className="text-4xl font-bold mb-6">Welcome to SheetyAI!</h1>
+        <p className="text-xl text-white/70 mb-8">
+          Connect your Google Sheets to start analyzing your data with AI.
+        </p>
+        <div className="space-y-4">
+          <button
             onClick={handleOpenGoogleSheets}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200"
+            className="w-full sm:w-auto px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
           >
-            Connect Spreadsheet
+            Open Google Sheets
           </button>
+          <div className="text-sm text-white/50">
+            Create a new spreadsheet or use an existing one, then come back here to connect it.
+          </div>
         </div>
       </div>
     </div>

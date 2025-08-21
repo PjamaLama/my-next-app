@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 interface TutorialContextType {
   showTutorial: () => void;
@@ -26,12 +26,19 @@ export const TutorialProvider: React.FC<TutorialProviderProps> = ({ children }) 
   const [isTutorialVisible, setIsTutorialVisible] = useState(false);
 
   const showTutorial = useCallback(() => {
+    console.log('🔍 [TutorialProvider] showTutorial called');
     setIsTutorialVisible(true);
   }, []);
 
   const hideTutorial = useCallback(() => {
+    console.log('🔍 [TutorialProvider] hideTutorial called');
     setIsTutorialVisible(false);
   }, []);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 [TutorialProvider] isTutorialVisible changed:', isTutorialVisible);
+  }, [isTutorialVisible]);
 
   const value: TutorialContextType = {
     showTutorial,

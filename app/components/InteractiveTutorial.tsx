@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Play, ChevronLeft, ChevronRight, CheckCircle, BookOpen } from 'lucide-react';
+import { Play, ChevronLeft, ChevronRight, CheckCircle, BookOpen, Download, Settings, FileText } from 'lucide-react';
+import { useTutorial } from '../providers/TutorialProvider';
 
 interface TutorialStep {
   id: string;
@@ -8,6 +9,7 @@ interface TutorialStep {
   youtubeId: string;
   order: number;
   icon?: React.ReactNode;
+  content?: React.ReactNode;
 }
 
 // Default tutorial steps (fallback)
@@ -21,11 +23,119 @@ const defaultTutorialSteps: TutorialStep[] = [
     icon: <BookOpen className="w-8 h-8 text-emerald-400" />
   },
   {
+    id: 'setup',
+    title: 'Setup & Templates',
+    description: 'Download templates and configure your service account',
+    youtubeId: 'dQw4w9WgXcQ',
+    order: 1,
+    icon: <Settings className="w-8 h-8 text-emerald-400" />,
+    content: (
+      <div className="text-left space-y-6">
+        {/* Template Download Section */}
+        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <Download className="w-5 h-5 text-emerald-400" />
+            Download Template
+          </h3>
+          <p className="text-white/80 mb-4">
+            Start with our structured template that follows the correct format for AI analysis.
+          </p>
+          <a
+            href="/templates/structured-sheet-template.csv"
+            download
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download CSV Template
+          </a>
+          <div className="mt-3 text-sm text-white/60">
+            After downloading, open in Google Sheets and save as a Google Sheet for full functionality.
+          </div>
+        </div>
+
+        {/* Service Account Setup */}
+        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-emerald-400" />
+            Service Account Setup
+          </h3>
+          <div className="space-y-3 text-white/80">
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
+              <div>
+                <p className="font-medium">Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline">Google Cloud Console</a></p>
+                <p className="text-sm text-white/60">Create a new project or select existing one</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
+              <div>
+                <p className="font-medium">Enable Google Sheets API</p>
+                <p className="text-sm text-white/60">Search for "Google Sheets API" and enable it</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
+              <div>
+                <p className="font-medium">Create Service Account</p>
+                <p className="text-sm text-white/60">Go to IAM & Admin → Service Accounts → Create</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">4</div>
+              <div>
+                <p className="font-medium">Download JSON Key</p>
+                <p className="text-sm text-white/60">Create and download the private key file</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">5</div>
+              <div>
+                <p className="font-medium">Share Your Sheet</p>
+                <p className="text-sm text-white/60">Share your Google Sheet with the service account email</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Template Structure */}
+        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-emerald-400" />
+            Template Structure Rules
+          </h3>
+          <div className="space-y-4 text-white/80">
+            <div>
+              <p className="font-medium mb-2">📋 Header Row (Row 1)</p>
+              <p className="text-sm text-white/60">First row must contain column headers. Use clear, descriptive names.</p>
+            </div>
+            <div>
+              <p className="font-medium mb-2">🔢 Data Rows (Row 2+)</p>
+              <p className="text-sm text-white/60">All data starts from row 2. Keep headers in row 1 only.</p>
+            </div>
+            <div>
+              <p className="font-medium mb-2">📊 Consistent Format</p>
+              <p className="text-sm text-white/60">Each column should contain the same type of data throughout.</p>
+            </div>
+            <div>
+              <p className="font-medium mb-2">🚫 No Empty Header Rows</p>
+              <p className="text-sm text-white/60">Avoid blank rows between headers and data.</p>
+            </div>
+            <div className="bg-emerald-600/20 border border-emerald-600/30 rounded-lg p-3">
+              <p className="text-sm font-medium text-emerald-300">💡 Pro Tip</p>
+              <p className="text-xs text-emerald-200">Use our template as a starting point and modify the columns to match your data needs. The AI will automatically detect your structure!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  },
+  {
     id: 'connect',
     title: 'Connect Your Spreadsheet',
     description: 'Link your Google Sheets to begin analyzing',
     youtubeId: 'dQw4w9WgXcQ',
-    order: 1,
+    order: 2,
     icon: <CheckCircle className="w-8 h-8 text-emerald-400" />
   },
   {
@@ -33,16 +143,17 @@ const defaultTutorialSteps: TutorialStep[] = [
     title: 'Chat with Your Data',
     description: 'Ask questions and get intelligent insights',
     youtubeId: 'dQw4w9WgXcQ',
-    order: 2,
+    order: 3,
     icon: <Play className="w-8 h-8 text-emerald-400" />
   },
 ];
 
 interface InteractiveTutorialProps {
-  onClose: () => void;
+  // Remove onClose prop since we're using the hook now
 }
 
-const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({ onClose }) => {
+const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
+  const { hideTutorial, isTutorialVisible } = useTutorial();
   const [currentStep, setCurrentStep] = useState(0);
   const [tutorialSteps, setTutorialSteps] = useState<TutorialStep[]>(defaultTutorialSteps);
   const [loading, setLoading] = useState(true);
@@ -54,13 +165,14 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({ onClose }) =>
         const response = await fetch('/api/tutorial-videos');
         if (response.ok) {
           const data = await response.json();
-          const videosWithIcons = (data.videos || []).map((video: TutorialStep, index: number) => ({
-            ...video,
-            icon: index === 0 ? <BookOpen className="w-8 h-8 text-emerald-400" /> :
-                   index === 1 ? <CheckCircle className="w-8 h-8 text-emerald-400" /> :
-                   <Play className="w-8 h-8 text-emerald-400" />
-          }));
-          setTutorialSteps(videosWithIcons);
+          const apiSteps = data.videos || [];
+          
+          const mergedSteps = defaultTutorialSteps.map(defaultStep => {
+            const apiStep = apiSteps.find((s: TutorialStep) => s.id === defaultStep.id);
+            return { ...defaultStep, ...apiStep };
+          });
+
+          setTutorialSteps(mergedSteps);
         }
       } catch (error) {
         console.error('Failed to fetch tutorial videos:', error);
@@ -78,7 +190,7 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({ onClose }) =>
     if (currentStep < tutorialSteps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
-      onClose(); // Tutorial finished
+      hideTutorial(); // Tutorial finished
     }
   };
 
@@ -89,12 +201,20 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({ onClose }) =>
   };
 
   const handleSkip = () => {
-    onClose();
+    hideTutorial();
   };
 
   const step = tutorialSteps[currentStep];
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === tutorialSteps.length - 1;
+
+  // Don't render if tutorial is not visible
+  if (!isTutorialVisible) {
+    console.log('🔍 [InteractiveTutorial] Not visible, returning null');
+    return null;
+  }
+
+  console.log('🔍 [InteractiveTutorial] Rendering tutorial with step:', currentStep);
 
   if (loading) {
     return (
@@ -111,6 +231,11 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({ onClose }) =>
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {/* Debug indicator */}
+      <div className="fixed top-4 left-4 bg-red-500 text-white px-2 py-1 rounded text-xs z-[9999]">
+        InteractiveTutorial Rendered - Step {currentStep + 1}
+      </div>
+      
       <div className="bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl p-8 w-full max-w-4xl relative max-h-[90vh] overflow-hidden">
         {/* Close button */}
         <button
@@ -142,17 +267,23 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({ onClose }) =>
           <h2 className="text-3xl font-bold text-white mb-3">{step.title}</h2>
           <p className="text-lg text-white/70 mb-6">{step.description}</p>
           
-          {/* YouTube Video */}
-          <div className="aspect-w-16 aspect-h-9 mb-6">
-            <iframe
-              className="w-full h-96 rounded-xl border border-white/10"
-              src={`https://www.youtube.com/embed/${step.youtubeId}?rel=0&modestbranding=1`}
-              title={`${step.title} - Tutorial Video`}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            ></iframe>
-          </div>
+          {/* Custom Content or YouTube Video */}
+          {step.content ? (
+            <div className="max-w-4xl mx-auto">
+              {step.content}
+            </div>
+          ) : (
+            <div className="aspect-w-16 aspect-h-9 mb-6">
+              <iframe
+                className="w-full h-96 rounded-xl border border-white/10"
+                src={`https://www.youtube.com/embed/${step.youtubeId}?rel=0&modestbranding=1`}
+                title={`${step.title} - Tutorial Video`}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+          )}
         </div>
 
         {/* Navigation */}
