@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, PanInfo, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { ThumbsUp, ThumbsDown, Forward, X } from 'lucide-react';
 
@@ -75,16 +75,31 @@ export default function SwipeableFeedbackStack({
   const xSpring = useSpring(x, { damping: 20, stiffness: 300 });
   const ySpring = useSpring(y, { damping: 20, stiffness: 300 });
 
-  const currentItem = items[currentIndex];
+  // Sort items by vote count (highest first) and then by creation date (newest first)
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const aVotes = a.votesCount || 0;
+      const bVotes = b.votesCount || 0;
+      
+      // First sort by vote count (highest first)
+      if (aVotes !== bVotes) {
+        return bVotes - aVotes;
+      }
+      
+      // If vote counts are equal, sort by creation date (newest first)
+      if (a.createdAt && b.createdAt) {
+        const aDate = a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+        const bDate = b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+        return bDate.getTime() - aDate.getTime();
+      }
+      
+      return 0;
+    });
+  }, [items]);
+
+  const currentItem = sortedItems[currentIndex];
 
   const handleDragEnd = (event: any, info: PanInfo) => {
-    // Don't allow swiping if user has already voted
-    if (currentItem.userVote !== undefined && currentItem.userVote !== 0) {
-      x.set(0);
-      y.set(0);
-      return;
-    }
-
     const { offset, velocity } = info;
     
     if (Math.abs(offset.x) > SWIPE_THRESHOLD || Math.abs(velocity.x) > 500) {
@@ -164,16 +179,16 @@ export default function SwipeableFeedbackStack({
       <div className={`flex flex-col items-center justify-center p-8 text-center ${className}`}>
         <div className="text-6xl mb-4">🎉</div>
         <h3 className="text-xl font-semibold text-white mb-2">All caught up!</h3>
-        <p className="text-white/60 mb-4">
-          {items.length === 0 
-            ? "No feedback items to review right now."
-            : "You've reviewed all available feedback items."}
-        </p>
-        {items.length > 0 && (
-          <p className="text-xs text-white/40 mb-4">
-            Note: Items you've already voted on are automatically filtered out.
-          </p>
-        )}
+                 <p className="text-white/60 mb-4">
+           {sortedItems.length === 0 
+             ? "No feedback items to review right now."
+             : "You've reviewed all available feedback items."}
+         </p>
+         {sortedItems.length > 0 && (
+           <p className="text-xs text-white/40 mb-4">
+             Note: Items are sorted by vote count (highest first) and then by date.
+           </p>
+         )}
       </div>
     );
   }
@@ -202,30 +217,33 @@ export default function SwipeableFeedbackStack({
              <span>Swipe up to skip</span>
            </div>
          </div>
-       </div>
-
-             {/* Progress indicator */}
-       <div className="flex justify-center mb-3">
-         <div className="flex gap-1">
-           {items.map((_, index) => (
-             <div
-               key={index}
-               className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                 index === currentIndex 
-                   ? 'bg-emerald-500' 
-                   : index < currentIndex 
-                     ? 'bg-emerald-300/50' 
-                     : 'bg-white/20'
-               }`}
-             />
-           ))}
+         <div className="text-center mt-2 text-xs text-white/40">
+           💡 You can change your vote by swiping again
          </div>
        </div>
+
+                     {/* Progress indicator */}
+        <div className="flex justify-center mb-3">
+          <div className="flex gap-1">
+            {sortedItems.map((_, index) => (
+              <div
+                key={index}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  index === currentIndex 
+                    ? 'bg-emerald-500' 
+                    : index < currentIndex 
+                      ? 'bg-emerald-300/50' 
+                      : 'bg-white/20'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
 
       {/* Card */}
       <div className="relative">
         <motion.div
-          drag={currentItem.userVote === undefined || currentItem.userVote === 0}
+          drag={true}
           dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
           dragElastic={0.8}
           onDragEnd={handleDragEnd}
@@ -234,18 +252,11 @@ export default function SwipeableFeedbackStack({
             y: ySpring,
             rotate,
           }}
-          className={currentItem.userVote !== undefined && currentItem.userVote !== 0 
-            ? "cursor-default touch-none" 
-            : "cursor-grab active:cursor-grabbing touch-none"
-          }
-          whileHover={currentItem.userVote === undefined || currentItem.userVote === 0 ? { scale: 1.02 } : {}}
-          whileTap={currentItem.userVote === undefined || currentItem.userVote === 0 ? { scale: 0.98 } : {}}
+          className="cursor-grab active:cursor-grabbing touch-none"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
         >
-                     <div className={`relative backdrop-blur-sm border rounded-xl p-3 shadow-xl min-h-[220px] flex flex-col ${
-                       currentItem.userVote !== undefined && currentItem.userVote !== 0
-                         ? 'bg-zinc-800/60 border-white/5 opacity-80'
-                         : 'bg-zinc-900/80 border-white/10'
-                     }`}>
+                     <div className="relative backdrop-blur-sm border rounded-xl p-3 shadow-xl min-h-[220px] flex flex-col bg-zinc-900/80 border-white/10">
             {/* Vote indicators */}
                          {swipeDirection === 'right' && (
                <motion.div
@@ -331,68 +342,66 @@ export default function SwipeableFeedbackStack({
                  </div>
                </div>
 
-               {/* Manual vote buttons or next button for already voted items */}
-               {currentItem.userVote !== undefined && currentItem.userVote !== 0 ? (
-                 <div className="flex items-center justify-center">
-                   <button
-                     onClick={() => nextCard()}
-                     className="px-4 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 flex items-center gap-2 transition-colors"
-                   >
-                     <span className="text-sm">Next Item</span>
-                     <Forward className="w-3.5 h-3.5" />
-                   </button>
-                 </div>
-               ) : (
-                 <div className="flex items-center justify-center gap-1.5">
-                   <button
-                     onClick={() => {
-                       setSwipeDirection('left');
-                       x.set(-300);
-                       handleVote(-1);
-                     }}
-                     disabled={isVoting}
-                     className="w-8 h-8 rounded-full bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 hover:text-rose-300 flex items-center justify-center transition-colors disabled:opacity-50"
-                   >
-                     <ThumbsDown className="w-3.5 h-3.5" />
-                   </button>
-                   
-                   <button
-                     onClick={() => {
-                       setSwipeDirection('up');
-                       y.set(-300);
-                       if (onSkip) {
-                         onSkip(currentItem.id);
-                       }
-                       nextCard();
-                     }}
-                     disabled={isVoting}
-                     className="w-8 h-8 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 flex items-center justify-center transition-colors disabled:opacity-50"
-                   >
-                     <Forward className="w-3.5 h-3.5" />
-                   </button>
-                   
-                   <button
-                     onClick={() => {
-                       setSwipeDirection('right');
-                       x.set(300);
-                       handleVote(1);
-                     }}
-                     disabled={isVoting}
-                     className="w-8 h-8 rounded-full bg-emerald-600/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-colors disabled:opacity-50"
-                   >
-                     <ThumbsUp className="w-3.5 h-3.5" />
-                   </button>
-                 </div>
-               )}
+               {/* Manual vote buttons - always show for all items */}
+               <div className="flex items-center justify-center gap-1.5">
+                 <button
+                   onClick={() => {
+                     setSwipeDirection('left');
+                     x.set(-300);
+                     handleVote(-1);
+                   }}
+                   disabled={isVoting}
+                   className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${
+                     currentItem.userVote === -1
+                       ? 'bg-rose-600/40 text-rose-300 border border-rose-500/50'
+                       : 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 hover:text-rose-300'
+                   }`}
+                 >
+                   <ThumbsDown className="w-3.5 h-3.5" />
+                 </button>
+                 
+                 <button
+                   onClick={() => {
+                     setSwipeDirection('up');
+                     y.set(-300);
+                     if (onSkip) {
+                       onSkip(currentItem.id);
+                     }
+                     nextCard();
+                   }}
+                   disabled={isVoting}
+                   className="w-8 h-8 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 flex items-center justify-center transition-colors disabled:opacity-50"
+                 >
+                   <Forward className="w-3.5 h-3.5" />
+                 </button>
+                 
+                 <button
+                   onClick={() => {
+                     setSwipeDirection('right');
+                     x.set(300);
+                     handleVote(1);
+                   }}
+                   disabled={isVoting}
+                   className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${
+                     currentItem.userVote === 1
+                       ? 'bg-emerald-600/40 text-emerald-300 border border-emerald-500/50'
+                       : 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300'
+                   }`}
+                 >
+                   <ThumbsUp className="w-3.5 h-3.5" />
+                 </button>
+               </div>
+               
+               
              </div>
           </div>
         </motion.div>
       </div>
 
-             {/* Card counter */}
-       <div className="text-center mt-3 text-xs text-white/60">
-         {currentIndex + 1} of {items.length}
-       </div>
+                     {/* Card counter */}
+        <div className="text-center mt-3 text-xs text-white/60">
+          {currentIndex + 1} of {sortedItems.length}
+        </div>
     </div>
   );
 }

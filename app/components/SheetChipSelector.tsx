@@ -21,8 +21,11 @@ const SheetChipSelector: React.FC = () => {
     setSelectedSheetNamesRef.current = setSelectedSheetNames;
   }, [setSelectedSheetNames]);
 
+  // Only fetch sheet names when explicitly requested or when there's a new spreadsheet ID
+  const [hasInitialized, setHasInitialized] = useState(false);
+  
   useEffect(() => {
-    if (defaultSpreadsheetId) {
+    if (defaultSpreadsheetId && !hasInitialized) {
       setIsLoading(true);
       setError(null);
       fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`)
@@ -48,6 +51,7 @@ const SheetChipSelector: React.FC = () => {
           if (names.length > 0 && pruned.length === 0) {
             setSelectedSheetNamesRef.current([names[0]]);
           }
+          setHasInitialized(true);
         })
         .catch(err => {
           setError(err.message);
@@ -57,12 +61,14 @@ const SheetChipSelector: React.FC = () => {
           setIsLoading(false);
         });
     }
-  }, [defaultSpreadsheetId]); // Only depend on defaultSpreadsheetId
+  }, [defaultSpreadsheetId, hasInitialized]); // Only depend on defaultSpreadsheetId and hasInitialized
 
   // Lightweight refresh to pull updated sheet list (e.g., after conversion)
   const refreshSheetNames = async () => {
     if (!defaultSpreadsheetId) return;
     try {
+      setIsLoading(true);
+      setError(null);
       const res = await fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -70,8 +76,12 @@ const SheetChipSelector: React.FC = () => {
         throw new Error(serverMsg);
       }
       setSheetNames(data.sheetNames);
+      setHasInitialized(true);
     } catch (e) {
       console.warn('Failed to refresh sheet names:', e);
+      setError(e.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -173,6 +183,18 @@ const SheetChipSelector: React.FC = () => {
 
   return (
     <div className="space-y-3">
+      {/* Header with refresh button */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-white/80">Available Sheets</h3>
+        <button
+          onClick={refreshSheetNames}
+          disabled={isLoading}
+          className="px-2 py-1 text-xs bg-white/10 hover:bg-white/20 text-white/70 hover:text-white/90 rounded transition-colors disabled:opacity-50"
+        >
+          {isLoading ? 'Loading...' : 'Refresh'}
+        </button>
+      </div>
+      
       {/* Sheet chips with inline compact controls */}
       <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center">
         {sheetNames.map(name => {
