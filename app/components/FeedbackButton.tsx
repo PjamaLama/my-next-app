@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
-import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Plus, ExternalLink } from 'lucide-react';
 import { compressImageFile } from '@/lib/imageCompression';
+import Link from 'next/link';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
@@ -246,50 +247,79 @@ export default function FeedbackButton() {
       {/* Mobile floating trigger removed; mobile users can open from the sidebar footer or via the nudge */}
 
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-          <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(720px,94vw)] p-5">
-            <div className="flex items-center justify-between mb-4">
+          <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(720px,94vw)] p-5 modal-content">
+            {/* Header with enhanced design */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-600/20 flex items-center justify-center">
+                  <Plus className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-white">Feedback Hub</h2>
+                  <p className="text-sm text-white/60">Help us improve Sheety AI</p>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
-                <button
-                  className={`px-3 py-1.5 rounded-md text-sm transition-colors ${view === 'submit' ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`}
-                  onClick={() => setView('submit')}
+                <Link
+                  href="/feedback"
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-zinc-800/50 hover:bg-zinc-700/50 text-white/70 hover:text-white rounded-lg transition-colors"
                 >
-                  Submit
-                </button>
-                <button
-                  className={`px-3 py-1.5 rounded-md text-sm transition-colors ${view === 'browse' ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`}
-                  onClick={() => setView('browse')}
-                >
-                  Browse & vote
+                  <ExternalLink className="w-4 h-4" />
+                  View All
+                </Link>
+                <button className="text-white/70 hover:text-white p-1" onClick={() => setOpen(false)} aria-label="Close">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
-              <button className="text-white/70 hover:text-white" onClick={() => setOpen(false)} aria-label="Close">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex items-center gap-2 mb-6">
+              <button
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  view === 'submit' 
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/25' 
+                    : 'text-white/70 hover:text-white hover:bg-white/5'
+                }`}
+                onClick={() => setView('submit')}
+              >
+                Submit Feedback
+              </button>
+              <button
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  view === 'browse' 
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/25' 
+                    : 'text-white/70 hover:text-white hover:bg-white/5'
+                }`}
+                onClick={() => setView('browse')}
+              >
+                Browse & Vote
               </button>
             </div>
 
             {view === 'submit' ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {/* Top requests quick-pick */}
               {Array.isArray(allItems) && allItems.length > 0 && (
-                <div>
-                  <div className="text-sm text-white/80 mb-2">Is it any of these top requests?</div>
+                <div className="p-4 bg-zinc-800/30 rounded-xl border border-white/10">
+                  <div className="text-sm text-white/80 mb-3 font-medium">Is it any of these top requests?</div>
                   <div className="space-y-2 max-h-36 overflow-auto pr-1">
                       {allItems.slice(0, 5).map((item) => (
-                        <div key={item.id} className="flex items-start justify-between gap-2 glass-soft gloss border border-white/10 rounded-xl p-2.5 hover:bg-white/5 transition-colors">
-                        <div>
-                          <div className="text-sm font-semibold leading-snug">{item.title}</div>
+                        <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-3 hover:bg-white/5 transition-all duration-200 feedback-interactive">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
                           {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2 mt-0.5">{item.description}</div>
+                            <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                            <button
                             type="button"
-                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
+                             className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
@@ -298,7 +328,7 @@ export default function FeedbackButton() {
                           </button>
                           <button
                             type="button"
-                             className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
+                             className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
@@ -314,91 +344,99 @@ export default function FeedbackButton() {
                   </div>
                 </div>
               )}
-              <div>
-                <label className="text-sm text-white/80">Title</label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Short summary"
-                  className="mt-1 w-full rounded-lg bg-zinc-800 border border-white/10 px-3 py-2 outline-none focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-white/80">Details</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Optional details"
-                  rows={4}
-                  className="mt-1 w-full rounded-lg bg-zinc-800 border border-white/10 px-3 py-2 outline-none focus:border-emerald-500"
-                />
-              </div>
-              {/* Attachment */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-white/80">Attachment</label>
-                  {attachments.length > 0 && (
-                    <button
-                      type="button"
-                      className="text-xs text-white/60 hover:text-white"
-                      onClick={() => setAttachments([])}
-                      disabled={uploading}
-                    >
-                      Remove
-                    </button>
-                  )}
+              
+              {/* Form Fields */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-white/80 mb-2">Title *</label>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Brief summary of your feedback"
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
+                  />
                 </div>
-                <div className="mt-1">
-                  {attachments.length === 0 ? (
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void handleFile(f);
-                      }}
-                      disabled={uploading}
-                      className="block w-full text-sm text-white/80 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border file:border-white/10 file:bg-zinc-800 hover:file:bg-zinc-700"
-                    />
-                  ) : (
-                    <div className="flex items-center gap-3">
-                      <img src={attachments[0].url} alt={attachments[0].name || 'attachment'} className="w-24 h-24 object-cover rounded-lg border border-white/10" />
-                      <span className="text-xs text-white/60">{attachments[0].name || 'image'}</span>
-                    </div>
-                  )}
+                
+                <div>
+                  <label className="block text-sm font-medium text-white/80 mb-2">Description</label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="More details about your feedback (optional)"
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
+                  />
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-white/80">Type</label>
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as FeedbackType)}
-                  className="rounded-lg bg-zinc-800 border border-white/10 px-3 py-2 outline-none focus:border-emerald-500"
-                >
-                  <option value="feature">Feature</option>
-                  <option value="bug">Bug</option>
-                  <option value="other">Other</option>
-                </select>
+                
+                {/* Attachment */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-white/80">Attachment</label>
+                    {attachments.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-xs text-white/60 hover:text-white transition-colors"
+                        onClick={() => setAttachments([])}
+                        disabled={uploading}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    {attachments.length === 0 ? (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void handleFile(f);
+                        }}
+                        disabled={uploading}
+                        className="block w-full text-sm text-white/80 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border file:border-white/10 file:bg-zinc-800 hover:file:bg-zinc-700 file:transition-colors"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <img src={attachments[0].url} alt={attachments[0].name || 'attachment'} className="w-24 h-24 object-cover rounded-lg border border-white/10" />
+                        <span className="text-xs text-white/60">{attachments[0].name || 'image'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-white/80">Type</label>
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value as FeedbackType)}
+                    className="rounded-lg bg-zinc-800/50 border border-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
+                  >
+                    <option value="feature">Feature Request</option>
+                    <option value="bug">Bug Report</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
               </div>
 
+              {/* Similar requests */}
               {(loading || similar.length > 0) && (
-                <div className="mt-2">
-                  <div className="text-sm text-white/60 mb-1">Similar requests</div>
+                <div className="mt-4 p-4 bg-zinc-800/30 rounded-xl border border-white/10">
+                  <div className="text-sm text-white/80 mb-3 font-medium">Similar requests</div>
                   <div className="space-y-2 max-h-40 overflow-auto pr-1">
                     {loading && <div className="text-xs text-white/50">Searching…</div>}
                     {!loading && similar.length === 0 && <div className="text-xs text-white/50">No similar items found</div>}
                     {similar.map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 glass-soft gloss border border-white/10 rounded-xl p-2.5 hover:bg-white/5 transition-colors">
-                        <div>
-                          <div className="text-sm font-semibold leading-snug">{item.title}</div>
+                      <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-3 hover:bg-white/5 transition-all duration-200 feedback-interactive">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
                           {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2 mt-0.5">{item.description}</div>
+                            <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
@@ -407,7 +445,7 @@ export default function FeedbackButton() {
                           </button>
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
@@ -424,31 +462,35 @@ export default function FeedbackButton() {
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
                 <button
-                  className="px-3 py-2 rounded-lg bg-zinc-800 border border-white/10 text-white/80 hover:bg-zinc-700"
+                  className="px-4 py-2 rounded-lg bg-zinc-800/50 border border-white/10 text-white/80 hover:bg-zinc-700/50 hover:text-white transition-all duration-200"
                   onClick={() => setOpen(false)}
                 >
                   Cancel
                 </button>
                 <button
-                  className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
+                  className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50 transition-all duration-200 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30"
                   onClick={submit}
                   disabled={!canSubmit || submitting}
                 >
-                  {submitting ? 'Submitting…' : 'Submit'}
+                  {submitting ? 'Submitting…' : 'Submit Feedback'}
                 </button>
               </div>
             </div>
             ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  value={browseQuery}
-                  onChange={(e) => setBrowseQuery(e.target.value)}
-                  placeholder="Search feedback"
-                  className="flex-1 rounded-lg bg-zinc-800 border border-white/10 px-3 py-2 outline-none focus:border-emerald-500"
-                />
+            <div className="space-y-4">
+              {/* Browse Controls */}
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1">
+                  <input
+                    value={browseQuery}
+                    onChange={(e) => setBrowseQuery(e.target.value)}
+                    placeholder="Search feedback..."
+                    className="w-full pl-4 pr-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -460,14 +502,19 @@ export default function FeedbackButton() {
                       .then((json) => setAllItems(Array.isArray(json?.data) ? json.data : []))
                       .finally(() => setAllLoading(false));
                   }}
-                  className="rounded-lg bg-white/10 hover:bg-white/20 text-white/80 px-3 py-2 text-sm"
+                  className="px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-all duration-200 shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30"
                 >
                   Refresh
                 </button>
               </div>
-              <div className="max-h-[50vh] overflow-auto pr-1 space-y-2">
+              
+              {/* Feedback List */}
+              <div className="max-h-[50vh] overflow-auto pr-1 space-y-3">
                 {allLoading ? (
-                  <div className="text-sm text-white/60">Loading…</div>
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+                    <span className="ml-3 text-white/60">Loading...</span>
+                  </div>
                 ) : (
                   (allItems || [])
                     .filter((i) => {
@@ -477,17 +524,17 @@ export default function FeedbackButton() {
                       return text.includes(q);
                     })
                     .map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-2 glass-soft gloss border border-white/10 rounded-xl p-2.5 hover:bg-white/5 transition-colors">
-                        <div>
-                          <div className="text-sm font-semibold leading-snug">{item.title}</div>
+                      <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-4 hover:bg-white/5 transition-all duration-200 feedback-interactive">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
                           {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2 mt-0.5">{item.description}</div>
+                            <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, 1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Upvote' : 'Sign in to vote'}
@@ -496,7 +543,7 @@ export default function FeedbackButton() {
                           </button>
                           <button
                             type="button"
-                            className={`px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
                             onClick={() => vote(item.id, -1)}
                             disabled={!user || !!voting[item.id]}
                             title={user ? 'Downvote' : 'Sign in to vote'}
@@ -504,7 +551,7 @@ export default function FeedbackButton() {
                             <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
                           </button>
                           {typeof (item as any).votesCount === 'number' ? (
-                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{(item as any).votesCount.toLocaleString()}</span>
+                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-2 py-1 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{(item as any).votesCount.toLocaleString()}</span>
                           ) : null}
                         </div>
                       </div>
