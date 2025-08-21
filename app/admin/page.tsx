@@ -11,8 +11,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<BetaMeta>({ capacity: 100, testerCount: 0, open: false });
   const [saving, setSaving] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('');
-  const [actionBusy, setActionBusy] = useState(false);
+
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const fetchMeta = async () => {
@@ -68,45 +67,7 @@ export default function AdminPage() {
     }
   };
 
-  const grantTester = async (email: string) => {
-    if (!user || !email) return;
-    try {
-      setActionBusy(true);
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/meta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'grantTester', email }),
-      });
-      if (!res.ok) throw new Error(`Grant failed (${res.status})`);
-      await fetchMeta();
-      setAdminEmail('');
-    } catch (e: any) {
-      setError(e?.message || 'Grant failed');
-    } finally {
-      setActionBusy(false);
-    }
-  };
 
-  const revokeTester = async (email: string) => {
-    if (!user || !email) return;
-    try {
-      setActionBusy(true);
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/meta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'revokeTester', email }),
-      });
-      if (!res.ok) throw new Error(`Revoke failed (${res.status})`);
-      await fetchMeta();
-      setAdminEmail('');
-    } catch (e: any) {
-      setError(e?.message || 'Revoke failed');
-    } finally {
-      setActionBusy(false);
-    }
-  };
 
   if (!user) {
     return (
@@ -185,33 +146,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="glass rounded-xl p-5 border border-white/10">
-          <div className="text-white/80 text-sm mb-3">Manage Testers</div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <input
-              type="email"
-              placeholder="user@example.com"
-              value={adminEmail}
-              onChange={(e) => setAdminEmail(e.target.value)}
-              className="min-w-[260px] rounded bg-white/10 border border-white/10 px-3 py-2"
-              disabled={actionBusy}
-            />
-            <button
-              onClick={() => grantTester(adminEmail)}
-              disabled={actionBusy || !adminEmail}
-              className={`px-3 py-2 rounded bg-sky-600 hover:bg-sky-500 ${actionBusy ? 'opacity-60' : ''}`}
-            >Grant tester</button>
-            <button
-              onClick={() => revokeTester(adminEmail)}
-              disabled={actionBusy || !adminEmail}
-              className={`px-3 py-2 rounded bg-red-600 hover:bg-red-500 ${actionBusy ? 'opacity-60' : ''}`}
-            >Revoke tester</button>
-          </div>
-          <p className="text-xs text-white/60 mt-2">Grant/revoke will adjust testerCount atomically.</p>
-        </div>
 
-        {/* Tutorial management */}
-        <AdminTutorialPanel />
 
         {/* Feedback management */}
         <AdminFeedbackPanel />
@@ -498,7 +433,7 @@ function AdminTutorialPanel() {
                       YouTube ID: {video.youtubeId}
                       {video.updatedAt && (
                         <span className="ml-2">
-                          • Updated: {new Date(video.updatedAt.toDate()).toLocaleString()}
+                          • Updated: {new Date(video.updatedAt?.toDate ? video.updatedAt.toDate() : video.updatedAt).toLocaleString()}
                         </span>
                       )}
                     </div>

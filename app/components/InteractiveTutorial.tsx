@@ -27,42 +27,20 @@ const defaultTutorialSteps: TutorialStep[] = [
   {
     id: 'welcome',
     title: 'Welcome to Sheety AI',
-    description: 'Get started with AI-powered data analysis',
-    youtubeId: 'dQw4w9WgXcQ',
+    description: 'Watch this short video to get started.',
+    youtubeId: 'new_welcome_video_id', // Placeholder for the new welcome video
     order: 0,
-    icon: <BookOpen className="w-8 h-8 text-emerald-400" />
+    icon: <Play className="w-8 h-8 text-emerald-400" />,
   },
   {
     id: 'setup',
-    title: 'Setup & Templates',
-    description: 'Download templates and configure your service account',
-    youtubeId: 'dQw4w9WgXcQ',
+    title: 'Service Account Setup',
+    description: 'Configure your service account to connect to your Google Sheets.',
+    youtubeId: 'Lcf1KNNq_oc', // Updated to the new video
     order: 1,
     icon: <Settings className="w-8 h-8 text-emerald-400" />,
     content: (
       <div className="text-left space-y-6">
-        {/* Template Download Section */}
-        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-            <Download className="w-5 h-5 text-emerald-400" />
-            Download Template
-          </h3>
-          <p className="text-white/80 mb-4">
-            Start with our structured template that follows the correct format for AI analysis.
-          </p>
-          <a
-            href="/templates/structured-sheet-template.csv"
-            download
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Download CSV Template
-          </a>
-          <div className="mt-3 text-sm text-white/60">
-            After downloading, open in Google Sheets and save as a Google Sheet for full functionality.
-          </div>
-        </div>
-
         {/* Service Account Setup */}
         <div className="bg-white/5 rounded-xl p-6 border border-white/10">
           <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
@@ -84,6 +62,39 @@ const defaultTutorialSteps: TutorialStep[] = [
                 <p className="text-sm text-white/60">This allows the AI to securely access and analyze your data.</p>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  },
+  {
+    id: 'structure',
+    title: 'Template & Structure Rules',
+    description: 'Download our template and follow these rules for the best results.',
+    youtubeId: '',
+    order: 2,
+    icon: <FileText className="w-8 h-8 text-emerald-400" />,
+    content: (
+      <div className="text-left space-y-6">
+        {/* Template Download Section */}
+        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <Download className="w-5 h-5 text-emerald-400" />
+            Download Template
+          </h3>
+          <p className="text-white/80 mb-4">
+            Start with our structured template that follows the correct format for AI analysis.
+          </p>
+          <a
+            href="/templates/structured-sheet-template.csv"
+            download
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download CSV Template
+          </a>
+          <div className="mt-3 text-sm text-white/60">
+            After downloading, open in Google Sheets and save as a Google Sheet for full functionality.
           </div>
         </div>
 
@@ -121,19 +132,36 @@ const defaultTutorialSteps: TutorialStep[] = [
   },
   {
     id: 'connect',
-    title: 'Connect Your Spreadsheet',
-    description: 'Link your Google Sheets to begin analyzing',
-    youtubeId: 'dQw4w9WgXcQ',
-    order: 2,
-    icon: <CheckCircle className="w-8 h-8 text-emerald-400" />
-  },
-  {
-    id: 'chat',
-    title: 'Chat with Your Data',
-    description: 'Ask questions and get intelligent insights',
-    youtubeId: 'dQw4w9WgXcQ',
+    title: 'All Set!',
+    description: 'You\'re ready to start analyzing your data with AI',
+    youtubeId: '',
     order: 3,
-    icon: <Play className="w-8 h-8 text-emerald-400" />
+    icon: <CheckCircle className="w-8 h-8 text-emerald-400" />,
+    content: (
+      <div className="text-center space-y-6">
+        <div className="bg-emerald-600/20 border border-emerald-600/30 rounded-xl p-8">
+          <div className="text-6xl mb-4">🎉</div>
+          <h3 className="text-2xl font-bold text-emerald-300 mb-3">You're All Set!</h3>
+          <p className="text-lg text-emerald-200 mb-6">
+            Your service account is configured and you're ready to start analyzing your data with AI.
+          </p>
+          <div className="space-y-3 text-emerald-100">
+            <p>✅ Service account configured</p>
+            <p>✅ Template downloaded</p>
+            <p>✅ Structure rules understood</p>
+            <p>✅ Ready to connect your spreadsheet</p>
+          </div>
+        </div>
+        <div className="text-white/70">
+          <p className="text-lg">Now you can:</p>
+          <ul className="mt-2 space-y-1 text-sm">
+            <li>• Upload your spreadsheet or connect to Google Sheets</li>
+            <li>• Start chatting with your data</li>
+            <li>• Get AI-powered insights and analysis</li>
+          </ul>
+        </div>
+      </div>
+    )
   },
 ];
 
@@ -256,12 +284,8 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
           <h2 className="text-3xl font-bold text-white mb-3">{step.title}</h2>
           <p className="text-lg text-white/70 mb-6">{step.description}</p>
           
-          {/* Custom Content or YouTube Video */}
-          {step.content ? (
-            <div className="max-w-4xl mx-auto">
-              {step.content}
-            </div>
-          ) : (
+          {/* YouTube Video */}
+          {step.youtubeId && (
             <div className="aspect-w-16 aspect-h-9 mb-6">
               <iframe
                 className="w-full h-96 rounded-xl border border-white/10"
@@ -271,6 +295,13 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               ></iframe>
+            </div>
+          )}
+
+          {/* Custom Content */}
+          {step.content && (
+            <div className="max-w-4xl mx-auto">
+              {step.content}
             </div>
           )}
         </div>
@@ -312,17 +343,7 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
           </button>
         </div>
 
-        {/* Skip option */}
-        {!isFirstStep && (
-          <div className="text-center mt-6">
-            <button
-              onClick={handleSkip}
-              className="text-sm text-white/50 hover:text-white/80 underline"
-            >
-              Skip tutorial
-            </button>
-          </div>
-        )}
+
         
 
       </div>
