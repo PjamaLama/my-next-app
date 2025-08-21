@@ -183,7 +183,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             } catch {}
 
             const tailCount = typeof tailRows === 'number' && tailRows > 0 ? tailRows : 0;
-            const sliced = tailCount > 0 ? values.slice(-tailCount) : values;
+            let sliced = tailCount > 0 ? values.slice(-tailCount) : values;
+            
+            // Filter out total rows (row 3) when processing data
+            // This ensures the total row is not included in the data sent to frontend/N8N
+            if (sliced.length > 2) {
+              // Check if row 3 (index 2) is a total row and filter it out
+              const totalRowIndex = 2; // 0-based index for row 3
+              if (totalRowIndex < sliced.length) {
+                const totalRow = sliced[totalRowIndex];
+                const isTotalRow = totalRow.some(cell => 
+                  String(cell).toLowerCase().includes('total') || 
+                  String(cell).startsWith('=SUM') ||
+                  String(cell).startsWith('=sum')
+                );
+                
+                if (isTotalRow) {
+                  log.debug('Filtering out total row at index 2');
+                  sliced = sliced.filter((_, index) => index !== totalRowIndex);
+                }
+              }
+            }
 
             const payload = { data: [headers, ...sliced] };
             responseCache.set(key, { at: Date.now(), payload });

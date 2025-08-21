@@ -171,23 +171,101 @@ export const ensureSheetCapacity = async (
   }
 };
 
-// Simplified function to find the last data row (just the last non-empty row)
-export const findLastDataRow = (sheetData: string[][]): number => {
-  console.log(`Analyzing sheet data with ${sheetData.length} rows`);
-  // Start from the bottom and work up to find the last non-empty row
-  for (let i = sheetData.length - 1; i >= 0; i--) {
-    const row = sheetData[i];
-    // Check if row has any non-empty cells
-    const hasData = row.some(cell => {
-      const cellStr = String(cell || '').trim();
-      return cellStr !== '' && cellStr !== null && cellStr !== undefined;
-    });
-    if (hasData) {
-      console.log(`Found last data row at index ${i + 1}: ${row.join(', ')}`);
-      return i + 1; // Convert to 1-based index
-    }
+// Function to identify and filter out total rows when processing data
+export const filterOutTotalRows = (sheetData: string[][], totalRowIndex: number = 2): string[][] => {
+  console.log(`🔍 [SHEET UTILS] Filtering out total row at index ${totalRowIndex}`);
+  
+  if (!Array.isArray(sheetData) || sheetData.length === 0) {
+    return [];
   }
-  // If no data rows found, return 1 (after header)
-  console.log('No data rows found, returning row 1');
-  return 1;
+  
+  // Filter out the total row (row 3, which is index 2 in 0-based)
+  const filteredData = sheetData.filter((_, index) => index !== totalRowIndex);
+  
+  console.log(`🔍 [SHEET UTILS] Filtered data: ${sheetData.length} -> ${filteredData.length} rows`);
+  return filteredData;
+};
+
+// Function to check if a row is a total row (contains sum formulas or total indicators)
+export const isTotalRow = (row: string[], headers: string[]): boolean => {
+  if (!Array.isArray(row) || !Array.isArray(headers)) {
+    return false;
+  }
+  
+  // Check for common total row indicators
+  const totalIndicators = ['total', 'sum', 'grand total', 'subtotal'];
+  const rowText = row.join(' ').toLowerCase();
+  
+  // Check if any cell contains total indicators
+  const hasTotalIndicator = totalIndicators.some(indicator => 
+    rowText.includes(indicator)
+  );
+  
+  // Check if row contains sum formulas (starts with =SUM)
+  const hasSumFormula = row.some(cell => 
+    String(cell).startsWith('=SUM') || String(cell).startsWith('=sum')
+  );
+  
+  // Check if row is mostly empty except for a few cells (typical for total rows)
+  const nonEmptyCells = row.filter(cell => String(cell).trim() !== '').length;
+  const isEmptyExceptFew = nonEmptyCells <= Math.ceil(headers.length * 0.3); // 30% or fewer cells have content
+  
+  return hasTotalIndicator || hasSumFormula || isEmptyExceptFew;
+};
+
+// Function to get data rows excluding headers and total rows
+export const getDataRowsOnly = (sheetData: string[][], totalRowIndex: number = 2): string[][] => {
+  if (!Array.isArray(sheetData) || sheetData.length === 0) {
+    return [];
+  }
+  
+  // Skip header row (index 0) and total row (index 2)
+  const dataRows = sheetData.filter((_, index) => index !== 0 && index !== totalRowIndex);
+  
+  console.log(`🔍 [SHEET UTILS] Extracted ${dataRows.length} data rows (excluding header and total)`);
+  return dataRows;
+};
+
+// Function to ensure total row is positioned at row 3 (below headers and data)
+export const ensureTotalRowPosition = async (
+  spreadsheetId: string, 
+  sheetName: string, 
+  totalRowData: string[]
+): Promise<void> => {
+  try {
+    const sheets = await getGoogleSheetsClient();
+    const escapedName = escapeSheetName(sheetName);
+    
+    // Check if row 3 exists and contains total data
+    const row3Response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${escapedName}!A3:Z3`
+    });
+    
+    const existingRow3 = row3Response.data.values?.[0] || [];
+    const hasTotalData = existingRow3.some(cell => 
+      String(cell).toLowerCase().includes('total') || 
+      String(cell).startsWith('=SUM')
+    );
+    
+    if (!hasTotalData && totalRowData.length > 0) {
+      console.log('🔍 [SHEET UTILS] Setting up total row at row 3');
+      
+      // Insert total row data at row 3
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${escapedName}!A3`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [totalRowData] },
+      });
+    }
+  } catch (error) {
+    console.warn('Failed to ensure total row position:', error);
+  }
+};
+
+// Function to get the recommended insertion row for new data
+export const getInsertionRow = (): number => {
+  // Always return row 2 (below headers, above totals)
+  return 2;
 }; 

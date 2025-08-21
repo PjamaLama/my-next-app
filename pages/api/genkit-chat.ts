@@ -242,9 +242,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
         if (Array.isArray(sheetData) && sheetData.length > 0 && Array.isArray(sheetData[0])) {
           const headers = sheetData[0].map((h: any) => String(h ?? ''));
-          // Get the last 3 rows as sample data
-          const sampleRows = sheetData.length > 1 ?
-            sheetData.slice(Math.max(1, sheetData.length - 3)).map((row: any) =>
+          
+          // Filter out total rows (row 3) when processing data for N8N
+          const dataRowsOnly = sheetData.filter((_, index) => index !== 0 && index !== 2); // Skip header (0) and total row (2)
+          
+          // Get the last 3 data rows as sample data (excluding totals)
+          const sampleRows = dataRowsOnly.length > 0 ?
+            dataRowsOnly.slice(-3).map((row: any) =>
               Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
             ) : [];
           
@@ -254,7 +258,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           };
           console.log(`✅ [N8N] Added data for ${sheetName}:`, {
             headerCount: headers.length,
-            sampleRowsCount: sampleRows.length
+            sampleRowsCount: sampleRows.length,
+            totalRowsFiltered: sheetData.length - dataRowsOnly.length - 1 // -1 for header
           });
 
           sheetContextString += `\nSheet Name: ${sheetName}\nHeaders: ${headers.join(', ')}\nSample Rows:\n`;

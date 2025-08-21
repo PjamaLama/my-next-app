@@ -1,5 +1,5 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
-import { escapeSheetName } from '@/lib/sheetUtils';
+import { escapeSheetName, getInsertionRow } from '@/lib/sheetUtils';
 
 type RowObject = Record<string, unknown>;
 
@@ -11,9 +11,9 @@ export type IngestResult = {
 };
 
 /**
- * A lightweight function to append rows to a specified Google Sheet.
- * It reads the headers from the target sheet and appends the provided rows.
- * This function does not perform any deduplication or update logic.
+ * A lightweight function to insert rows at specific positions in a Google Sheet.
+ * It reads the headers from the target sheet and inserts the provided rows.
+ * This function targets row 2 (below headers) and preserves row 3 for totals.
  */
 export async function ingestRows(params: {
   spreadsheetId: string;
@@ -45,26 +45,67 @@ export async function ingestRows(params: {
     }
 
     // Prepare row arrays aligned to the sheet's headers
-    const valuesToAppend: string[][] = rows.map(obj => 
+    const valuesToInsert: string[][] = rows.map(obj => 
       headers.map(h => (obj[h] != null ? String(obj[h]) : ''))
     );
 
-    console.log('🔍 [ORCHESTRATOR] Values to append:', valuesToAppend);
+    console.log('🔍 [ORCHESTRATOR] Values to insert:', valuesToInsert);
 
-    if (valuesToAppend.length === 0) {
-      return { success: true, inserts: 0, updates: 0, details: 'No rows to append.' };
+    if (valuesToInsert.length === 0) {
+      return { success: true, inserts: 0, updates: 0, details: 'No rows to insert.' };
     }
 
-    // Execute the append operation
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: `${escapedName}!A1`,
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: valuesToAppend },
-    });
+    // Get the target insertion row (always row 2)
+    const insertionRow = getInsertionRow();
+    console.log(`🔍 [ORCHESTRATOR] Inserting data at row ${insertionRow}`);
 
-    const result = { success: true, inserts: valuesToAppend.length, updates: 0 };
+    // Check if we need to preserve existing data below the insertion point
+    const existingDataResp = await sheets.spreadsheets.values.get({ 
+      spreadsheetId, 
+      range: `${escapedName}!A${insertionRow}:Z1000` // Get data from insertion row onwards
+    });
+    
+    const existingData = existingDataResp.data.values || [];
+    const hasExistingData = existingData.length > 0;
+    
+    if (hasExistingData) {
+      console.log('🔍 [ORCHESTRATOR] Found existing data, will shift rows down');
+      
+      // Insert new rows at the insertion point, shifting existing data down
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [{
+            insertDimension: {
+              range: {
+                sheetId: await getSheetId(spreadsheetId, sheetName),
+                dimension: 'ROWS',
+                startIndex: insertionRow - 1, // 0-based, so insertionRow - 1
+                endIndex: insertionRow - 1 + valuesToInsert.length // Insert after the new rows
+              }
+            }
+          }]
+        }
+      });
+      
+      // Now insert the values at the insertion row
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${escapedName}!A${insertionRow}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: valuesToInsert },
+      });
+    } else {
+      // No existing data, just insert at the insertion row
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${escapedName}!A${insertionRow}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: valuesToInsert },
+      });
+    }
+
+    const result = { success: true, inserts: valuesToInsert.length, updates: 0 };
     console.log('🔍 [ORCHESTRATOR] Final result:', result);
     return result;
 
@@ -72,6 +113,22 @@ export async function ingestRows(params: {
     console.error('Error in ingestRows:', e);
     return { success: false, inserts: 0, updates: 0, details: e };
   }
+}
+
+// Helper function to get sheet ID
+async function getSheetId(spreadsheetId: string, sheetName: string): Promise<number> {
+  const sheets = await getGoogleSheetsClient();
+  const metadata = await sheets.spreadsheets.get({
+    spreadsheetId,
+    includeGridData: false
+  });
+  
+  const sheet = metadata.data.sheets?.find(s => s.properties?.title === sheetName);
+  if (!sheet?.properties?.sheetId) {
+    throw new Error(`Sheet "${sheetName}" not found or has no sheet ID`);
+  }
+  
+  return sheet.properties.sheetId;
 }
 
 
