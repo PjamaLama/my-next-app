@@ -237,7 +237,11 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             <h3 className="text-5xl font-bold mb-20 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent">How It Works</h3>
             <div className="flex flex-col md:flex-row items-center justify-center gap-20">
                 <div className="w-full md:w-1/2">
-                    <img src="/templates/convert-to-google-sheets.png" alt="SheetyAI in action" className="rounded-2xl shadow-2xl shadow-black/50 border border-white/10"/>
+                    <img 
+                        src="/templates/gify3.gif" 
+                        alt="SheetyAI in action" 
+                        className="w-full h-auto max-w-lg mx-auto rounded-2xl shadow-2xl shadow-black/50 border border-white/10"
+                    />
                 </div>
                 <div className="w-full md:w-1/2 text-left space-y-12">
                     <motion.div
