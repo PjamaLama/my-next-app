@@ -9,7 +9,7 @@ export const ClientGatedLayout: React.FC<{ children: React.ReactNode }> = ({ chi
   if (!user) {
     // Landing page: no sidebar offset, no navbar
     return (
-      <main className="flex-1 w-full max-w-[110rem] mx-auto px-3 sm:px-6">
+      <main className="flex-1 w-full">
         {children}
       </main>
     );

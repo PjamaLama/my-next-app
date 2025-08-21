@@ -101,20 +101,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
   return (
     <div className="min-h-screen bg-[#020202] text-white font-sans overflow-x-hidden relative">
-      <style jsx>{`
-        @keyframes grid-fade-in {
-          from { opacity: 0; transform: scale(0.9); }
-          to { opacity: 0.1; transform: scale(1); }
-        }
-        .animated-grid {
-          background-size: 40px 40px;
-          background-image: linear-gradient(to right, #333 1px, transparent 1px), linear-gradient(to bottom, #333 1px, transparent 1px);
-          animation: grid-fade-in 3s ease-out forwards;
-          opacity: 0.1; /* Start with some opacity */
-        }
-      `}</style>
-      <div className="absolute inset-0 z-0 pointer-events-none animated-grid"></div>
-      <div className="container mx-auto px-6 py-8 relative z-10">
+      
+             <div className="w-full py-8 px-6 sm:px-8 relative z-10">
         <motion.header
           initial={{ y: -100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
