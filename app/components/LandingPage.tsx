@@ -121,7 +121,15 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
           transition={{ duration: 0.5 }}
           className="flex justify-between items-center mb-32"
         >
-          <h1 className="text-3xl font-bold tracking-tighter bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">SheetyAI</h1>
+          <div className="flex items-center gap-3">
+            <img 
+              src="/logo.png" 
+              alt="SheetyAI Logo" 
+              className="w-10 h-10 drop-shadow-lg"
+              style={{ filter: 'invert(1)' }}
+            />
+            <h1 className="text-3xl font-bold tracking-tighter bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">SheetyAI</h1>
+          </div>
           <motion.button
             onClick={onSignIn}
             whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.5)' }}
