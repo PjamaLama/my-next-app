@@ -77,7 +77,7 @@ export default function SwipeableFeedbackStack({
 
   const currentItem = items[currentIndex];
 
-  const handleDragEnd = async (event: any, info: PanInfo) => {
+  const handleDragEnd = (event: any, info: PanInfo) => {
     const { offset, velocity } = info;
     
     if (Math.abs(offset.x) > SWIPE_THRESHOLD || Math.abs(velocity.x) > 500) {
@@ -85,13 +85,13 @@ export default function SwipeableFeedbackStack({
       const direction = offset.x > 0 ? 'right' : 'left';
       setSwipeDirection(direction);
       
-      // Animate the swipe
+      // Animate the swipe and handle vote
       if (direction === 'right') {
         x.set(300);
-        await handleVote(1);
+        handleVote(1);
       } else {
         x.set(-300);
-        await handleVote(-1);
+        handleVote(-1);
       }
     } else if (offset.y < -SWIPE_UP_THRESHOLD || velocity.y < -300) {
       // Swipe up to skip
@@ -108,25 +108,27 @@ export default function SwipeableFeedbackStack({
     }
   };
 
-  const handleVote = async (value: 1 | -1) => {
+  const handleVote = (value: 1 | -1) => {
     if (isVoting || !currentItem) return;
     
     setIsVoting(true);
-    try {
-      // Call the vote function from FeedbackButton
-      await onVote(currentItem.id, value);
-      
-      // Move to next card after voting
-      nextCard();
-    } catch (error) {
-      console.error('Vote failed:', error);
-      // Reset the card position on error
-      x.set(0);
-      y.set(0);
-      setSwipeDirection(null);
-    } finally {
-      setIsVoting(false);
-    }
+    
+    // Call the vote function from FeedbackButton
+    onVote(currentItem.id, value)
+      .then(() => {
+        // Move to next card after successful vote
+        nextCard();
+      })
+      .catch((error) => {
+        console.error('Vote failed:', error);
+        // Reset the card position on error
+        x.set(0);
+        y.set(0);
+        setSwipeDirection(null);
+      })
+      .finally(() => {
+        setIsVoting(false);
+      });
   };
 
   const nextCard = () => {
@@ -134,13 +136,15 @@ export default function SwipeableFeedbackStack({
       setCurrentIndex(prev => {
         const nextIndex = prev + 1;
         console.log(`Moving from card ${prev} to ${nextIndex} (total: ${items.length})`);
-        // If we've reached the end, the component will show "All caught up!"
         return nextIndex;
       });
-      setSwipeDirection(null);
-      x.set(0);
-      y.set(0);
-    }, 400);
+      // Reset the card state
+      setTimeout(() => {
+        setSwipeDirection(null);
+        x.set(0);
+        y.set(0);
+      }, 50);
+    }, 300);
   };
 
   const resetStack = () => {

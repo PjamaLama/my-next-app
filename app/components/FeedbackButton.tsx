@@ -29,8 +29,7 @@ export default function FeedbackButton() {
   const [loading, setLoading] = useState(false);
   const [similar, setSimilar] = useState<SimilarItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [view, setView] = useState<'submit' | 'browse'>('submit');
-  const [browseViewMode, setBrowseViewMode] = useState<'list' | 'swipe'>('list');
+
   const [allItems, setAllItems] = useState<SimilarItem[]>([]);
   const [allLoading, setAllLoading] = useState(false);
   const [browseQuery, setBrowseQuery] = useState('');
@@ -51,16 +50,15 @@ export default function FeedbackButton() {
       if (typeof s?.title === 'string') setTitle(s.title);
       if (typeof s?.description === 'string') setDescription(s.description);
       if (s?.type === 'bug' || s?.type === 'feature' || s?.type === 'other') setType(s.type);
-      if (s?.view === 'submit' || s?.view === 'browse') setView(s.view);
       if (Array.isArray(s?.attachments)) setAttachments(s.attachments);
     } catch {}
   }, []);
   useEffect(() => {
     try {
-      const s = { title, description, type, view, attachments };
+      const s = { title, description, type, attachments };
       localStorage.setItem(PERSIST_KEY, JSON.stringify(s));
     } catch {}
-  }, [title, description, type, view, attachments]);
+  }, [title, description, type, attachments]);
 
   useEffect(() => {
     const q = title.trim() + ' ' + description.trim();
@@ -250,7 +248,7 @@ export default function FeedbackButton() {
       {open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-                     <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(900px,95vw)] h-[min(800px,90vh)] p-6 modal-content">
+                     <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(1200px,98vw)] h-[min(800px,90vh)] p-6 modal-content">
             {/* Header with enhanced design */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -271,76 +269,19 @@ export default function FeedbackButton() {
               </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="flex items-center gap-2 mb-6">
-              <button
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  view === 'submit' 
-                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/25' 
-                    : 'text-white/70 hover:text-white hover:bg-white/5'
-                }`}
-                onClick={() => setView('submit')}
-              >
-                Submit Feedback
-              </button>
-              <button
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  view === 'browse' 
-                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/25' 
-                    : 'text-white/70 hover:text-white hover:bg-white/5'
-                }`}
-                onClick={() => setView('browse')}
-              >
-                Browse & Vote
-              </button>
-            </div>
-
-            {view === 'submit' ? (
-            <div className="space-y-4">
-              {/* Top requests quick-pick */}
-              {Array.isArray(allItems) && allItems.length > 0 && (
-                <div className="p-4 bg-zinc-800/30 rounded-xl border border-white/10">
-                  <div className="text-sm text-white/80 mb-3 font-medium">Is it any of these top requests?</div>
-                  <div className="space-y-2 max-h-36 overflow-auto pr-1">
-                      {allItems.slice(0, 5).map((item) => (
-                        <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-3 hover:bg-white/5 transition-all duration-200 feedback-interactive">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
-                          {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                           <button
-                            type="button"
-                             className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
-                            onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id]}
-                            title={user ? 'Upvote' : 'Sign in to vote'}
-                          >
-                             <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
-                          </button>
-                          <button
-                            type="button"
-                             className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
-                            onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id]}
-                            title={user ? 'Downvote' : 'Sign in to vote'}
-                          >
-                             <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
-                          </button>
-                          {typeof item.votesCount === 'number' ? (
-                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{item.votesCount.toLocaleString()}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {/* Form Fields */}
+            {/* Main Content - Combined Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left Column - Submit Feedback */}
               <div className="space-y-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-full bg-emerald-600/20 flex items-center justify-center">
+                    <Plus className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Submit Feedback</h3>
+                </div>
+
+                {/* Form Fields */}
+                <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-2">Title *</label>
                   <input
@@ -365,173 +306,251 @@ export default function FeedbackButton() {
                 
                 {/* Attachment */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-white/80">Attachment</label>
-                    {attachments.length > 0 && (
-                      <button
-                        type="button"
-                        className="text-xs text-white/60 hover:text-white transition-colors"
-                        onClick={() => setAttachments([])}
-                        disabled={uploading}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
+                  <label className="text-sm font-medium text-white/80 mb-3 block">
+                    📎 Attachment (Optional)
+                  </label>
                   <div>
                     {attachments.length === 0 ? (
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void handleFile(f);
-                        }}
-                        disabled={uploading}
-                        className="block w-full text-sm text-white/80 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border file:border-white/10 file:bg-zinc-800 hover:file:bg-zinc-700 file:transition-colors"
-                      />
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void handleFile(f);
+                          }}
+                          disabled={uploading}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <div className={`w-full p-6 rounded-xl border-2 border-dashed transition-all duration-200 text-center ${
+                          uploading 
+                            ? 'border-white/20 bg-zinc-800/30' 
+                            : 'border-white/30 bg-zinc-800/20 hover:bg-zinc-800/40 hover:border-white/40'
+                        }`}>
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-emerald-600/20 flex items-center justify-center">
+                              {uploading ? (
+                                <div className="animate-spin w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full"></div>
+                              ) : (
+                                <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                                </svg>
+                              )}
+                            </div>
+                            <div className="text-sm text-white/80 font-medium">
+                              {uploading ? 'Uploading...' : 'Click or drag to upload image'}
+                            </div>
+                            <div className="text-xs text-white/50">
+                              PNG, JPG up to 10MB
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
-                      <div className="flex items-center gap-3">
-                        <img src={attachments[0].url} alt={attachments[0].name || 'attachment'} className="w-24 h-24 object-cover rounded-lg border border-white/10" />
-                        <span className="text-xs text-white/60">{attachments[0].name || 'image'}</span>
+                      <div className="relative p-4 bg-zinc-800/30 rounded-xl border border-white/10">
+                        <div className="flex items-center gap-4">
+                          <img 
+                            src={attachments[0].url} 
+                            alt={attachments[0].name || 'attachment'} 
+                            className="w-16 h-16 object-cover rounded-lg border border-white/10" 
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-white truncate">
+                              {attachments[0].name || 'Uploaded image'}
+                            </div>
+                            <div className="text-xs text-white/50 mt-1">
+                              Image attachment
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="p-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 hover:text-red-300 transition-all duration-200"
+                            onClick={() => setAttachments([])}
+                            disabled={uploading}
+                            title="Remove attachment"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium text-white/80">Type</label>
-                  <select
-                    value={type}
-                    onChange={(e) => setType(e.target.value as FeedbackType)}
-                    className="rounded-lg bg-zinc-800/50 border border-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
-                  >
-                    <option value="feature">Feature Request</option>
-                    <option value="bug">Bug Report</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Similar requests */}
-              {(loading || similar.length > 0) && (
-                <div className="mt-4 p-4 bg-zinc-800/30 rounded-xl border border-white/10">
-                  <div className="text-sm text-white/80 mb-3 font-medium">Similar requests</div>
-                  <div className="space-y-2 max-h-40 overflow-auto pr-1">
-                    {loading && <div className="text-xs text-white/50">Searching…</div>}
-                    {!loading && similar.length === 0 && <div className="text-xs text-white/50">No similar items found</div>}
-                    {similar.map((item) => (
-                      <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-3 hover:bg-white/5 transition-all duration-200 feedback-interactive">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
-                          {item.description ? (
-                            <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
-                          ) : null}
+                <div>
+                  <label className="text-sm font-medium text-white/80 mb-3 block">
+                    🏷️ Feedback Type
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: 'feature', label: 'Feature', icon: '💡', desc: 'New idea' },
+                      { value: 'bug', label: 'Bug', icon: '🐛', desc: 'Something broken' },
+                      { value: 'other', label: 'Other', icon: '💬', desc: 'General feedback' }
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setType(option.value as FeedbackType)}
+                        className={`p-3 rounded-lg border transition-all duration-200 text-left ${
+                          type === option.value
+                            ? 'border-emerald-500 bg-emerald-600/20 text-white'
+                            : 'border-white/10 bg-zinc-800/30 text-white/80 hover:bg-zinc-800/50 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm">{option.icon}</span>
+                          <span className="text-sm font-medium">{option.label}</span>
                         </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            type="button"
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
-                            onClick={() => vote(item.id, 1)}
-                            disabled={!user || !!voting[item.id]}
-                            title={user ? 'Upvote' : 'Sign in to vote'}
-                          >
-                            <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
-                          </button>
-                          <button
-                            type="button"
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
-                            onClick={() => vote(item.id, -1)}
-                            disabled={!user || !!voting[item.id]}
-                            title={user ? 'Downvote' : 'Sign in to vote'}
-                          >
-                            <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
-                          </button>
-                          {typeof item.votesCount === 'number' ? (
-                            <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{item.votesCount.toLocaleString()}</span>
-                          ) : null}
-                        </div>
-                      </div>
+                        <div className="text-xs text-white/50">{option.desc}</div>
+                      </button>
                     ))}
                   </div>
                 </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
-                <button
-                  className="px-4 py-2 rounded-lg bg-zinc-800/50 border border-white/10 text-white/80 hover:bg-zinc-700/50 hover:text-white transition-all duration-200"
-                  onClick={() => setOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50 transition-all duration-200 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30"
-                  onClick={submit}
-                  disabled={!canSubmit || submitting}
-                >
-                  {submitting ? 'Submitting…' : 'Submit Feedback'}
-                </button>
               </div>
-            </div>
-            ) : (
-            <div className="space-y-4">
-              {/* Browse Controls */}
-              <div className="flex items-center gap-3">
-                <div className="relative flex-1">
-                  <input
-                    value={browseQuery}
-                    onChange={(e) => setBrowseQuery(e.target.value)}
-                    placeholder="Search feedback..."
-                    className="w-full pl-4 pr-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
-                  />
+
+                {/* Similar requests */}
+                {(loading || similar.length > 0) && (
+                  <div className="p-4 bg-zinc-800/30 rounded-xl border border-white/10">
+                    <div className="text-sm text-white/80 mb-3 font-medium">Similar requests</div>
+                    <div className="space-y-2 max-h-40 overflow-auto pr-1">
+                      {loading && <div className="text-xs text-white/50">Searching…</div>}
+                      {!loading && similar.length === 0 && <div className="text-xs text-white/50">No similar items found</div>}
+                      {similar.map((item) => (
+                        <div key={item.id} className="flex items-start justify-between gap-3 glass-soft gloss border border-white/10 rounded-xl p-3 hover:bg-white/5 transition-all duration-200 feedback-interactive">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold leading-snug text-white">{item.title}</div>
+                            {item.description ? (
+                              <div className="text-xs text-white/60 line-clamp-2 mt-1">{item.description}</div>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              type="button"
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'up' ? 'vote-pop' : ''} disabled:opacity-50`}
+                              onClick={() => vote(item.id, 1)}
+                              disabled={!user || !!voting[item.id]}
+                              title={user ? 'Upvote' : 'Sign in to vote'}
+                            >
+                              <ThumbsUp className={`w-4 h-4 ${item.userVote === 1 ? 'text-emerald-500' : 'text-white/80'}`} fill={item.userVote === 1 ? 'currentColor' : 'none'} />
+                            </button>
+                            <button
+                              type="button"
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 ${voteAnim[item.id] === 'down' ? 'vote-pop' : ''} disabled:opacity-50`}
+                              onClick={() => vote(item.id, -1)}
+                              disabled={!user || !!voting[item.id]}
+                              title={user ? 'Downvote' : 'Sign in to vote'}
+                            >
+                              <ThumbsDown className={`w-4 h-4 ${item.userVote === -1 ? 'text-rose-500' : 'text-white/80'}`} fill={item.userVote === -1 ? 'currentColor' : 'none'} />
+                            </button>
+                            {typeof item.votesCount === 'number' ? (
+                              <span className={`text-xs text-white/90 ml-1 tabular-nums px-1.5 py-0.5 rounded bg-white/10 font-semibold ${voteAnim[item.id] === 'up' ? 'animate-count-up' : ''} ${voteAnim[item.id] === 'down' ? 'animate-count-down' : ''}`}>{item.votesCount.toLocaleString()}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between pt-6 border-t border-white/10">
+                  <div className="flex items-center gap-2 text-xs text-white/50">
+                    {!canSubmit && (
+                      <div className="flex items-center gap-1">
+                        <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span>Title (4+ chars) and description (10+ chars) required</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="px-5 py-2.5 rounded-lg border border-white/20 text-white/70 hover:text-white hover:bg-white/5 hover:border-white/30 transition-all duration-200 font-medium"
+                      onClick={() => setOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-xl ${
+                        !canSubmit || submitting
+                          ? 'bg-zinc-700 text-white/50 cursor-not-allowed'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/25 hover:shadow-emerald-500/30 transform hover:scale-[1.02]'
+                      }`}
+                      onClick={submit}
+                      disabled={!canSubmit || submitting}
+                    >
+                      <div className="flex items-center gap-2">
+                        {submitting ? (
+                          <>
+                            <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                            <span>Submitting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                            </svg>
+                            <span>Submit Feedback</span>
+                          </>
+                        )}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Browse & Vote */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center">
+                    <ThumbsUp className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Browse & Vote</h3>
+                </div>
+
+                {/* Browse Controls */}
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <input
+                      value={browseQuery}
+                      onChange={(e) => setBrowseQuery(e.target.value)}
+                      placeholder="Search feedback..."
+                      className="w-full pl-4 pr-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
+                    />
+                  </div>
                 </div>
                 
-                
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAllLoading(true);
-                    const params = new URLSearchParams({ sort: 'top' });
-                    if (user?.uid) params.set('userId', user.uid);
-                    fetch(`/api/feedback?${params.toString()}`)
-                      .then((r) => r.json())
-                      .then((json) => setAllItems(Array.isArray(json?.data) ? json.data : []))
-                      .finally(() => setAllLoading(false));
-                  }}
-                  className="px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-all duration-200 shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30"
-                >
-                  Refresh
-                </button>
-              </div>
-              
-                             {/* Swipeable Feedback Stack */}
-               <div className="max-h-[60vh] overflow-hidden">
-                {allLoading ? (
-                  <div className="flex items-center justify-center py-6">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500"></div>
-                    <span className="ml-2 text-white/60">Loading...</span>
-                  </div>
-                ) : (
-                  <SwipeableFeedbackStack
-                    items={allItems.filter((i) => {
-                      const q = browseQuery.trim().toLowerCase();
-                      if (!q) return true;
-                      const text = `${i.title} ${i.description || ''}`.toLowerCase();
-                      return text.includes(q);
-                    })}
-                    onVote={vote}
-                    onSkip={(id) => {
-                      // Skip logic - could be used for analytics or just to move to next item
-                      console.log('Skipped item:', id);
-                    }}
-                    className="max-w-full"
-                  />
-                )}
+                {/* Swipeable Feedback Stack */}
+                <div className="max-h-[60vh] overflow-hidden">
+                  {allLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500"></div>
+                      <span className="ml-2 text-white/60">Loading...</span>
+                    </div>
+                  ) : (
+                    <SwipeableFeedbackStack
+                      items={allItems.filter((i) => {
+                        const q = browseQuery.trim().toLowerCase();
+                        if (!q) return true;
+                        const text = `${i.title} ${i.description || ''}`.toLowerCase();
+                        return text.includes(q);
+                      })}
+                      onVote={vote}
+                      onSkip={(id) => {
+                        // Skip logic - could be used for analytics or just to move to next item
+                        console.log('Skipped item:', id);
+                      }}
+                      className="max-w-full"
+                    />
+                  )}
+                </div>
               </div>
             </div>
-            )}
           </div>
         </div>
       )}
