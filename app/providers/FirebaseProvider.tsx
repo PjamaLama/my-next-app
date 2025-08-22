@@ -203,27 +203,19 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       // Set custom OAuth parameters to improve sign-in experience
       provider.setCustomParameters({ prompt: 'select_account' });
 
-      // Prefer redirect on environments where popups are commonly blocked or unreliable
-      const isProbablyPopupUnreliable = (() => {
-        if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-        const ua = navigator.userAgent || '';
-        const isIOS = /iP(ad|hone|od)/i.test(ua);
-        const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-        const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-        const isMobile = /Mobi|Android/i.test(ua);
-        return isIOS || isSafari || isStandalonePWA || isMobile;
-      })();
-
-      if (isProbablyPopupUnreliable) {
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-
       try {
+        // First, attempt to sign in with a popup
         await signInWithPopup(auth, provider);
       } catch (popupError: any) {
-        // Common popup failures → fallback to redirect
-        await signInWithRedirect(auth, provider);
+        // If the popup fails (e.g., blocked by browser), fall back to redirect
+        console.warn('Popup sign-in failed, falling back to redirect.', popupError);
+        try {
+          await signInWithRedirect(auth, provider);
+        } catch (redirectError: any) {
+          console.error('Redirect sign-in also failed:', redirectError);
+          // Handle the redirect error specifically, e.g., update UI
+          setAuthError('Sign-in failed. Please try again.');
+        }
       }
     } catch (error: any) {
       console.error('Firebase auth error:', error);
