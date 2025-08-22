@@ -273,23 +273,24 @@ export const getInsertionRow = async (spreadsheetId: string, sheetName: string):
     // Get the last row with data by checking a large range
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${escapedName}!A:A`, // Check column A for the last row with data
-      majorDimension: 'COLUMNS'
+      range: `${escapedName}!A:Z`, // Check all columns for the last row with data
+      majorDimension: 'ROWS' // Use ROWS dimension for easier processing
     });
     
-    const columnA = response.data.values?.[0] || [];
-    let lastRowWithData = 1; // Start with header row
+    const rows = response.data.values || [];
+    let lastRowWithData = 0; // Start with header row (index 0)
     
     // Find the last non-empty row
-    for (let i = columnA.length - 1; i >= 0; i--) {
-      if (columnA[i] && String(columnA[i]).trim() !== '') {
-        lastRowWithData = i + 1; // Convert to 1-based row number
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i];
+      if (row && row.some(cell => cell && String(cell).trim() !== '')) {
+        lastRowWithData = i;
         break;
       }
     }
     
-    // Return the next row after the last row with data
-    return lastRowWithData + 1;
+    // Return the next row after the last row with data (convert to 1-based)
+    return lastRowWithData + 2;
   } catch (error) {
     console.warn('Failed to get last row, defaulting to row 2:', error);
     return 2; // Fallback to row 2 if there's an error

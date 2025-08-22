@@ -1,5 +1,5 @@
 import { getGoogleSheetsClient } from '@/lib/googleSheets';
-import { escapeSheetName, getInsertionRow } from '@/lib/sheetUtils';
+import { escapeSheetName } from '@/lib/sheetUtils';
 
 type RowObject = Record<string, unknown>;
 
@@ -55,15 +55,14 @@ export async function ingestRows(params: {
       return { success: true, inserts: 0, updates: 0, details: 'No rows to insert.' };
     }
 
-    // Get the target insertion row (find the last row with data and append there)
-    const insertionRow = await getInsertionRow(spreadsheetId, sheetName);
-    console.log(`🔍 [ORCHESTRATOR] Appending data at row ${insertionRow}`);
+    // Use append method which automatically expands the sheet
+    console.log(`🔍 [ORCHESTRATOR] Appending data to sheet`);
 
-    // Simply append the new rows at the end of the sheet
-    await sheets.spreadsheets.values.update({
+    await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${escapedName}!A${insertionRow}`,
+      range: `${escapedName}!A:A`, // Append to column A (will automatically find the next empty row)
       valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS', // This ensures new rows are inserted
       requestBody: { values: valuesToInsert },
     });
 
