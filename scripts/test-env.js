@@ -3,11 +3,21 @@
 /**
  * Test script to check environment variables for Google Service Account
  * 
+ * ⚠️  SECURITY WARNING: This script checks environment variables that may contain sensitive data.
+ *     - Only run this script on your local machine
+ *     - Be careful with the output in shared environments
+ *     - Clear terminal history after use if needed
+ * 
  * Usage: node scripts/test-env.js
  */
 
 console.log('🔍 Testing Google Service Account Environment Variables');
 console.log('=====================================================');
+console.log('');
+console.log('⚠️  SECURITY WARNING: This script checks environment variables that may contain sensitive data.');
+console.log('    - Only run this script on your local machine');
+console.log('    - Be careful with the output in shared environments');
+console.log('    - Clear terminal history after use if needed');
 console.log('');
 
 // Check if we're in a Node.js environment
@@ -57,7 +67,8 @@ for (const varName of requiredVars) {
         console.log(`   ℹ️  INFO: Private key contains actual newlines`);
       }
       
-      console.log(`   📝 Sample: ${value.substring(0, 100)}...`);
+      // Only show a safe sample (first 50 chars)
+      console.log(`   📝 Sample: ${value.substring(0, 50)}...`);
     }
   } else {
     console.log(`❌ ${varName}: Missing`);
@@ -85,4 +96,9 @@ if (allPresent) {
   console.log('📖 See README.md for setup instructions');
 }
 
+console.log('');
+console.log('🔒 SECURITY REMINDER:');
+console.log('   - Clear terminal history: history -c');
+console.log('   - Never commit environment files to git');
+console.log('   - Use .env.local for local development');
 console.log('');

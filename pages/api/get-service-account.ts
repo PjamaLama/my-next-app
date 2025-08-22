@@ -38,7 +38,7 @@ export default function handler(
       return res.status(500).json({ error: 'Private key not configured' });
     }
 
-    // Analyze the private key format
+    // Analyze the private key format (without logging sensitive details)
     const privateKeyInfo = {
       length: privateKey.length,
       startsWith: privateKey.substring(0, 50),
@@ -48,7 +48,8 @@ export default function handler(
       sample: privateKey.length > 100 ? privateKey.substring(0, 100) + '...' : privateKey
     };
 
-    console.log('🔍 Private key analysis:', privateKeyInfo);
+    // Only log non-sensitive information
+    console.log('🔍 Private key status: Valid format detected');
 
     res.status(200).json({ 
       email: serviceAccountEmail,

@@ -3,11 +3,17 @@
 /**
  * Utility script to format Google Service Account private key for environment variables
  * 
+ * ⚠️  SECURITY WARNING: This script processes sensitive private key data.
+ *     - Only run this script on your local machine
+ *     - Never commit the output to version control
+ *     - Clear your terminal history after use if needed
+ * 
  * Usage:
  * 1. Copy your service account JSON file content
  * 2. Run: node scripts/format-private-key.js
  * 3. Paste the JSON content when prompted
  * 4. Copy the formatted output to your environment variable
+ * 5. Clear terminal history if needed: history -c
  */
 
 const readline = require('readline');
@@ -19,6 +25,11 @@ const rl = readline.createInterface({
 
 console.log('🔑 Google Service Account Private Key Formatter');
 console.log('==============================================');
+console.log('');
+console.log('⚠️  SECURITY WARNING: This script processes sensitive private key data.');
+console.log('    - Only run this script on your local machine');
+console.log('    - Never commit the output to version control');
+console.log('    - Clear your terminal history after use if needed');
 console.log('');
 console.log('This script will help you format your private key for environment variables.');
 console.log('Paste your service account JSON file content below:');
@@ -71,6 +82,11 @@ rl.question('Paste JSON content: ', (input) => {
     console.log('');
     console.log('2. Single line (if your system doesn\'t handle newlines well):');
     console.log('GOOGLE_PRIVATE_KEY="' + privateKey.replace(/\n/g, '') + '"');
+    console.log('');
+    console.log('🔒 SECURITY REMINDER:');
+    console.log('   - Clear terminal history: history -c');
+    console.log('   - Never commit environment files to git');
+    console.log('   - Use .env.local for local development');
     
     rl.close();
   } catch (error) {

@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '../../lib/firebaseAdmin';
 import { getAuth } from 'firebase-admin/auth';
+import { auditLogger } from '../../lib/auditLogger';
 
 type EnsureResponse = {
   status: 'tester' | 'waitlist' | 'unchanged';
@@ -11,6 +12,10 @@ type EnsureResponse = {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<EnsureResponse | { error: string }>) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  
+  const startTime = Date.now();
+  let success = false;
+  
   try {
     const authHeader = req.headers.authorization || '';
     const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined;
@@ -24,6 +29,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const email = decoded.email || null;
     const name = (decoded as any).name || null;
     const picture = (decoded as any).picture || null;
+
+    // Log successful authentication
+    await auditLogger.logAuth(
+      uid,
+      'login',
+      true,
+      req.socket.remoteAddress || req.headers['x-forwarded-for'] as string,
+      req.headers['user-agent']
+    );
 
     const userProfileRef = db.doc(`users/${uid}/private/profile`);
     const metaRef = db.doc('meta/beta');
@@ -91,10 +105,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       return { status, capacity, testerCount, open } as EnsureResponse;
     });
 
+    success = true;
+    
+    // Log successful profile update
+    await auditLogger.logDataAccess(
+      uid,
+      'profile',
+      uid,
+      'write',
+      true,
+      req.socket.remoteAddress || req.headers['x-forwarded-for'] as string,
+      req.headers['user-agent']
+    );
+
     return res.status(200).json(result);
   } catch (err: any) {
     console.error('beta-ensure error', err);
+    
+    // Log authentication failure
+    if (err.code === 'auth/id-token-expired' || err.code === 'auth/id-token-revoked') {
+      await auditLogger.logAuth(
+        'unknown',
+        'login_failed',
+        false,
+        req.socket.remoteAddress || req.headers['x-forwarded-for'] as string,
+        req.headers['user-agent'],
+        err.message
+      );
+    }
+    
     return res.status(500).json({ error: err?.message || 'Internal error' });
+  } finally {
+    // Log the overall operation
+    const duration = Date.now() - startTime;
+    if (success) {
+      console.log(`[BETA-ENSURE] Success in ${duration}ms`);
+    } else {
+      console.log(`[BETA-ENSURE] Failed in ${duration}ms`);
+    }
   }
 }
 

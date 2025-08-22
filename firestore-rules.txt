@@ -48,6 +48,13 @@ service cloud.firestore {
          request.auth.uid == request.resource.data.userId);
     }
 
+    // Audit logs: only admins can read, system can write
+    match /auditLogs/{logId} {
+      allow read: if request.auth != null && 
+        request.auth.token.email in resource.data.adminEmails;
+      allow write: if false; // Only system can write audit logs
+    }
+
     // If you actually use these top-level collections, keep them; otherwise you can remove.
 
     // Executions (optional - remove if not used)

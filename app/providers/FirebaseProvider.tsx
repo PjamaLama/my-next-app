@@ -65,17 +65,16 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
       console.log('🔍 [FirebaseProvider] Auth state changed:', { 
         hasUser: !!user, 
-        userId: user?.uid,
-        email: user?.email 
+        userId: user?.uid
+        // Removed email logging for security
       });
       setUser(user);
       setLoading(false);
-      // Persist last used Google identity for "Continue with Google" UX
+      // Only store essential UI state, not user profile data
       if (typeof window !== 'undefined' && user) {
         try {
-          if (user.email) localStorage.setItem('lastGoogleEmail', user.email);
-          if (user.displayName) localStorage.setItem('lastGoogleName', user.displayName);
-          if (user.photoURL) localStorage.setItem('lastGooglePhoto', user.photoURL);
+          // Store minimal UI preference only
+          localStorage.setItem('lastLoginTimestamp', Date.now().toString());
         } catch (_) {
           // ignore storage failures
         }
