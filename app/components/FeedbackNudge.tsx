@@ -13,6 +13,7 @@ function shouldShow(): boolean {
     if (!raw) {
       // For first-time users, don't show feedback popup immediately
       // Initialize with a count of 0 and require at least 4 logins before showing
+      console.log('[FeedbackNudge] No localStorage data found, not showing for first-time user');
       return false;
     }
     const data = JSON.parse(raw) as { lastShown: number; count: number; dismissedAt?: number };
@@ -20,14 +21,28 @@ function shouldShow(): boolean {
     const oneDay = 24 * 60 * 60 * 1000;
     const sevenDays = 7 * oneDay;
     
+    console.log(`[FeedbackNudge] User has logged in ${data.count} times, last shown: ${data.lastShown ? new Date(data.lastShown).toLocaleString() : 'never'}`);
+    
     // Require at least 4 logins before showing feedback popup
-    if (data.count < 4) return false;
+    if (data.count < 4) {
+      console.log(`[FeedbackNudge] Not enough logins (${data.count}/4), not showing`);
+      return false;
+    }
     
     // throttle: show at most once per day, and no more than 3 times in 7 days
-    if (now - data.lastShown < oneDay) return false;
-    if (data.count >= 6 && now - data.lastShown < sevenDays) return false;
+    if (now - data.lastShown < oneDay) {
+      console.log('[FeedbackNudge] Shown recently (< 24h), not showing');
+      return false;
+    }
+    if (data.count >= 6 && now - data.lastShown < sevenDays) {
+      console.log('[FeedbackNudge] Rate limited (3 times per week), not showing');
+      return false;
+    }
+    
+    console.log('[FeedbackNudge] All conditions met, will show feedback popup');
     return true;
-  } catch {
+  } catch (error) {
+    console.error('[FeedbackNudge] Error in shouldShow:', error);
     return false; // Default to not showing if there's an error
   }
 }
@@ -59,7 +74,10 @@ function trackLogin() {
     const prev = raw ? (JSON.parse(raw) as { lastShown: number; count: number; dismissedAt?: number }) : { lastShown: 0, count: 0 };
     const next = { ...prev, count: (prev.count || 0) + 1 };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {}
+    console.log(`[FeedbackNudge] Tracked login, total logins: ${next.count}`);
+  } catch (error) {
+    console.error('[FeedbackNudge] Error tracking login:', error);
+  }
 }
 
 export default function FeedbackNudge() {

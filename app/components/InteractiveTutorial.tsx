@@ -214,7 +214,7 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
         <div className="bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl p-8 w-full max-w-4xl relative">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
@@ -226,12 +226,7 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      {/* Debug indicator */}
-      <div className="fixed top-4 left-4 bg-red-500 text-white px-2 py-1 rounded text-xs z-[9999]">
-        InteractiveTutorial Rendered - Step {currentStep + 1}
-      </div>
-      
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
       <div className="bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl p-8 w-full max-w-4xl relative max-h-[90vh] overflow-hidden">
         {/* Close button */}
         <button

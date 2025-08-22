@@ -4,17 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { Plus } from 'lucide-react';
 import { compressImageFile } from '@/lib/imageCompression';
-import SwipeableFeedbackStack from './SwipeableFeedbackStack';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
-interface SimilarItem {
-  id: string;
-  title: string;
-  description?: string;
-  votesCount?: number;
-  userVote?: 1 | -1 | 0;
-}
+
 
 type Attachment = { url: string; mimeType: string; name?: string };
 
@@ -30,12 +23,7 @@ export default function FeedbackButton() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const [allItems, setAllItems] = useState<SimilarItem[]>([]);
-  const [allLoading, setAllLoading] = useState(false);
-  const [browseQuery, setBrowseQuery] = useState('');
   const { user } = useFirebase();
-  const [voting, setVoting] = useState<Record<string, boolean>>({});
-  const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
 
   // Attachments
   const [attachments, setAttachments] = useState<Attachment[]>([]);
