@@ -229,7 +229,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Send headers + one sample row per sheet to provide context without duplication
-    const sheetInfo: Record<string, { headers: string[], sampleRows: string[][] }> = {};
+    const sheetInfo: Record<string, { headers: string[], sampleRows?: string[][] }> = {};
     let sheetContextString = '';
 
     if (context?.sheetData) {
@@ -252,20 +252,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
             ) : [];
           
-          sheetInfo[sheetName] = {
-            headers: headers,
-            sampleRows: sampleRows
+          // Only include sampleRows if there are actual sample rows
+          const sheetDataForN8N: any = {
+            headers: headers
           };
+          
+          if (sampleRows.length > 0) {
+            sheetDataForN8N.sampleRows = sampleRows;
+          }
+          
+          sheetInfo[sheetName] = sheetDataForN8N;
           console.log(`✅ [N8N] Added data for ${sheetName}:`, {
             headerCount: headers.length,
             sampleRowsCount: sampleRows.length,
+            hasSampleRows: sampleRows.length > 0,
             totalRowsFiltered: sheetData.length - dataRowsOnly.length - 1 // -1 for header
           });
 
-          sheetContextString += `\nSheet Name: ${sheetName}\nHeaders: ${headers.join(', ')}\nSample Rows:\n`;
-          sampleRows.forEach(row => {
-            sheetContextString += `- ${row.join(', ')}\n`;
-          });
+          sheetContextString += `\nSheet Name: ${sheetName}\nHeaders: ${headers.join(', ')}`;
+          if (sampleRows.length > 0) {
+            sheetContextString += `\nSample Rows:\n`;
+            sampleRows.forEach(row => {
+              sheetContextString += `- ${row.join(', ')}\n`;
+            });
+          } else {
+            sheetContextString += `\nNo sample rows available (sheet has only headers)`;
+          }
 
         } else {
           console.log(`❌ [N8N] Skipped ${sheetName} - invalid data structure`);
@@ -534,7 +546,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           name,
           {
             headerCount: (sheetData as any).headers?.length || 0,
-            sampleRowsCount: (sheetData as any).sampleRows?.length || 0
+            sampleRowsCount: (sheetData as any).sampleRows?.length || 0,
+            hasSampleRows: !!(sheetData as any).sampleRows
           }
         ])
       ),
@@ -564,17 +577,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const payloadSizeKB = Math.round(payloadString.length / 1024);
     console.log(`🔍 [N8N] Payload size: ${payloadSizeKB} KB`);
 
+    // Track timing for performance monitoring
+    const startTime = Date.now();
+    console.log(`⏱️ [N8N] Starting webhook call at: ${new Date(startTime).toISOString()}`);
+
     // Call the N8N webhook
+    // Note: Using 60-second timeout to prevent nginx gateway timeouts (504 errors)
+    // Most N8N workflows should complete within this timeframe
     const n8nResponse = await fetch(n8nWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(webhookData, null, 0), // Remove redundant fields and minify JSON to lighten payload
-      signal: AbortSignal.timeout(120000), // Increase timeout to 2 minutes for N8N processing
+      signal: AbortSignal.timeout(60000), // Reduce timeout to 1 minute to prevent nginx gateway timeouts
     });
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    console.log(`⏱️ [N8N] Webhook call completed in: ${duration}ms (${Math.round(duration/1000)}s)`);
 
     if (!n8nResponse.ok) {
       const errorBody = await n8nResponse.text();
       console.error(`❌ [N8N] Webhook call failed with status ${n8nResponse.status}:`, errorBody);
+      console.error(`❌ [N8N] Error details:`, {
+        status: n8nResponse.status,
+        statusText: n8nResponse.statusText,
+        headers: Object.fromEntries(n8nResponse.headers.entries()),
+        duration: `${endTime - startTime}ms`,
+        payloadSize: `${payloadSizeKB} KB`
+      });
 
       // Provide a user-friendly error for common issues like the workflow being inactive
       if (n8nResponse.status === 404) {
@@ -582,6 +612,58 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           reasoning: 'The AI service is currently unavailable. Please ensure the workflow is active and try again.',
           clarifyQuestion: 'The AI service seems to be offline. Would you like to try again?',
           insights: ['N8N webhook returned a 404 Not Found error.'],
+        });
+      }
+
+      // Handle 504 Gateway Timeout specifically
+      if (n8nResponse.status === 504) {
+        return res.status(200).json({
+          reasoning: 'The AI service is taking longer than expected to process your request. This might be due to the complexity of the files or high server load.',
+          clarifyQuestion: 'Would you like to try again with a simpler request, or wait a moment and try again?',
+          insights: [
+            'N8N workflow timed out after 1 minute (504 Gateway Timeout).',
+            'This often happens with complex file processing or when the AI service is under heavy load.',
+            'Try breaking down your request into smaller parts or wait a few minutes before retrying.'
+          ],
+        });
+      }
+
+      // Handle 502 Bad Gateway
+      if (n8nResponse.status === 502) {
+        return res.status(200).json({
+          reasoning: 'The AI service is temporarily unavailable due to a server configuration issue.',
+          clarifyQuestion: 'Please wait a few minutes and try again. If the problem persists, contact support.',
+          insights: [
+            'N8N webhook returned a 502 Bad Gateway error.',
+            'This usually indicates a temporary server issue or configuration problem.',
+            'The service should recover automatically within a few minutes.'
+          ],
+        });
+      }
+
+      // Handle 503 Service Unavailable
+      if (n8nResponse.status === 503) {
+        return res.status(200).json({
+          reasoning: 'The AI service is temporarily unavailable due to maintenance or high load.',
+          clarifyQuestion: 'Please wait a few minutes and try again. If the problem persists, contact support.',
+          insights: [
+            'N8N webhook returned a 503 Service Unavailable error.',
+            'This usually indicates the service is under maintenance or experiencing high load.',
+            'The service should be available again shortly.'
+          ],
+        });
+      }
+
+      // Handle 500 Internal Server Error
+      if (n8nResponse.status === 500) {
+        return res.status(200).json({
+          reasoning: 'The AI service encountered an internal error while processing your request.',
+          clarifyQuestion: 'Please try again in a few minutes. If the problem persists, contact support.',
+          insights: [
+            'N8N webhook returned a 500 Internal Server Error.',
+            'This indicates a server-side issue that needs to be resolved.',
+            'Try again later or contact support if the problem continues.'
+          ],
         });
       }
 
@@ -638,8 +720,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (error instanceof Error && error.name === 'TimeoutError') {
       return res.status(200).json({
         reasoning: 'The AI service is taking longer than expected to process your request. This might be due to the complexity of the files or high server load.',
-        clarifyQuestion: 'Would you like to try again, or would you prefer to wait a moment and try again?',
-        insights: ['Request timed out after 2 minutes. This is common with complex file processing.'],
+        clarifyQuestion: 'Would you like to try again with a simpler request, or wait a moment and try again?',
+        insights: [
+          'Request timed out after 1 minute. This is common with complex file processing.',
+          'Try breaking down your request into smaller parts or wait a few minutes before retrying.',
+          'If the problem persists, the AI service might be experiencing high load.'
+        ],
       });
     }
     

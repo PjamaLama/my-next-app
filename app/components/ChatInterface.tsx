@@ -482,7 +482,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     });
 
     // 🚀 ENHANCED LOGGING: Log what's being sent to the backend
-    console.log(' [FRONTEND] Sending files to backend for AI processing:', {
+    console.log('🚀 [FRONTEND] Sending files to backend for AI processing:', {
       message: message,
       totalFiles: structuredExtracts.length,
       fileDetails: structuredExtracts.map((file: any) => ({
@@ -522,10 +522,20 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     try {
       await ensureSession();
 
+      // Add user message first
       await addMessage({
         role: 'user',
         content: message,
       });
+
+      // Show processing message for files if there are files
+      if (structuredExtracts.length > 0) {
+        console.log('🔄 [FRONTEND] Adding processing message for files:', structuredExtracts.length);
+        await addMessage({
+          role: 'assistant',
+          content: `🔄 Processing ${structuredExtracts.length} file${structuredExtracts.length > 1 ? 's' : ''}... Please wait while I analyze the content.`,
+        });
+      }
 
       const requestBody = {
         message,
@@ -534,10 +544,14 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           sheetData: sheetDataCache || {}
         },
         // Truncate conversation history for performance and to reduce token count.
-        conversationHistory: chatMessages.slice(-8).map(m => ({
-          role: m.role,
-          content: m.content
-        })),
+        // Filter out any processing messages to ensure clean conversation context
+        conversationHistory: chatMessages
+          .filter(m => !m.content.includes('🔄 Processing'))
+          .slice(-8)
+          .map(m => ({
+            role: m.role,
+            content: m.content
+          })),
         images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
       };
 
@@ -557,6 +571,15 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
       if (response.ok) {
         const aiResponse = await response.json();
+        
+        // Remove the processing message if it exists
+        if (structuredExtracts.length > 0) {
+          console.log('✅ [FRONTEND] Removing processing message after successful AI response');
+          setChatMessages(prev => prev.filter(msg => 
+            !msg.content.includes('🔄 Processing') || msg.role !== 'assistant'
+          ));
+        }
+        
         const preservedTables = aiResponse.tables ? aiResponse.tables.map((table: any) => {
           const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
           return {
@@ -583,12 +606,26 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
         setFilesBeingSent([]); // Clear the "being sent" files
       } else {
+        // Remove the processing message if it exists
+        if (structuredExtracts.length > 0) {
+          setChatMessages(prev => prev.filter(msg => 
+            !msg.content.includes('🔄 Processing') || msg.role !== 'assistant'
+          ));
+        }
+        
         await addMessage({
           role: 'assistant',
           content: 'Sorry, I encountered an error processing your request. Please try again.',
         });
       }
     } catch (err: any) {
+      // Remove the processing message if it exists
+      if (structuredExtracts.length > 0) {
+        setChatMessages(prev => prev.filter(msg => 
+          !msg.content.includes('🔄 Processing') || msg.role !== 'assistant'
+        ));
+      }
+      
       if (err.name === 'AbortError') {
         console.log('Chat generation aborted by user.');
         await addMessage({

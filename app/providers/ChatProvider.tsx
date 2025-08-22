@@ -486,6 +486,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         return;
       }
       
+      // If we're deleting the current session and it's the last one, create a new session first
+      if (currentSessionId === sessionId && sessions.length <= 1) {
+        const newSessionId = await createSession('New Chat');
+        setCurrentSessionId(newSessionId);
+      }
+      
       // Delete all messages in the session first
       const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
       const messagesSnapshot = await getDocs(messagesColRef);
@@ -497,8 +503,13 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       await setDoc(sessionDocRef, { deleted: true }, { merge: true });
       
       setSessions(prev => prev.filter(s => s.id !== sessionId));
+      
+      // If we're deleting the current session, switch to another available session
       if (currentSessionId === sessionId) {
-        setCurrentSessionId(sessions.length > 1 ? sessions[0].id : null);
+        const remainingSessions = sessions.filter(s => s.id !== sessionId);
+        if (remainingSessions.length > 0) {
+          setCurrentSessionId(remainingSessions[0].id);
+        }
       }
     } catch (err) {
       console.error("Error deleting session:", err);
