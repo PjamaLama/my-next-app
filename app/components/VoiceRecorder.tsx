@@ -49,11 +49,13 @@ export const useVoiceRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(false);
+  const [hasSentTranscript, setHasSentTranscript] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const finalTranscriptRef = useRef('');
   const interimTranscriptRef = useRef('');
   const shouldAutoRestartRef = useRef(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Add timeout ref
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const accumulatedTranscriptRef = useRef(''); // Track accumulated transcript across sessions
 
   useEffect(() => {
     // Check if speech recognition is supported
@@ -66,8 +68,8 @@ export const useVoiceRecorder = () => {
 
     setIsSupported(true);
     const recognition = new SpeechRecognition();
-    recognition.continuous = false; // Changed to false for more predictable behavior
-    recognition.interimResults = true;
+    recognition.continuous = false; // Single recording session
+    recognition.interimResults = false; // Only final results - no interim updates
     recognition.lang = 'en-US';
     
     // Add more robust configuration to reduce errors
@@ -80,65 +82,44 @@ export const useVoiceRecorder = () => {
     }
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      // With non-continuous recognition, we get the complete transcript in one event
+      // Only process final results since interimResults is false
       let finalTranscript = '';
-      let interimTranscript = '';
 
       // Process all results from this event
       for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         if (result.isFinal) {
           finalTranscript += result[0].transcript;
-        } else {
-          interimTranscript += result[0].transcript;
         }
       }
 
-      console.log('🔊 [VoiceRecorder] onresult event:', {
-        resultIndex: event.resultIndex,
-        resultsLength: event.results.length,
-        finalTranscript,
-        interimTranscript
-      });
-
-      // For non-continuous recognition, we can simply use the final transcript
-      if (finalTranscript) {
-        finalTranscriptRef.current = finalTranscript;
-      }
-      
-      // Update interim transcript
-      interimTranscriptRef.current = interimTranscript;
-
-      // Combine final and interim transcript
-      const combinedTranscript = finalTranscriptRef.current + (interimTranscript ? ' ' + interimTranscript : '');
-      
-      // Only log if there's actual content to avoid spam
-      if (combinedTranscript.trim()) {
-        console.log('🔊 [VoiceRecorder] Transcript updated:', combinedTranscript.substring(0, 100) + (combinedTranscript.length > 100 ? '...' : ''));
-      }
-      
-      // Set the transcript immediately since we're not continuous
-      if (combinedTranscript.trim()) {
-        // Prevent extremely long transcripts (e.g., > 1000 characters)
-        if (combinedTranscript.length > 1000) {
-          console.warn('🔊 [VoiceRecorder] Transcript too long, stopping recording');
-          shouldAutoRestartRef.current = false;
-          if (recognitionRef.current) {
-            recognitionRef.current.stop();
-          }
-          // Truncate the transcript
-          const truncatedTranscript = combinedTranscript.substring(0, 1000) + '...';
-          setTranscript(truncatedTranscript);
+      if (finalTranscript.trim()) {
+        console.log('🔊 [VoiceRecorder] Final transcript received:', finalTranscript);
+        
+        // Add to accumulated transcript
+        const newText = finalTranscript.trim();
+        const currentAccumulated = accumulatedTranscriptRef.current;
+        
+        if (currentAccumulated) {
+          // Add space between accumulated text and new text
+          accumulatedTranscriptRef.current = currentAccumulated + ' ' + newText;
+          // Only send the NEW part to prevent double accumulation
+          setTranscript(newText);
         } else {
-          setTranscript(combinedTranscript);
+          // First recording
+          accumulatedTranscriptRef.current = newText;
+          setTranscript(newText);
         }
+        
+        // Mark that we have a transcript to send
+        setHasSentTranscript(true);
+        console.log('🔊 [VoiceRecorder] New transcript part:', newText);
+        console.log('🔊 [VoiceRecorder] Total accumulated:', accumulatedTranscriptRef.current);
       }
     };
 
     recognition.onend = () => {
       setIsRecording(false);
-      // Clear interim transcript when recording ends
-      interimTranscriptRef.current = '';
       
       // Auto-restart if the user wants continuous recording
       if (shouldAutoRestartRef.current && recognitionRef.current) {
@@ -166,11 +147,6 @@ export const useVoiceRecorder = () => {
       
       // Disable auto-restart on errors
       shouldAutoRestartRef.current = false;
-      
-      // Clear all transcript state on error
-      setTranscript('');
-      finalTranscriptRef.current = '';
-      interimTranscriptRef.current = '';
       
       // Handle specific error types silently for common cases
       if (event.error === 'not-allowed') {
@@ -207,11 +183,6 @@ export const useVoiceRecorder = () => {
   const startRecording = useCallback(() => {
     if (recognitionRef.current && !isRecording) {
       console.log('🔊 [VoiceRecorder] Starting recording...');
-      
-      // Reset all transcript state and refs
-      setTranscript('');
-      finalTranscriptRef.current = '';
-      interimTranscriptRef.current = '';
       
       // Enable auto-restart for continuous recording behavior
       shouldAutoRestartRef.current = true;
@@ -270,9 +241,6 @@ export const useVoiceRecorder = () => {
         recognitionRef.current.stop();
         setIsRecording(false);
         
-        // Clear interim transcript when stopping
-        interimTranscriptRef.current = '';
-        
         console.log('🔊 [VoiceRecorder] Recording stopped successfully');
       } catch (error) {
         console.error('Failed to stop recording:', error);
@@ -291,8 +259,8 @@ export const useVoiceRecorder = () => {
 
   const clearTranscript = useCallback(() => {
     setTranscript('');
-    finalTranscriptRef.current = '';
-    interimTranscriptRef.current = '';
+    accumulatedTranscriptRef.current = '';
+    setHasSentTranscript(false); // Reset the sent flag
     console.log('🔊 [VoiceRecorder] Transcript cleared');
   }, []);
 
@@ -309,12 +277,14 @@ export const useVoiceRecorder = () => {
     stopRecording,
     clearTranscript,
     disableAutoRestart,
-    isSupported
+    isSupported,
+    hasSentTranscript,
+    accumulatedTranscript: accumulatedTranscriptRef.current
   };
 };
 
 export default function VoiceRecorder({ onTranscriptChange, disabled = false, className = '' }: VoiceRecorderProps) {
-  const { isRecording, transcript, toggleRecording, isSupported } = useVoiceRecorder();
+  const { isRecording, transcript, toggleRecording, isSupported, clearTranscript, hasSentTranscript, accumulatedTranscript } = useVoiceRecorder();
 
   // Sync transcript with parent component
   useEffect(() => {
@@ -341,21 +311,23 @@ export default function VoiceRecorder({ onTranscriptChange, disabled = false, cl
   }
 
   return (
-    <button
-      type="button"
-      onClick={toggleRecording}
-      className={`relative p-3 rounded-lg transition-all duration-200 ${className} ${
-        isRecording 
-          ? 'bg-red-500/20 border border-red-400/50 text-red-400 shadow-lg shadow-red-500/25' 
-          : 'bg-white/10 hover:bg-white/20 text-white'
-      }`}
-      disabled={disabled}
-      title={isRecording ? 'Stop recording' : 'Start voice recording'}
-    >
-      <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
-      {isRecording && (
-        <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-400 rounded-full animate-ping"></div>
-      )}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={toggleRecording}
+        className={`relative p-3 rounded-lg transition-all duration-200 ${className} ${
+          isRecording 
+            ? 'bg-red-500/20 border border-red-400/50 text-red-400 shadow-lg shadow-red-500/25' 
+            : 'bg-white/10 hover:bg-white/20 text-white'
+        }`}
+        disabled={disabled}
+        title={isRecording ? 'Stop recording' : 'Start voice recording'}
+      >
+        <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
+        {isRecording && (
+          <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-400 rounded-full animate-ping"></div>
+        )}
+      </button>
+    </div>
   );
 }

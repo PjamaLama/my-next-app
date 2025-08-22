@@ -88,12 +88,22 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   // Handle transcript changes from voice recorder
   const handleTranscriptChange = useCallback((transcript: string) => {
     if (transcript && transcript.trim()) {
-      // Simply replace the input value with the transcript
-      // This prevents duplication issues
-      setInputValue(transcript.trim());
+      setInputValue(prev => {
+        const currentText = prev.trim();
+        const newText = transcript.trim();
+        
+        // If current input is empty, set the transcript directly
+        if (!currentText) {
+          return newText;
+        }
+        
+        // Otherwise, append the new transcript to existing content
+        // This allows building up the message across multiple recording sessions
+        return currentText + ' ' + newText;
+      });
     }
   }, []);
-
+  
   useEffect(() => {
     const loadVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices();
