@@ -3,10 +3,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
-import { Send, Loader2, Paperclip, File as FileIcon, X, Mic, Volume2, Square, BookOpen } from 'lucide-react';
+import { Send, Loader2, Paperclip, File as FileIcon, X, Volume2, Square, BookOpen } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 import ChatMessage from './ChatMessage';
+import VoiceRecorder from './VoiceRecorder';
 
 interface ChatInterfaceProps {
   className?: string;
@@ -64,6 +65,8 @@ const extractPDFText = async (file: File): Promise<string> => {
   }
 };
 
+
+
 export default function ChatInterface({ className = '', onShowTutorial }: ChatInterfaceProps) {
   const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
@@ -74,8 +77,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editModalData, setEditModalData] = useState<any>(null);
   const [processingTables, setProcessingTables] = useState<Set<string>>(new Set());
-  const [isRecording, setIsRecording] = useState(false);
-  const speechRecognitionRef = useRef<any>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -83,7 +84,29 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const finalTranscriptRef = useRef('');
+  
+  // Handle transcript changes from voice recorder
+  const handleTranscriptChange = useCallback((transcript: string) => {
+    if (transcript && transcript.trim()) {
+      setInputValue(prev => {
+        const newText = transcript.trim();
+        
+        // If current input is empty, set the transcript directly
+        if (!prev.trim()) {
+          return newText;
+        }
+        
+        // Check if the new text is already at the end of the current input
+        // This prevents duplication when the same transcript is sent multiple times
+        if (prev.trim().endsWith(newText)) {
+          return prev; // Already ends with this text, don't duplicate
+        }
+        
+        // Otherwise, append the new transcript with a space separator
+        return prev.trim() + ' ' + newText;
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -108,8 +131,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     const utterance = new SpeechSynthesisUtterance(text);
     const selectedVoice = voices.find(voice => voice.name.includes('Google')) || 
                           voices.find(voice => voice.name.includes('Microsoft') && voice.lang.includes('en')) || 
-                          voices.find(voice => voice.lang === 'en-GB') ||
-                          voices.find(voice => voice.lang.startsWith('en'));
+                          voices.find(voice => voice.name.includes('en'));
 
     if (selectedVoice) {
       utterance.voice = selectedVoice;
@@ -130,48 +152,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
-
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event: any) => {
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscriptRef.current += event.results[i][0].transcript;
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-          }
-        }
-        setInputValue(finalTranscriptRef.current + interimTranscript);
-      };
-
-      recognition.onend = () => {
-        setIsRecording(false);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setIsRecording(false);
-      };
-      
-      speechRecognitionRef.current = recognition;
-    }
-  }, []);
-
-  const handleToggleRecording = () => {
-    if (isRecording) {
-      speechRecognitionRef.current?.stop();
-    } else {
-      speechRecognitionRef.current?.start();
-    }
-    setIsRecording(!isRecording);
-  };
 
   useEffect(() => {
     console.log('🔍 [ChatInterface] Session change effect triggered:', { currentSessionId, sessionsLoading });
@@ -827,6 +807,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           </div>
         )}
         
+
+        
         <form ref={formRef} onSubmit={handleSubmit} className="flex gap-3 items-center">
           <input
             ref={fileInputRef}
@@ -845,14 +827,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             disabled={isSending}
           />
-          <button
-            type="button"
-            onClick={handleToggleRecording}
-            className={`p-3 rounded-lg transition-colors bg-white/10 hover:bg-white/20 text-white`}
-            disabled={isSending || !speechRecognitionRef.current}
-          >
-            <Mic className={`w-5 h-5 ${isRecording ? 'text-red-400 animate-pulse' : ''}`} />
-          </button>
+          <VoiceRecorder
+            onTranscriptChange={handleTranscriptChange}
+            disabled={isSending}
+            className="p-3 rounded-lg transition-colors bg-white/10 hover:bg-white/20 text-white"
+          />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

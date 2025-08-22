@@ -5,13 +5,13 @@ import { getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, setPe
 import { getFirestore, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB42SldA3_l6LZ6l2axTIdrMhvSrmcIMEU",
-  authDomain: "report-ai-23599.firebaseapp.com",
-  projectId: "report-ai-23599",
-  storageBucket: "report-ai-23599.firebasestorage.app",
-  messagingSenderId: "391138712655",
-  appId: "1:391138712655:web:9d235f416a4e2b3776de3a",
-  measurementId: "G-4PSKB5BJY1"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
