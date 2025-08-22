@@ -11,6 +11,43 @@ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // Allow auth timeout to be configured via env; default to 30s to reduce flakiness
 const AUTH_TIMEOUT_MS = Number(process.env.GSHEETS_AUTH_TIMEOUT_MS || process.env.GOOGLE_SHEETS_AUTH_TIMEOUT_MS || 30000);
 
+// Helper function to properly format private key from environment variable
+const formatPrivateKey = (rawKey: string): string => {
+  if (!rawKey) return '';
+  
+  // Remove any surrounding quotes
+  let key = rawKey.trim().replace(/^["']|["']$/g, '');
+  
+  // Handle various newline formats that can occur when copying from JSON
+  // Replace literal \n with actual newlines
+  key = key.replace(/\\n/g, '\n');
+  
+  // If the key doesn't start with -----BEGIN PRIVATE KEY-----,
+  // it might be missing the header/footer or have wrong formatting
+  if (!key.includes('-----BEGIN PRIVATE KEY-----')) {
+    // Try to reconstruct the key if it's just the base64 content
+    if (key.length > 100 && !key.includes('-----')) {
+      key = `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
+    } else if (key.length < 1000) {
+      // Key is too short - this usually means it got truncated
+      throw new Error(`Private key appears to be truncated. Expected ~1700+ characters, got ${key.length}. Please check your environment variable.`);
+    }
+  }
+  
+  // Validate the key format
+  if (!key.includes('-----BEGIN PRIVATE KEY-----') || !key.includes('-----END PRIVATE KEY-----')) {
+    throw new Error('Invalid private key format: missing BEGIN/END markers. Please check your environment variable.');
+  }
+  
+  // Check if the key content looks reasonable
+  const keyContent = key.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----/g, '').replace(/\n/g, '');
+  if (keyContent.length < 1000) {
+    throw new Error(`Private key content appears to be truncated. Expected ~1000+ characters of base64 content, got ${keyContent.length}. Please check your environment variable.`);
+  }
+  
+  return key;
+};
+
 export const getGoogleSheetsClient = async (retries = 3) => {
   const log = createLogger('lib/googleSheets');
   // Return cached client if still fresh
@@ -22,9 +59,22 @@ export const getGoogleSheetsClient = async (retries = 3) => {
     try {
       log.debug(`Attempting Google Sheets authentication (${attempt}/${retries})`);
       
+      const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY;
+      const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+      
+      if (!rawPrivateKey || !serviceAccountEmail) {
+        throw new Error('Missing required environment variables: GOOGLE_PRIVATE_KEY or GOOGLE_SERVICE_ACCOUNT_EMAIL');
+      }
+      
+      const formattedPrivateKey = formatPrivateKey(rawPrivateKey);
+      
+      if (!formattedPrivateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+        throw new Error('Invalid private key format: missing BEGIN/END markers');
+      }
+      
       const client = new JWT({
-        email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        email: serviceAccountEmail,
+        key: formattedPrivateKey,
         scopes: SCOPES,
       });
 
@@ -66,7 +116,7 @@ export const getGoogleSheetsClient = async (retries = 3) => {
   }
   
   throw new Error('This should never be reached');
-}; 
+};
 
 export const normalizeSpreadsheetId = (input: string): string => {
   const trimmed = (input || '').trim();

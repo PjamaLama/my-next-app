@@ -2,6 +2,14 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 type Data = {
   email: string;
+  privateKeyInfo: {
+    length: number;
+    startsWith: string;
+    endsWith: string;
+    hasHeaders: boolean;
+    hasNewlines: boolean;
+    sample: string;
+  };
 } | {
   error: string;
 };
@@ -30,7 +38,22 @@ export default function handler(
       return res.status(500).json({ error: 'Private key not configured' });
     }
 
-    res.status(200).json({ email: serviceAccountEmail });
+    // Analyze the private key format
+    const privateKeyInfo = {
+      length: privateKey.length,
+      startsWith: privateKey.substring(0, 50),
+      endsWith: privateKey.substring(Math.max(0, privateKey.length - 50)),
+      hasHeaders: privateKey.includes('-----BEGIN PRIVATE KEY-----') && privateKey.includes('-----END PRIVATE KEY-----'),
+      hasNewlines: privateKey.includes('\n'),
+      sample: privateKey.length > 100 ? privateKey.substring(0, 100) + '...' : privateKey
+    };
+
+    console.log('🔍 Private key analysis:', privateKeyInfo);
+
+    res.status(200).json({ 
+      email: serviceAccountEmail,
+      privateKeyInfo
+    });
   } catch (error) {
     console.error('Error retrieving service account email:', error);
     res.status(500).json({ error: 'Failed to retrieve service account email' });
