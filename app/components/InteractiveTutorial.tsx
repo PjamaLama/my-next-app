@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, ChevronLeft, ChevronRight, CheckCircle, BookOpen, Download, Settings, FileText } from 'lucide-react';
+import { Play, ChevronLeft, ChevronRight, CheckCircle, BookOpen, Download, Settings, FileText, Shield } from 'lucide-react';
 import { useTutorial } from '../providers/TutorialProvider';
 import { useServiceAccount } from '../providers/ServiceAccountProvider';
 import ServiceAccountInfo from './ServiceAccountInfo';
@@ -33,11 +33,86 @@ const defaultTutorialSteps: TutorialStep[] = [
     icon: <Play className="w-8 h-8 text-emerald-400" />,
   },
   {
+    id: 'security',
+    title: 'Data Security & Privacy',
+    description: 'Learn how we protect your data and maintain your privacy.',
+    youtubeId: '', // You'll provide the URL for this video
+    order: 1,
+    icon: <Shield className="w-8 h-8 text-emerald-400" />,
+    content: (
+      <div className="text-left space-y-6">
+        {/* Video Section - Top and Side by Side */}
+        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <Play className="w-5 h-5 text-emerald-400" />
+            Watch Security Overview
+          </h3>
+          <div className="flex gap-6 items-start">
+            {/* Video Container - Optimized for 9:16 */}
+            <div className="flex-shrink-0">
+              <div className="bg-gray-800 rounded-lg p-4 text-center w-64 h-96 flex items-center justify-center">
+                <p className="text-white/60 text-sm">Video URL will be provided here</p>
+                <p className="text-white/40 text-xs mt-1">Replace this placeholder with your video component</p>
+              </div>
+            </div>
+            
+            {/* Content Side */}
+            <div className="flex-1 space-y-4">
+              <div className="bg-emerald-600/20 border border-emerald-600/30 rounded-lg p-4">
+                <p className="text-sm font-medium text-emerald-300 mb-2">🔒 Zero Data Storage</p>
+                <p className="text-xs text-emerald-200">We never store your spreadsheet data on our servers. Your data stays in your Google Sheets account only.</p>
+              </div>
+              <div className="bg-blue-600/20 border border-blue-600/30 rounded-lg p-4">
+                <p className="text-sm font-medium text-blue-300 mb-2">🔐 Secure Access</p>
+                <p className="text-xs text-blue-200">We use Google's secure OAuth and service account authentication. No passwords are ever shared.</p>
+              </div>
+              <div className="bg-purple-600/20 border border-purple-600/30 rounded-lg p-4">
+                <p className="text-sm font-medium text-purple-300 mb-2">📊 Temporary Processing</p>
+                <p className="text-xs text-purple-200">Data is only processed in memory during your session and is immediately discarded when you close the app.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Privacy Features - Full Width Below */}
+        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <Shield className="w-5 h-5 text-emerald-400" />
+            Privacy Features
+          </h3>
+          <div className="space-y-3 text-white/80">
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
+              <div>
+                <p className="font-medium">No Data Logging</p>
+                <p className="text-sm text-white/60">We don't log or track your spreadsheet contents, column names, or data values.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
+              <div>
+                <p className="font-medium">Session-Based Access</p>
+                <p className="text-sm text-white/60">Access to your data is temporary and only exists while you're actively using the application.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
+              <div>
+                <p className="font-medium">Google's Security Standards</p>
+                <p className="text-sm text-white/60">Your data remains protected by Google's enterprise-grade security infrastructure.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  },
+  {
     id: 'setup',
     title: 'Service Account Setup',
     description: 'Configure your service account to connect to your Google Sheets.',
     youtubeId: 'Lcf1KNNq_oc', // Second tutorial video
-    order: 1,
+    order: 2,
     icon: <Settings className="w-8 h-8 text-emerald-400" />,
     content: (
       <div className="text-left space-y-6">
@@ -72,7 +147,7 @@ const defaultTutorialSteps: TutorialStep[] = [
     title: 'Template & Structure Rules',
     description: 'Download our template and follow these rules for the best results.',
     youtubeId: '',
-    order: 2,
+    order: 3,
     icon: <FileText className="w-8 h-8 text-emerald-400" />,
     content: (
       <div className="text-left space-y-6">
@@ -136,7 +211,7 @@ const defaultTutorialSteps: TutorialStep[] = [
     title: 'All Set!',
     description: 'You\'re ready to start analyzing your data with AI',
     youtubeId: '',
-    order: 3,
+    order: 4,
     icon: <CheckCircle className="w-8 h-8 text-emerald-400" />,
     content: (
       <div className="text-center space-y-6">
