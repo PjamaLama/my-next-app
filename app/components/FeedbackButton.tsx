@@ -4,10 +4,23 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { Plus } from 'lucide-react';
 import { compressImageFile } from '@/lib/imageCompression';
+import SwipeableFeedbackStack from './SwipeableFeedbackStack';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
-
+interface FeedbackItem {
+  id: string;
+  title: string;
+  description?: string;
+  votesCount?: number;
+  userVote?: 1 | -1 | 0;
+  createdBy?: {
+    uid?: string;
+    displayName?: string;
+    email?: string;
+  };
+  createdAt?: any; // Can be Firestore timestamp or Date
+}
 
 type Attachment = { url: string; mimeType: string; name?: string };
 
@@ -28,6 +41,13 @@ export default function FeedbackButton() {
   // Attachments
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // Feedback browsing state
+  const [allItems, setAllItems] = useState<FeedbackItem[]>([]);
+  const [allLoading, setAllLoading] = useState(false);
+  const [voting, setVoting] = useState<Record<string, boolean>>({});
+  const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
+  const [browseQuery, setBrowseQuery] = useState('');
 
   // Persist state across reloads
   useEffect(() => {
@@ -145,7 +165,7 @@ export default function FeedbackButton() {
     const originalAllItems = allItems;
 
     // Optimistic UI update
-    const optimisticUpdater = (i: SimilarItem) => {
+    const optimisticUpdater = (i: FeedbackItem) => {
       if (i.id !== id) return i;
       const prevVote = i.userVote ?? 0;
       let newVote: 1 | -1 | 0;
@@ -181,7 +201,7 @@ export default function FeedbackButton() {
       const serverState = json?.data;
 
       // Sync with server state
-      const serverUpdater = (i: SimilarItem) => {
+      const serverUpdater = (i: FeedbackItem) => {
         if (i.id !== id) return i;
         return { ...i, votesCount: serverState.votesCount, userVote: serverState.userVote };
       };
