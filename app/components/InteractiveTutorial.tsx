@@ -6,9 +6,28 @@ import ServiceAccountInfo from './ServiceAccountInfo';
 
 const ServiceAccountInfoWrapper = () => {
   const { serviceAccountEmail, isLoading } = useServiceAccount();
-  if (isLoading) {
+  const [timeoutReached, setTimeoutReached] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTimeoutReached(true);
+    }, 3000); // 3 second timeout for service account loading
+    
+    return () => clearTimeout(timer);
+  }, []);
+  
+  if (isLoading && !timeoutReached) {
     return <div className="text-white/70">Loading service account email...</div>;
   }
+  
+  if (timeoutReached || !serviceAccountEmail) {
+    return (
+      <div className="text-red-400 text-sm">
+        Service account not configured. Please check your setup.
+      </div>
+    );
+  }
+  
   return <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />;
 };
 
@@ -246,11 +265,53 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [tutorialSteps, setTutorialSteps] = useState<TutorialStep[]>(defaultTutorialSteps);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
-  // Use hardcoded tutorial steps (no API fetching)
+  // Debug logging for production troubleshooting
   useEffect(() => {
-    setTutorialSteps(defaultTutorialSteps);
-    setLoading(false);
+    const isDev = process.env.NODE_ENV === 'development';
+    const isProd = process.env.NODE_ENV === 'production';
+    const debugMsg = `Tutorial Debug: isVisible=${isTutorialVisible}, loading=${loading}, error=${error}, step=${currentStep}, env=${process.env.NODE_ENV}`;
+    setDebugInfo(debugMsg);
+    
+    if (isDev) {
+      console.log('🔍 [InteractiveTutorial]', debugMsg);
+    }
+    
+    // Production logging for troubleshooting
+    if (isProd) {
+      console.log('🔍 [InteractiveTutorial] Production mode:', debugMsg);
+    }
+  }, [isTutorialVisible, loading, error, currentStep]);
+
+  // Use hardcoded tutorial steps (no API fetching) with timeout fallback
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Fallback: if loading takes too long, force completion
+      console.warn('Tutorial loading timeout, forcing completion');
+      setLoading(false);
+    }, 5000); // 5 second timeout
+
+    // Test mode: bypass all external dependencies
+    const testMode = process.env.NODE_ENV === 'test' || process.env.NEXT_PUBLIC_TEST_MODE === 'true';
+    
+    try {
+      if (testMode) {
+        console.log('🔍 [InteractiveTutorial] Running in test mode');
+        setLoading(false);
+        return;
+      }
+      
+      setTutorialSteps(defaultTutorialSteps);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error setting tutorial steps:', err);
+      setError('Failed to load tutorial');
+      setLoading(false);
+    }
+
+    return () => clearTimeout(timer);
   }, []);
 
   const handleNext = () => {
@@ -281,6 +342,13 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
     return null;
   }
 
+  // Safety check: if we have critical errors, don't render the tutorial
+  if (error && error.includes('Failed to load')) {
+    console.error('🔍 [InteractiveTutorial] Critical error, hiding tutorial');
+    hideTutorial();
+    return null;
+  }
+
   console.log('🔍 [InteractiveTutorial] Rendering tutorial with step:', currentStep);
 
   if (loading) {
@@ -289,7 +357,22 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
         <div className="bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl p-8 w-full max-w-4xl relative">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-            <div className="text-white text-lg">Loading tutorial...</div>
+            <div className="text-white text-lg mb-4">Loading tutorial...</div>
+            {error && (
+              <div className="text-red-400 mb-4">{error}</div>
+            )}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="text-xs text-gray-400 mb-4 font-mono">{debugInfo}</div>
+            )}
+            <button
+              onClick={() => {
+                setLoading(false);
+                setError(null);
+              }}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            >
+              Skip Tutorial
+            </button>
           </div>
         </div>
       </div>

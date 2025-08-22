@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
 import { useTutorial } from "./providers/TutorialProvider";
@@ -10,15 +10,28 @@ export default function Home() {
   const { user, loading, signInWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, sheetsPrefetched } = useSheet();
   const { showTutorial, hideTutorial, isTutorialVisible } = useTutorial();
+  const tutorialTriggered = useRef(false);
 
   useEffect(() => {
+    // Prevent multiple tutorial triggers
+    if (tutorialTriggered.current) return;
+    
     // Check if the user has seen the tutorial before
-    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial');
-    if (!hasSeenTutorial && user) {
+    let hasSeenTutorial = false;
+    try {
+      hasSeenTutorial = localStorage.getItem('hasSeenTutorial') === 'true';
+    } catch (error) {
+      console.warn('Failed to access localStorage:', error);
+      // If localStorage fails, assume tutorial has been seen to prevent infinite loading
+      hasSeenTutorial = true;
+    }
+    
+    if (!hasSeenTutorial && user && !loading) {
       // Show tutorial for first-time users after they're authenticated
+      tutorialTriggered.current = true;
       showTutorial();
     }
-  }, [user, showTutorial]);
+  }, [user, loading, showTutorial]);
 
   const handleSignIn = async () => {
     try {
