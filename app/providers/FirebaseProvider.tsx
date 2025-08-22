@@ -14,14 +14,27 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-// Ensure durable session and avoid popup blockers/COOP issues
+// Initialize Firebase only on the client side to prevent build-time errors
+let app: any = null;
+let auth: any = null;
+let db: any = null;
+
 if (typeof window !== 'undefined') {
-  // Best-effort; ignore if already set
-  setPersistence(auth, browserLocalPersistence).catch(() => {});
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    // Ensure durable session and avoid popup blockers/COOP issues
+    setPersistence(auth, browserLocalPersistence).catch(() => {});
+    db = getFirestore(app);
+  } catch (error) {
+    console.error('Failed to initialize Firebase:', error);
+  }
 }
-export const db = getFirestore(app);
+
+// Export db with null check
+export const getDb = () => db;
+export const getAuthInstance = () => auth;
+export const getApp = () => app;
 
 interface IFirebaseContext {
   user: User | null;
@@ -62,6 +75,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const [betaWaitlist, setBetaWaitlist] = useState(false);
 
   useEffect(() => {
+    if (!auth) return;
+    
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
       console.log('🔍 [FirebaseProvider] Auth state changed:', { 
         hasUser: !!user, 
@@ -85,6 +100,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Finalize pending redirect sign-in once after load
   useEffect(() => {
+    if (!auth) return;
+    
     (async () => {
       try {
         const result = await getRedirectResult(auth);
@@ -112,7 +129,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Ensure a user profile subdocument exists (under allowed subcollection rules)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
     const ensureUserDoc = async () => {
       try {
         const profileRef = doc(db, "users", user.uid, "private", "profile");
@@ -153,7 +170,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Load profile fields (Gemini API key, beta flags) from profile subdocument
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
     const profileRef = doc(db, "users", user.uid, "private", "profile");
     const unsubUserDoc = onSnapshot(profileRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -169,6 +186,11 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   }, [user]);
 
   const signInWithGoogle = async () => {
+    if (!auth) {
+      setAuthError('Firebase not initialized. Please refresh the page.');
+      return;
+    }
+    
     try {
       setAuthError(null);
       const provider = new GoogleAuthProvider();
@@ -218,6 +240,10 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Common Google sign-in with popup first (desktop), redirect fallback (mobile/PWA/Safari)
   const startGoogleSignIn = async (provider: GoogleAuthProvider) => {
+    if (!auth) {
+      throw new Error('Firebase not initialized');
+    }
+    
     // Detect environments where popups are unreliable
     const isPopupUnreliable = (() => {
       if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
@@ -244,6 +270,11 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Join Beta → Google sign-in
   const joinBeta = async () => {
+    if (!auth) {
+      setAuthError('Firebase not initialized. Please refresh the page.');
+      return;
+    }
+    
     try {
       setAuthError(null);
       if (auth.currentUser) return;
@@ -263,6 +294,11 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Continue with Google using a login hint when we know the last email
   const continueWithGoogle = async (loginHint?: string) => {
+    if (!auth) {
+      setAuthError('Firebase not initialized. Please refresh the page.');
+      return;
+    }
+    
     try {
       setAuthError(null);
       const provider = new GoogleAuthProvider();
@@ -276,6 +312,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   };
 
   const signOutUser = async () => {
+    if (!auth) return;
+    
     try {
       await signOut(auth);
       setGeminiApiKey(""); // Clear API key on sign out
@@ -288,7 +326,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Save Gemini API key to Firestore
   const saveGeminiApiKey = async (key: string) => {
-    if (!user) return;
+    if (!user || !db) return;
     try {
       await setDoc(doc(db, "users", user.uid, "private", "profile"), { geminiApiKey: key.trim() }, { merge: true });
       setGeminiApiKey(key.trim());

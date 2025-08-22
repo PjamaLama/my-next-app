@@ -1,8 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useFirebase } from './FirebaseProvider';
-import { db } from './FirebaseProvider';
+import { useFirebase, getDb } from './FirebaseProvider';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { analyzeSheetStructure, SheetStructureMeta } from '../../lib/sheetStructure';
 
@@ -46,6 +45,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     if (!user) return;
+    const db = getDb();
+    if (!db) return;
+    
     const userDocRef = doc(db, "users", user.uid, "private", "profile");
     const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -175,6 +177,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const saveDefaultSelections = async (spreadsheetId: string, sheetNames: string[]) => {
     if (!user) return;
+    const db = getDb();
+    if (!db) return;
+    
     try {
       await setDoc(doc(db, "users", user.uid, "private", "profile"), {
         defaultSpreadsheetId: spreadsheetId,

@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
-import { db, useFirebase } from './FirebaseProvider';
+import { useFirebase, getDb } from './FirebaseProvider';
 
 // Basic message type
 export interface ChatMessage {
@@ -150,6 +150,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     console.log('🔍 [ChatProvider] User authenticated, loading sessions for:', user.uid);
     setSessionsLoading(true); // Start loading sessions
     
+    const db = getDb();
+    if (!db) return;
+    
     const sessionsColRef = collection(db, 'users', user.uid, 'sessions');
     const q = query(sessionsColRef, orderBy('createdAt', 'desc'));
 
@@ -251,6 +254,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
 
     setLoading(true);
+    const db = getDb();
+    if (!db) return;
+    
     const messagesColRef = collection(db, 'users', user.uid, 'sessions', currentSessionId, 'messages');
     const q = query(messagesColRef, orderBy('timestamp', 'asc'));
 
@@ -328,6 +334,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     setChatMessages(prevMessages => [...prevMessages, optimisticMessage]);
 
     try {
+      const db = getDb();
+      if (!db) {
+        setError("Firebase not initialized. Please refresh the page.");
+        return;
+      }
+      
       const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
       
       const sanitizedMessage = {
