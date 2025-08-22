@@ -36,7 +36,7 @@ const defaultTutorialSteps: TutorialStep[] = [
     id: 'security',
     title: 'Data Security & Privacy',
     description: 'Learn how we protect your data and maintain your privacy.',
-    youtubeId: '', // You'll provide the URL for this video
+    youtubeId: 'nJadmf1MuRs', // YouTube video ID for the generic video section
     order: 1,
     icon: <Shield className="w-8 h-8 text-emerald-400" />,
     content: (
@@ -47,17 +47,9 @@ const defaultTutorialSteps: TutorialStep[] = [
             <Play className="w-5 h-5 text-emerald-400" />
             Watch Security Overview
           </h3>
-          <div className="flex gap-6 items-start">
-            {/* Video Container - Optimized for 9:16 */}
-            <div className="flex-shrink-0">
-              <div className="bg-gray-800 rounded-lg p-4 text-center w-64 h-96 flex items-center justify-center">
-                <p className="text-white/60 text-sm">Video URL will be provided here</p>
-                <p className="text-white/40 text-xs mt-1">Replace this placeholder with your video component</p>
-              </div>
-            </div>
-            
+          <div className="space-y-4">
             {/* Content Side */}
-            <div className="flex-1 space-y-4">
+            <div className="w-full space-y-4">
               <div className="bg-emerald-600/20 border border-emerald-600/30 rounded-lg p-4">
                 <p className="text-sm font-medium text-emerald-300 mb-2">🔒 Zero Data Storage</p>
                 <p className="text-xs text-emerald-200">We never store your spreadsheet data on our servers. Your data stays in your Google Sheets account only.</p>
@@ -188,6 +180,10 @@ const defaultTutorialSteps: TutorialStep[] = [
             <div>
               <p className="font-medium mb-2">🔢 Data Rows (Row 2+)</p>
               <p className="text-sm text-white/60">All data starts from row 2. Keep headers in row 1 only.</p>
+            </div>
+            <div>
+              <p className="font-medium mb-2">📊 Optional Total Row (Row 2)</p>
+              <p className="text-sm text-white/60">You can add a second row above headers for column totals or summaries. This row is optional and won't interfere with data analysis.</p>
             </div>
             <div>
               <p className="font-medium mb-2">📊 Consistent Format</p>
