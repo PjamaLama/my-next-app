@@ -28,7 +28,7 @@ const defaultTutorialSteps: TutorialStep[] = [
     id: 'welcome',
     title: 'Welcome to Sheety AI',
     description: 'Watch this short video to get started.',
-    youtubeId: 'new_welcome_video_id', // Placeholder for the new welcome video
+    youtubeId: 'QEk5vY3eOE4', // First tutorial video
     order: 0,
     icon: <Play className="w-8 h-8 text-emerald-400" />,
   },
@@ -36,7 +36,7 @@ const defaultTutorialSteps: TutorialStep[] = [
     id: 'setup',
     title: 'Service Account Setup',
     description: 'Configure your service account to connect to your Google Sheets.',
-    youtubeId: 'Lcf1KNNq_oc', // Updated to the new video
+    youtubeId: 'Lcf1KNNq_oc', // Second tutorial video
     order: 1,
     icon: <Settings className="w-8 h-8 text-emerald-400" />,
     content: (
@@ -175,32 +175,10 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
   const [tutorialSteps, setTutorialSteps] = useState<TutorialStep[]>(defaultTutorialSteps);
   const [loading, setLoading] = useState(true);
 
-  // Fetch tutorial videos from API
+  // Use hardcoded tutorial steps (no API fetching)
   useEffect(() => {
-    const fetchTutorialVideos = async () => {
-      try {
-        const response = await fetch('/api/tutorial-videos');
-        if (response.ok) {
-          const data = await response.json();
-          const apiSteps = data.videos || [];
-          
-          const mergedSteps = defaultTutorialSteps.map(defaultStep => {
-            const apiStep = apiSteps.find((s: TutorialStep) => s.id === defaultStep.id);
-            return { ...defaultStep, ...apiStep };
-          });
-
-          setTutorialSteps(mergedSteps);
-        }
-      } catch (error) {
-        console.error('Failed to fetch tutorial videos:', error);
-        // Use default steps on error
-        setTutorialSteps(defaultTutorialSteps);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTutorialVideos();
+    setTutorialSteps(defaultTutorialSteps);
+    setLoading(false);
   }, []);
 
   const handleNext = () => {
