@@ -10,17 +10,25 @@ const STORAGE_KEY = 'feedbackNudge';
 function shouldShow(): boolean {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return true;
+    if (!raw) {
+      // For first-time users, don't show feedback popup immediately
+      // Initialize with a count of 0 and require at least 4 logins before showing
+      return false;
+    }
     const data = JSON.parse(raw) as { lastShown: number; count: number; dismissedAt?: number };
     const now = Date.now();
     const oneDay = 24 * 60 * 60 * 1000;
     const sevenDays = 7 * oneDay;
+    
+    // Require at least 4 logins before showing feedback popup
+    if (data.count < 4) return false;
+    
     // throttle: show at most once per day, and no more than 3 times in 7 days
     if (now - data.lastShown < oneDay) return false;
-    if (data.count >= 3 && now - data.lastShown < sevenDays) return false;
+    if (data.count >= 6 && now - data.lastShown < sevenDays) return false;
     return true;
   } catch {
-    return true;
+    return false; // Default to not showing if there's an error
   }
 }
 
@@ -29,7 +37,8 @@ function markShown() {
     const now = Date.now();
     const raw = localStorage.getItem(STORAGE_KEY);
     const prev = raw ? (JSON.parse(raw) as { lastShown: number; count: number; dismissedAt?: number }) : { lastShown: 0, count: 0 };
-    const next = { ...prev, lastShown: now, count: (prev.count || 0) + 1 };
+    // Don't increment count here since we track logins separately
+    const next = { ...prev, lastShown: now };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {}
 }
@@ -44,12 +53,25 @@ function markDismissed() {
   } catch {}
 }
 
+function trackLogin() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const prev = raw ? (JSON.parse(raw) as { lastShown: number; count: number; dismissedAt?: number }) : { lastShown: 0, count: 0 };
+    const next = { ...prev, count: (prev.count || 0) + 1 };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {}
+}
+
 export default function FeedbackNudge() {
   const { user } = useFirebase();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return; // do not show nudge on landing (logged-out)
+    
+    // Track this login
+    trackLogin();
+    
     const t = setTimeout(() => {
       if (shouldShow()) {
         setOpen(true);
