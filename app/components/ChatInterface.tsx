@@ -81,6 +81,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [filesBeingSent, setFilesBeingSent] = useState<UploadedFile[]>([]);
+  const [isStopping, setIsStopping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -838,9 +839,29 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           </button>
           <button
             type={isSending ? "button" : "submit"}
-            onClick={isSending ? cancelChatGeneration : handleSubmit}
-            disabled={(!inputValue.trim() && uploadedFiles.length === 0) || sessionsLoading}
-            className="p-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center"
+            onClick={isSending ? () => {
+              if (isStopping) return; // Prevent rapid clicking
+              console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
+              setIsStopping(true);
+              cancelChatGeneration();
+              // Immediately reset sending states for better UX
+              setIsSending(false);
+              setIsProcessingFiles(false);
+              // Restore files to upload area if they were being sent
+              if (filesBeingSent.length > 0) {
+                setUploadedFiles(prev => [...prev, ...filesBeingSent]);
+                setFilesBeingSent([]);
+              }
+              // Re-enable stop button after a brief delay
+              setTimeout(() => setIsStopping(false), 500);
+            } : handleSubmit}
+            disabled={isSending ? (isStopping) : ((!inputValue.trim() && uploadedFiles.length === 0) || sessionsLoading)}
+            aria-label={isSending ? "Stop chat generation" : "Send message"}
+            className={`p-3 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+              isSending 
+                ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105 focus:ring-red-500' 
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500'
+            } ${(!inputValue.trim() && uploadedFiles.length === 0) || sessionsLoading ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`}
           >
             {isSending ? (
               <Square className="h-5 w-5" /> // Stop icon
