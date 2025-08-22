@@ -80,21 +80,22 @@ const defaultTutorialSteps: TutorialStep[] = [
         <div className="bg-white/5 rounded-xl p-6 border border-white/10">
           <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
             <Download className="w-5 h-5 text-emerald-400" />
-            Download Template
+            Get Template
           </h3>
           <p className="text-white/80 mb-4">
-            Start with our structured template that follows the correct format for AI analysis.
+            Use our structured template that follows the correct format for AI analysis.
           </p>
           <a
-            href="/templates/structured-sheet-template.csv"
-            download
+            href="https://docs.google.com/spreadsheets/d/1PKJQFrlahs0Q4p3OOC8m6qNt8FKEDWn-a6ryGHwNeTs/edit?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
           >
             <Download className="w-4 h-4" />
-            Download CSV Template
+            Open Template
           </a>
           <div className="mt-3 text-sm text-white/60">
-            After downloading, open in Google Sheets and save as a Google Sheet for full functionality.
+            Click to open the template in Google Sheets, then make a copy to use for your data.
           </div>
         </div>
 
