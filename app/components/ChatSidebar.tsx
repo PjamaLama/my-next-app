@@ -50,7 +50,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
       if (!user) { setSpreadsheets([]); return; }
       setSpreadsheetsLoading(true);
       const { collection, onSnapshot } = await import('firebase/firestore');
-      const { db } = await import('../providers/FirebaseProvider');
+      const { getDb } = await import('../providers/FirebaseProvider');
+      const db = getDb();
+      if (!db) return;
+      
       const ref = collection(db, 'users', user.uid, 'options');
       unsub = onSnapshot(ref, (snap) => {
         const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
@@ -234,7 +237,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const removeSpreadsheetOption = async (id: string, spreadsheetId?: string) => {
     if (!user || !id) return;
     const { doc, deleteDoc } = await import('firebase/firestore');
-    const { db } = await import('../providers/FirebaseProvider');
+    const { getDb } = await import('../providers/FirebaseProvider');
+    const db = getDb();
+    if (!db) return;
+    
     await deleteDoc(doc(db, 'users', user.uid, 'options', id));
     if ((spreadsheetId && defaultSpreadsheetId === spreadsheetId) || (spreadsheets.length === 1 && defaultSpreadsheetId)) {
       setDefaultSpreadsheetId("");

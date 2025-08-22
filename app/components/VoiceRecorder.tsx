@@ -53,6 +53,7 @@ export const useVoiceRecorder = () => {
   const finalTranscriptRef = useRef('');
   const interimTranscriptRef = useRef('');
   const shouldAutoRestartRef = useRef(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Add timeout ref
 
   useEffect(() => {
     // Check if speech recognition is supported
@@ -68,6 +69,15 @@ export const useVoiceRecorder = () => {
     recognition.continuous = false; // Changed to false for more predictable behavior
     recognition.interimResults = true;
     recognition.lang = 'en-US';
+    
+    // Add more robust configuration to reduce errors
+    recognition.maxAlternatives = 1; // Only get one alternative to reduce complexity
+    
+    // Set a reasonable timeout to prevent hanging
+    if ('serviceURI' in recognition) {
+      // Some browsers support custom service URI for better reliability
+      (recognition as any).serviceURI = undefined; // Use default service
+    }
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       // With non-continuous recognition, we get the complete transcript in one event
@@ -102,11 +112,10 @@ export const useVoiceRecorder = () => {
       // Combine final and interim transcript
       const combinedTranscript = finalTranscriptRef.current + (interimTranscript ? ' ' + interimTranscript : '');
       
-      console.log('🔊 [VoiceRecorder] Combined transcript:', {
-        final: finalTranscriptRef.current,
-        interim: interimTranscriptRef.current,
-        combined: combinedTranscript
-      });
+      // Only log if there's actual content to avoid spam
+      if (combinedTranscript.trim()) {
+        console.log('🔊 [VoiceRecorder] Transcript updated:', combinedTranscript.substring(0, 100) + (combinedTranscript.length > 100 ? '...' : ''));
+      }
       
       // Set the transcript immediately since we're not continuous
       if (combinedTranscript.trim()) {
@@ -148,7 +157,11 @@ export const useVoiceRecorder = () => {
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error('Speech recognition error:', event.error);
+      // Only log critical errors, not common ones like "no-speech"
+      if (event.error !== 'no-speech') {
+        console.warn('Speech recognition error:', event.error);
+      }
+      
       setIsRecording(false);
       
       // Disable auto-restart on errors
@@ -159,15 +172,16 @@ export const useVoiceRecorder = () => {
       finalTranscriptRef.current = '';
       interimTranscriptRef.current = '';
       
-      // Handle specific error types
+      // Handle specific error types silently for common cases
       if (event.error === 'not-allowed') {
         console.warn('Microphone access denied by user');
       } else if (event.error === 'no-speech') {
-        console.warn('No speech detected');
+        // This is a common, non-critical error - just silently handle it
+        // No need to log or warn about it
       } else if (event.error === 'network') {
         console.warn('Network error occurred');
       } else if (event.error === 'aborted') {
-        console.warn('Speech recognition was aborted');
+        // This is also common when stopping manually - no need to warn
       }
     };
 
@@ -180,6 +194,12 @@ export const useVoiceRecorder = () => {
         } catch (error) {
           console.warn('Error stopping recognition on cleanup:', error);
         }
+      }
+      
+      // Clear any pending timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     };
   }, []);
@@ -210,6 +230,20 @@ export const useVoiceRecorder = () => {
             recognitionRef.current.start();
             setIsRecording(true);
             console.log('🔊 [VoiceRecorder] Recording started successfully');
+            
+            // Add a timeout to automatically stop if no speech is detected
+            // This helps prevent "no-speech" errors and improves UX
+            timeoutRef.current = setTimeout(() => {
+              if (recognitionRef.current && isRecording) {
+                console.log('🔊 [VoiceRecorder] Auto-stopping due to no speech detected');
+                try {
+                  recognitionRef.current.stop();
+                  setIsRecording(false);
+                } catch (e) {
+                  // Ignore errors from stopping
+                }
+              }
+            }, 10000); // 10 second timeout
           }
         }, 100);
       } catch (error) {
@@ -225,6 +259,12 @@ export const useVoiceRecorder = () => {
       
       // Disable auto-restart when user manually stops
       shouldAutoRestartRef.current = false;
+      
+      // Clear the auto-stop timeout if it exists
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       
       try {
         recognitionRef.current.stop();
@@ -279,7 +319,10 @@ export default function VoiceRecorder({ onTranscriptChange, disabled = false, cl
   // Sync transcript with parent component
   useEffect(() => {
     if (transcript) {
-      console.log('🔊 [VoiceRecorder] Sending transcript to parent:', transcript);
+      // Only log significant transcript updates to reduce console spam
+      if (transcript.length > 10) {
+        console.log('🔊 [VoiceRecorder] Sending transcript to parent:', transcript.substring(0, 50) + (transcript.length > 50 ? '...' : ''));
+      }
       onTranscriptChange(transcript);
     }
   }, [transcript, onTranscriptChange]);

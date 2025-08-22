@@ -21,11 +21,16 @@ let db: any = null;
 
 if (typeof window !== 'undefined') {
   try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    // Ensure durable session and avoid popup blockers/COOP issues
-    setPersistence(auth, browserLocalPersistence).catch(() => {});
-    db = getFirestore(app);
+    // Check if all required environment variables are available
+    if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
+      console.warn('Firebase configuration incomplete. Missing required environment variables.');
+    } else {
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      // Ensure durable session and avoid popup blockers/COOP issues
+      setPersistence(auth, browserLocalPersistence).catch(() => {});
+      db = getFirestore(app);
+    }
   } catch (error) {
     console.error('Failed to initialize Firebase:', error);
   }

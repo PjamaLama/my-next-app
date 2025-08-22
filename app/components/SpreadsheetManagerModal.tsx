@@ -41,7 +41,10 @@ const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open,
   const saveSpreadsheetOption = async (spreadsheetId: string) => {
     if (!user || !spreadsheetId) return;
     const { collection, addDoc } = await import('firebase/firestore');
-    const { db } = await import('../providers/FirebaseProvider');
+    const { getDb } = await import('../providers/FirebaseProvider');
+    const db = getDb();
+    if (!db) return;
+    
     const optionsRef = collection(db, 'users', user.uid, 'options');
     const meta = await fetch(`/api/get-sheet-names?spreadsheetId=${encodeURIComponent(spreadsheetId)}`).then(r => r.json()).catch(() => ({}));
     const payload: any = { spreadsheetId };

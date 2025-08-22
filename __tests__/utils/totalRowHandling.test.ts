@@ -71,7 +71,7 @@ describe('Total Row Handling', () => {
         ['2024-01-01', '100.00'],
         ['2024-01-02', '50.00']
       ];
-      const result = getDataRowsOnly(dataWithoutTotals, 2);
+      const result = getDataRowsOnly(dataWithoutTotals, 999); // Use a high index since there's no total row
       expect(result).toHaveLength(2); // Should have 2 data rows
     });
 

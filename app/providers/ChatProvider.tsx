@@ -433,6 +433,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
 
       console.log('🔍 [createSession] Creating session with data:', sessionData);
       
+      const db = getDb();
+      if (!db) {
+        setError("Firebase not initialized. Please refresh the page.");
+        throw new Error("Firebase not initialized");
+      }
+      
       const sessionsColRef = collection(db, 'users', user.uid, 'sessions');
       console.log('🔍 [createSession] Adding document to Firestore collection');
       const docRef = await addDoc(sessionsColRef, sessionData);
@@ -474,6 +480,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     if (!user) return;
 
     try {
+      const db = getDb();
+      if (!db) {
+        setError("Firebase not initialized. Please refresh the page.");
+        return;
+      }
+      
       // Delete all messages in the session first
       const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
       const messagesSnapshot = await getDocs(messagesColRef);
@@ -564,6 +576,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     if (!user) return;
 
     try {
+      const db = getDb();
+      if (!db) {
+        setError("Firebase not initialized. Please refresh the page.");
+        return;
+      }
+      
       const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
       await addDoc(messagesColRef, {
         ...message,
@@ -609,6 +627,12 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     if (!user || !currentSessionId) return;
 
     try {
+      const db = getDb();
+      if (!db) {
+        setError("Firebase not initialized. Please refresh the page.");
+        return;
+      }
+      
       const messageDocRef = doc(db, 'users', user.uid, 'sessions', currentSessionId, 'messages', messageId);
 
       // Sanitize tables for Firestore: stringify rows, coerce types

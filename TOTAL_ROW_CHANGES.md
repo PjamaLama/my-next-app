@@ -10,7 +10,7 @@ This document summarizes the changes implemented to remove the logic that search
 - **Added**: Fixed row insertion at row 2 (below headers)
 - **Added**: Logic to preserve existing data by shifting rows down when inserting new data
 - **Added**: Helper function `getSheetId()` to get sheet metadata
-- **Result**: New data is always inserted at row 2, preserving row 3 for totals
+- **Result**: New data is appended to the end of the sheet, preserving all existing content
 
 ### 2. **Updated `lib/sheetUtils.ts`**
 - **Removed**: `findLastDataRow()` function that searched from bottom up
@@ -18,7 +18,7 @@ This document summarizes the changes implemented to remove the logic that search
 - **Added**: `isTotalRow()` - identifies total rows based on content patterns
 - **Added**: `getDataRowsOnly()` - extracts only data rows (excluding headers and totals)
 - **Added**: `ensureTotalRowPosition()` - ensures total row is at row 3
-- **Added**: `getInsertionRow()` - always returns row 2 for new data insertion
+- **Added**: `getInsertionRow()` - dynamically finds the last row with data and appends new rows there
 
 ### 3. **Updated `pages/api/genkit-chat.ts` (N8N Integration)**
 - **Modified**: Sheet data processing to filter out total rows (row 3)
@@ -39,17 +39,17 @@ This document summarizes the changes implemented to remove the logic that search
 
 ```
 Row 1: Headers (Column names)
-Row 2: New data insertion point
-Row 3: Total row (preserved, not processed)
-Row 4+: Additional data rows
+Row 2+: Existing data rows
+Row N: Total row (if present, at any position)
+Row N+1: New data (appended here)
 ```
 
 ## Key Benefits
 
-1. **Predictable Structure**: Total row is always at row 3, making it easy to manage
+1. **Dynamic Appending**: New data is automatically appended to the end of the sheet
 2. **Clean Data Processing**: Total rows are automatically filtered out when sending data to N8N
 3. **No More Searching**: Eliminates the need to search for the last row
-4. **Consistent Behavior**: All new data is inserted at the same location (row 2)
+4. **Consistent Behavior**: All new data is appended to the end, preserving existing content
 5. **Preserved Totals**: Total rows remain intact but don't interfere with data processing
 
 ## API Changes
@@ -60,16 +60,16 @@ Row 4+: Additional data rows
 - Total rows could be anywhere in the sheet
 
 ### After (New Logic)
-- Uses `UPDATE` to insert at specific row (row 2)
-- No more searching for last row
-- Total row is always at row 3
+- Uses `UPDATE` to append data at the end of the sheet
+- Dynamically finds the last row with data using `getInsertionRow()`
+- Total row can be anywhere in the sheet
 - Automatic filtering of total rows in all data operations
 
 ## Usage Examples
 
-### Inserting New Data
+### Appending New Data
 ```typescript
-// New data will always be inserted at row 2
+// New data will be appended to the end of the sheet
 await ingestRows({
   spreadsheetId: 'your-sheet-id',
   sheetName: 'Sheet1',
@@ -91,8 +91,8 @@ const cleanData = filterOutTotalRows(data, 2);
 
 ## Migration Notes
 
-- **Existing sheets**: Will continue to work, but new data will be inserted at row 2
-- **Total rows**: Should be moved to row 3 for optimal compatibility
+- **Existing sheets**: Will continue to work, but new data will be appended to the end
+- **Total rows**: Can remain in their current position, no need to move them
 - **N8N integration**: Will automatically receive cleaner data without total rows
 - **Frontend**: Will display cleaner data without total rows interfering
 

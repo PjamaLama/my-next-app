@@ -265,7 +265,33 @@ export const ensureTotalRowPosition = async (
 };
 
 // Function to get the recommended insertion row for new data
-export const getInsertionRow = (): number => {
-  // Always return row 2 (below headers, above totals)
-  return 2;
+export const getInsertionRow = async (spreadsheetId: string, sheetName: string): Promise<number> => {
+  try {
+    const sheets = await getGoogleSheetsClient();
+    const escapedName = escapeSheetName(sheetName);
+    
+    // Get the last row with data by checking a large range
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${escapedName}!A:A`, // Check column A for the last row with data
+      majorDimension: 'COLUMNS'
+    });
+    
+    const columnA = response.data.values?.[0] || [];
+    let lastRowWithData = 1; // Start with header row
+    
+    // Find the last non-empty row
+    for (let i = columnA.length - 1; i >= 0; i--) {
+      if (columnA[i] && String(columnA[i]).trim() !== '') {
+        lastRowWithData = i + 1; // Convert to 1-based row number
+        break;
+      }
+    }
+    
+    // Return the next row after the last row with data
+    return lastRowWithData + 1;
+  } catch (error) {
+    console.warn('Failed to get last row, defaulting to row 2:', error);
+    return 2; // Fallback to row 2 if there's an error
+  }
 }; 

@@ -11,9 +11,9 @@ export type IngestResult = {
 };
 
 /**
- * A lightweight function to insert rows at specific positions in a Google Sheet.
- * It reads the headers from the target sheet and inserts the provided rows.
- * This function targets row 2 (below headers) and preserves row 3 for totals.
+ * A lightweight function to append rows to the end of a Google Sheet.
+ * It reads the headers from the target sheet and appends the provided rows
+ * after the last row with data, preserving all existing content.
  */
 export async function ingestRows(params: {
   spreadsheetId: string;
@@ -55,55 +55,17 @@ export async function ingestRows(params: {
       return { success: true, inserts: 0, updates: 0, details: 'No rows to insert.' };
     }
 
-    // Get the target insertion row (always row 2)
-    const insertionRow = getInsertionRow();
-    console.log(`🔍 [ORCHESTRATOR] Inserting data at row ${insertionRow}`);
+    // Get the target insertion row (find the last row with data and append there)
+    const insertionRow = await getInsertionRow(spreadsheetId, sheetName);
+    console.log(`🔍 [ORCHESTRATOR] Appending data at row ${insertionRow}`);
 
-    // Check if we need to preserve existing data below the insertion point
-    const existingDataResp = await sheets.spreadsheets.values.get({ 
-      spreadsheetId, 
-      range: `${escapedName}!A${insertionRow}:Z1000` // Get data from insertion row onwards
+    // Simply append the new rows at the end of the sheet
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${escapedName}!A${insertionRow}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: valuesToInsert },
     });
-    
-    const existingData = existingDataResp.data.values || [];
-    const hasExistingData = existingData.length > 0;
-    
-    if (hasExistingData) {
-      console.log('🔍 [ORCHESTRATOR] Found existing data, will shift rows down');
-      
-      // Insert new rows at the insertion point, shifting existing data down
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [{
-            insertDimension: {
-              range: {
-                sheetId: await getSheetId(spreadsheetId, sheetName),
-                dimension: 'ROWS',
-                startIndex: insertionRow - 1, // 0-based, so insertionRow - 1
-                endIndex: insertionRow - 1 + valuesToInsert.length // Insert after the new rows
-              }
-            }
-          }]
-        }
-      });
-      
-      // Now insert the values at the insertion row
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${escapedName}!A${insertionRow}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: valuesToInsert },
-      });
-    } else {
-      // No existing data, just insert at the insertion row
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${escapedName}!A${insertionRow}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: valuesToInsert },
-      });
-    }
 
     const result = { success: true, inserts: valuesToInsert.length, updates: 0 };
     console.log('🔍 [ORCHESTRATOR] Final result:', result);
