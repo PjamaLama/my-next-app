@@ -164,7 +164,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                   <div className="relative w-full max-w-4xl mx-auto aspect-video bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl border border-white/20 backdrop-blur-sm overflow-hidden mx-4 sm:mx-auto">
                     <iframe
-                      src="https://www.youtube.com/embed/ZDazRU_PqGc"
+                      src="https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0"
                       title="SheetyAI Demo Video"
                       className="w-full h-full rounded-2xl"
                       frameBorder="0"
