@@ -1,0 +1,10 @@
+[33m2efa6f0[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m Enhance feedback and upload URL APIs to include proxy URLs for improved file access
+[33m651ccb3[m Update API configuration and middleware for improved file size validation
+[33me7c3cb8[m Update oversized file alert in ChatInterface for improved user feedback
+[33m33a4866[m Refactor file size handling and API configurations for improved upload management
+[33m0f30e95[m Enhance file upload handling and API configuration in ChatInterface
+[33mf59327c[m Implement drag-and-drop functionality and file size validation in ChatMessage and middleware
+[33m628cede[m Implement file size limit checks in ChatInterface and update API configurations
+[33m6738a65[m[33m ([m[1;32mmain[m[33m)[m Update YouTube video embed in LandingPage component for enhanced playback options
+[33mef84754[m Refactor FirebaseProvider to improve sign-in flow and error handling
+[33mf30a7aa[m Enhance ChatInterface and API error handling for improved user experience

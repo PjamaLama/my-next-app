@@ -1,0 +1,5 @@
+[33m6738a65[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;32mmain[m[33m)[m Update YouTube video embed in LandingPage component for enhanced playback options
+[33mef84754[m Refactor FirebaseProvider to improve sign-in flow and error handling
+[33mf30a7aa[m Enhance ChatInterface and API error handling for improved user experience
+[33m9a8b46c[m Enhance tutorial functionality and error handling in InteractiveTutorial and Home components
+[33m2a69091[m Update InteractiveTutorial component with YouTube video ID and additional tutorial content
