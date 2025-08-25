@@ -116,6 +116,43 @@ const WhatsAppLinkForm = () => {
         >
           {isSaving ? 'Saving...' : 'Save WhatsApp Number'}
         </button>
+        
+        {waId && (
+          <button
+            onClick={async () => {
+              if (!user) {
+                setError('You must be logged in to unlink your WhatsApp number.');
+                return;
+              }
+              
+              try {
+                const token = await user.getIdToken();
+                const response = await fetch('/api/user/unlink-wa-id', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                });
+
+                if (response.ok) {
+                  setWaId('');
+                  setContextWaId('');
+                  setSuccess('WhatsApp number unlinked successfully!');
+                  setTimeout(() => setSuccess(''), 3000);
+                } else {
+                  const data = await response.json();
+                  setError(data.error || 'Failed to unlink WhatsApp number.');
+                }
+              } catch (err) {
+                setError('An unexpected error occurred while unlinking.');
+              }
+            }}
+            className="bg-red-600/20 border border-red-500/30 text-red-300 hover:bg-red-600/30 rounded-lg p-2 text-xs"
+          >
+            Unlink WhatsApp
+          </button>
+        )}
       </div>
     </div>
   );

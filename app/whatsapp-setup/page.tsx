@@ -125,20 +125,50 @@ function WhatsAppSetupContent() {
           </p>
 
           {isLinked ? (
-            <div className="text-center bg-green-900/50 border border-green-500 p-4 rounded-lg">
-              <p className="font-semibold">✅ Your WhatsApp is linked!</p>
-              <p className="text-sm text-gray-200 mt-2">
-                You can now message us to interact with your sheets.
+            <div className="text-center">
+              <div className="text-green-400 text-2xl mb-4">✓</div>
+              <h3 className="text-xl font-semibold text-white mb-2">WhatsApp Linked Successfully!</h3>
+              <p className="text-gray-300 mb-6">
+                Your WhatsApp number <span className="font-semibold">{waId}</span> is now linked to your account.
               </p>
-              <button
-                onClick={() => {
-                  setIsModalOpen(true);
-                  router.push('/report'); // Navigate to chat page
-                }}
-                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-              >
-                Manage Spreadsheets & Go to Chat
-              </button>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                >
+                  Manage Spreadsheets
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!user) return;
+                    try {
+                      const token = await user.getIdToken();
+                      const response = await fetch('/api/user/unlink-wa-id', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`,
+                        },
+                      });
+
+                      if (response.ok) {
+                        setIsLinked(false);
+                        setWaId('');
+                        // Refresh the page to update the UI
+                        window.location.reload();
+                      } else {
+                        const data = await response.json();
+                        setError(data.error || 'Failed to unlink WhatsApp number.');
+                      }
+                    } catch (err: any) {
+                      setError(err.message);
+                    }
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                >
+                  Unlink WhatsApp
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleLinkWhatsApp}>

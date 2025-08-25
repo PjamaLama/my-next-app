@@ -30,12 +30,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'GET') {
       const snap = await metaRef.get();
-      const data: MetaDoc = snap.exists ? (snap.data() as MetaDoc) : { capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: true };
+      const data: MetaDoc = snap.exists ? (snap.data() as MetaDoc) : { capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: false };
       return res.status(200).json({
         capacity: typeof data.capacity === 'number' ? data.capacity : 100,
         testerCount: typeof data.testerCount === 'number' ? data.testerCount : 0,
         open: !!data.open,
-        showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : true,
+        showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : false,
       });
     }
 

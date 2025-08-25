@@ -10,7 +10,7 @@ export default function AdminPage() {
   const { user } = useFirebase();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState<BetaMeta>({ capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: true });
+  const [meta, setMeta] = useState<BetaMeta>({ capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: false });
   const [saving, setSaving] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
@@ -24,7 +24,7 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/meta', { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error(`Failed to load admin meta (${res.status})`);
       const data = await res.json();
-      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open, showWhatsAppMessaging: data.showWhatsAppMessaging ?? true });
+      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open, showWhatsAppMessaging: data.showWhatsAppMessaging ?? false });
     } catch (e: any) {
       setError(e?.message || 'Failed to load');
     } finally {
@@ -60,7 +60,7 @@ export default function AdminPage() {
       });
       if (!res.ok) throw new Error(`Failed to update (${res.status})`);
       const data = await res.json();
-      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open, showWhatsAppMessaging: data.showWhatsAppMessaging ?? true });
+      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open, showWhatsAppMessaging: data.showWhatsAppMessaging ?? false });
     } catch (e: any) {
       setError(e?.message || 'Update failed');
     } finally {
@@ -162,6 +162,9 @@ export default function AdminPage() {
 
         {/* Feedback management */}
         <AdminFeedbackPanel />
+        
+        {/* WhatsApp Claims management */}
+        <AdminWhatsAppClaimsPanel />
       </div>
     </div>
   );
@@ -272,6 +275,142 @@ function AdminFeedbackPanel() {
             </div>)
           )}
           {filtered.length === 0 && <div className="text-white/60 text-sm">No feedback</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminWhatsAppClaimsPanel() {
+  const { user } = useFirebase();
+  const [claims, setClaims] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [deletingClaim, setDeletingClaim] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
+
+  const loadClaims = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/whatsapp-claims', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to load claims');
+      const data = await res.json();
+      setClaims(data.claims || []);
+    } catch (error) {
+      console.error('Failed to load WhatsApp claims:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadClaims();
+  }, [user]);
+
+  const deleteClaim = async (waId: string) => {
+    if (!user) return;
+    setDeletingClaim(waId);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/whatsapp-claims', {
+        method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ waId })
+      });
+      if (!res.ok) throw new Error('Failed to delete claim');
+      await loadClaims(); // Reload the list
+    } catch (error) {
+      console.error('Failed to delete claim:', error);
+    } finally {
+      setDeletingClaim(null);
+    }
+  };
+
+  const runMigration = async () => {
+    if (!user) return;
+    setMigrating(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/migrate-whatsapp-claims', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${token}` 
+        }
+      });
+      if (!res.ok) throw new Error('Failed to run migration');
+      const data = await res.json();
+      console.log('Migration completed:', data);
+      // Reload claims after migration
+      await loadClaims();
+    } catch (error) {
+      console.error('Failed to run migration:', error);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  return (
+    <div className="glass rounded-xl p-5 border border-white/10 mt-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div className="text-white/80 text-sm">WhatsApp Claims</div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runMigration}
+            disabled={migrating}
+            className="rounded bg-amber-600 hover:bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {migrating ? 'Migrating...' : 'Migrate Existing IDs'}
+          </button>
+          <button
+            onClick={loadClaims}
+            disabled={loading}
+            className="rounded bg-white/10 hover:bg-white/20 px-3 py-2 text-sm"
+          >
+            {loading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-white/60 text-sm">Loading WhatsApp claims...</div>
+      ) : (
+        <div className="space-y-3 max-h-[60vh] overflow-auto pr-1">
+          {claims.length === 0 ? (
+            <div className="text-white/60 text-sm">No WhatsApp claims found</div>
+          ) : (
+            claims.map((claim) => (
+              <div key={claim.waId} className="flex items-start justify-between gap-3 border border-white/10 rounded-xl p-3">
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-white">{claim.waId}</div>
+                  <div className="text-xs text-white/60 mt-1">
+                    <span className="px-1.5 py-0.5 rounded bg-white/10 mr-1">{claim.userEmail}</span>
+                    {claim.userDisplayName && (
+                      <span className="px-1.5 py-0.5 rounded bg-white/10 mr-1">{claim.userDisplayName}</span>
+                    )}
+                    {claim.claimedAt && (
+                      <span className="px-1.5 py-0.5 rounded bg-white/10">
+                        Claimed: {new Date(claim.claimedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => deleteClaim(claim.waId)}
+                  disabled={deletingClaim === claim.waId}
+                  className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-xs text-white disabled:opacity-50"
+                >
+                  {deletingClaim === claim.waId ? 'Removing...' : 'Remove Claim'}
+                </button>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

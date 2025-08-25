@@ -9,7 +9,7 @@ interface AdminMeta {
 
 export function useAdminMeta() {
   const { user } = useFirebase();
-  const [meta, setMeta] = useState<AdminMeta>({ showWhatsAppMessaging: true });
+  const [meta, setMeta] = useState<AdminMeta>({ showWhatsAppMessaging: false });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -26,13 +26,13 @@ export function useAdminMeta() {
         if (res.ok) {
           const data = await res.json();
           setMeta({
-            showWhatsAppMessaging: data.showWhatsAppMessaging ?? true
+            showWhatsAppMessaging: data.showWhatsAppMessaging ?? false
           });
         }
       } catch (error) {
         console.error('Failed to fetch admin meta:', error);
-        // Default to showing WhatsApp messaging if fetch fails
-        setMeta({ showWhatsAppMessaging: true });
+        // Default to NOT showing WhatsApp messaging if fetch fails
+        setMeta({ showWhatsAppMessaging: false });
       } finally {
         setLoading(false);
       }
