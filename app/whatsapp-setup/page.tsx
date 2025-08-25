@@ -106,10 +106,13 @@ function WhatsAppSetupContent() {
                 You can now message us to interact with your sheets.
               </p>
               <button
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => {
+                  setIsModalOpen(true);
+                  router.push('/report'); // Navigate to chat page
+                }}
                 className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
               >
-                Manage Spreadsheets
+                Manage Spreadsheets & Go to Chat
               </button>
             </div>
           ) : (
@@ -147,6 +150,14 @@ function WhatsAppSetupContent() {
              <p className="text-xs text-gray-400 text-center mt-4">
                 You need to share your Google Sheet with this service account to give us access. Set permissions to &quot;Editor&quot;.
             </p>
+          </div>
+          <div className="text-center mt-6">
+            <button
+              onClick={() => router.push('/report')}
+              className="text-blue-400 hover:text-blue-300 text-sm"
+            >
+              ← Back to Chat
+            </button>
           </div>
         </div>
       </div>

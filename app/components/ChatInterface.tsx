@@ -760,10 +760,10 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             <div className="text-2xl mb-2">👋</div>
             <h3 className="text-lg font-semibold mb-2">Welcome to SheetyAI!</h3>
             <p className="text-sm">
-              Start a conversation to analyze your spreadsheet data, ask questions, or get insights.
+              Talk to update your sheets! Use voice, type text, or upload files to process and update your Google Sheets.
             </p>
             <div className="mt-4 text-xs text-white/40">
-              Try asking: "What's in my data?" or "Show me a summary of sales"
+              Try: "Add this data to my sales sheet" or "Upload this PDF and extract the information"
             </div>
             {onShowTutorial && (
               <div className="mt-6">
