@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { ChatMessage as ChatMessageType } from '../providers/ChatProvider';
-import { Volume2, ChevronDown, ChevronUp, Move } from 'lucide-react';
+import { useChat } from '../providers/ChatProvider';
+import { Volume2, ChevronDown, ChevronUp, Move, Trash2 } from 'lucide-react';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -23,6 +24,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   speakingMessageId,
   formatTimestamp,
 }) => {
+  const { updateMessageTables } = useChat();
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   const [draggedCell, setDraggedCell] = useState<{tableId: string, rowIndex: number, colIndex: number, value: string} | null>(null);
 
@@ -46,7 +48,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetTableId: string, targetRowIndex: number, targetColIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetTableId: string, targetRowIndex: number, targetColIndex: number) => {
     e.preventDefault();
     
     if (!draggedCell || draggedCell.tableId !== targetTableId || draggedCell.rowIndex !== targetRowIndex) {
@@ -57,24 +59,32 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     const tableIndex = parseInt(targetTableId.split('-')[1]);
     const table = message.tables?.[tableIndex];
     
-    if (table && Array.isArray(table.rows)) {
-      const newRows = [...table.rows];
-      const row = [...newRows[targetRowIndex]];
+    if (table) {
+      // Parse rows if it's a string, otherwise use as array
+      const rows = Array.isArray(table.rows) ? table.rows : 
+                  (typeof table.rows === 'string' ? JSON.parse(table.rows) : []);
       
-      // Swap the values
-      const draggedValue = row[draggedCell.colIndex];
-      row[draggedCell.colIndex] = row[targetColIndex];
-      row[targetColIndex] = draggedValue;
-      
-      newRows[targetRowIndex] = row;
-      
-      // Update the table data locally without triggering edit modal
-      const updatedTable = { ...table, rows: newRows };
-      const updatedTables = [...(message.tables || [])];
-      updatedTables[tableIndex] = updatedTable;
-      
-      // Update the message tables directly
-      message.tables = updatedTables;
+      if (Array.isArray(rows)) {
+        const newRows = [...rows];
+        const row = [...newRows[targetRowIndex]];
+        
+        // Swap the values
+        const draggedValue = row[draggedCell.colIndex];
+        row[draggedCell.colIndex] = row[targetColIndex];
+        row[targetColIndex] = draggedValue;
+        
+        newRows[targetRowIndex] = row;
+        
+        // Create updated tables array
+        const updatedTables = [...(message.tables || [])] as any;
+        updatedTables[tableIndex] = {
+          ...table,
+          rows: newRows
+        };
+        
+        // Update through the provider
+        await updateMessageTables(message.id, updatedTables as any);
+      }
     }
     
     setDraggedCell(null);
@@ -82,6 +92,31 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 
   const handleDragEnd = () => {
     setDraggedCell(null);
+  };
+
+  const handleDeleteRow = async (tableIndex: number, rowIndex: number) => {
+    const table = message.tables?.[tableIndex];
+    if (!table) return;
+
+    // Parse rows if it's a string, otherwise use as array
+    const rows = Array.isArray(table.rows) ? table.rows : 
+                (typeof table.rows === 'string' ? JSON.parse(table.rows) : []);
+    
+    if (Array.isArray(rows)) {
+      const newRows = [...rows];
+      newRows.splice(rowIndex, 1);
+      
+              // Create updated tables array
+        const updatedTables = [...(message.tables || [])] as any;
+        updatedTables[tableIndex] = {
+          ...table,
+          rows: newRows,
+          rowCount: newRows.length
+        };
+      
+      // Update through the provider
+      await updateMessageTables(message.id, updatedTables as any);
+    }
   };
 
   return (
@@ -116,7 +151,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             {message.tables.map((table, index) => {
               const tableId = `${message.id}-${index}`;
               const isExpanded = expandedTables.has(tableId);
-              const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
+              // Handle both string (from Firestore) and array (in-memory) formats
+              const rows = Array.isArray(table.rows) ? table.rows : 
+                          (typeof table.rows === 'string' ? JSON.parse(table.rows) : []);
               const hasMoreRows = rows.length > 10;
               const displayRows = isExpanded ? rows : rows.slice(0, 10);
               
@@ -149,6 +186,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                       {header}
                                     </th>
                                   ))}
+                                  <th className="text-center p-2 font-medium text-white/80 w-12">
+                                    Actions
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -168,6 +208,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                         {String(cell || '')}
                                       </td>
                                     ))}
+                                    <td className="p-2 text-center">
+                                      <button
+                                        onClick={() => handleDeleteRow(index, rowIndex)}
+                                        className="p-1 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
+                                        title="Delete this row"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -248,7 +297,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                const event = new CustomEvent('chat:reject-update', {
+                                const event = new CustomEvent('chat:approve-update', {
                                   detail: {
                                     preview: {
                                       headers: table.headers,
