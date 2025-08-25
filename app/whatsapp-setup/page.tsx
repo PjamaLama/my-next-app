@@ -7,6 +7,7 @@ import { useFirebase } from '../providers/FirebaseProvider';
 import { useServiceAccount } from '../providers/ServiceAccountProvider';
 import SpreadsheetManagerModal from '../components/SpreadsheetManagerModal';
 import ServiceAccountInfo from '../components/ServiceAccountInfo';
+import PhoneNumberInput from '../components/PhoneNumberInput';
 
 function WhatsAppSetupContent() {
   const router = useRouter();
@@ -15,24 +16,10 @@ function WhatsAppSetupContent() {
   const { serviceAccountEmail } = useServiceAccount();
 
   const [waId, setWaId] = useState('');
-  const [countryCode, setCountryCode] = useState('+1'); // Default to +1
   const [isLinked, setIsLinked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const countryCodes = [
-    { code: '+1', name: 'USA/Canada (+1)' },
-    { code: '+44', name: 'UK (+44)' },
-    { code: '+27', name: 'South Africa (+27)' },
-    { code: '+91', name: 'India (+91)' },
-    { code: '+61', name: 'Australia (+61)' },
-    { code: '+55', name: 'Brazil (+55)' },
-    { code: '+49', name: 'Germany (+49)' },
-    { code: '+33', name: 'France (+33)' },
-    { code: '+81', name: 'Japan (+81)' },
-    { code: '+86', name: 'China (+86)' },
-  ];
 
   useEffect(() => {
     if (searchParams) {
@@ -43,6 +30,25 @@ function WhatsAppSetupContent() {
     }
   }, [searchParams]);
 
+  const validateWaId = (id: string) => {
+    // Handle empty or undefined values
+    if (!id || typeof id !== 'string') {
+      return false;
+    }
+    
+    // Trim whitespace
+    const trimmedId = id.trim();
+    
+    // Check if it's empty after trimming
+    if (!trimmedId) {
+      return false;
+    }
+    
+    // E.164 format validation: +[country code][number] (1-15 digits total)
+    // Examples: +1, +44, +1234567890, +44123456789
+    return /^\+[1-9]\d{1,14}$/.test(trimmedId);
+  };
+
   const handleLinkWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -52,15 +58,15 @@ function WhatsAppSetupContent() {
       return;
     }
     if (!validateWaId(waId)) {
-      setError('Invalid format. Please use only digits for the WhatsApp number.');
+      setError('Invalid format. Please enter a valid international phone number.');
       return;
     }
 
     if (!user) {
       // If user is not logged in, start the sign-up/login process.
       // We can't pass state through the redirect, so the user will have to re-enter the number after login.
-      // We need to store the full number (country code + waId) in session storage.
-      sessionStorage.setItem('pending_wa_id', `${countryCode}${waId}`);
+      // We need to store the full number in session storage.
+      sessionStorage.setItem('pending_wa_id', waId);
       joinBeta(); // This will trigger the Google Sign-in flow
       return;
     }
@@ -68,14 +74,13 @@ function WhatsAppSetupContent() {
     setIsSubmitting(true);
     try {
       const token = await user.getIdToken();
-      const fullWaId = `${countryCode}${waId}`;
       const response = await fetch('/api/user/update-wa-id', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ wa_id: fullWaId }),
+        body: JSON.stringify({ wa_id: waId }),
       });
 
       if (!response.ok) {
@@ -99,28 +104,11 @@ function WhatsAppSetupContent() {
       if(user && sessionStorage.getItem('pending_wa_id')) {
           const pendingId = sessionStorage.getItem('pending_wa_id');
           if(pendingId) {
-            if (pendingId.startsWith('+')) {
-              // Attempt to find a matching country code
-              let matchedCode = '';
-              let remainingWaId = pendingId;
-              for (const c of countryCodes) {
-                if (pendingId.startsWith(c.code)) {
-                  matchedCode = c.code;
-                  remainingWaId = pendingId.substring(c.code.length);
-                  break;
-                }
-              }
-              setCountryCode(matchedCode || '+1'); // Fallback to +1 if no match
-              setWaId(remainingWaId);
-            } else {
-              // If no country code, assume it's just the number and use default country code
-              setCountryCode('+1'); // Or your desired default
-              setWaId(pendingId);
-            }
+            setWaId(pendingId);
             sessionStorage.removeItem('pending_wa_id');
           }
       }
-  }, [user, countryCodes])
+  }, [user])
 
   if (loading) {
     return <div className="text-center p-8">Loading...</div>;
@@ -133,7 +121,7 @@ function WhatsAppSetupContent() {
           <h1 className="text-2xl font-bold text-center mb-2">Link Your WhatsApp</h1>
           <p className="text-center text-gray-300 mb-6">
             Connect your WhatsApp to start interacting with your Google Sheets.
-            Format: Country Code + Number (e.g., +1 5551234567).
+            The number will be automatically formatted with the correct country code.
           </p>
 
           {isLinked ? (
@@ -158,29 +146,12 @@ function WhatsAppSetupContent() {
                 <label htmlFor="wa_id" className="block text-sm font-medium text-gray-300 mb-2">
                   WhatsApp Number
                 </label>
-                <div className="flex gap-2">
-                  <select
-                    value={countryCode}
-                    onChange={(e) => setCountryCode(e.target.value)}
-                    className="bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 text-white"
-                  >
-                    {countryCodes.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="tel"
-                    id="wa_id"
-                    value={waId}
-                    onChange={(e) => setWaId(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., 659315189"
-                    required
-                    disabled={isSubmitting}
-                  />
-                </div>
+                <PhoneNumberInput
+                  value={waId}
+                  onChange={(value) => setWaId(value || '')}
+                  placeholder="Enter your WhatsApp number"
+                  disabled={isSubmitting}
+                />
               </div>
 
               {error && <p className="text-red-400 text-sm mb-4">{error}</p>}

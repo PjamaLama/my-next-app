@@ -49,6 +49,42 @@ input, textarea, select {
   border-radius: 8px;
 }
 
+/* Global select element styling for dark theme */
+select {
+  background-color: var(--input-bg) !important;
+  color: var(--input-fg) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+}
+
+select:focus {
+  border-color: rgb(59, 130, 246) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+select option {
+  background-color: var(--input-bg) !important;
+  color: var(--input-fg) !important;
+  padding: 8px 12px;
+}
+
+select option:hover {
+  background-color: #374151 !important;
+}
+
+/* Override browser default styling */
+select::-ms-expand {
+  display: none;
+}
+
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
 @media (max-width: 640px) {
   input, textarea, select {
     font-size: 16px !important; /* Prevent zoom on iOS */
