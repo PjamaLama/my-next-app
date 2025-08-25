@@ -6,7 +6,7 @@ import './PhoneInput.css';
 
 interface PhoneNumberInputProps {
   value: string;
-  onChange: (value: string | undefined) => void;
+  onChange: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
   className?: string;
@@ -43,7 +43,7 @@ const PhoneNumberInput: React.FC<PhoneNumberInputProps> = ({
   };
 
   const handleChange = (newValue: string | undefined) => {
-    // Ensure we always pass a string, even if the library returns undefined
+    // Ensure we always pass a string, never undefined
     const sanitizedValue = newValue || '';
     
     // Log for debugging (remove in production)
@@ -55,19 +55,24 @@ const PhoneNumberInput: React.FC<PhoneNumberInputProps> = ({
       });
     }
     
+    // Always call onChange with a string value
     onChange(sanitizedValue);
   };
 
   return (
-    <PhoneInput
-      international
-      defaultCountry="US"
-      value={value}
-      onChange={handleChange}
-      disabled={disabled}
-      placeholder={placeholder}
-      className={`${getSizeClasses()} ${getStateClasses()} ${className}`.trim()}
-    />
+    <div className="relative">
+      <PhoneInput
+        international
+        defaultCountry="US"
+        value={value}
+        onChange={handleChange}
+        disabled={disabled}
+        placeholder={placeholder}
+        className={`${getSizeClasses()} ${getStateClasses()} ${className}`.trim()}
+        countrySelectProps={{ unicodeFlags: true }}
+        displayInitialValueAsLocalNumber={false}
+      />
+    </div>
   );
 };
 

@@ -7,7 +7,7 @@
   border-radius: 0.75rem;
   color: rgba(255, 255, 255, 0.9);
   transition: all 0.2s ease;
-  overflow: hidden;
+  /* Remove overflow hidden to prevent country dropdown clipping */
   min-height: 48px;
   position: relative;
 }
@@ -54,12 +54,13 @@
   background: transparent;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0.75rem;
-  min-width: 60px;
-  max-width: 70px;
+  min-width: 75px; /* Reduced from 90px to give more space to phone number input */
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
   flex-shrink: 0;
+  /* Simplify - no complex overflow handling */
+  overflow: visible;
 }
 
 .PhoneInputCountry:hover {
@@ -73,42 +74,36 @@
 .PhoneInputCountrySelect {
   background: transparent;
   border: none;
-  color: transparent !important;
   font-size: 0.875rem;
   line-height: 1.25rem;
   outline: none;
   cursor: pointer;
   padding: 0;
   margin: 0;
-  min-width: 60px;
-  max-width: 70px;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
+  min-width: 75px; /* Reduced from 90px to match container */
   font-weight: 500;
-  text-overflow: ellipsis;
-  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+  /* Simplify - just display text directly */
   white-space: nowrap;
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+  overflow: visible;
+  position: relative;
+  /* Remove any complex positioning that might cause overflow */
+  width: auto;
+  max-width: none;
 }
 
 .PhoneInputCountrySelect:focus {
   outline: none;
 }
 
-/* Enable search functionality */
+/* Enable search functionality - simplified */
 .PhoneInputCountrySelect:focus,
 .PhoneInputCountry:hover .PhoneInputCountrySelect {
-  opacity: 1;
-  pointer-events: auto;
-  position: static;
   background: transparent;
-  color: rgba(255, 255, 255, 0.9) !important;
   width: auto;
-  min-width: 60px;
+  min-width: 75px; /* Reduced from 90px */
   max-width: none;
+  /* Keep it simple - no complex width calculations */
 }
 
 .PhoneInputCountrySelectArrow {
@@ -144,6 +139,9 @@
   font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.15s ease;
+  /* Ensure option text is fully visible */
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .PhoneInputCountrySelect option:hover {
@@ -165,6 +163,14 @@
   margin: 0;
   width: auto;
   min-width: 120px;
+  /* Use absolute positioning to prevent overlap */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  /* Ensure it doesn't get clipped */
+  white-space: nowrap;
+  overflow: visible;
 }
 
 /* Disabled state */
@@ -228,17 +234,25 @@
 }
 
 .PhoneInput.text-sm .PhoneInputCountry {
-  min-width: 56px;
-  max-width: 66px;
+  min-width: 70px; /* Reduced to give more space to phone number */
+  max-width: none;
+  /* Simplify - no complex overflow handling */
+  overflow: visible;
 }
 
 .PhoneInput.text-sm .PhoneInputCountrySelect {
-  min-width: 56px;
-  max-width: 66px;
+  min-width: 70px; /* Reduced to give more space to phone number */
+  max-width: none;
+  width: auto;
 }
 
 .PhoneInput.text-sm .PhoneInputCountrySelect:focus {
   min-width: 100px;
+  /* Use absolute positioning to prevent overlap */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
 }
 
 .PhoneInput.text-sm .PhoneInputCountryIcon {
@@ -261,17 +275,25 @@
 }
 
 .PhoneInput.text-lg .PhoneInputCountry {
-  min-width: 64px;
-  max-width: 74px;
+  min-width: 85px; /* Reduced to give more space to phone number */
+  max-width: none;
+  /* Simplify - no complex overflow handling */
+  overflow: visible;
 }
 
 .PhoneInput.text-lg .PhoneInputCountrySelect {
-  min-width: 64px;
-  max-width: 74px;
+  min-width: 85px; /* Reduced to give more space to phone number */
+  max-width: none;
+  width: auto;
 }
 
 .PhoneInput.text-lg .PhoneInputCountrySelect:focus {
   min-width: 140px;
+  /* Use absolute positioning to prevent overlap */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
 }
 
 .PhoneInput.text-lg .PhoneInputCountryIcon {
@@ -292,8 +314,10 @@
   
   .PhoneInputCountry {
     padding: 0.625rem;
-    min-width: 56px;
-    max-width: 66px;
+    min-width: 70px; /* Reduced to give more space to phone number */
+    max-width: none;
+    /* Simplify - no complex overflow handling */
+    overflow: visible;
   }
   
   .PhoneInputCountryIcon {
@@ -302,12 +326,18 @@
   }
   
   .PhoneInputCountrySelect {
-    min-width: 56px;
-    max-width: 66px;
+    min-width: 70px; /* Reduced to give more space to phone number */
+    max-width: none;
+    width: auto;
   }
   
   .PhoneInputCountrySelect:focus {
     min-width: 100px;
+    /* Use absolute positioning to prevent overlap */
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1000;
   }
 }
 

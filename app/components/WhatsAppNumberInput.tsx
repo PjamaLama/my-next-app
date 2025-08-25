@@ -19,7 +19,9 @@ const WhatsAppNumberInput: React.FC<WhatsAppNumberInputProps> = ({
   return (
     <PhoneNumberInput
       value={waId}
-      onChange={(value) => setWaId(value || '')}
+      onChange={(value) => {
+        setWaId(value || '');
+      }}
       disabled={disabled}
       placeholder={placeholder}
     />
