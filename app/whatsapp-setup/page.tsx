@@ -15,10 +15,24 @@ function WhatsAppSetupContent() {
   const { serviceAccountEmail } = useServiceAccount();
 
   const [waId, setWaId] = useState('');
+  const [countryCode, setCountryCode] = useState('+1'); // Default to +1
   const [isLinked, setIsLinked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const countryCodes = [
+    { code: '+1', name: 'USA/Canada (+1)' },
+    { code: '+44', name: 'UK (+44)' },
+    { code: '+27', name: 'South Africa (+27)' },
+    { code: '+91', name: 'India (+91)' },
+    { code: '+61', name: 'Australia (+61)' },
+    { code: '+55', name: 'Brazil (+55)' },
+    { code: '+49', name: 'Germany (+49)' },
+    { code: '+33', name: 'France (+33)' },
+    { code: '+81', name: 'Japan (+81)' },
+    { code: '+86', name: 'China (+86)' },
+  ];
 
   useEffect(() => {
     if (searchParams) {
@@ -33,16 +47,20 @@ function WhatsAppSetupContent() {
     e.preventDefault();
     setError(null);
 
-    if (!/^\d{10,15}$/.test(waId)) {
-      setError('Please enter a valid WhatsApp number (10-15 digits).');
+    if (!waId.trim()) {
+      setError('WhatsApp number cannot be empty.');
+      return;
+    }
+    if (!validateWaId(waId)) {
+      setError('Invalid format. Please use only digits for the WhatsApp number.');
       return;
     }
 
     if (!user) {
       // If user is not logged in, start the sign-up/login process.
       // We can't pass state through the redirect, so the user will have to re-enter the number after login.
-      // A better UX would involve storing the wa_id in session storage and retrieving it post-login.
-      sessionStorage.setItem('pending_wa_id', waId);
+      // We need to store the full number (country code + waId) in session storage.
+      sessionStorage.setItem('pending_wa_id', `${countryCode}${waId}`);
       joinBeta(); // This will trigger the Google Sign-in flow
       return;
     }
@@ -50,13 +68,14 @@ function WhatsAppSetupContent() {
     setIsSubmitting(true);
     try {
       const token = await user.getIdToken();
+      const fullWaId = `${countryCode}${waId}`;
       const response = await fetch('/api/user/update-wa-id', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ wa_id: waId }),
+        body: JSON.stringify({ wa_id: fullWaId }),
       });
 
       if (!response.ok) {
@@ -80,11 +99,28 @@ function WhatsAppSetupContent() {
       if(user && sessionStorage.getItem('pending_wa_id')) {
           const pendingId = sessionStorage.getItem('pending_wa_id');
           if(pendingId) {
-            setWaId(pendingId);
+            if (pendingId.startsWith('+')) {
+              // Attempt to find a matching country code
+              let matchedCode = '';
+              let remainingWaId = pendingId;
+              for (const c of countryCodes) {
+                if (pendingId.startsWith(c.code)) {
+                  matchedCode = c.code;
+                  remainingWaId = pendingId.substring(c.code.length);
+                  break;
+                }
+              }
+              setCountryCode(matchedCode || '+1'); // Fallback to +1 if no match
+              setWaId(remainingWaId);
+            } else {
+              // If no country code, assume it's just the number and use default country code
+              setCountryCode('+1'); // Or your desired default
+              setWaId(pendingId);
+            }
             sessionStorage.removeItem('pending_wa_id');
           }
       }
-  }, [user])
+  }, [user, countryCodes])
 
   if (loading) {
     return <div className="text-center p-8">Loading...</div>;
@@ -97,6 +133,7 @@ function WhatsAppSetupContent() {
           <h1 className="text-2xl font-bold text-center mb-2">Link Your WhatsApp</h1>
           <p className="text-center text-gray-300 mb-6">
             Connect your WhatsApp to start interacting with your Google Sheets.
+            Format: Country Code + Number (e.g., +1 5551234567).
           </p>
 
           {isLinked ? (
@@ -121,16 +158,29 @@ function WhatsAppSetupContent() {
                 <label htmlFor="wa_id" className="block text-sm font-medium text-gray-300 mb-2">
                   WhatsApp Number
                 </label>
-                <input
-                  type="tel"
-                  id="wa_id"
-                  value={waId}
-                  onChange={(e) => setWaId(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 15551234567"
-                  required
-                  disabled={isSubmitting}
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 text-white"
+                  >
+                    {countryCodes.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    id="wa_id"
+                    value={waId}
+                    onChange={(e) => setWaId(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 659315189"
+                    required
+                    disabled={isSubmitting}
+                  />
+                </div>
               </div>
 
               {error && <p className="text-red-400 text-sm mb-4">{error}</p>}

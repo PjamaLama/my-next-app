@@ -1011,7 +1011,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         </form>
         {waId && (
           <div className="text-center text-xs text-gray-400 mt-4">
-            WhatsApp linked: <span className="font-semibold">{waId}</span>. Start messaging at <span className="font-semibold">+1-555-SHEETYAI</span>.
+            WhatsApp linked: <span className="font-semibold">{waId}</span>. Start messaging at <a href="https://wa.me/27615258918" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:underline">+27 61 525 8918</a>.
           </div>
         )}
       </div>

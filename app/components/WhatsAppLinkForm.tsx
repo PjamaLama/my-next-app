@@ -9,10 +9,24 @@ const WhatsAppLinkForm = () => {
   const { user } = useFirebase();
   const { waId: initialWaId, setWaId: setContextWaId } = useServiceAccount();
   const [waId, setWaId] = useState(initialWaId || '');
+  const [countryCode, setCountryCode] = useState('+1'); // Default to +1
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const searchParams = useSearchParams();
+
+  const countryCodes = [
+    { code: '+1', name: 'USA/Canada (+1)' },
+    { code: '+44', name: 'UK (+44)' },
+    { code: '+27', name: 'South Africa (+27)' },
+    { code: '+91', name: 'India (+91)' },
+    { code: '+61', name: 'Australia (+61)' },
+    { code: '+55', name: 'Brazil (+55)' },
+    { code: '+49', name: 'Germany (+49)' },
+    { code: '+33', name: 'France (+33)' },
+    { code: '+81', name: 'Japan (+81)' },
+    { code: '+86', name: 'China (+86)' },
+  ];
 
   useEffect(() => {
     const waIdFromQuery = searchParams?.get('wa_id');
@@ -26,7 +40,7 @@ const WhatsAppLinkForm = () => {
   }, [initialWaId]);
 
   const validateWaId = (id: string) => {
-    return /^\d{10,15}$/.test(id);
+    return /^\d+$/.test(id); // Only digits for the local number part
   };
 
   const handleSave = async () => {
@@ -34,8 +48,12 @@ const WhatsAppLinkForm = () => {
       setError('You must be logged in to save your WhatsApp number.');
       return;
     }
+    if (!waId.trim()) {
+      setError('WhatsApp number cannot be empty.');
+      return;
+    }
     if (!validateWaId(waId)) {
-      setError('Invalid format. Please use 10-15 digits without country code.');
+      setError('Invalid format. Please use only digits for the WhatsApp number.');
       return;
     }
     setError('');
@@ -44,13 +62,14 @@ const WhatsAppLinkForm = () => {
 
     try {
       const token = await user.getIdToken();
+      const fullWaId = `${countryCode}${waId}`;
       const response = await fetch('/api/user/update-wa-id', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ wa_id: waId }),
+        body: JSON.stringify({ wa_id: fullWaId }),
       });
 
       if (response.ok) {
@@ -74,15 +93,26 @@ const WhatsAppLinkForm = () => {
         <h3 className="text-sm font-medium text-white">Link WhatsApp</h3>
         <p className="text-xs text-white/70">
           Enter your WhatsApp number to link it with SheetyAI for messaging.
-          Format: 1234567890 (no + or country code).
+          Format: Country Code + Number (e.g., +1 5551234567).
         </p>
-        <div className="relative">
+        <div className="flex gap-2">
+          <select
+            value={countryCode}
+            onChange={(e) => setCountryCode(e.target.value)}
+            className="bg-white/5 rounded-lg border border-white/10 p-2 text-white/90 focus:ring-blue-500 focus:border-blue-500"
+          >
+            {countryCodes.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </select>
           <input
-            type="text"
+            type="tel"
             value={waId}
             onChange={(e) => setWaId(e.target.value)}
-            placeholder="e.g., 27659315189"
-            className="bg-white/5 rounded-lg border border-white/10 p-2 w-full text-white/90"
+            placeholder="e.g., 659315189"
+            className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white/90 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
         {error && <p className="text-xs text-red-400">{error}</p>}
