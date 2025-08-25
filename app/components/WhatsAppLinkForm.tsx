@@ -13,6 +13,8 @@ const WhatsAppLinkForm = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isLinked, setIsLinked] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -25,6 +27,45 @@ const WhatsAppLinkForm = () => {
   useEffect(() => {
     setWaId(initialWaId || '');
   }, [initialWaId]);
+
+  // Check if user already has a linked WhatsApp number
+  const checkUserWhatsAppStatus = async () => {
+    if (!user) {
+      setIsLoadingProfile(false);
+      return;
+    }
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/user/profile', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        if (userData.wa_id) {
+          setWaId(userData.wa_id);
+          setContextWaId(userData.wa_id);
+          setIsLinked(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
+
+  // Check user's WhatsApp status when user changes
+  useEffect(() => {
+    if (user) {
+      checkUserWhatsAppStatus();
+    } else {
+      setIsLoadingProfile(false);
+    }
+  }, [user]);
 
   const validateWaId = (id: string) => {
     // Handle empty or undefined values
@@ -81,6 +122,7 @@ const WhatsAppLinkForm = () => {
       if (response.ok) {
         setContextWaId(waId.trim());
         setSuccess('WhatsApp number saved successfully!');
+        setIsLinked(true);
       } else {
         const data = await response.json();
         setError(data.error || 'Failed to save WhatsApp number.');
@@ -92,6 +134,65 @@ const WhatsAppLinkForm = () => {
       setTimeout(() => setSuccess(''), 3000);
     }
   };
+
+  if (isLoadingProfile) {
+    return (
+      <div className="glass rounded-xl border border-white/10 p-4 mb-4">
+        <div className="text-center text-white/70">Loading...</div>
+      </div>
+    );
+  }
+
+  if (isLinked) {
+    return (
+      <div className="glass rounded-xl border border-white/10 p-4 mb-4">
+        <div className="flex flex-col gap-3">
+          <div className="text-center">
+            <div className="text-green-400 text-2xl mb-2">✓</div>
+            <h3 className="text-lg font-semibold text-white mb-2">WhatsApp Linked Successfully!</h3>
+            <p className="text-sm text-white/70 mb-4">
+              Your WhatsApp number <span className="font-semibold">{waId}</span> is now linked to your account.
+            </p>
+            <button
+              onClick={async () => {
+                if (!user) {
+                  setError('You must be logged in to unlink your WhatsApp number.');
+                  return;
+                }
+                
+                try {
+                  const token = await user.getIdToken();
+                  const response = await fetch('/api/user/unlink-wa-id', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${token}`,
+                    },
+                  });
+
+                  if (response.ok) {
+                    setWaId('');
+                    setContextWaId('');
+                    setIsLinked(false);
+                    setSuccess('WhatsApp number unlinked successfully!');
+                    setTimeout(() => setSuccess(''), 3000);
+                  } else {
+                    const data = await response.json();
+                    setError(data.error || 'Failed to unlink WhatsApp number.');
+                  }
+                } catch (err) {
+                  setError('An unexpected error occurred while unlinking.');
+                }
+              }}
+              className="bg-red-600/20 border border-red-500/30 text-red-300 hover:bg-red-600/30 rounded-lg p-2 text-xs mx-auto"
+            >
+              Unlink WhatsApp
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="glass rounded-xl border border-white/10 p-4 mb-4">
@@ -116,43 +217,6 @@ const WhatsAppLinkForm = () => {
         >
           {isSaving ? 'Saving...' : 'Save WhatsApp Number'}
         </button>
-        
-        {waId && (
-          <button
-            onClick={async () => {
-              if (!user) {
-                setError('You must be logged in to unlink your WhatsApp number.');
-                return;
-              }
-              
-              try {
-                const token = await user.getIdToken();
-                const response = await fetch('/api/user/unlink-wa-id', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                  },
-                });
-
-                if (response.ok) {
-                  setWaId('');
-                  setContextWaId('');
-                  setSuccess('WhatsApp number unlinked successfully!');
-                  setTimeout(() => setSuccess(''), 3000);
-                } else {
-                  const data = await response.json();
-                  setError(data.error || 'Failed to unlink WhatsApp number.');
-                }
-              } catch (err) {
-                setError('An unexpected error occurred while unlinking.');
-              }
-            }}
-            className="bg-red-600/20 border border-red-500/30 text-red-300 hover:bg-red-600/30 rounded-lg p-2 text-xs"
-          >
-            Unlink WhatsApp
-          </button>
-        )}
       </div>
     </div>
   );
