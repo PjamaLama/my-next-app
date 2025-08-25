@@ -73,6 +73,30 @@ class GeminiFileProcessor implements UnifiedFileProcessor {
   }
 
   async extractText(file: any): Promise<string> {
+    if (file.firebaseUrl) {
+      // Fetch file from Firebase Storage
+      try {
+        const response = await fetch(file.firebaseUrl);
+        if (!response.ok) throw new Error(`Failed to fetch file: ${response.statusText}`);
+        
+        if (file.mimeType === 'application/pdf') {
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          const pdf = (await import('pdf-parse')).default;
+          const pdfData = await pdf(buffer);
+          return pdfData.text || 'No text could be extracted from the PDF';
+        } else if (file.mimeType.startsWith('image/')) {
+          // For images, return placeholder - Gemini Vision will handle the URL
+          return `Image: ${file.name} - Ready for Gemini Vision analysis`;
+        } else {
+          return await response.text();
+        }
+      } catch (error) {
+        console.error(`Failed to fetch file from Firebase: ${error}`);
+        throw error;
+      }
+    }
+    
     // Handle different file types with unified extraction logic
     if (file.mimeType === 'application/pdf') {
       // For PDFs, use already extracted text from the main processing loop
@@ -153,18 +177,12 @@ ${basePrompt}`;
     try {
       let result;
       
-      if (file.mimeType.startsWith('image/') && file.data) {
-        // Use Gemini Vision API for images
-        console.log(`🖼️ [UNIFIED PROCESSOR] Using Gemini Vision for ${file.name}`);
+      if (file.mimeType.startsWith('image/') && file.firebaseUrl) {
+        // Use Gemini Vision API with Firebase URL
+        console.log(`🖼️ [UNIFIED PROCESSOR] Using Gemini Vision with Firebase URL for ${file.name}`);
         
-        const imagePart = {
-          inlineData: {
-            data: file.data,
-            mimeType: file.mimeType,
-          },
-        };
-        
-        result = await this.model.generateContent([prompt, imagePart]);
+        // Gemini can handle URLs directly for images
+        result = await this.model.generateContent([prompt, file.firebaseUrl]);
       } else {
         // Use Gemini Text API for text-based files
         console.log(`📝 [UNIFIED PROCESSOR] Using Gemini Text for ${file.name}`);
@@ -189,7 +207,7 @@ ${basePrompt}`;
       
     } catch (error) {
       console.error(`❌ [UNIFIED PROCESSOR] Gemini API call failed for ${file.name}:`, error);
-      throw new Error(`Gemini processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
     }
   }
 
@@ -222,10 +240,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { message, context, conversationHistory, images } = req.body || {};
+    // Replace the images processing with Firebase URL processing
+    const { message, context, conversationHistory, fileUrls } = req.body || {};
 
-    if ((!message || message === '') && (!images || images.length === 0)) {
-      return res.status(400).json({ error: 'Message or images are required' });
+    if ((!message || message === '') && (!fileUrls || fileUrls.length === 0)) {
+      return res.status(400).json({ error: 'Message or files are required' });
     }
 
     // Send headers + one sample row per sheet to provide context without duplication
@@ -287,91 +306,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('❌ [N8N] No context.sheetData received');
     }
 
-    // Process images and files into a format suitable for N8N
-    // Extract text from PDFs using pdf-parse before sending to N8N
+    // Process Firebase URLs instead of base64 data
     const extractedFileContents = [];
-    
-    if (images && images.length > 0) {
-      console.log(`🔍 [BACKEND] Processing ${images.length} files from frontend`);
+
+    if (fileUrls && fileUrls.length > 0) {
+      console.log(`🔍 [BACKEND] Processing ${fileUrls.length} files from Firebase Storage`);
       
-      for (const img of images) {
-        console.log(`🔍 [BACKEND] Processing file: ${img.name} (${img.mimeType})`, {
-          hasData: !!img.data,
-          dataLength: img.data ? img.data.length : 0,
-          hasFileData: !!img.extractedData?.fileData,
-          fileDataLength: img.extractedData?.fileData ? img.extractedData.fileData.length : 0,
-          extractedDataType: img.extractedData?.type,
-          extractedTextLength: img.extractedData?.textLength || 0
-        });
+      for (const fileInfo of fileUrls) {
+        console.log(`🔍 [BACKEND] Processing file: ${fileInfo.name} (${fileInfo.mimeType})`);
         
         let processedFile = {
-          type: img.mimeType,
-          name: img.name,
-          mimeType: img.mimeType, // Add mimeType for Gemini processing
-          data: img.data, // Include the raw data for unified processor
-          extractedData: img.extractedData || {
-            type: 'metadata',
-            fileName: img.name,
-            mimeType: img.mimeType
+          type: fileInfo.mimeType,
+          name: fileInfo.name,
+          mimeType: fileInfo.mimeType,
+          // Store Firebase URL for Gemini to fetch
+          firebaseUrl: fileInfo.downloadURL,
+          size: fileInfo.size,
+          extractedData: {
+            type: 'firebase_storage',
+            fileName: fileInfo.name,
+            mimeType: fileInfo.mimeType,
+            fileSize: fileInfo.size,
+            firebaseUrl: fileInfo.downloadURL,
+            extractedText: '',
+            textLength: 0,
+            hasTextContent: false,
+            geminiStructuredData: null as any,
+            geminiProcessed: false,
+            geminiError: null
           }
         };
-
-        // If this is a PDF with file data, extract text using pdf-parse
-        if (img.mimeType === 'application/pdf' && (img.data || img.extractedData?.fileData)) {
-          try {
-            console.log(`🔍 [PDF] Extracting text from PDF: ${img.name}`);
-            const pdf = (await import('pdf-parse')).default;
-            const pdfBase64Data = img.data || img.extractedData?.fileData;
-            const buffer = Buffer.from(pdfBase64Data, 'base64');
-            const pdfData = await pdf(buffer);
-            const extractedText = pdfData.text || 'No text could be extracted from the PDF';
-            
-            console.log(`🔍 [PDF] Successfully extracted ${extractedText.length} characters from PDF`);
-            
-            processedFile.extractedData = {
-              type: 'document',
-              format: 'pdf',
-              fileName: img.name,
-              fileSize: img.extractedData?.fileSize || 0,
-              mimeType: img.mimeType,
-              extractedText: extractedText,
-              textLength: extractedText.length,
-              hasTextContent: extractedText.length > 0,
-              needsBackendProcessing: false, // Text already extracted
-              pageCount: pdfData.numpages || 0,
-              isScannedDocument: extractedText.length < 50 // Rough heuristic for scanned docs
-            };
-            
-            // Also store the raw data for the unified processor
-            processedFile.data = img.data;
-            
-          } catch (pdfError) {
-            console.error(`❌ [PDF] Failed to extract text from PDF ${img.name}:`, pdfError);
-            // Keep the original extractedData but mark as needing backend processing
-            processedFile.extractedData.needsBackendProcessing = true;
-            processedFile.extractedData.extractionError = pdfError instanceof Error ? pdfError.message : 'Unknown error';
-          }
-        } else if (img.mimeType === 'application/pdf') {
-          console.log(`❌ [PDF] PDF ${img.name} missing file data - cannot extract text`);
-        }
-        
-        // If this is an image, prepare for Gemini Vision processing
-        if (img.mimeType.startsWith('image/') && (img.data || img.extractedData?.fileData)) {
-          console.log(`🖼️ [IMAGE] Preparing image ${img.name} for Gemini Vision analysis`);
-          processedFile.extractedData = {
-            type: 'image',
-            format: img.mimeType.split('/')[1],
-            fileName: img.name,
-            fileSize: img.extractedData?.fileSize || 0,
-            mimeType: img.mimeType,
-            extractedText: `Image: ${img.name} - Ready for Gemini Vision analysis`,
-            textLength: 0,
-            hasTextContent: false, // Will be determined by Gemini Vision
-            needsBackendProcessing: true, // Images need Gemini Vision processing
-            imageData: img.data || img.extractedData?.fileData, // Store base64 for Gemini Vision API
-            note: 'Image ready for Gemini Vision analysis'
-          };
-        }
 
         extractedFileContents.push(processedFile);
       }
@@ -564,6 +528,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
     if (!n8nWebhookUrl) {
       console.error('❌ [N8N] N8N_WEBHOOK_URL is not configured in the environment.');
+      
+      // Fallback: Return basic processing results without N8N
+      if (extractedFileContents.length > 0) {
+        console.log('🔄 [FALLBACK] N8N not available, returning basic file processing results');
+        
+        const basicResults = extractedFileContents.map(file => ({
+          fileName: file.name,
+          mimeType: file.mimeType,
+          processed: file.extractedData?.geminiProcessed || false,
+          hasStructuredData: !!file.extractedData?.geminiStructuredData,
+          dataLength: file.extractedData?.geminiStructuredData ? 
+            (Array.isArray(file.extractedData.geminiStructuredData) ? file.extractedData.geminiStructuredData.length : 'N/A') : 0
+        }));
+        
+        return res.status(200).json({
+          intent: 'extraction',
+          reasoning: `Successfully processed ${extractedFileContents.length} file(s) with basic AI analysis. The advanced AI service is currently unavailable.`,
+          tables: basicResults.map(result => ({
+            title: `File Analysis: ${result.fileName}`,
+            headers: ['Property', 'Value'],
+            rows: [
+              ['File Name', result.fileName],
+              ['Type', result.mimeType],
+              ['Processed', result.processed ? 'Yes' : 'No'],
+              ['Has Structured Data', result.hasStructuredData ? 'Yes' : 'No'],
+              ['Data Length', result.dataLength]
+            ],
+            summary: `Basic analysis completed for ${result.fileName}`,
+            meta: {
+              sheetName: '',
+              operations: { add: 0, update: 0 },
+              requiresConfirmation: false,
+              isDryRun: true
+            }
+          })),
+          clarifyQuestion: 'The advanced AI service is currently unavailable. Would you like to try again later?',
+          insights: [
+            'Files were processed with basic AI analysis.',
+            'Advanced features like data insertion require the AI service to be available.',
+            'Try again in a few minutes when the service is restored.'
+          ],
+        });
+      }
+      
       throw new Error('N8N webhook service is not configured.');
     }
 
@@ -581,19 +589,84 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const startTime = Date.now();
     console.log(`⏱️ [N8N] Starting webhook call at: ${new Date(startTime).toISOString()}`);
 
-    // Call the N8N webhook
-    // Note: Using 60-second timeout to prevent nginx gateway timeouts (504 errors)
-    // Most N8N workflows should complete within this timeframe
-    const n8nResponse = await fetch(n8nWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(webhookData, null, 0), // Remove redundant fields and minify JSON to lighten payload
-      signal: AbortSignal.timeout(60000), // Reduce timeout to 1 minute to prevent nginx gateway timeouts
-    });
+    // Call the N8N webhook with retry mechanism and better timeout handling
+    // Note: Using 90-second timeout to match N8N configuration
+    // This accounts for batch mode, queuing, and production network latency
+    let n8nResponse;
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        console.log(`🔄 [N8N] Attempt ${retryCount + 1} of ${maxRetries + 1}`);
+        
+        n8nResponse = await fetch(n8nWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(webhookData, null, 0), // Remove redundant fields and minify JSON to lighten payload
+          signal: AbortSignal.timeout(90000), // 90 seconds to match N8N configuration
+        });
+        
+        // If we get here, the request was successful
+        break;
+        
+      } catch (fetchError) {
+        retryCount++;
+        console.error(`❌ [N8N] Fetch attempt ${retryCount} failed:`, fetchError);
+        
+        // Handle specific timeout errors
+        if (fetchError instanceof Error && fetchError.name === 'TimeoutError') {
+                     if (retryCount > maxRetries) {
+             return res.status(200).json({
+               reasoning: 'The AI service is taking longer than expected to process your request. This might be due to the complexity of the files or high server load.',
+               clarifyQuestion: 'Would you like to try again with a simpler request, or wait a moment and try again?',
+               insights: [
+                 'Request timed out after 90 seconds on all retry attempts. This is common with complex file processing.',
+                 'Try breaking down your request into smaller parts or wait a few minutes before retrying.',
+                 'If the problem persists, the AI service might be experiencing high load.'
+               ],
+             });
+           }
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        
+        // Handle network errors
+        if (fetchError instanceof Error && fetchError.message.includes('fetch failed')) {
+          if (retryCount > maxRetries) {
+            return res.status(200).json({
+              reasoning: 'Unable to connect to the AI service after multiple attempts. This might be due to a temporary network issue or the service being unavailable.',
+              clarifyQuestion: 'Please check your internet connection and try again. If the problem persists, the AI service might be temporarily unavailable.',
+              insights: [
+                'Network connection to the AI service failed on all retry attempts.',
+                'This could be due to internet connectivity issues or the service being down.',
+                'Try again in a few minutes or contact support if the problem continues.'
+              ],
+            });
+          }
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        
+        // For other errors, don't retry
+        throw fetchError;
+      }
+    }
 
     const endTime = Date.now();
     const duration = endTime - startTime;
     console.log(`⏱️ [N8N] Webhook call completed in: ${duration}ms (${Math.round(duration/1000)}s)`);
+
+    // Ensure n8nResponse is defined (should always be true after successful fetch)
+    if (!n8nResponse) {
+      console.error('❌ [N8N] n8nResponse is undefined after successful fetch');
+      return res.status(500).json({
+        error: 'Unexpected error: Response object is undefined',
+        details: 'This should not happen. Please try again or contact support.'
+      });
+    }
 
     if (!n8nResponse.ok) {
       const errorBody = await n8nResponse.text();
@@ -721,10 +794,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({
         reasoning: 'The AI service is taking longer than expected to process your request. This might be due to the complexity of the files or high server load.',
         clarifyQuestion: 'Would you like to try again with a simpler request, or wait a moment and try again?',
+                 insights: [
+           'Request timed out after 90 seconds. This is common with complex file processing.',
+           'Try breaking down your request into smaller parts or wait a few minutes before retrying.',
+           'If the problem persists, the AI service might be experiencing high load.'
+         ],
+      });
+    }
+    
+    // Handle fetch failed errors (network issues)
+    if (error instanceof Error && error.message.includes('fetch failed')) {
+      return res.status(200).json({
+        reasoning: 'Unable to connect to the AI service. This might be due to a temporary network issue or the service being unavailable.',
+        clarifyQuestion: 'Please check your internet connection and try again. If the problem persists, the AI service might be temporarily unavailable.',
         insights: [
-          'Request timed out after 1 minute. This is common with complex file processing.',
-          'Try breaking down your request into smaller parts or wait a few minutes before retrying.',
-          'If the problem persists, the AI service might be experiencing high load.'
+          'Network connection to the AI service failed.',
+          'This could be due to internet connectivity issues or the service being down.',
+          'Try again in a few minutes or contact support if the problem continues.'
         ],
       });
     }

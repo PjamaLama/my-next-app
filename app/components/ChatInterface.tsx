@@ -8,6 +8,7 @@ import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 import ChatMessage from './ChatMessage';
 import VoiceRecorder from './VoiceRecorder';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 interface ChatInterfaceProps {
   className?: string;
@@ -85,6 +86,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const firebaseFileUrlsRef = useRef<any[]>([]);
   
   // Handle transcript changes from voice recorder
   const handleTranscriptChange = useCallback((transcript: string) => {
@@ -467,6 +469,48 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     setIsSending(true);
     setIsProcessingFiles(true);
 
+    // Upload files to Firebase Storage first
+    firebaseFileUrlsRef.current = [];
+    if (uploadedFiles.length > 0) {
+      try {
+        const storage = getStorage();
+        for (const file of uploadedFiles) {
+          // Create a unique filename with timestamp
+          const timestamp = Date.now();
+          const fileName = `${timestamp}_${file.name}`;
+          const storageRef = ref(storage, `temp-uploads/${fileName}`);
+          
+          // Convert base64 to blob for upload
+          if (file.fileData) {
+            const base64Response = await fetch(`data:${file.mimeType};base64,${file.fileData}`);
+            const blob = await base64Response.blob();
+            
+            // Upload to Firebase Storage
+            await uploadBytes(storageRef, blob);
+            
+            // Get download URL
+            const downloadURL = await getDownloadURL(storageRef);
+            
+            firebaseFileUrlsRef.current.push({
+              name: file.name,
+              mimeType: file.mimeType,
+              size: file.size,
+              downloadURL: downloadURL
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to upload files to Firebase:', error);
+        await addMessage({
+          role: 'assistant',
+          content: 'Failed to upload files. Please try again.',
+        });
+        setIsSending(false);
+        setIsProcessingFiles(false);
+        return;
+      }
+    }
+
     const structuredExtracts = uploadedFiles.map(file => {
       const fileData: any = {
         name: file.name,
@@ -537,23 +581,23 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         });
       }
 
-      const requestBody = {
-        message,
-        context: {
-          sheetNames: selectedSheetNames || [],
-          sheetData: sheetDataCache || {}
-        },
-        // Truncate conversation history for performance and to reduce token count.
-        // Filter out any processing messages to ensure clean conversation context
-        conversationHistory: chatMessages
-          .filter(m => !m.content.includes('🔄 Processing'))
-          .slice(-8)
-          .map(m => ({
-            role: m.role,
-            content: m.content
-          })),
-        images: structuredExtracts.length > 0 ? structuredExtracts : undefined,
-      };
+             const requestBody = {
+         message,
+         context: {
+           sheetNames: selectedSheetNames || [],
+           sheetData: sheetDataCache || {}
+         },
+         // Truncate conversation history for performance and to reduce token count.
+         // Filter out any processing messages to ensure clean conversation context
+         conversationHistory: chatMessages
+           .filter(m => !m.content.includes('🔄 Processing'))
+           .slice(-8)
+           .map(m => ({
+             role: m.role,
+             content: m.content
+           })),
+         fileUrls: firebaseFileUrlsRef.current.length > 0 ? firebaseFileUrlsRef.current : undefined,
+       };
 
       // 🚀 ENHANCED LOGGING: Log the complete request payload
       console.log('🚀 [FRONTEND] Complete request payload to /api/genkit-chat:', {
@@ -604,8 +648,25 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
         });
 
-        setFilesBeingSent([]); // Clear the "being sent" files
-      } else {
+                 setFilesBeingSent([]); // Clear the "being sent" files
+         
+         // Clean up Firebase files after successful processing
+         if (firebaseFileUrlsRef.current.length > 0) {
+           try {
+             const storage = getStorage();
+             for (const fileInfo of firebaseFileUrlsRef.current) {
+               const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+               if (fileName) {
+                 const storageRef = ref(storage, `temp-uploads/${fileName}`);
+                 await deleteObject(storageRef);
+                 console.log(`Cleaned up Firebase file: ${fileName}`);
+               }
+             }
+           } catch (cleanupError) {
+             console.error('Failed to cleanup Firebase files:', cleanupError);
+           }
+         }
+       } else {
         // Remove the processing message if it exists
         if (structuredExtracts.length > 0) {
           setChatMessages(prev => prev.filter(msg => 
@@ -639,11 +700,28 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           content: 'Sorry, I encountered an error. Please try again.',
         });
       }
-      // Restore files to upload area if there was an error
-      if (filesBeingSent.length > 0) {
-        setUploadedFiles(prev => [...prev, ...filesBeingSent]);
-        setFilesBeingSent([]);
-      }
+             // Restore files to upload area if there was an error
+       if (filesBeingSent.length > 0) {
+         setUploadedFiles(prev => [...prev, ...filesBeingSent]);
+         setFilesBeingSent([]);
+       }
+       
+               // Clean up Firebase files if there was an error
+        if (firebaseFileUrlsRef.current.length > 0) {
+          try {
+            const storage = getStorage();
+            for (const fileInfo of firebaseFileUrlsRef.current) {
+             const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+             if (fileName) {
+               const storageRef = ref(storage, `temp-uploads/${fileName}`);
+               await deleteObject(storageRef);
+               console.log(`Cleaned up Firebase file after error: ${fileName}`);
+             }
+           }
+         } catch (cleanupError) {
+           console.error('Failed to cleanup Firebase files after error:', cleanupError);
+         }
+       }
     } finally {
       setIsSending(false);
       setIsProcessingFiles(false);
@@ -884,11 +962,31 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               // Immediately reset sending states for better UX
               setIsSending(false);
               setIsProcessingFiles(false);
-              // Restore files to upload area if they were being sent
-              if (filesBeingSent.length > 0) {
-                setUploadedFiles(prev => [...prev, ...filesBeingSent]);
-                setFilesBeingSent([]);
-              }
+                             // Restore files to upload area if they were being sent
+               if (filesBeingSent.length > 0) {
+                 setUploadedFiles(prev => [...prev, ...filesBeingSent]);
+                 setFilesBeingSent([]);
+               }
+               
+               // Clean up Firebase files if stop was clicked
+               if (firebaseFileUrlsRef.current && firebaseFileUrlsRef.current.length > 0) {
+                 try {
+                   const storage = getStorage();
+                   for (const fileInfo of firebaseFileUrlsRef.current) {
+                     const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+                     if (fileName) {
+                       const storageRef = ref(storage, `temp-uploads/${fileName}`);
+                       deleteObject(storageRef).then(() => {
+                         console.log(`Cleaned up Firebase file after stop: ${fileName}`);
+                       }).catch((cleanupError) => {
+                         console.error('Failed to cleanup Firebase file after stop:', cleanupError);
+                       });
+                     }
+                   }
+                 } catch (cleanupError) {
+                   console.error('Failed to cleanup Firebase files after stop:', cleanupError);
+                 }
+               }
               // Re-enable stop button after a brief delay
               setTimeout(() => setIsStopping(false), 500);
             } : handleSubmit}
