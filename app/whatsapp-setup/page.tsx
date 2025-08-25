@@ -20,15 +20,62 @@ function WhatsAppSetupContent() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+
+  // Check if user already has a linked WhatsApp number
+  const checkUserWhatsAppStatus = async () => {
+    if (!user) {
+      setIsLoadingProfile(false);
+      return;
+    }
+
+    try {
+      console.log('Checking WhatsApp status for user:', user.uid);
+      const token = await user.getIdToken();
+      const response = await fetch('/api/user/profile', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('User profile data:', userData);
+        if (userData.wa_id) {
+          console.log('Found linked WhatsApp:', userData.wa_id);
+          setWaId(userData.wa_id);
+          setIsLinked(true);
+        } else {
+          console.log('No WhatsApp linked');
+        }
+      } else {
+        console.error('Profile API response not ok:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
 
   useEffect(() => {
     if (searchParams) {
       const waIdFromParams = searchParams.get('wa_id');
-      if (waIdFromParams) {
+      if (waIdFromParams && !isLinked) {
+        // Only set from URL params if we don't already have a linked WhatsApp
         setWaId(waIdFromParams);
       }
     }
-  }, [searchParams]);
+  }, [searchParams, isLinked]);
+
+  // Check user's WhatsApp status when user changes
+  useEffect(() => {
+    if (user) {
+      checkUserWhatsAppStatus();
+    } else {
+      setIsLoadingProfile(false);
+    }
+  }, [user]);
 
   const validateWaId = (id: string) => {
     // Handle empty or undefined values
@@ -110,7 +157,7 @@ function WhatsAppSetupContent() {
       }
   }, [user])
 
-  if (loading) {
+  if (loading || isLoadingProfile) {
     return <div className="text-center p-8">Loading...</div>;
   }
 
@@ -189,9 +236,9 @@ function WhatsAppSetupContent() {
               <button
                 type="submit"
                 disabled={isSubmitting || !waId}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                className="w-full bg-transparent border-2 border-blue-500 hover:border-blue-400 disabled:border-gray-500 text-blue-400 hover:text-blue-300 disabled:text-gray-500 font-bold py-3 px-6 rounded-full transition-all duration-300 disabled:opacity-50"
               >
-                {isSubmitting ? 'Linking...' : 'Link WhatsApp & Add Spreadsheets'}
+                {isSubmitting ? 'Linking...' : 'Link WhatsApp'}
               </button>
             </form>
           )}
