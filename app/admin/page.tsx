@@ -4,13 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { useFirebase } from '@/app/providers/FirebaseProvider';
 import WhatsAppLinkForm from '../components/WhatsAppLinkForm';
 
-type BetaMeta = { capacity: number; testerCount: number; open: boolean };
+type BetaMeta = { capacity: number; testerCount: number; open: boolean; showWhatsAppMessaging: boolean };
 
 export default function AdminPage() {
   const { user } = useFirebase();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState<BetaMeta>({ capacity: 100, testerCount: 0, open: false });
+  const [meta, setMeta] = useState<BetaMeta>({ capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: true });
   const [saving, setSaving] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
@@ -24,7 +24,7 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/meta', { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error(`Failed to load admin meta (${res.status})`);
       const data = await res.json();
-      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open });
+      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open, showWhatsAppMessaging: data.showWhatsAppMessaging ?? true });
     } catch (e: any) {
       setError(e?.message || 'Failed to load');
     } finally {
@@ -60,7 +60,7 @@ export default function AdminPage() {
       });
       if (!res.ok) throw new Error(`Failed to update (${res.status})`);
       const data = await res.json();
-      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open });
+      setMeta({ capacity: data.capacity ?? 100, testerCount: data.testerCount ?? 0, open: !!data.open, showWhatsAppMessaging: data.showWhatsAppMessaging ?? true });
     } catch (e: any) {
       setError(e?.message || 'Update failed');
     } finally {
@@ -128,6 +128,16 @@ export default function AdminPage() {
                   disabled={saving || loading}
                 />
                 Open beta
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-500"
+                  checked={meta.showWhatsAppMessaging}
+                  onChange={(e) => updateMeta({ showWhatsAppMessaging: e.target.checked })}
+                  disabled={saving || loading}
+                />
+                Show WhatsApp messaging
               </label>
               <div className="flex items-center gap-2">
                 <input

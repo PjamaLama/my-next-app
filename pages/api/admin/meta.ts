@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '@/lib/firebaseAdmin';
 import { getAuth } from 'firebase-admin/auth';
 
-type MetaDoc = { capacity?: number; testerCount?: number; open?: boolean; updatedAt?: any };
+type MetaDoc = { capacity?: number; testerCount?: number; open?: boolean; showWhatsAppMessaging?: boolean; updatedAt?: any };
 
 function isAllowedAdmin(decoded: any): boolean {
   const admins = (process.env.ADMIN_EMAILS || '')
@@ -30,23 +30,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'GET') {
       const snap = await metaRef.get();
-      const data: MetaDoc = snap.exists ? (snap.data() as MetaDoc) : { capacity: 100, testerCount: 0, open: false };
+      const data: MetaDoc = snap.exists ? (snap.data() as MetaDoc) : { capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: true };
       return res.status(200).json({
         capacity: typeof data.capacity === 'number' ? data.capacity : 100,
         testerCount: typeof data.testerCount === 'number' ? data.testerCount : 0,
         open: !!data.open,
+        showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : true,
       });
     }
 
     if (req.method === 'POST') {
       const { action } = req.body || {};
 
-      // Update meta fields (capacity/open)
+      // Update meta fields (capacity/open/showWhatsAppMessaging)
       if (!action || action === 'updateMeta') {
-        const { capacity, open } = req.body || {};
+        const { capacity, open, showWhatsAppMessaging } = req.body || {};
         const updates: Record<string, any> = { updatedAt: new Date() };
         if (typeof capacity === 'number' && capacity >= 0) updates.capacity = capacity;
         if (typeof open === 'boolean') updates.open = open;
+        if (typeof showWhatsAppMessaging === 'boolean') updates.showWhatsAppMessaging = showWhatsAppMessaging;
         await metaRef.set(updates, { merge: true });
         const snap = await metaRef.get();
         const data = snap.data() as MetaDoc;
@@ -54,6 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           capacity: typeof data.capacity === 'number' ? data.capacity : 100,
           testerCount: typeof data.testerCount === 'number' ? data.testerCount : 0,
           open: !!data.open,
+          showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : true,
         });
       }
 

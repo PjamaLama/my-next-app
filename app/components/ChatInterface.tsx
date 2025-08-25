@@ -10,7 +10,9 @@ import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 import ChatMessage from './ChatMessage';
 import VoiceRecorder from './VoiceRecorder';
+import WhatsAppComingSoonBanner from './WhatsAppComingSoonBanner';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { useAdminMeta } from '../hooks/useAdminMeta';
 
 interface ChatInterfaceProps {
   className?: string;
@@ -74,6 +76,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const { user, waId } = useFirebase();
+  const { meta: adminMeta } = useAdminMeta();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
@@ -1009,10 +1012,12 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             )}
           </button>
         </form>
-        {waId && (
+        {waId && adminMeta.showWhatsAppMessaging ? (
           <div className="text-center text-xs text-gray-400 mt-4">
             WhatsApp linked: <span className="font-semibold">{waId}</span>. Start messaging at <a href="https://wa.me/27615258918" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:underline">+27 61 525 8918</a>.
           </div>
+        ) : (
+          <WhatsAppComingSoonBanner />
         )}
       </div>
       <EditRowModal
