@@ -54,6 +54,7 @@ interface IFirebaseContext {
   betaTester: boolean;
   betaWaitlist: boolean;
   waId: string | null;
+  messageCount: number;
   continueWithGoogle?: (loginHint?: string) => Promise<void>;
 }
 
@@ -70,6 +71,7 @@ const FirebaseContext = createContext<IFirebaseContext>({
   betaTester: false,
   betaWaitlist: false,
   waId: null,
+  messageCount: 0,
   continueWithGoogle: async () => {}
 });
 
@@ -81,6 +83,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const [betaTester, setBetaTester] = useState(false);
   const [betaWaitlist, setBetaWaitlist] = useState(false);
   const [waId, setWaId] = useState<string | null>(null);
+  const [messageCount, setMessageCount] = useState(0);
 
   useEffect(() => {
     if (!auth) return;
@@ -180,8 +183,45 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   useEffect(() => {
     if (!user || !db) {
         setWaId(null);
+        setMessageCount(0);
         return;
     };
+
+    const profileRef = doc(db, "users", user.uid, "private", "profile");
+
+    const unsubProfileDoc = onSnapshot(profileRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // On-the-fly reset logic
+        const lastReset = data.last_reset?.toDate();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (!lastReset || lastReset < today) {
+          // If it's a new day, reset the count.
+          await setDoc(profileRef, {
+            message_count: 0,
+            last_reset: serverTimestamp()
+          }, { merge: true });
+          setMessageCount(0);
+        } else {
+          setMessageCount(data.message_count || 0);
+        }
+
+        if (data.geminiApiKey) {
+          setGeminiApiKey(data.geminiApiKey);
+        }
+        setBetaTester(!!data.betaTester);
+        setBetaWaitlist(!!data.betaWaitlist);
+      } else {
+        // If profile doesn't exist, create it with initial values
+        await setDoc(profileRef, {
+            message_count: 0,
+            last_reset: serverTimestamp(),
+            geminiApiKey: ''
+        }, { merge: true });
+      }
+    });
 
     // Listener for the main user document to get wa_id
     const userDocRef = doc(db, "users", user.uid);
@@ -194,17 +234,6 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
         }
     });
 
-    const profileRef = doc(db, "users", user.uid, "private", "profile");
-    const unsubProfileDoc = onSnapshot(profileRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.geminiApiKey) {
-          setGeminiApiKey(data.geminiApiKey);
-        }
-        setBetaTester(!!data.betaTester);
-        setBetaWaitlist(!!data.betaWaitlist);
-      }
-    });
     return () => {
         unsubUserDoc();
         unsubProfileDoc();
