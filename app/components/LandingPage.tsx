@@ -15,20 +15,20 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   const [remainingSpots, setRemainingSpots] = useState<number | null>(null);
   const [userCount, setUserCount] = useState<number | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
+  const [isOpenBeta, setIsOpenBeta] = useState(false);
 
   useEffect(() => {
-    const fetchRemainingSpots = async () => {
+    const fetchBetaStats = async () => {
       try {
-        // Use the existing beta-stats API endpoint
         const response = await fetch('/api/beta-stats');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        // The API returns { spotsLeft: number }
         setRemainingSpots(data.spotsLeft);
+        setIsOpenBeta(data.open || false);
       } catch (error) {
-        console.error('Error fetching remaining spots:', error);
+        console.error('Error fetching beta stats:', error);
         setRemainingSpots(null);
       }
     };
@@ -49,7 +49,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
       }
     };
 
-    fetchRemainingSpots();
+    fetchBetaStats();
     fetchUserCount();
   }, []);
 
@@ -191,11 +191,12 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   ) : (
-                    <span className="relative z-10">🔥 Get Early Access Now</span>
+                    <span className="relative z-10">{isOpenBeta ? '🚀 Get Started Now' : '🔥 Get Early Access Now'}</span>
                   )}
                 </motion.button>
 
                 {/* Info Badges - Positioned below button as subtle info */}
+                {!isOpenBeta && (
                 <div className="mt-8 space-y-3">
                   {/* Limited Time Badge */}
                   <motion.div
@@ -231,6 +232,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                       )}
                     </motion.div>
                   )}
+                </div>
+                )}
 
                   {/* Social Proof Badge */}
                   {userCount !== null && (
@@ -238,7 +241,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                       initial={{ y: 20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       transition={{ duration: 0.5, delay: 1.0 }}
-                      className="inline-flex items-center gap-2 text-blue-300/80 text-sm font-medium"
+                      className="inline-flex items-center gap-2 text-blue-300/80 text-sm font-medium mt-3"
                     >
                       <span>👥</span>
                       <span>
