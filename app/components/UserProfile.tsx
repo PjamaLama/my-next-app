@@ -1,100 +1,93 @@
 "use client";
-
-import React, { useState, useEffect } from 'react';
-import { useServiceAccount } from '../providers/ServiceAccountProvider';
-import { useSearchParams } from 'next/navigation';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react';
 
-const UserProfile = () => {
-  const { user } = useFirebase();
-  const { waId: initialWaId, setWaId: setContextWaId } = useServiceAccount();
-  const [waId, setWaId] = useState(initialWaId || '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    const waIdFromQuery = searchParams?.get('wa_id');
-    if (waIdFromQuery) {
-      setWaId(waIdFromQuery);
-    }
-  }, [searchParams]);
+const UserProfile = ({ peek }: { peek?: boolean }) => {
+  const { user, signOutUser, waId } = useFirebase();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    setWaId(initialWaId || '');
-  }, [initialWaId]);
-
-  const validateWaId = (id: string) => {
-    return /^\d{10,15}$/.test(id);
-  };
-
-  const handleSave = async () => {
-    if (!user) {
-      setError('You must be logged in to save your WhatsApp number.');
-      return;
-    }
-    if (!validateWaId(waId)) {
-      setError('Invalid format. Please use 10-15 digits without country code.');
-      return;
-    }
-    setError('');
-    setIsSaving(true);
-    setSuccess('');
-
-    try {
-      const token = await user.getIdToken();
-      const response = await fetch('/api/user/update-wa-id', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ wa_id: waId }),
-      });
-
-      if (response.ok) {
-        setContextWaId(waId);
-        setSuccess('WhatsApp number saved successfully!');
-      } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to save WhatsApp number.');
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
       }
-    } catch (err) {
-      setError('An unexpected error occurred.');
-    } finally {
-      setIsSaving(false);
-      setTimeout(() => setSuccess(''), 3000);
-    }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  if (!user) {
+    return null;
+  }
+
+  const handleSignOut = async () => {
+    await signOutUser();
+    router.push('/');
   };
 
   return (
-    <div className="glass rounded-xl border border-white/10 p-4 mb-4">
-      <div className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-white">Link WhatsApp</h3>
-        <p className="text-xs text-white/70">
-          Enter your WhatsApp number to link it with SheetyAI for messaging.
-          Format: 1234567890 (no + or country code).
-        </p>
-        <div className="relative">
-          <input
-            type="text"
-            value={waId}
-            onChange={(e) => setWaId(e.target.value)}
-            placeholder="e.g., 27659315189"
-            className="bg-white/5 rounded-lg border border-white/10 p-2 w-full text-white/90"
+    <div className="relative w-full" ref={dropdownRef}>
+      <button onClick={() => setDropdownOpen(!dropdownOpen)} className={`flex items-center justify-center w-full ${peek ? 'h-9 w-9' : 'h-9 px-3'} rounded-lg bg-white/5 text-white hover:bg-white/10 text-sm focus:outline-none`}>
+        {user.photoURL ? (
+          <Image
+            src={user.photoURL}
+            alt={user.displayName || 'User profile'}
+            width={24}
+            height={24}
+            className="rounded-full object-cover"
           />
+        ) : (
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-white/20 text-[11px] font-medium">
+            {user.email ? user.email.charAt(0).toUpperCase() : ''}
+          </div>
+        )}
+        {!peek && (
+          <>
+            <span className="truncate ml-2">{user.displayName || user.email}</span>
+            <LogOut className="w-4 h-4 ml-auto opacity-80" />
+          </>
+        )}
+      </button>
+
+      {dropdownOpen && (
+        <div className="absolute bottom-full left-0 mb-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-2 z-50">
+          <div className="px-4 py-2 border-b border-gray-700">
+            <p className="text-sm font-semibold text-white truncate">{user.displayName || 'User'}</p>
+            <p className="text-xs text-gray-400 truncate">{user.email}</p>
+          </div>
+          <div className="py-1">
+            <Link href="/whatsapp-setup"
+              onClick={() => setDropdownOpen(false)}
+              className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+            >
+              {waId ? `WhatsApp Linked` : 'Link WhatsApp'} 
+              {waId && <span className="text-green-400 ml-2">✓</span>}
+            </Link>
+            <Link href="/privacy"
+              onClick={() => setDropdownOpen(false)}
+              className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+            >
+              Privacy
+            </Link>
+          </div>
+          <div className="py-1 border-t border-gray-700">
+            <button
+              onClick={handleSignOut}
+              className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
-        {error && <p className="text-xs text-red-400">{error}</p>}
-        {success && <p className="text-xs text-green-400">{success}</p>}
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="bg-white/10 border border-white/10 text-white/90 hover:bg-white/20 rounded-lg p-2"
-        >
-          {isSaving ? 'Saving...' : 'Save WhatsApp Number'}
-        </button>
-      </div>
+      )}
     </div>
   );
 };

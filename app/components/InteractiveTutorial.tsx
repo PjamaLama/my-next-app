@@ -3,6 +3,7 @@ import { Play, ChevronLeft, ChevronRight, CheckCircle, BookOpen, Download, Setti
 import { useTutorial } from '../providers/TutorialProvider';
 import { useServiceAccount } from '../providers/ServiceAccountProvider';
 import ServiceAccountInfo from './ServiceAccountInfo';
+import WhatsAppLinkForm from './WhatsAppLinkForm';
 
 const ServiceAccountInfoWrapper = () => {
   const { serviceAccountEmail, isLoading } = useServiceAccount();
@@ -154,11 +155,30 @@ const defaultTutorialSteps: TutorialStep[] = [
     )
   },
   {
+    id: 'whatsapp',
+    title: 'Link WhatsApp',
+    description: 'Connect your WhatsApp to interact with your sheets on the go.',
+    youtubeId: '',
+    order: 3,
+    icon: <Download className="w-8 h-8 text-emerald-400" />,
+    content: (
+      <div className="text-left space-y-6">
+        <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <Download className="w-5 h-5 text-emerald-400" />
+            Link Your WhatsApp
+          </h3>
+          <WhatsAppLinkForm />
+        </div>
+      </div>
+    )
+  },
+  {
     id: 'structure',
     title: 'Template & Structure Rules',
     description: 'Download our template and follow these rules for the best results.',
     youtubeId: '',
-    order: 3,
+    order: 4,
     icon: <FileText className="w-8 h-8 text-emerald-400" />,
     content: (
       <div className="text-left space-y-6">
@@ -226,15 +246,15 @@ const defaultTutorialSteps: TutorialStep[] = [
     title: 'All Set!',
     description: 'You\'re ready to start analyzing your data with AI',
     youtubeId: '',
-    order: 4,
+    order: 5,
     icon: <CheckCircle className="w-8 h-8 text-emerald-400" />,
     content: (
       <div className="text-center space-y-6">
         <div className="bg-emerald-600/20 border border-emerald-600/30 rounded-xl p-8">
           <div className="text-6xl mb-4">🎉</div>
-          <h3 className="text-2xl font-bold text-emerald-300 mb-3">You're All Set!</h3>
+          <h3 className="text-2xl font-bold text-emerald-300 mb-3">You\'re All Set!</h3>
           <p className="text-lg text-emerald-200 mb-6">
-            Your service account is configured and you're ready to start analyzing your data with AI.
+            Your service account is configured and you\'re ready to start analyzing your data with AI.
           </p>
           <div className="space-y-3 text-emerald-100">
             <p>✅ Service account configured</p>

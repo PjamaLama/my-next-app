@@ -6,6 +6,7 @@ import { LogOut, ChevronLeft, ChevronRight, Megaphone } from 'lucide-react';
 import Image from 'next/image';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { useTutorial } from '../providers/TutorialProvider';
+import UserProfile from './UserProfile';
 
 const ChatSidebar = dynamic(() => import('./ChatSidebar'), { ssr: false });
 
@@ -131,6 +132,9 @@ const SidePanel: React.FC = () => {
          {user && (
            <div className="border-t border-white/10 p-2 space-y-2">
              <div className={`flex items-center gap-2 ${peek ? 'flex-col' : ''}`}>
+               {/* User Profile and Logout */}
+               <UserProfile peek={peek} />
+
                {/* Feedback button - icon only when collapsed */}
                <button
                  onClick={() => window.dispatchEvent(new CustomEvent('open-feedback'))}
@@ -140,37 +144,6 @@ const SidePanel: React.FC = () => {
                >
                  <Megaphone className="w-4 h-4" />
                  {!peek && <span className="text-sm font-semibold ml-2">Feedback</span>}
-               </button>
-
-               {/* Logout - icon only when collapsed */}
-               <button
-                 onClick={() => signOutUser()}
-                 className={`${peek ? 'h-9 w-9' : 'flex-1'} flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-white hover:bg-white/10 text-sm`}
-                 title="Logout"
-                 aria-label="Logout"
-               >
-                 {user.photoURL ? (
-                   <Image
-                     src={user.photoURL}
-                     alt={user.displayName || user.email || 'User'}
-                     width={24}
-                     height={24}
-                     className="rounded-full object-cover"
-                   />
-                 ) : (
-                   <div
-                     className="flex items-center justify-center w-6 h-6 rounded-full bg-white/20 text-[11px] font-medium"
-                     title={user.displayName || user.email || 'User'}
-                   >
-                     {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
-                   </div>
-                 )}
-                 {!peek && (
-                   <>
-                     <span className="truncate">Logout</span>
-                     <LogOut className="w-4 h-4 ml-auto opacity-80" />
-                   </>
-                 )}
                </button>
              </div>
            </div>
