@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { getAdminAuth, getAdminDb } from '../../lib/firebaseAdmin';
 
 type Data = {
   email: string;
@@ -10,11 +11,12 @@ type Data = {
     hasNewlines: boolean;
     sample: string;
   };
+  wa_id?: string;
 } | {
   error: string;
 };
 
-export default function handler(
+export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
 ) {
@@ -51,9 +53,26 @@ export default function handler(
     // Only log non-sensitive information
     console.log('🔍 Private key status: Valid format detected');
 
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    let wa_id = undefined;
+
+    if (idToken) {
+      try {
+        const decodedToken = await getAdminAuth().verifyIdToken(idToken);
+        const uid = decodedToken.uid;
+        const userDoc = await getAdminDb().collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          wa_id = userDoc.data()?.wa_id;
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    }
+
     res.status(200).json({ 
       email: serviceAccountEmail,
-      privateKeyInfo
+      privateKeyInfo,
+      wa_id
     });
   } catch (error) {
     console.error('Error retrieving service account email:', error);

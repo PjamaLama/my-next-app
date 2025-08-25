@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useFirebase } from '@/app/providers/FirebaseProvider';
+import UserProfile from '../components/UserProfile';
 
 type BetaMeta = { capacity: number; testerCount: number; open: boolean };
 
@@ -100,6 +101,7 @@ export default function AdminPage() {
     <div className="min-h-screen bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
       <div className="max-w-3xl mx-auto p-6">
         <h1 className="text-2xl font-bold mb-4">Admin</h1>
+        <UserProfile />
         {error && (
           <div className="mb-4 p-3 rounded bg-red-600/20 border border-red-400/40 text-red-200">{error}</div>
         )}
