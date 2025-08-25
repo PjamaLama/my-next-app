@@ -750,6 +750,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
+      <WhatsAppLinkBanner />
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {chatMessages.length === 0 ? (
           <div className="text-center text-white/60 py-12">
@@ -1005,6 +1006,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             )}
           </button>
         </form>
+        {waId && (
+          <div className="text-center text-xs text-gray-400 mt-4">
+            WhatsApp linked: <span className="font-semibold">{waId}</span>. Start messaging at <span className="font-semibold">+1-555-SHEETYAI</span>.
+          </div>
+        )}
       </div>
       <EditRowModal
         isOpen={editModalOpen && editModalData !== null}

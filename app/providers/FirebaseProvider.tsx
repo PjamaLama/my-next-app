@@ -53,6 +53,7 @@ interface IFirebaseContext {
   authError: string | null;
   betaTester: boolean;
   betaWaitlist: boolean;
+  waId: string | null;
   continueWithGoogle?: (loginHint?: string) => Promise<void>;
 }
 
@@ -68,6 +69,7 @@ const FirebaseContext = createContext<IFirebaseContext>({
   authError: null,
   betaTester: false,
   betaWaitlist: false,
+  waId: null,
   continueWithGoogle: async () => {}
 });
 
@@ -78,6 +80,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const [authError, setAuthError] = useState<string | null>(null);
   const [betaTester, setBetaTester] = useState(false);
   const [betaWaitlist, setBetaWaitlist] = useState(false);
+  const [waId, setWaId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!auth) return;
@@ -175,9 +178,24 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
 
   // Load profile fields (Gemini API key, beta flags) from profile subdocument
   useEffect(() => {
-    if (!user || !db) return;
+    if (!user || !db) {
+        setWaId(null);
+        return;
+    };
+
+    // Listener for the main user document to get wa_id
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            setWaId(data.wa_id || null);
+        } else {
+            setWaId(null);
+        }
+    });
+
     const profileRef = doc(db, "users", user.uid, "private", "profile");
-    const unsubUserDoc = onSnapshot(profileRef, (docSnap) => {
+    const unsubProfileDoc = onSnapshot(profileRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.geminiApiKey) {
@@ -187,7 +205,10 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
         setBetaWaitlist(!!data.betaWaitlist);
       }
     });
-    return () => unsubUserDoc();
+    return () => {
+        unsubUserDoc();
+        unsubProfileDoc();
+    };
   }, [user]);
 
   const signInWithGoogle = async () => {
@@ -316,6 +337,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       setGeminiApiKey(""); // Clear API key on sign out
       setBetaTester(false);
       setBetaWaitlist(false);
+      setWaId(null);
     } catch (error) {
       console.error("Error signing out:", error);
     }
@@ -347,6 +369,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       authError,
       betaTester,
       betaWaitlist,
+      waId,
       continueWithGoogle
     }}>
       {children}
