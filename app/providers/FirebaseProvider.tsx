@@ -399,6 +399,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       betaTester,
       betaWaitlist,
       waId,
+      messageCount,
       continueWithGoogle
     }}>
       {children}

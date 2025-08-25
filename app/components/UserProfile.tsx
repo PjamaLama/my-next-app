@@ -15,7 +15,7 @@ const UserProfile = () => {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const waIdFromQuery = searchParams.get('wa_id');
+    const waIdFromQuery = searchParams?.get('wa_id');
     if (waIdFromQuery) {
       setWaId(waIdFromQuery);
     }

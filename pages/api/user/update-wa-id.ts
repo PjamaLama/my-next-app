@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getAdminAuth, getAdminDb } from '../../../../lib/firebaseAdmin';
+import { getAdminAuth, getAdminDb } from '../../../lib/firebaseAdmin';
 import { firestore } from 'firebase-admin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

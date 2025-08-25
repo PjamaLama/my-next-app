@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
+import { useFirebase } from '../providers/FirebaseProvider';
+import WhatsAppLinkBanner from './WhatsAppLinkBanner';
 import { Send, Loader2, Paperclip, File as FileIcon, X, Volume2, Square, BookOpen } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
@@ -71,6 +73,7 @@ const extractPDFText = async (file: File): Promise<string> => {
 export default function ChatInterface({ className = '', onShowTutorial }: ChatInterfaceProps) {
   const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
+  const { user, waId } = useFirebase();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);

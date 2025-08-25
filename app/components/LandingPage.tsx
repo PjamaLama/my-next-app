@@ -138,10 +138,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             className="mb-4"
           >
             <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-4 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight">
-              Turn Your Spreadsheets Into Powerful AI Assistants
+              Update Your Spreadsheets With Voice Commands
             </h2>
             <p className="text-base sm:text-lg md:text-xl text-white/80 max-w-3xl mx-auto leading-relaxed px-4 sm:px-0">
-              Tired of spending hours on spreadsheet work that should take minutes? SheetyAI transforms your Google Sheets into intelligent workbooks that understand your data, answer your questions, and create insights automatically.
+              Tired of manually typing and editing spreadsheet data? SheetyAI lets you update your Google Sheets using natural voice commands. Just speak what you want to change, and watch your spreadsheets update automatically—no more clicking, typing, or complex formulas.
             </p>
           </motion.div>
 
@@ -196,44 +196,45 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 </motion.button>
 
                 {/* Info Badges - Positioned below button as subtle info */}
-                {!isOpenBeta && (
                 <div className="mt-8 space-y-3">
-                  {/* Limited Time Badge */}
-                  <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ duration: 0.6, delay: 0.6 }}
-                    className="inline-flex items-center gap-2 text-orange-300/80 text-sm font-medium"
-                  >
-                    <span>🚀</span>
-                    <span>Limited Time: Private Beta Access</span>
-                  </motion.div>
+                  {!isOpenBeta && (
+                    <>
+                      {/* Limited Time Badge */}
+                      <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.6, delay: 0.6 }}
+                        className="inline-flex items-center gap-2 text-orange-300/80 text-sm font-medium"
+                      >
+                        <span>🚀</span>
+                        <span>Limited Time: Private Beta Access</span>
+                      </motion.div>
 
-                  {/* Scarcity Badge */}
-                  {remainingSpots !== null && (
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.5, delay: 0.8 }}
-                      className="block"
-                    >
-                      {remainingSpots > 0 ? (
-                        <div className="inline-flex items-center gap-2 text-red-300/80 text-sm font-medium">
-                          <span>⏰</span>
-                          <span>
-                            Only <span className="text-white font-semibold">{remainingSpots}</span> spots remaining!
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="inline-flex items-center gap-2 text-yellow-300/80 text-sm font-medium">
-                          <span>🚫</span>
-                          <span>Beta is currently full</span>
-                        </div>
+                      {/* Scarcity Badge */}
+                      {remainingSpots !== null && (
+                        <motion.div
+                          initial={{ y: 20, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          transition={{ duration: 0.5, delay: 0.8 }}
+                          className="block"
+                        >
+                          {remainingSpots > 0 ? (
+                            <div className="inline-flex items-center gap-2 text-red-300/80 text-sm font-medium">
+                              <span>⏰</span>
+                              <span>
+                                Only <span className="text-white font-semibold">{remainingSpots}</span> spots remaining!
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-2 text-yellow-300/80 text-sm font-medium">
+                              <span>🚫</span>
+                              <span>Beta is currently full</span>
+                            </div>
+                          )}
+                        </motion.div>
                       )}
-                    </motion.div>
+                    </>
                   )}
-                </div>
-                )}
 
                   {/* Social Proof Badge */}
                   {userCount !== null && (
@@ -276,10 +277,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 <div className="p-3 bg-emerald-900/50 border border-emerald-500/30 rounded-lg backdrop-blur-sm">
                   <Zap className="w-6 h-6 text-emerald-400" />
                 </div>
-                <h3 className="text-xl font-bold">📊 Instant Data Analysis</h3>
+                <h3 className="text-xl font-bold">🎤 Voice-Powered Updates</h3>
               </div>
               <p className="text-white/70">
-                Skip the complex formulas. Just upload your data and get meaningful insights, trends, and patterns identified automatically—no spreadsheet expertise required.
+                Simply speak your changes: "Add a new row for John Smith with $500 sales" or "Update the budget in cell B15 to $2,000." No more manual typing or clicking through cells.
               </p>
             </motion.div>
             <motion.div variants={itemVariants} className="p-8 border border-white/20 rounded-2xl bg-black/30 backdrop-blur-md shadow-2xl shadow-black/50 hover:bg-black/40 transition-all duration-300 hover:border-white/30">
@@ -287,7 +288,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 <div className="p-3 bg-sky-900/50 border border-sky-500/30 rounded-lg backdrop-blur-sm">
                   <Feather className="w-6 h-6 text-sky-400" />
                 </div>
-                <h3 className="text-xl font-bold">💬 Chat With Your Data</h3>
+                <h3 className="text-xl font-bold">💬 Natural Language Editing</h3>
               </div>
               <p className="text-white/70">
                 Ask questions like "Which products sold best last quarter?" or "Show me sales trends by region" and get instant, accurate answers in plain English.
@@ -298,10 +299,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 <div className="p-3 bg-purple-900/50 border border-purple-500/30 rounded-lg backdrop-blur-sm">
                   <Database className="w-6 h-6 text-purple-400" />
                 </div>
-                <h3 className="text-xl font-bold">📈 Beautiful Reports in Seconds</h3>
+                <h3 className="text-xl font-bold">📝 Smart Data Entry</h3>
               </div>
               <p className="text-white/70">
-                Transform raw data into professional charts, graphs, and dashboards with a simple request. Perfect for presentations and team updates.
+                Let AI handle the complex stuff. Insert new rows, update existing data, and reorganize your spreadsheets with simple voice commands. Perfect for data entry and maintenance tasks.
               </p>
             </motion.div>
           </motion.div>
@@ -325,8 +326,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                     <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><BarChart className="w-6 h-6 text-white"/></div>
                     <div>
-                        <h4 className="font-bold text-lg text-white">1. Connect & Upload</h4>
-                        <p className="text-white/80">Link your Google Sheets securely. Your data stays private and protected.</p>
+                        <h4 className="font-bold text-lg text-white">1. Connect & Speak</h4>
+                        <p className="text-white/80">Link your Google Sheets securely, then start talking. Your voice commands are instantly converted to spreadsheet updates.</p>
                     </div>
                 </motion.div>
                 <motion.div
@@ -338,8 +339,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                     <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><PieChart className="w-6 h-6 text-white"/></div>
                     <div>
-                        <h4 className="font-bold text-lg text-white">2. Ask Anything</h4>
-                        <p className="text-white/80">Type questions naturally: "What's my top-performing category?" or "Create a sales forecast chart."</p>
+                        <h4 className="font-bold text-lg text-white">2. Voice Your Changes</h4>
+                        <p className="text-white/80">Speak naturally: "Add a new customer row" or "Update the sales total in column C to $15,000."</p>
                     </div>
                 </motion.div>
                 <motion.div
@@ -351,8 +352,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                     <div className="p-3 bg-white/10 border border-white/20 rounded-lg mt-1 backdrop-blur-sm shadow-lg shadow-black/20"><Table className="w-6 h-6 text-white"/></div>
                     <div>
-                        <h4 className="font-bold text-lg text-white">3. Get Results Instantly</h4>
-                        <p className="text-white/80">Receive professional insights, visualizations, and actionable recommendations immediately.</p>
+                        <h4 className="font-bold text-lg text-white">3. Watch It Update Instantly</h4>
+                        <p className="text-white/80">See your spreadsheet update in real-time as AI processes your voice commands and applies the changes automatically.</p>
                     </div>
                 </motion.div>
 
@@ -371,23 +372,23 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-3xl mb-3">✨</div>
-                  <p className="text-white/80 font-medium">Save 5+ hours per week on data analysis</p>
+                  <p className="text-white/80 font-medium">Update spreadsheets 10x faster with voice commands</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-3xl mb-3">✨</div>
-                  <p className="text-white/80 font-medium">No learning curve - works like having a conversation</p>
+                  <p className="text-white/80 font-medium">No more manual typing or clicking through cells</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-3xl mb-3">✨</div>
-                  <p className="text-white/80 font-medium">Professional results without being a spreadsheet expert</p>
+                  <p className="text-white/80 font-medium">Natural language editing - just speak what you want</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-3xl mb-3">✨</div>
-                  <p className="text-white/80 font-medium">Real-time insights as your data updates</p>
+                  <p className="text-white/80 font-medium">Real-time updates as you speak</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-3xl mb-3">✨</div>
-                  <p className="text-white/80 font-medium">Easy sharing - export and present with confidence</p>
+                  <p className="text-white/80 font-medium">Perfect for data entry and maintenance tasks</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-3xl mb-3">✨</div>
@@ -408,19 +409,19 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-2xl mb-3">💼</div>
-                  <p className="text-white/80 font-medium">Small business owners tracking sales and inventory</p>
+                  <p className="text-white/80 font-medium">Business owners updating sales and inventory data</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-2xl mb-3">📊</div>
-                  <p className="text-white/80 font-medium">Marketing teams analyzing campaign performance</p>
+                  <p className="text-white/80 font-medium">Teams managing customer databases and records</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-2xl mb-3">📋</div>
-                  <p className="text-white/80 font-medium">Project managers monitoring team progress</p>
+                  <p className="text-white/80 font-medium">Project managers updating task progress and timelines</p>
                 </div>
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-2xl mb-3">👥</div>
-                  <p className="text-white/80 font-medium">Anyone who works with data but isn't a spreadsheet wizard</p>
+                  <p className="text-white/80 font-medium">Anyone who spends time manually updating spreadsheet data</p>
                 </div>
               </div>
             </motion.div>

@@ -21,9 +21,11 @@ function WhatsAppSetupContent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    const waIdFromParams = searchParams.get('wa_id');
-    if (waIdFromParams) {
-      setWaId(waIdFromParams);
+    if (searchParams) {
+      const waIdFromParams = searchParams.get('wa_id');
+      if (waIdFromParams) {
+        setWaId(waIdFromParams);
+      }
     }
   }, [searchParams]);
 
