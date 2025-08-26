@@ -29,8 +29,8 @@ const migrateUsers = async () => {
       return;
     }
     
-    // Set to August 25, 2025 at 12:00:00 AM UTC+2
-    const lastResetDate = new Date('2025-08-25T00:00:00+02:00');
+    // Use serverTimestamp() for consistent timing
+    const lastResetDate = require('firebase-admin').firestore.FieldValue.serverTimestamp();
     
     let updatedCount = 0;
     const promises = [];
