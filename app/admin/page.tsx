@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useFirebase } from '@/app/providers/FirebaseProvider';
 import WhatsAppLinkForm from '../components/WhatsAppLinkForm';
+import AdminLandingPagePanel from '../components/AdminLandingPagePanel';
 
 type BetaMeta = { capacity: number; testerCount: number; open: boolean; showWhatsAppMessaging: boolean };
 
@@ -159,6 +160,9 @@ export default function AdminPage() {
         </div>
 
 
+
+        {/* Landing Page Video management */}
+        <AdminLandingPagePanel />
 
         {/* Feedback management */}
         <AdminFeedbackPanel />

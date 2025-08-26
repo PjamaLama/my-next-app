@@ -153,6 +153,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
         };
         if (!snap.exists()) {
           baseData.createdAt = serverTimestamp();
+          baseData.messageCount = 0;
         }
         await setDoc(profileRef, baseData, { merge: true });
       } catch (e) {

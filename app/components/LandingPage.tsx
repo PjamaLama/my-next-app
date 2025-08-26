@@ -16,6 +16,13 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   const [userCount, setUserCount] = useState<number | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [isOpenBeta, setIsOpenBeta] = useState(false);
+  const [videoData, setVideoData] = useState<{
+    videoUrl: string;
+    videoTitle: string;
+  }>({
+    videoUrl: 'https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0',
+    videoTitle: 'SheetyAI Demo Video'
+  });
 
   useEffect(() => {
     const fetchBetaStats = async () => {
@@ -49,8 +56,25 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
       }
     };
 
+    const fetchVideoData = async () => {
+      try {
+        const response = await fetch('/api/landing-page');
+        if (response.ok) {
+          const data = await response.json();
+          setVideoData({
+            videoUrl: data.videoUrl || 'https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0',
+            videoTitle: data.videoTitle || 'SheetyAI Demo Video'
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching video data:', error);
+        // Keep default values on error
+      }
+    };
+
     fetchBetaStats();
     fetchUserCount();
+    fetchVideoData();
   }, []);
 
   const handleBetaSignupWithGoogle = async () => {
@@ -164,8 +188,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 >
                   <div className="relative w-full max-w-4xl mx-auto aspect-video bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl border border-white/20 backdrop-blur-sm overflow-hidden mx-4 sm:mx-auto">
                     <iframe
-                      src="https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0"
-                      title="SheetyAI Demo Video"
+                      src={videoData.videoUrl}
+                      title={videoData.videoTitle}
                       className="w-full h-full rounded-2xl"
                       frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
