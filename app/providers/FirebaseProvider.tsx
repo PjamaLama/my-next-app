@@ -144,6 +144,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     const ensureUserDoc = async () => {
       try {
         const profileRef = doc(db, "users", user.uid, "private", "profile");
+        const userDocRef = doc(db, "users", user.uid);
         const snap = await getDoc(profileRef);
         const baseData: Record<string, unknown> = {
           email: user.email || null,
@@ -156,6 +157,14 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
           baseData.message_count = 0;
         }
         await setDoc(profileRef, baseData, { merge: true });
+
+        // Denormalize: Also store message_count and last_reset on the main user document
+        const denormalizedData: Record<string, unknown> = {
+          message_count: 0,
+          last_reset: serverTimestamp(),
+        };
+        await setDoc(userDocRef, denormalizedData, { merge: true });
+        console.log(`Denormalized user data for ${user.uid}`);
       } catch (e) {
         console.error("Error ensuring user document:", e);
       }
@@ -189,25 +198,11 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     };
 
     const profileRef = doc(db, "users", user.uid, "private", "profile");
+    const userDocRef = doc(db, "users", user.uid);
 
     const unsubProfileDoc = onSnapshot(profileRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // On-the-fly reset logic
-        const lastReset = data.last_reset?.toDate();
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        if (!lastReset || lastReset < today) {
-          // If it's a new day, reset the count.
-          await setDoc(profileRef, {
-            message_count: 0,
-            last_reset: serverTimestamp()
-          }, { merge: true });
-          setMessage_count(0);
-        } else {
-          setMessage_count(data.message_count || 0);
-        }
 
         if (data.geminiApiKey) {
           setGeminiApiKey(data.geminiApiKey);
@@ -224,14 +219,33 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       }
     });
 
-    // Listener for the main user document to get wa_id
-    const userDocRef = doc(db, "users", user.uid);
-    const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+    // Listener for the main user document to get wa_id and denormalized message_count
+    const unsubUserDoc = onSnapshot(userDocRef, async (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
+
+            // Handle denormalized message_count from main user document
+            const lastReset = data.last_reset?.toDate();
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (!lastReset || lastReset < today) {
+              // If it's a new day, reset the count on both documents
+              const resetData = {
+                message_count: 0,
+                last_reset: serverTimestamp()
+              };
+              await setDoc(userDocRef, resetData, { merge: true });
+              await setDoc(profileRef, resetData, { merge: true });
+              setMessage_count(0);
+            } else {
+              setMessage_count(data.message_count || 0);
+            }
+
             setWaId(data.wa_id || null);
         } else {
             setWaId(null);
+            setMessage_count(0);
         }
     });
 

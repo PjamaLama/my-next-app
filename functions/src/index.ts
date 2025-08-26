@@ -21,15 +21,23 @@ export const resetDailyMessageCounts = onSchedule("every 24 hours", async (event
 
   const batch = db.batch();
   snapshot.forEach((doc) => {
-    const userRef = usersRef.doc(doc.id).collection("private").doc("profile");
-    batch.update(userRef, {
+    // Update both the profile subdocument and the main user document for denormalization
+    const userRef = usersRef.doc(doc.id);
+    const profileRef = userRef.collection("private").doc("profile");
+
+    const resetData = {
       message_count: 0,
       last_reset: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    // Update profile subdocument
+    batch.set(profileRef, resetData, { merge: true });
+    // Update main user document (denormalized)
+    batch.set(userRef, resetData, { merge: true });
   });
 
   await batch.commit();
 
-  console.log(`Reset message count for ${snapshot.size} users.`);
+  console.log(`Reset message count for ${snapshot.size} users (denormalized to main user documents).`);
   return;
 });
