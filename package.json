@@ -11,7 +11,8 @@
     "copy-prompts": "node scripts/copy-prompts.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "migrate:users": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts"
   },
   "dependencies": {
     "@genkit-ai/firebase": "^1.15.5",
