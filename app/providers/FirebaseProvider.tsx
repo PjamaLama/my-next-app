@@ -54,7 +54,7 @@ interface IFirebaseContext {
   betaTester: boolean;
   betaWaitlist: boolean;
   waId: string | null;
-  messageCount: number;
+  message_count: number;
   continueWithGoogle?: (loginHint?: string) => Promise<void>;
 }
 
@@ -71,7 +71,7 @@ const FirebaseContext = createContext<IFirebaseContext>({
   betaTester: false,
   betaWaitlist: false,
   waId: null,
-  messageCount: 0,
+  message_count: 0,
   continueWithGoogle: async () => {}
 });
 
@@ -83,7 +83,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const [betaTester, setBetaTester] = useState(false);
   const [betaWaitlist, setBetaWaitlist] = useState(false);
   const [waId, setWaId] = useState<string | null>(null);
-  const [messageCount, setMessageCount] = useState(0);
+  const [message_count, setMessage_count] = useState(0);
 
   useEffect(() => {
     if (!auth) return;
@@ -153,7 +153,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
         };
         if (!snap.exists()) {
           baseData.createdAt = serverTimestamp();
-          baseData.messageCount = 0;
+          baseData.message_count = 0;
         }
         await setDoc(profileRef, baseData, { merge: true });
       } catch (e) {
@@ -184,7 +184,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   useEffect(() => {
     if (!user || !db) {
         setWaId(null);
-        setMessageCount(0);
+        setMessage_count(0);
         return;
     };
 
@@ -204,9 +204,9 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
             message_count: 0,
             last_reset: serverTimestamp()
           }, { merge: true });
-          setMessageCount(0);
+          setMessage_count(0);
         } else {
-          setMessageCount(data.message_count || 0);
+          setMessage_count(data.message_count || 0);
         }
 
         if (data.geminiApiKey) {
@@ -400,7 +400,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       betaTester,
       betaWaitlist,
       waId,
-      messageCount,
+      message_count,
       continueWithGoogle
     }}>
       {children}

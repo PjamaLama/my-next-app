@@ -33,7 +33,7 @@ export interface ChatSession {
   title: string;
   createdAt: Date;
   updatedAt: Date;
-  messageCount: number;
+  message_count: number;
   spreadsheetId?: string;
   sheetNames?: string[];
 }
@@ -420,7 +420,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         title: title || `Chat ${sessions.length + 1}`,
         createdAt: new Date(),
         updatedAt: new Date(),
-        messageCount: 0,
+        message_count: 0,
       };
       
       // Only add spreadsheet fields if they have values (Firestore doesn't allow undefined)
@@ -602,14 +602,14 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       // Update session message count and timestamp
       const sessionDocRef = doc(db, 'users', user.uid, 'sessions', sessionId);
       await setDoc(sessionDocRef, {
-        messageCount: (sessions.find(s => s.id === sessionId)?.messageCount || 0) + 1,
+        message_count: (sessions.find(s => s.id === sessionId)?.message_count || 0) + 1,
         updatedAt: new Date(),
       }, { merge: true });
 
       // Update local state
       setSessions(prev => prev.map(s => 
         s.id === sessionId 
-          ? { ...s, messageCount: s.messageCount + 1, updatedAt: new Date() }
+          ? { ...s, message_count: s.message_count + 1, updatedAt: new Date() }
           : s
       ));
     } catch (err) {

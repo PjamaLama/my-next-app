@@ -476,7 +476,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           (sheet as any).headers?.slice(0, 5) || [])
       },
       conversationHistory: {
-        messageCount: conversationHistory?.length || 0,
+        message_count: conversationHistory?.length || 0,
         recentMessages: conversationHistory?.slice(-3).map((m: any) => ({
           role: m.role,
           contentLength: m.content?.length || 0,
