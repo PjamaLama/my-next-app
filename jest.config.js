@@ -14,8 +14,23 @@ module.exports = {
   testTimeout: 10000,
   collectCoverageFrom: [
     'pages/api/**/*.ts',
-    'genkit/**/*.ts',
+    'lib/**/*.ts',
+    'app/**/*.ts',
+    'functions/**/*.ts',
     '!**/*.d.ts',
     '!**/node_modules/**',
+    '!**/coverage/**',
+    '!jest.config.js',
+    '!jest.setup.js',
   ],
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov', 'html'],
+  coverageThreshold: {
+    global: {
+      statements: 70,
+      branches: 60,
+      functions: 70,
+      lines: 70
+    }
+  }
 }; 

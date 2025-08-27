@@ -225,21 +225,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
             const data = docSnap.data();
 
             // Handle denormalized message_count from main user document
-            const lastReset = data.last_reset?.toDate();
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            if (!lastReset || lastReset < today) {
-              // If it's a new day, reset the count on main user document only
-              const resetData = {
-                message_count: 0,
-                last_reset: serverTimestamp()
-              };
-              await setDoc(userDocRef, resetData, { merge: true });
-              setMessage_count(0);
-            } else {
-              setMessage_count(data.message_count || 0);
-            }
+            setMessage_count(data.message_count || 0);
 
             setWaId(data.wa_id || null);
         } else {
