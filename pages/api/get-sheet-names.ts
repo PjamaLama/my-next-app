@@ -1,4 +1,4 @@
-import { getGoogleSheetsClient, normalizeSpreadsheetId, getSheetMetadataCached, rateLimiter } from '@/lib/googleSheets';
+import { normalizeSpreadsheetId, getSheetMetadataCached } from '@/lib/googleSheets';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

@@ -390,7 +390,6 @@ export const getSheetDataEfficiently = async (
   rowCount: number;
   columnCount: number;
 }> => {
-  const log = createLogger('lib/googleSheets.getSheetDataEfficiently');
   const { maxRows = 1000, includeHeaders = true, tailRows } = options;
 
   // Get sheet metadata from cache
