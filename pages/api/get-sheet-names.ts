@@ -16,7 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const metadata = await getSheetMetadataCached(spreadsheetId);
 
     const sheetNames = metadata.sheets.map(s => s.properties?.title || '').filter(Boolean) || [];
-    const spreadsheetTitle = metadata.properties?.title || null;
+    const spreadsheetTitle = metadata.properties?.title;
 
     return res.status(200).json({ sheetNames, spreadsheetTitle });
   } catch (error: unknown) {

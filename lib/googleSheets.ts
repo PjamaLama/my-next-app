@@ -122,8 +122,18 @@ export const getSheetMetadataCached = async (spreadsheetId: string): Promise<She
   });
 
   const metadata: SheetMetadata = {
-    sheets: response.data.sheets || [],
-    properties: response.data.properties,
+    sheets: (response.data.sheets || []).map(sheet => ({
+      properties: sheet.properties ? {
+        title: sheet.properties.title || undefined,
+        gridProperties: sheet.properties.gridProperties ? {
+          rowCount: sheet.properties.gridProperties.rowCount || undefined,
+          columnCount: sheet.properties.gridProperties.columnCount || undefined
+        } : undefined
+      } : undefined
+    })),
+    properties: response.data.properties ? {
+      title: response.data.properties.title || undefined
+    } : undefined,
     fetchedAt: now
   };
 
