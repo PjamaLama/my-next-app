@@ -1,4 +1,4 @@
-import { getGoogleSheetsClient, normalizeSpreadsheetId } from '@/lib/googleSheets';
+import { getGoogleSheetsClient, normalizeSpreadsheetId, getSheetDataEfficiently } from '@/lib/googleSheets';
 import { escapeSheetName } from '@/lib/sheetUtils';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createLogger } from '@/lib/logger';
@@ -92,233 +92,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!range) {
-      // Get the actual sheet dimensions first
+      // Use the optimized efficient approach
       try {
-        log.debug('Getting sheet dimensions for', sheetName);
-        
-        const sheetMetadata = await sheets.spreadsheets.get({
-          spreadsheetId,
-          includeGridData: false
-        });
-        
-        log.debug('Available sheets', sheetMetadata.data.sheets?.map(s => s.properties?.title) || []);
-        
-        const sheet = sheetMetadata.data.sheets?.find(s => s.properties?.title === sheetName);
-        if (!sheet?.properties?.gridProperties) {
-          const availableSheets = sheetMetadata.data.sheets?.map(s => s.properties?.title).filter(Boolean) || [];
-          const errorMsg = `Sheet "${sheetName}" not found. Available sheets: ${availableSheets.join(', ')}`;
-          log.warn(errorMsg);
-          
-                      // Return detailed error information to help the frontend handle this
-            return res.status(404).json({ 
-              error: errorMsg,
-              availableSheets: availableSheets,
-              requestedSheet: sheetName,
-              suggestion: availableSheets.length > 0 ? `Try using "${availableSheets[0]}" instead` : 'No sheets available',
-              requestId
-            });
-        }
-        
-        const gridProps = sheet.properties.gridProperties;
-        const rowCount = gridProps.rowCount || 1000;
-        const columnCount = gridProps.columnCount || 26;
-        log.debug('Sheet dimensions', { rowCount, columnCount });
-        
-        // Convert column count to letter (A, B, C, ... Z, AA, AB, etc.)
-        const getColumnLetter = (num: number) => {
-          let result = '';
-          while (num > 0) {
-            num--;
-            result = String.fromCharCode(65 + (num % 26)) + result;
-            num = Math.floor(num / 26);
-          }
-          return result;
-        };
-        
-        const endColumn = getColumnLetter(columnCount);
-        const escapedSheetName = escapeSheetName(sheetName);
-        
-        // Bottom-biased strategies when requesting recent rows
-        const tail = typeof tailRows === 'number' && tailRows > 0 ? tailRows : 0;
-        const tailSizes = tail ? [Math.max(200, tail * 2), Math.max(100, tail)] : [];
-        const tailStrategies = tailSizes.map(sz => {
-          const start = Math.max(1, rowCount - sz + 1);
-          return `${escapedSheetName}!A${start}:${endColumn}${rowCount}`;
+        log.debug('Fetching sheet data efficiently for', sheetName);
+
+        const result = await getSheetDataEfficiently(spreadsheetId, sheetName, {
+          maxRows: 1000, // Limit to prevent excessive data
+          includeHeaders: true,
+          tailRows: typeof tailRows === 'number' && tailRows > 0 ? tailRows : undefined
         });
 
-        // Try different range strategies based on sheet size
-        const baseStrategies = [
-          // Use just the columns with all rows as a safe fallback
-          `${escapedSheetName}!A:${endColumn}`,
-        ];
-        const strategies = [...tailStrategies, ...baseStrategies];
-        const tailSet = new Set(tailStrategies);
-        
-        log.debug('Trying strategies', strategies.length);
-        
-        for (const strategy of strategies) {
-          try {
-            log.debug('Try strategy', strategy);
-            
-            const response = await sheets.spreadsheets.values.get({
-              spreadsheetId,
-              range: strategy,
-              valueRenderOption: 'FORMATTED_VALUE',
-              dateTimeRenderOption: 'FORMATTED_STRING',
-            });
-            
-            log.debug('Strategy success', strategy, 'rows', response.data.values?.length || 0);
+        let finalData = result.data;
 
-            // Prepare values and headers (tail-only window)
-            const values = (response.data.values || []) as string[][];
-            let headers: string[] = [];
-            try {
-              const headerResp = await sheets.spreadsheets.values.get({
-                spreadsheetId,
-                range: `${escapedSheetName}!1:1`,
-                valueRenderOption: 'FORMATTED_VALUE',
-                dateTimeRenderOption: 'FORMATTED_STRING',
-              });
-              headers = (headerResp.data.values?.[0] as string[]) || [];
-            } catch {}
+        // Filter out total rows (row 3) when processing data
+        if (finalData.length > 2) {
+          // Check if row 3 (index 2) is a total row and filter it out
+          const totalRowIndex = 2; // 0-based index for row 3
+          if (totalRowIndex < finalData.length) {
+            const totalRow = finalData[totalRowIndex];
+            const isTotalRow = totalRow.some(cell =>
+              String(cell).toLowerCase().includes('total') ||
+              String(cell).startsWith('=SUM') ||
+              String(cell).startsWith('=sum')
+            );
 
-            const tailCount = typeof tailRows === 'number' && tailRows > 0 ? tailRows : 0;
-            let sliced = tailCount > 0 ? values.slice(-tailCount) : values;
-            
-            // Filter out total rows (row 3) when processing data
-            // This ensures the total row is not included in the data sent to frontend/N8N
-            if (sliced.length > 2) {
-              // Check if row 3 (index 2) is a total row and filter it out
-              const totalRowIndex = 2; // 0-based index for row 3
-              if (totalRowIndex < sliced.length) {
-                const totalRow = sliced[totalRowIndex];
-                const isTotalRow = totalRow.some(cell => 
-                  String(cell).toLowerCase().includes('total') || 
-                  String(cell).startsWith('=SUM') ||
-                  String(cell).startsWith('=sum')
-                );
-                
-                if (isTotalRow) {
-                  log.debug('Filtering out total row at index 2');
-                  sliced = sliced.filter((_, index) => index !== totalRowIndex);
-                }
-              }
+            if (isTotalRow) {
+              log.debug('Filtering out total row at index 2');
+              finalData = finalData.filter((_, index) => index !== totalRowIndex);
             }
-
-            const payload = { data: [headers, ...sliced] };
-            responseCache.set(key, { at: Date.now(), payload });
-            return res.status(200).json(payload);
-            
-          } catch (strategyError: unknown) {
-            const errorMsg = strategyError instanceof Error ? strategyError.message : String(strategyError);
-            log.debug('Strategy failed', strategy, errorMsg);
-            
-            // Check if this is a "sheet not found" error and provide better feedback
-            if (errorMsg.includes('Unable to parse range') || errorMsg.includes('not found')) {
-                             const availableSheets = await getAvailableSheetNames(spreadsheetId);
-               return res.status(404).json({ 
-                 error: `Sheet "${sheetName}" not found in spreadsheet`,
-                 details: errorMsg,
-                 availableSheets: availableSheets,
-                 requestedSheet: sheetName,
-                 suggestion: availableSheets.length > 0 ? `Try using "${availableSheets[0]}" instead` : 'No sheets available',
-                 requestId
-               });
-            }
-            continue;
           }
         }
-        
-         const availableSheets = await getAvailableSheetNames(spreadsheetId);
-         const errorMsg = `All range strategies failed for sheet "${sheetName}"`;
-         log.error(errorMsg);
-        return res.status(500).json({ 
-          error: errorMsg,
-          availableSheets: availableSheets,
-          requestedSheet: sheetName,
-          requestId
-        });
-        
-      } catch (metadataError: unknown) {
-        const metaErrorMsg = metadataError instanceof Error ? metadataError.message : String(metadataError);
-        log.warn('Could not get sheet metadata', metaErrorMsg);
-        if (metaErrorMsg.includes('This operation is not supported for this document')) {
-          return res.status(400).json({
-            error: 'The provided ID is not a Google Sheet.',
-            details: metaErrorMsg,
-            hint: 'Open the Google Sheet in your browser and copy the ID from the URL between /d/ and /edit. If this is an Excel file, open it in Google Sheets and save as a Google Sheet first.',
-            requestId
-          });
-        }
-        
-        // Check if this is a sheet not found error
-        if (metaErrorMsg.includes('Unable to parse range') || metaErrorMsg.includes('not found')) {
+
+        const payload = { data: finalData };
+        responseCache.set(key, { at: Date.now(), payload });
+        return res.status(200).json(payload);
+
+      } catch (efficientError: unknown) {
+        const errorMsg = efficientError instanceof Error ? efficientError.message : String(efficientError);
+        log.warn('Efficient fetch failed, falling back to legacy approach', errorMsg);
+
+        // Check if it's a sheet not found error
+        if (errorMsg.includes('not found')) {
           const availableSheets = await getAvailableSheetNames(spreadsheetId);
-          return res.status(404).json({ 
+          return res.status(404).json({
             error: `Sheet "${sheetName}" not found in spreadsheet`,
-            details: metaErrorMsg,
+            details: errorMsg,
             availableSheets: availableSheets,
             requestedSheet: sheetName,
             suggestion: availableSheets.length > 0 ? `Try using "${availableSheets[0]}" instead` : 'No sheets available',
             requestId
           });
         }
-        
-        // Fallback to very conservative ranges
-        const escapedSheetName = escapeSheetName(sheetName);
-        const fallbackRanges = [
-          `${escapedSheetName}!A1:T50`,
-          `${escapedSheetName}!A1:Z100`,
-          `${escapedSheetName}!A:T`,
-          `${sheetName}!A1:T50` // Try without escaping as last resort
-        ];
-        
-        log.debug('Trying fallback ranges', fallbackRanges.length);
-        
-        for (const fallback of fallbackRanges) {
-          try {
-            log.debug('Fallback attempt', fallback);
-            
-            const response = await sheets.spreadsheets.values.get({
-              spreadsheetId,
-              range: fallback,
-              valueRenderOption: 'FORMATTED_VALUE',
-              dateTimeRenderOption: 'FORMATTED_STRING',
-            });
-            
-            log.debug('Fallback success', fallback, 'rows', response.data.values?.length || 0);
-            const values = response.data.values || [];
-            const payload = { data: values };
-            responseCache.set(key, { at: Date.now(), payload });
-            return res.status(200).json(payload);
-            
-          } catch (fallbackError: unknown) {
-            const fbErrorMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-            log.debug('Fallback failed', fallback, fbErrorMsg);
-            
-            // Check if this is a sheet not found error
-            if (fbErrorMsg.includes('Unable to parse range') || fbErrorMsg.includes('not found')) {
-              const availableSheets = await getAvailableSheetNames(spreadsheetId);
-              return res.status(404).json({ 
-                error: `Sheet "${sheetName}" not found in spreadsheet`,
-                details: fbErrorMsg,
-                availableSheets: availableSheets,
-                requestedSheet: sheetName,
-                suggestion: availableSheets.length > 0 ? `Try using "${availableSheets[0]}" instead` : 'No sheets available',
-                requestId
-              });
-            }
-            continue;
-          }
-        }
-        
-        const availableSheets = await getAvailableSheetNames(spreadsheetId);
-        const errorMsg = `All fallback ranges failed for sheet "${sheetName}". Metadata error: ${metaErrorMsg}`;
-        log.error(errorMsg);
-        return res.status(500).json({ 
-          error: errorMsg,
-          availableSheets: availableSheets,
-          requestedSheet: sheetName,
+
+        // If it's a different error, return generic error
+        return res.status(500).json({
+          error: 'Failed to fetch sheet data',
+          details: errorMsg,
           requestId
         });
       }

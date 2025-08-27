@@ -1,4 +1,4 @@
-import { getGoogleSheetsClient, normalizeSpreadsheetId } from '@/lib/googleSheets';
+import { getGoogleSheetsClient, normalizeSpreadsheetId, getSheetMetadataCached, rateLimiter } from '@/lib/googleSheets';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -12,12 +12,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const sheets = await getGoogleSheetsClient();
     const spreadsheetId = normalizeSpreadsheetId(spreadsheetIdParam);
-    const response = await sheets.spreadsheets.get({ spreadsheetId });
+    const metadata = await getSheetMetadataCached(spreadsheetId);
 
-    const sheetNames = response.data.sheets?.map(s => s.properties?.title || '').filter(Boolean) || [];
-    const spreadsheetTitle = response.data.properties?.title || null;
+    const sheetNames = metadata.sheets.map(s => s.properties?.title || '').filter(Boolean) || [];
+    const spreadsheetTitle = metadata.properties?.title || null;
 
     return res.status(200).json({ sheetNames, spreadsheetTitle });
   } catch (error: unknown) {
