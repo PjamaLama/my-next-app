@@ -58,9 +58,9 @@ npm run migrate:selected-sheets:restore
 - **`pages/api/user/export-data.ts`**: Updated to export from main user document
 
 ### Migration Scripts
-- **`scripts/migrate-selected-sheets.ts`**: Main migration script with backup/restore
-- **`scripts/test-migration.ts`**: Validation tests
-- **`package.json`**: Added npm scripts for migration
+- **`scripts/test-migration.ts`**: Validation tests (migration completed)
+- **`scripts/migrate-users.ts`**: General user migration and cleanup scripts
+- **`package.json`**: Updated with migration scripts (migration completed)
 
 ## Data Flow After Migration
 

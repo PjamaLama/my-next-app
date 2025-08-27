@@ -13,9 +13,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "migrate:users": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts",
-    "migrate:selected-sheets": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-selected-sheets.ts",
-    "migrate:selected-sheets:backup": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-selected-sheets.ts --backup",
-    "migrate:selected-sheets:restore": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-selected-sheets.ts --restore",
+
     "test:migration": "ts-node --project scripts/tsconfig.migrate.json scripts/test-migration.ts",
     "cleanup:denormalized-fields": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts --cleanup"
   },
