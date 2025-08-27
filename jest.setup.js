@@ -7,6 +7,11 @@ process.env.GEMINI_API_KEY = 'test-gemini-key';
 process.env.GOOGLE_GENAI_API_KEY = process.env.GOOGLE_GENAI_API_KEY || 'test-genai-key';
 process.env.NEXT_PUBLIC_SHEET_ID = 'test-sheet-id';
 
+// Setup React Testing Library if in jsdom environment
+if (typeof window !== 'undefined') {
+  require('@testing-library/jest-dom');
+}
+
 // Mock console methods to reduce noise in tests
 const originalConsole = console;
 global.console = {

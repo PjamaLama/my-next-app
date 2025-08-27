@@ -13,7 +13,6 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "migrate:users": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts",
-
     "test:migration": "ts-node --project scripts/tsconfig.migrate.json scripts/test-migration.ts",
     "cleanup:denormalized-fields": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts --cleanup"
   },
@@ -46,6 +45,9 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/firebase": "^2.4.32",
     "@types/formidable": "^3.4.5",
     "@types/jest": "^29.5.14",
@@ -69,6 +71,7 @@
     "handlebars-loader": "^1.7.3",
     "https-browserify": "^1.0.0",
     "jest": "^29.7.0",
+    "jest-environment-jsdom": "^30.1.0",
     "os-browserify": "^0.3.0",
     "path-browserify": "^1.0.1",
     "process": "^0.11.10",

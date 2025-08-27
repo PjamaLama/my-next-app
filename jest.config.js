@@ -1,10 +1,14 @@
 module.exports = {
   preset: 'ts-jest',
-  testEnvironment: 'node',
+  testEnvironment: 'jsdom',
   roots: ['<rootDir>'],
-  testMatch: ['**/__tests__/**/*.test.ts'],
+  testMatch: ['**/__tests__/**/*.test.{ts,tsx}'],
   transform: {
-    '^.+\\.tsx?$': 'ts-jest',
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: {
+        jsx: 'react-jsx'
+      }
+    }],
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
@@ -15,7 +19,7 @@ module.exports = {
   collectCoverageFrom: [
     'pages/api/**/*.ts',
     'lib/**/*.ts',
-    'app/**/*.ts',
+    'app/**/*.{ts,tsx}',
     'functions/**/*.ts',
     '!**/*.d.ts',
     '!**/node_modules/**',
@@ -32,5 +36,19 @@ module.exports = {
       functions: 70,
       lines: 70
     }
-  }
+  },
+  // Support for different test environments
+  projects: [
+    {
+      displayName: 'API & Lib Tests',
+      testEnvironment: 'node',
+      testMatch: ['**/__tests__/api/**/*.test.ts', '**/__tests__/lib/**/*.test.ts', '**/__tests__/utils/**/*.test.ts'],
+    },
+    {
+      displayName: 'Component Tests',
+      testEnvironment: 'jsdom',
+      testMatch: ['**/__tests__/components/**/*.test.{ts,tsx}'],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.js', '@testing-library/jest-dom'],
+    }
+  ]
 }; 
