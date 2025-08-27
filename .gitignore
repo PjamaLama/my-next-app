@@ -29,6 +29,32 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Temporary files and git artifacts
+*.tmp
+*.temp
+*.log
+*.swp
+*.bak
+*~
+.DS_Store
+Thumbs.db
+
+# Git command outputs (prevent accidental commits)
+git-*.txt
+*-git-*.txt
+commit_message.txt
+*.patch
+*.diff
+
+# Empty directories
+# (Git doesn't track empty directories, but this prevents accidental commits)
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-*
+*.vim
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
