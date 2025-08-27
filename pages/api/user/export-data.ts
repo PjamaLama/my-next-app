@@ -37,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       dataTypes: []
     };
 
-    // Get user profile
+    // Get user profile (private data)
     try {
       const profileDoc = await db.doc(`users/${uid}/private/profile`).get();
       if (profileDoc.exists) {
@@ -45,7 +45,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         userData.dataTypes.push('profile');
       }
     } catch (error) {
-      console.warn('Could not fetch profile:', error);
+      console.warn('Could not fetch private profile:', error);
+    }
+
+    // Get main user document for selectedSheetNames and defaultSpreadsheetId
+    try {
+      const userDoc = await db.doc(`users/${uid}`).get();
+      if (userDoc.exists) {
+        const userDataDoc = userDoc.data();
+        // Add sheet selection data to export
+        userData.selectedSheetNames = userDataDoc?.selectedSheetNames || [];
+        userData.defaultSpreadsheetId = userDataDoc?.defaultSpreadsheetId || "";
+        // Mark as having user document data
+        if (!userData.dataTypes.includes('user_document')) {
+          userData.dataTypes.push('user_document');
+        }
+      }
+    } catch (error) {
+      console.warn('Could not fetch main user document:', error);
     }
 
     // Get chat sessions

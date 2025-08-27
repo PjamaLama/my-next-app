@@ -47,8 +47,9 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!user) return;
     const db = getDb();
     if (!db) return;
-    
-    const userDocRef = doc(db, "users", user.uid, "private", "profile");
+
+    // Read from main user document instead of private profile
+    const userDocRef = doc(db, "users", user.uid);
     const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -179,9 +180,10 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!user) return;
     const db = getDb();
     if (!db) return;
-    
+
     try {
-      await setDoc(doc(db, "users", user.uid, "private", "profile"), {
+      // Save to main user document instead of private profile
+      await setDoc(doc(db, "users", user.uid), {
         defaultSpreadsheetId: spreadsheetId,
         selectedSheetNames: sheetNames
       }, { merge: true });

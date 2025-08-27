@@ -151,6 +151,9 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
           displayName: user.displayName || null,
           photoURL: user.photoURL || null,
           lastLoginAt: serverTimestamp(),
+          // Initialize sheet selection fields on main user document
+          selectedSheetNames: [],
+          defaultSpreadsheetId: "",
         };
         if (!snap.exists()) {
           baseData.createdAt = serverTimestamp();
