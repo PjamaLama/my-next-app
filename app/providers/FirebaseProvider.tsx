@@ -157,7 +157,6 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
         };
         if (!snap.exists()) {
           baseData.createdAt = serverTimestamp();
-          baseData.message_count = 0;
         }
         await setDoc(profileRef, baseData, { merge: true });
 
@@ -215,8 +214,6 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       } else {
         // If profile doesn't exist, create it with initial values
         await setDoc(profileRef, {
-            message_count: 0,
-            last_reset: serverTimestamp(),
             geminiApiKey: ''
         }, { merge: true });
       }
@@ -233,13 +230,12 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
             today.setHours(0, 0, 0, 0);
 
             if (!lastReset || lastReset < today) {
-              // If it's a new day, reset the count on both documents
+              // If it's a new day, reset the count on main user document only
               const resetData = {
                 message_count: 0,
                 last_reset: serverTimestamp()
               };
               await setDoc(userDocRef, resetData, { merge: true });
-              await setDoc(profileRef, resetData, { merge: true });
               setMessage_count(0);
             } else {
               setMessage_count(data.message_count || 0);

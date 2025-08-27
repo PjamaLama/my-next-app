@@ -16,7 +16,8 @@
     "migrate:selected-sheets": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-selected-sheets.ts",
     "migrate:selected-sheets:backup": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-selected-sheets.ts --backup",
     "migrate:selected-sheets:restore": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-selected-sheets.ts --restore",
-    "test:migration": "ts-node --project scripts/tsconfig.migrate.json scripts/test-migration.ts"
+    "test:migration": "ts-node --project scripts/tsconfig.migrate.json scripts/test-migration.ts",
+    "cleanup:denormalized-fields": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts --cleanup"
   },
   "dependencies": {
     "@genkit-ai/firebase": "^1.15.5",
