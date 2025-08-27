@@ -39,6 +39,8 @@ const formatPrivateKey = (rawKey: string): string => {
   return key;
 };
 
+let firestoreInstance: any = null;
+
 export const getAdminDb = () => {
   if (!getApps().length) {
     const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.GOOGLE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID;
@@ -47,11 +49,11 @@ export const getAdminDb = () => {
 
     if (clientEmail && rawPrivateKey) {
       const privateKey = formatPrivateKey(rawPrivateKey);
-      
+
       if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
         throw new Error('Invalid private key format: missing BEGIN/END markers');
       }
-      
+
       initializeApp({
         credential: cert({
           projectId: projectId || undefined,
@@ -68,7 +70,11 @@ export const getAdminDb = () => {
     }
   }
 
-  return getFirestore();
+  if (!firestoreInstance) {
+    firestoreInstance = getFirestore();
+  }
+
+  return firestoreInstance;
 };
 
 export const getAdminAuth = () => {

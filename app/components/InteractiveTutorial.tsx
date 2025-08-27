@@ -305,24 +305,9 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
     }
   }, [isTutorialVisible, loading, error, currentStep]);
 
-  // Use hardcoded tutorial steps (no API fetching) with timeout fallback
+  // Load tutorial instantly - no external dependencies
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // Fallback: if loading takes too long, force completion
-      console.warn('Tutorial loading timeout, forcing completion');
-      setLoading(false);
-    }, 5000); // 5 second timeout
-
-    // Test mode: bypass all external dependencies
-    const testMode = process.env.NODE_ENV === 'test' || process.env.NEXT_PUBLIC_TEST_MODE === 'true';
-    
     try {
-      if (testMode) {
-        console.log('🔍 [InteractiveTutorial] Running in test mode');
-        setLoading(false);
-        return;
-      }
-      
       setTutorialSteps(defaultTutorialSteps);
       setLoading(false);
     } catch (err) {
@@ -330,8 +315,6 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
       setError('Failed to load tutorial');
       setLoading(false);
     }
-
-    return () => clearTimeout(timer);
   }, []);
 
   const handleNext = () => {
@@ -371,32 +354,9 @@ const InteractiveTutorial: React.FC<InteractiveTutorialProps> = () => {
 
   console.log('🔍 [InteractiveTutorial] Rendering tutorial with step:', currentStep);
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-        <div className="bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl p-8 w-full max-w-4xl relative">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-            <div className="text-white text-lg mb-4">Loading tutorial...</div>
-            {error && (
-              <div className="text-red-400 mb-4">{error}</div>
-            )}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="text-xs text-gray-400 mb-4 font-mono">{debugInfo}</div>
-            )}
-            <button
-              onClick={() => {
-                setLoading(false);
-                setError(null);
-              }}
-              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-            >
-              Skip Tutorial
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  // Remove dark overlay - just show loading inline or skip it entirely
+  if (loading && !error) {
+    return null; // Don't show anything while loading - instant experience
   }
 
   return (

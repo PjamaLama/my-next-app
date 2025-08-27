@@ -73,13 +73,11 @@ const extractPDFText = async (file: File): Promise<string> => {
 
 
 export default function ChatInterface({ className = '', onShowTutorial }: ChatInterfaceProps) {
-  const { chatMessages, addMessage, loading, error, ensureSession, setChatMessages, sessionsLoading, sessions, updateMessageTables, currentSessionId, retrySessionLoad, retryCount, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
+  const { chatMessages, addMessage, error, ensureSession, setChatMessages, updateMessageTables, currentSessionId, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
   const { user, waId } = useFirebase();
   const { meta: adminMeta } = useAdminMeta();
   const [inputValue, setInputValue] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editModalData, setEditModalData] = useState<any>(null);
@@ -87,12 +85,26 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+
+  // Session-specific states - reset when session changes
+  const [isSending, setIsSending] = useState(false);
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [filesBeingSent, setFilesBeingSent] = useState<UploadedFile[]>([]);
   const [isStopping, setIsStopping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const firebaseFileUrlsRef = useRef<any[]>([]);
+
+  // Reset session-specific states when session changes
+  useEffect(() => {
+    setIsSending(false);
+    setIsProcessingFiles(false);
+    setFilesBeingSent([]);
+    setIsStopping(false);
+    setInputValue(''); // Clear input when switching sessions
+    setUploadedFiles([]); // Clear uploaded files when switching sessions
+  }, [currentSessionId]);
   
   // Handle transcript changes from voice recorder
   const handleTranscriptChange = useCallback((transcript: string) => {
@@ -159,12 +171,12 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   }, [chatMessages]);
 
   useEffect(() => {
-    console.log('🔍 [ChatInterface] Session change effect triggered:', { currentSessionId, sessionsLoading });
-    if (currentSessionId && !sessionsLoading) {
+    console.log('🔍 [ChatInterface] Session change effect triggered:', { currentSessionId });
+    if (currentSessionId) {
       console.log('🔍 [ChatInterface] Session changed to:', currentSessionId);
       console.log('🔍 [ChatInterface] Current chat messages count:', chatMessages.length);
     }
-  }, [currentSessionId, sessionsLoading, chatMessages.length]);
+  }, [currentSessionId, chatMessages.length]);
 
   useEffect(() => {
     const handleApproveUpdate = async (event: CustomEvent) => {
@@ -468,7 +480,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles || sessionsLoading) return;
+    if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles) return;
 
     const message = inputValue.trim() || 'Extract data from uploaded files and add to selected sheets';
     setInputValue('');
@@ -743,16 +755,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     }).format(timestamp);
   };
 
-  if (loading || sessionsLoading) {
-    return (
-      <div className={`flex-1 flex items-center justify-center ${className}`}>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
-          <Loader2 className="animate-spin h-5 w-5" />
-          <span>{sessionsLoading ? 'Loading sessions...' : 'Loading chat...'}</span>
-        </div>
-      </div>
-    );
-  }
+  // Removed blocking loading state - chat loads instantly
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
@@ -838,68 +841,18 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
       {error && (
         <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
-          <div className="flex items-center justify-between">
-            <span>{error}</span>
-            {retryCount < 3 && (
-              <button 
-                onClick={retrySessionLoad}
-                className="ml-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 rounded text-xs transition-colors"
-              >
-                Retry
-              </button>
-            )}
-          </div>
+          <span>{error}</span>
         </div>
       )}
 
-      {!sessionsLoading && sessions.length === 0 && !error && (
-        <div className="mx-6 mb-4 p-3 bg-blue-500/10 border border-blue-400/30 rounded-lg text-blue-200 text-sm">
-          <div className="flex items-center justify-between">
-            <span>Setting up your first chat session...</span>
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!sessionsLoading && sessions.length === 0 && error && (
-        <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
-          <div className="flex items-center justify-between">
-            <span>Failed to create chat session automatically</span>
-            <button 
-              onClick={async () => {
-                setIsCreatingSession(true);
-                try {
-                  await clearErrorAndCreateSession();
-                } catch (err) {
-                  console.error('Failed to create session:', err);
-                } finally {
-                  setIsCreatingSession(false);
-                }
-              }}
-              disabled={isCreatingSession}
-              className="ml-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 rounded text-xs transition-colors disabled:opacity-50"
-            >
-              {isCreatingSession ? 'Creating...' : 'Create New Chat'}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Removed session loading states - loads instantly */}
 
       <div className="border-t border-white/10 p-6">
         <div className="mb-4">
           <SheetChipSelector />
         </div>
         
-        {sessionsLoading && (
-          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-400/30 rounded-lg text-blue-200 text-sm">
-            <div className="flex items-center gap-2">
-              <Loader2 className="animate-spin h-4 w-4" />
-              <span>Setting up your chat session...</span>
-            </div>
-          </div>
-        )}
+        {/* Removed session loading indicator - loads instantly */}
         
         {uploadedFiles.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -997,13 +950,13 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               // Re-enable stop button after a brief delay
               setTimeout(() => setIsStopping(false), 500);
             } : handleSubmit}
-            disabled={isSending ? (isStopping) : ((!inputValue.trim() && uploadedFiles.length === 0) || sessionsLoading)}
+            disabled={isSending ? (isStopping) : ((!inputValue.trim() && uploadedFiles.length === 0))}
             aria-label={isSending ? "Stop chat generation" : "Send message"}
             className={`p-3 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isSending 
                 ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105 focus:ring-red-500' 
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500'
-            } ${(!inputValue.trim() && uploadedFiles.length === 0) || sessionsLoading ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`}
+            } ${(!inputValue.trim() && uploadedFiles.length === 0) ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`}
           >
             {isSending ? (
               <Square className="h-5 w-5" /> // Stop icon
@@ -1015,11 +968,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         {/* Debug info - remove in production */}
         {process.env.NODE_ENV === 'development' && (
           <div className="text-center text-xs text-gray-500 mt-2">
-            Debug: waId={waId ? 'yes' : 'no'}, showMessaging={adminMeta.showWhatsAppMessaging ? 'yes' : 'no'}, loading={loading ? 'yes' : 'no'}
+            Debug: waId={waId ? 'yes' : 'no'}, showMessaging={adminMeta.showWhatsAppMessaging ? 'yes' : 'no'}
           </div>
         )}
         
-        {adminMeta.showWhatsAppMessaging && waId && !loading ? (
+        {adminMeta.showWhatsAppMessaging && waId ? (
           <div className="text-center text-xs text-gray-400 mt-4">
             WhatsApp linked: <span className="font-semibold">{waId}</span>. Start messaging at <a href="https://wa.me/27615258918" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:underline">+27 61 525 8918</a>.
           </div>

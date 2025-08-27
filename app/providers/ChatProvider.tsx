@@ -41,7 +41,6 @@ export interface ChatSession {
 interface ChatContextType {
   chatMessages: ChatMessage[];
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  loading: boolean;
   error: string | null;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp' | 'status'>) => Promise<void>;
@@ -62,7 +61,7 @@ interface ChatContextType {
   
   // Session management
   sessions: ChatSession[];
-  sessionsLoading: boolean; // Add this to track session loading state
+
   currentSessionId: string | null;
   setCurrentSessionId: (sessionId: string | null) => void;
   createSession: (title?: string, spreadsheetId?: string, sheetNames?: string[]) => Promise<string>;
@@ -76,6 +75,9 @@ interface ChatContextType {
   
   // Error handling
   clearErrorAndCreateSession: () => Promise<void>;
+
+  // Chat title generation
+  generateChatTitle: (sessionId: string) => Promise<string>;
 
   // AbortController for cancelling ongoing requests
   abortController: AbortController | null;
@@ -103,16 +105,15 @@ interface ChatProviderProps {
 export const ChatProvider = ({ children }: ChatProviderProps) => {
   const { user } = useFirebase();
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Session management state
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState<boolean>(true); // Add this state
   const [currentSessionId, _setCurrentSessionId] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0); // Add retry counter
-  const [lastError, setLastError] = useState<Error | null>(null); // Track last error for retry logic
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  // Cache for instant chat switching
+  const [messageCache, setMessageCache] = useState<Record<string, ChatMessage[]>>({});
 
   const cancelChatGeneration = useCallback(() => {
     if (abortController) {
@@ -122,19 +123,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
   }, [abortController]);
 
-  // Retry function for failed session loads
-  const retrySessionLoad = useCallback(() => {
-    if (retryCount < 3) { // Limit retries to 3 attempts
-      console.log(`🔍 [ChatProvider] Retrying session load (attempt ${retryCount + 1}/3)`);
-      setRetryCount(prev => prev + 1);
-      setError(null);
-      // Force re-run of the useEffect by updating a dependency
-      setSessionsLoading(true);
-    } else {
-      console.error('🔍 [ChatProvider] Max retry attempts reached');
-      setError("Failed to load sessions after multiple attempts. Please refresh the page.");
-    }
-  }, [retryCount]);
+
 
   // Load and subscribe to sessions for the logged-in user
   useEffect(() => {
@@ -143,16 +132,14 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       setSessions([]);
       setChatMessages([]);
       _setCurrentSessionId(null);
-      setSessionsLoading(false);
       return;
     }
 
     console.log('🔍 [ChatProvider] User authenticated, loading sessions for:', user.uid);
-    setSessionsLoading(true); // Start loading sessions
-    
+
     const db = getDb();
     if (!db) return;
-    
+
     const sessionsColRef = collection(db, 'users', user.uid, 'sessions');
     const q = query(sessionsColRef, orderBy('createdAt', 'desc'));
 
@@ -186,7 +173,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       console.log('🔍 [ChatProvider] Loaded sessions:', uniqueSessions.map(s => ({ id: s.id, title: s.title })));
       
       setSessions(uniqueSessions);
-      
+
       // Set current session if none is selected
       if (!currentSessionId && uniqueSessions.length > 0) {
         console.log('🔍 [ChatProvider] Setting current session to first available:', uniqueSessions[0].id);
@@ -206,8 +193,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       } else {
         console.log('🔍 [ChatProvider] No sessions available, currentSessionId remains null');
       }
-      
-      setSessionsLoading(false); // Sessions loaded
+
       setError(null); // Clear any previous errors on successful load
     }, (err) => {
       console.error("Error fetching sessions:", err);
@@ -226,13 +212,6 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       }
       
       setError(errorMessage);
-      setSessionsLoading(false); // Stop loading on error
-      
-      // Auto-retry for certain error types
-      if (err.code === 'unavailable' && retryCount < 3) {
-        console.log('🔍 [ChatProvider] Auto-retrying for unavailable service...');
-        setTimeout(() => retrySessionLoad(), 2000); // Retry after 2 seconds
-      }
     });
 
     return () => {
@@ -241,26 +220,34 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       // Clean up local state when unmounting
       setSessions([]);
       setCurrentSessionId(null);
-      setSessionsLoading(false);
     };
   }, [user]); // Removed currentSessionId dependency to prevent infinite loop
 
-  // Load and subscribe to chat messages for the current session
+  // Load and subscribe to chat messages for the current session ONLY
   useEffect(() => {
+    console.log('🔍 [ChatProvider] Setting up message listener for session:', currentSessionId);
+
     if (!user || !currentSessionId) {
+      console.log('🔍 [ChatProvider] Clearing messages - no user or session');
       setChatMessages([]);
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
     const db = getDb();
-    if (!db) return;
-    
+    if (!db) {
+      console.log('🔍 [ChatProvider] No database connection');
+      return;
+    }
+
+    // Create subscription for THIS SPECIFIC session only
     const messagesColRef = collection(db, 'users', user.uid, 'sessions', currentSessionId, 'messages');
     const q = query(messagesColRef, orderBy('timestamp', 'asc'));
 
+    console.log('🔍 [ChatProvider] Listening to messages for session:', currentSessionId);
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log('🔍 [ChatProvider] Received', snapshot.docs.length, 'messages for session:', currentSessionId);
+
       const messages = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -269,37 +256,36 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
           // Parse table rows from JSON string back to array
           tables: Array.isArray(data.tables) ? data.tables.map(table => ({
             ...table,
-            rows: table.rows && typeof table.rows === 'string' ? 
-              (() => { try { return JSON.parse(table.rows); } catch { return []; } })() : 
+            rows: table.rows && typeof table.rows === 'string' ?
+              (() => { try { return JSON.parse(table.rows); } catch { return []; } })() :
               []
           })) : data.tables,
           timestamp: data.timestamp?.toDate(), // Convert Firestore Timestamp to Date
         } as ChatMessage;
       });
+
+      console.log('🔍 [ChatProvider] Setting', messages.length, 'messages for session:', currentSessionId);
+
+      // Cache the messages for instant switching
+      setMessageCache(prev => ({
+        ...prev,
+        [currentSessionId]: messages
+      }));
+
+      // Update current chat messages (only if this is still the current session)
       setChatMessages(messages);
-      setLoading(false);
-      setError(null); // Clear any previous errors on successful load
+      setError(null);
     }, (err) => {
-      console.error("Error fetching chat history:", err);
-      
-      // Provide more specific error messages based on error type
-      let errorMessage = "Failed to load chat history.";
-      if (err.code === 'permission-denied') {
-        errorMessage = "Access denied to chat history. Please check your permissions.";
-      } else if (err.code === 'unavailable') {
-        errorMessage = "Chat history temporarily unavailable. Please try again.";
-      } else if (err.code === 'resource-exhausted') {
-        errorMessage = "Service quota exceeded. Please try again later.";
-      } else if (err.code === 'unauthenticated') {
-        errorMessage = "Authentication required. Please sign in again.";
-      }
-      
-      setError(errorMessage);
-      setLoading(false);
+      console.error("🔍 [ChatProvider] Error fetching messages for session", currentSessionId, ":", err);
+      setError("Failed to load chat history.");
     });
 
-    return () => unsubscribe();
-  }, [user, currentSessionId]);
+    // Cleanup function - unsubscribe when session changes
+    return () => {
+      console.log('🔍 [ChatProvider] Unsubscribing from messages for session:', currentSessionId);
+      unsubscribe();
+    };
+  }, [user, currentSessionId]); // Re-run when session changes
 
   // Function to add a new message to the database
   const addMessage = async (message: Omit<ChatMessage, 'id' | 'timestamp' | 'status'>) => {
@@ -365,6 +351,23 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       // once this write is complete, replacing the optimistic message.
       await addDoc(messagesColRef, sanitizedMessage);
 
+      // Automatically generate AI title after first few messages (background task)
+      if (message.role === 'user') {
+        // Check current message count for this session
+        const currentMessageCount = chatMessages.filter(m => m.role === 'user').length;
+
+        // Generate title after 2 user messages (enough context but not too frequent)
+        if (currentMessageCount >= 2) {
+          const existingSession = sessions.find(s => s.id === sessionId);
+          // Only generate if it still has the default title
+          if (existingSession && (existingSession.title.startsWith('Chat ') || existingSession.title === 'New Chat')) {
+            generateChatTitle(sessionId).catch(error => {
+              console.log('🔍 [ChatProvider] Auto title generation failed (non-blocking):', error);
+            });
+          }
+        }
+      }
+
     } catch (err) {
       console.error("Error sending message:", err);
       setError("Failed to send message.");
@@ -377,17 +380,18 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
   };
 
-  // Custom setCurrentSessionId that clears chat messages when switching sessions
+  // Instant session switching with caching
   const setCurrentSessionId = (sessionId: string | null) => {
-    console.log('🔍 [setCurrentSessionId] Called with:', sessionId, 'current:', currentSessionId);
-    // Clear current chat messages when switching sessions
+    console.log('🔍 [setCurrentSessionId] Switching from', currentSessionId, 'to', sessionId);
+
     if (sessionId !== currentSessionId) {
-      console.log('🔍 [setCurrentSessionId] Session ID changed, clearing chat messages');
-      setChatMessages([]);
+      // Instantly show cached messages (or empty array) for immediate UI response
+      const cachedMessages = messageCache[sessionId || ''] || [];
+      setChatMessages(cachedMessages);
+
+      // Update current session
+      _setCurrentSessionId(sessionId);
     }
-    console.log('🔍 [setCurrentSessionId] Calling _setCurrentSessionId with:', sessionId);
-    _setCurrentSessionId(sessionId);
-    console.log('🔍 [setCurrentSessionId] _setCurrentSessionId called');
   };
 
   // Session management functions
@@ -462,7 +466,13 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       // Clear chat messages when creating a new session
       console.log('🔍 [createSession] Clearing chat messages');
       setChatMessages([]);
-      
+
+      // Initialize cache for new session
+      setMessageCache(prev => ({
+        ...prev,
+        [docRef.id]: [] // Empty array for new session
+      }));
+
       console.log('🔍 [createSession] Setting current session ID to:', docRef.id);
       setCurrentSessionId(docRef.id);
       
@@ -503,7 +513,14 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       await setDoc(sessionDocRef, { deleted: true }, { merge: true });
       
       setSessions(prev => prev.filter(s => s.id !== sessionId));
-      
+
+      // Clean up cache for deleted session
+      setMessageCache(prev => {
+        const newCache = { ...prev };
+        delete newCache[sessionId];
+        return newCache;
+      });
+
       // If we're deleting the current session, switch to another available session
       if (currentSessionId === sessionId) {
         const remainingSessions = sessions.filter(s => s.id !== sessionId);
@@ -518,22 +535,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   };
 
   const ensureSession = async (): Promise<string> => {
-    console.log('🔍 [ensureSession] Starting with:', { currentSessionId, sessionsCount: sessions.length, sessionsLoading });
-    
-    // Wait for sessions to finish loading
-    if (sessionsLoading) {
-      console.log('🔍 [ensureSession] Sessions still loading, waiting...');
-      // Wait for sessions to load (with a timeout to prevent infinite waiting)
-      let attempts = 0;
-      const maxAttempts = 50; // 5 seconds max wait
-      while (sessionsLoading && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
-      if (sessionsLoading) {
-        throw new Error('Timeout waiting for sessions to load');
-      }
-    }
+    console.log('🔍 [ensureSession] Starting with:', { currentSessionId, sessionsCount: sessions.length });
+
+    // Sessions load instantly now, no need to wait
     
     if (currentSessionId) {
       console.log('🔍 [ensureSession] Using existing session:', currentSessionId);
@@ -683,31 +687,86 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
   };
 
-  const value = {
+  // Generate AI-powered title for a chat session
+  const generateChatTitle = async (sessionId: string): Promise<string> => {
+    if (!user || !sessionId) {
+      throw new Error('User not authenticated or invalid session');
+    }
+
+    try {
+      console.log('🔍 [ChatProvider] Generating AI title for session:', sessionId);
+
+      const db = getDb();
+      if (!db) {
+        throw new Error('Database not initialized');
+      }
+
+      // Get the messages for this session to generate a title
+      const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
+      const q = query(messagesColRef, orderBy('timestamp', 'asc'));
+      const messagesSnapshot = await getDocs(q);
+
+      const messages = messagesSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          role: data.role,
+          content: String(data.content || '')
+        };
+      });
+
+      if (messages.length === 0) {
+        throw new Error('No messages found to generate title from');
+      }
+
+      // Call the generate-chat-title API
+      const response = await fetch('/api/generate-chat-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate chat title');
+      }
+
+      const result = await response.json();
+      const newTitle = result.title || 'New Chat';
+
+      // Update the session with the new title
+      const sessionDocRef = doc(db, 'users', user.uid, 'sessions', sessionId);
+      await setDoc(sessionDocRef, { title: newTitle }, { merge: true });
+
+      console.log('🔍 [ChatProvider] Successfully generated and saved title:', newTitle);
+      return newTitle;
+
+    } catch (error) {
+      console.error('🔍 [ChatProvider] Failed to generate chat title:', error);
+      throw error;
+    }
+  };
+
+      const value = {
     chatMessages,
     setChatMessages, // Keep for direct manipulation if needed, e.g., optimistic updates
-    loading,
     error,
     setError, // Expose setError
     addMessage,
     updateMessageTables,
-    
+
     // Session management
     sessions,
-    sessionsLoading, // Expose sessionsLoading
     currentSessionId,
     setCurrentSessionId,
     createSession,
     deleteSession,
     ensureSession,
     appendMessage,
-    
-    // Error recovery
-    retrySessionLoad,
-    retryCount,
-    
+
     // Error handling
     clearErrorAndCreateSession,
+
+    // Chat title generation
+    generateChatTitle,
 
     // AbortController for cancelling ongoing requests
     abortController,

@@ -15,7 +15,7 @@ interface ChatMessageProps {
   formatTimestamp: (date: Date) => string;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({
+const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
   message,
   selectedSheetNames,
   processingTables,
@@ -366,6 +366,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       </div>
     </div>
   );
-};
+});
 
-export default React.memo(ChatMessage);
+ChatMessage.displayName = 'ChatMessage';
+
+export default ChatMessage;

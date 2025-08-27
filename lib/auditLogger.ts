@@ -38,12 +38,17 @@ export class AuditLogger {
         timestamp: new Date()
       };
 
+      // Filter out undefined values to prevent Firestore errors
+      const cleanAuditEntry = Object.fromEntries(
+        Object.entries(auditEntry).filter(([_, value]) => value !== undefined)
+      ) as AuditLogEntry;
+
       // Store in Firestore for compliance and monitoring
-      await this.db.collection('auditLogs').add(auditEntry);
+      await this.db.collection('auditLogs').add(cleanAuditEntry);
 
       // Also log to console for development/debugging
       console.log(`[AUDIT] ${entry.action} by ${entry.userId} - ${entry.success ? 'SUCCESS' : 'FAILED'}`);
-      
+
       if (!entry.success && entry.errorMessage) {
         console.error(`[AUDIT] Error: ${entry.errorMessage}`);
       }

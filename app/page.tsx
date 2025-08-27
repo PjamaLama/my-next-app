@@ -13,9 +13,12 @@ export default function Home() {
   const tutorialTriggered = useRef(false);
 
   useEffect(() => {
-    // Prevent multiple tutorial triggers
+    // Prevent multiple tutorial triggers and don't trigger during chat operations
     if (tutorialTriggered.current) return;
-    
+
+    // Only trigger tutorial on initial app load, not during chat switching
+    if (!user) return; // Don't trigger if no user yet
+
     // Check if the user has seen the tutorial before
     let hasSeenTutorial = false;
     try {
@@ -25,13 +28,14 @@ export default function Home() {
       // If localStorage fails, assume tutorial has been seen to prevent infinite loading
       hasSeenTutorial = true;
     }
-    
-    if (!hasSeenTutorial && user && !loading) {
-      // Show tutorial for first-time users after they're authenticated
+
+    // Only show tutorial for first-time users on initial load
+    if (!hasSeenTutorial && !tutorialTriggered.current) {
       tutorialTriggered.current = true;
+      console.log('🔍 [Home] Showing tutorial for first-time user');
       showTutorial();
     }
-  }, [user, loading, showTutorial]);
+  }, []); // Empty dependency array - only run once on mount
 
   const handleSignIn = async () => {
     try {
@@ -51,7 +55,8 @@ export default function Home() {
     window.open('https://sheets.google.com', '_blank');
   };
 
-  if (loading) {
+  // Only show loading on initial app load, not during chat switching
+  if (loading && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
         <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
@@ -66,47 +71,12 @@ export default function Home() {
     return <LandingPage onSignIn={handleSignIn} user={user} />;
   }
 
-  // Show loading state while spreadsheets are being fetched
-  if (defaultSpreadsheetId && !sheetsPrefetched) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600"></div>
-          <span className="text-sm">Loading your spreadsheets...</span>
-        </div>
-      </div>
-    );
-  }
+  // Don't block chat interface on spreadsheet loading - load in background
 
-  // User is logged in and spreadsheets are loaded
-  if (defaultSpreadsheetId) {
-    return (
-      <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-        <ChatInterface onShowTutorial={showTutorial} />
-      </div>
-    );
-  }
-
-  // Show connect spreadsheet prompt when no spreadsheet is connected
+  // Always show chat interface for logged-in users - spreadsheets load in background
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white p-6">
-      <div className="text-center max-w-2xl">
-        <h1 className="text-4xl font-bold mb-6">Welcome to SheetyAI!</h1>
-        <p className="text-xl text-white/70 mb-8">
-          Connect your Google Sheets to start analyzing your data with AI.
-        </p>
-        <div className="space-y-4">
-          <button
-            onClick={handleOpenGoogleSheets}
-            className="w-full sm:w-auto px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
-          >
-            Open Google Sheets
-          </button>
-          <div className="text-sm text-white/50">
-            Create a new spreadsheet or use an existing one, then come back here to connect it.
-          </div>
-        </div>
-      </div>
+    <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
+      <ChatInterface onShowTutorial={showTutorial} />
     </div>
   );
 }
