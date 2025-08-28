@@ -36,36 +36,120 @@ async function verifyAdmin(req: NextApiRequest): Promise<boolean> {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const db = getAdminDb();
-  const tutorialVideosRef = db.collection('tutorial-videos');
+  try {
+    const db = getAdminDb();
+    const tutorialVideosRef = db.collection('tutorial-videos');
 
-  if (req.method === 'GET') {
-    try {
-    
-    const snap = await tutorialVideosRef.orderBy('order').get();
-    const videos: TutorialVideo[] = [];
-    
-    snap.forEach((doc: DocumentData) => {
-      const data = doc.data();
-      videos.push({
-        id: doc.id,
-        title: data.title || '',
-        description: data.description || '',
-        youtubeId: data.youtubeId || '',
-        order: data.order || 0,
+    if (req.method === 'GET') {
+      const snap = await tutorialVideosRef.orderBy('order').get();
+      const videos: TutorialVideo[] = [];
+
+      snap.forEach((doc: DocumentData) => {
+        const data = doc.data();
+        videos.push({
+          id: doc.id,
+          title: data.title || '',
+          description: data.description || '',
+          youtubeId: data.youtubeId || '',
+          order: data.order || 0,
+        });
       });
-    });
 
-    // If no videos exist, return default ones
-    if (videos.length === 0) {
-      return res.status(200).json({
-        videos: [
+      // If no videos exist, return default ones
+      if (videos.length === 0) {
+        return res.status(200).json({
+          videos: [
+            {
+              id: 'welcome',
+              title: 'Welcome to Sheety AI',
+              description: 'Get started with AI-powered data analysis',
+              youtubeId: 'dQw4w9WgXcQ',
+              order: 0,
+            },
+            {
+              id: 'setup',
+              title: 'Setup & Templates',
+              description: 'Download templates and configure your service account',
+              youtubeId: 'dQw4w9WgXcQ',
+              order: 1,
+            },
+            {
+              id: 'connect',
+              title: 'Connect Your Spreadsheet',
+              description: 'Link your Google Sheets to begin analyzing',
+              youtubeId: 'dQw4w9WgXcQ',
+              order: 2,
+            },
+            {
+              id: 'chat',
+              title: 'Chat with Your Data',
+              description: 'Ask questions and get intelligent insights',
+              youtubeId: 'dQw4w9WgXcQ',
+              order: 3,
+            },
+          ],
+        });
+      }
+
+      return res.status(200).json({ videos });
+    }
+
+    if (req.method === 'POST') {
+      // Verify admin authorization
+      const isAdmin = await verifyAdmin(req);
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const { action, video } = req.body || {};
+
+      if (action === 'updateVideo') {
+        if (!video || !video.id) {
+          return res.status(400).json({ error: 'Missing video data' });
+        }
+
+        const updates: Record<string, any> = {
+          title: video.title,
+          description: video.description,
+          youtubeId: video.youtubeId,
+          order: video.order,
+          updatedAt: new Date(),
+        };
+
+        await tutorialVideosRef.doc(video.id).set(updates, { merge: true });
+
+        // Return updated video
+        const updatedSnap = await tutorialVideosRef.doc(video.id).get();
+        const updatedData = updatedSnap.data();
+        return res.status(200).json({
+          video: {
+            id: video.id,
+            title: updatedData?.title || '',
+            description: updatedData?.description || '',
+            youtubeId: updatedData?.youtubeId || '',
+            order: updatedData?.order || 0,
+            updatedAt: updatedData?.updatedAt,
+          },
+        });
+      }
+
+      if (action === 'resetToDefaults') {
+        // Clear existing videos
+        const existingSnap = await tutorialVideosRef.get();
+        const batch = db.batch();
+        existingSnap.docs.forEach((doc: DocumentData) => {
+          batch.delete(doc.ref);
+        });
+
+        // Add default videos
+        const defaultVideos = [
           {
             id: 'welcome',
             title: 'Welcome to Sheety AI',
             description: 'Get started with AI-powered data analysis',
             youtubeId: 'dQw4w9WgXcQ',
             order: 0,
+            updatedAt: new Date(),
           },
           {
             id: 'setup',
@@ -73,6 +157,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             description: 'Download templates and configure your service account',
             youtubeId: 'dQw4w9WgXcQ',
             order: 1,
+            updatedAt: new Date(),
           },
           {
             id: 'connect',
@@ -80,6 +165,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             description: 'Link your Google Sheets to begin analyzing',
             youtubeId: 'dQw4w9WgXcQ',
             order: 2,
+            updatedAt: new Date(),
           },
           {
             id: 'chat',
@@ -87,12 +173,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             description: 'Ask questions and get intelligent insights',
             youtubeId: 'dQw4w9WgXcQ',
             order: 3,
+            updatedAt: new Date(),
           },
-        ],
-      });
+        ];
+
+        defaultVideos.forEach((video) => {
+          const docRef = tutorialVideosRef.doc(video.id);
+          batch.set(docRef, video);
+        });
+
+        await batch.commit();
+
+        return res.status(200).json({
+          message: 'Reset to defaults successful',
+          videos: defaultVideos,
+        });
+      }
+
+      return res.status(400).json({ error: 'Unknown action' });
     }
 
-    return res.status(200).json({ videos });
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err: any) {
     console.error('tutorial-videos error', err);
     // Return default videos on error
@@ -129,105 +230,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ],
     });
   }
-
-  if (req.method === 'POST') {
-    // Verify admin authorization
-    const isAdmin = await verifyAdmin(req);
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const { action, video } = req.body || {};
-
-    if (action === 'updateVideo') {
-      if (!video || !video.id) {
-        return res.status(400).json({ error: 'Missing video data' });
-      }
-
-      const updates: Record<string, any> = {
-        title: video.title,
-        description: video.description,
-        youtubeId: video.youtubeId,
-        order: video.order,
-        updatedAt: new Date(),
-      };
-
-      await tutorialVideosRef.doc(video.id).set(updates, { merge: true });
-
-      // Return updated video
-      const updatedSnap = await tutorialVideosRef.doc(video.id).get();
-      const updatedData = updatedSnap.data();
-      return res.status(200).json({
-        video: {
-          id: video.id,
-          title: updatedData?.title || '',
-          description: updatedData?.description || '',
-          youtubeId: updatedData?.youtubeId || '',
-          order: updatedData?.order || 0,
-          updatedAt: updatedData?.updatedAt,
-        },
-      });
-    }
-
-    if (action === 'resetToDefaults') {
-      // Clear existing videos
-      const existingSnap = await tutorialVideosRef.get();
-      const batch = db.batch();
-      existingSnap.docs.forEach((doc: DocumentData) => {
-        batch.delete(doc.ref);
-      });
-
-      // Add default videos
-      const defaultVideos = [
-        {
-          id: 'welcome',
-          title: 'Welcome to Sheety AI',
-          description: 'Get started with AI-powered data analysis',
-          youtubeId: 'dQw4w9WgXcQ',
-          order: 0,
-          updatedAt: new Date(),
-        },
-        {
-          id: 'setup',
-          title: 'Setup & Templates',
-          description: 'Download templates and configure your service account',
-          youtubeId: 'dQw4w9WgXcQ',
-          order: 1,
-          updatedAt: new Date(),
-        },
-        {
-          id: 'connect',
-          title: 'Connect Your Spreadsheet',
-          description: 'Link your Google Sheets to begin analyzing',
-          youtubeId: 'dQw4w9WgXcQ',
-          order: 2,
-          updatedAt: new Date(),
-        },
-        {
-          id: 'chat',
-          title: 'Chat with Your Data',
-          description: 'Ask questions and get intelligent insights',
-          youtubeId: 'dQw4w9WgXcQ',
-          order: 3,
-          updatedAt: new Date(),
-        },
-      ];
-
-      defaultVideos.forEach((video) => {
-        const docRef = tutorialVideosRef.doc(video.id);
-        batch.set(docRef, video);
-      });
-
-      await batch.commit();
-
-      return res.status(200).json({
-        message: 'Reset to defaults successful',
-        videos: defaultVideos,
-      });
-    }
-
-    return res.status(400).json({ error: 'Unknown action' });
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
 }

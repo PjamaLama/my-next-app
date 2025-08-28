@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider } from 'firebase/auth';
-import { getAuth } from '../providers/FirebaseProvider';
+import { getFirebaseAuth } from '../providers/FirebaseProvider';
 
 interface UseAuthReturn {
   user: User | null;
@@ -23,7 +23,7 @@ export const useAuth = (): UseAuthReturn => {
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Get auth instance
-  const auth = getAuth();
+  const auth = getFirebaseAuth();
 
   useEffect(() => {
     if (!auth) return;

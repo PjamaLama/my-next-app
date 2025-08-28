@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, User } from "firebase/auth";
+import { getAuth, User, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { useAuth } from '../hooks/useAuth';
 import { useUserProfile } from '../hooks/useUserProfile';
@@ -42,6 +42,7 @@ if (typeof window !== 'undefined') {
 // Export db with null check
 export const getDb = () => db;
 export const getAuthInstance = () => auth;
+export const getFirebaseAuth = () => auth;
 export const getApp = () => app;
 
 interface IFirebaseContext {

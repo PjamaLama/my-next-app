@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { getDb } from '../providers/FirebaseProvider';
 
 interface UseUserProfileReturn {
@@ -47,7 +47,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
         };
 
         // Check if profile exists
-        const profileSnap = await profileRef.get();
+        const profileSnap = await getDoc(profileRef);
         if (!profileSnap.exists()) {
           baseData.createdAt = serverTimestamp();
         }
