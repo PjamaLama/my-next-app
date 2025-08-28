@@ -123,14 +123,17 @@ Microsoft Clarity has been installed to track user behavior and page visits. To 
    ```typescript
    import { clarityAnalytics } from '@/lib/analytics/microsoftClarity';
 
-   // Track custom events
+   // Track custom events (properties will be set as tags)
    clarityAnalytics.trackEvent('button_clicked', { button: 'submit' });
 
    // Identify users (if you have user IDs)
-   clarityAnalytics.identify(userId, { email: userEmail });
+   clarityAnalytics.identify(customerId, sessionId, pageId, friendlyName);
+
+   // Set custom tags
+   clarityAnalytics.setTag('user_type', 'premium');
 
    // Upgrade important sessions
-   clarityAnalytics.upgrade();
+   clarityAnalytics.upgrade('high_value_user');
    ```
 
 ### Development

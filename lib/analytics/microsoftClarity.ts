@@ -67,7 +67,14 @@ export class MicrosoftClarity {
     }
 
     try {
-      clarity.event(eventName, properties);
+      clarity.event(eventName);
+
+      // If properties are provided, set them as tags
+      if (properties) {
+        Object.entries(properties).forEach(([key, value]) => {
+          this.setTag(`${eventName}_${key}`, String(value));
+        });
+      }
 
       if (this.config.debug) {
         console.log('Clarity event tracked:', eventName, properties);
@@ -80,16 +87,16 @@ export class MicrosoftClarity {
   /**
    * Identify a user (if you have user IDs)
    */
-  identify(userId: string, properties?: Record<string, any>): void {
+  identify(customerId: string, customSessionId?: string, customPageId?: string, friendlyName?: string): void {
     if (!this.initialized || !this.config?.enabled) {
       return;
     }
 
     try {
-      clarity.identify(userId, properties);
+      clarity.identify(customerId, customSessionId, customPageId, friendlyName);
 
       if (this.config.debug) {
-        console.log('Clarity user identified:', userId, properties);
+        console.log('Clarity user identified:', customerId, customSessionId, customPageId, friendlyName);
       }
     } catch (error) {
       console.error('Failed to identify user in Clarity:', error);
@@ -118,16 +125,16 @@ export class MicrosoftClarity {
   /**
    * Upgrade the current session (mark as important)
    */
-  upgrade(): void {
+  upgrade(reason: string = 'important'): void {
     if (!this.initialized || !this.config?.enabled) {
       return;
     }
 
     try {
-      clarity.upgrade('important');
+      clarity.upgrade(reason);
 
       if (this.config.debug) {
-        console.log('Clarity session upgraded');
+        console.log('Clarity session upgraded:', reason);
       }
     } catch (error) {
       console.error('Failed to upgrade Clarity session:', error);
