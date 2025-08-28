@@ -3,6 +3,7 @@ import { Inter, Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import ClientRoot from './ClientRoot';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import ClarityInitializer from './components/ClarityInitializer';
 
 // Genkit telemetry is initialized client-side inside ClientRoot
 
@@ -151,6 +152,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         style={{ minHeight: '100vh', background: 'var(--background)' }}
       >
+        <ClarityInitializer />
         <ErrorBoundary>
           <ClientRoot>{children}</ClientRoot>
         </ErrorBoundary>

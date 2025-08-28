@@ -92,7 +92,46 @@ Create a `.env.local` file:
 GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_api_key
 GOOGLE_SERVICE_ACCOUNT_EMAIL=your_service_account@project.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Microsoft Clarity Analytics (Optional)
+NEXT_PUBLIC_CLARITY_PROJECT_ID=your_clarity_project_id_here
+NEXT_PUBLIC_CLARITY_ENABLED=true
+NEXT_PUBLIC_CLARITY_DEBUG=false
 ```
+
+### Microsoft Clarity Setup
+Microsoft Clarity has been installed to track user behavior and page visits. To set it up:
+
+1. **Get your Clarity Project ID**:
+   - Visit [Microsoft Clarity](https://clarity.microsoft.com/)
+   - Create a new project for your website
+   - Copy the Project ID from the setup code
+
+2. **Configure Environment Variables**:
+   - Add `NEXT_PUBLIC_CLARITY_PROJECT_ID` to your `.env.local` file
+   - Set `NEXT_PUBLIC_CLARITY_ENABLED=true` to enable tracking (disabled in development by default)
+   - Set `NEXT_PUBLIC_CLARITY_DEBUG=true` for debug logging in development
+
+3. **Features Available**:
+   - Session recordings and heatmaps
+   - User click tracking and rage clicks
+   - Page view analytics
+   - Custom event tracking via `clarityAnalytics.trackEvent()`
+   - User identification and session upgrades
+
+4. **Usage in Code**:
+   ```typescript
+   import { clarityAnalytics } from '@/lib/analytics/microsoftClarity';
+
+   // Track custom events
+   clarityAnalytics.trackEvent('button_clicked', { button: 'submit' });
+
+   // Identify users (if you have user IDs)
+   clarityAnalytics.identify(userId, { email: userEmail });
+
+   // Upgrade important sessions
+   clarityAnalytics.upgrade();
+   ```
 
 ### Development
 ```bash
