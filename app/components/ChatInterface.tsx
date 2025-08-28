@@ -13,62 +13,14 @@ import VoiceRecorder from './VoiceRecorder';
 import WhatsAppComingSoonBanner from './WhatsAppComingSoonBanner';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useAdminMeta } from '../hooks/useAdminMeta';
+import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
 
 interface ChatInterfaceProps {
   className?: string;
   onShowTutorial?: () => void;
 }
 
-export interface UploadedFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  fileData?: string;
-  extractedData: any;
-  status: 'uploading' | 'processing' | 'completed' | 'error';
-  error?: string;
-}
 
-const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-  try {
-    const uint8Array = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < uint8Array.byteLength; i++) {
-      binary += String.fromCharCode(uint8Array[i]);
-    }
-    return btoa(binary);
-  } catch (error) {
-    console.error('Base64 encoding failed:', error);
-    throw new Error('Failed to encode file to base64');
-  }
-};
-
-const extractImageText = async (file: File): Promise<string> => {
-  try {
-    return `Image: ${file.name} - Ready for Gemini Vision analysis`;
-  } catch (error) {
-    console.warn('Image processing failed:', error);
-    return '';
-  }
-};
-
-const extractPDFText = async (file: File): Promise<string> => {
-  try {
-    const text = await file.text();
-    if (text.includes('(') && text.includes(')')) {
-      const lines = text.split('\n')
-        .filter(line => line.trim().length > 0)
-        .filter(line => !line.startsWith('%') && !line.startsWith('/'))
-        .slice(0, 50);
-      return lines.join('\n');
-    }
-    return text;
-  } catch (error) {
-    console.warn('PDF text extraction failed, treating as scanned document:', error);
-    return '';
-  }
-};
 
 
 
