@@ -1,6 +1,6 @@
 // lib/analytics/microsoftClarity.ts
 
-import { clarity } from '@microsoft/clarity';
+import clarity from '@microsoft/clarity';
 
 export interface ClarityConfig {
   projectId: string;
