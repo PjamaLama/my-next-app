@@ -4,6 +4,7 @@ const isWindows = process.platform === 'win32';
 const isCI = Boolean(process.env.CI) || Boolean(process.env.VERCEL);
 
 const nextConfig: NextConfig = {
+  // Image optimization settings
   images: {
     remotePatterns: [
       {
@@ -13,10 +14,23 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
     ],
+    // Optimize image loading
+    formats: ['image/webp', 'image/avif'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
-  // PWA and mobile optimizations
+  // Performance optimizations
   experimental: {
-    optimizePackageImports: ['framer-motion'],
+    optimizePackageImports: ['framer-motion', 'lucide-react'],
+  },
+  // Turbopack configuration (replacing deprecated experimental.turbo)
+  turbopack: {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
+      },
+    },
   },
   // Disable tracing to fix EPERM errors
   generateEtags: false,
@@ -26,15 +40,19 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  // Optimize page loading
   onDemandEntries: {
     maxInactiveAge: 25 * 1000,
     pagesBufferLength: 2,
   },
+  // Build optimizations enabled through other settings
   eslint: {
     // Allow production builds to successfully complete even if
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  // Enable production optimizations
+  productionBrowserSourceMaps: false,
   // Disable Next.js telemetry
   env: {
     NEXT_TELEMETRY_DISABLED: '1',

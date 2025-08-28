@@ -123,11 +123,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   }, [chatMessages]);
 
   useEffect(() => {
-    console.log('🔍 [ChatInterface] Session change effect triggered:', { currentSessionId });
-    if (currentSessionId) {
-      console.log('🔍 [ChatInterface] Session changed to:', currentSessionId);
-      console.log('🔍 [ChatInterface] Current chat messages count:', chatMessages.length);
-    }
+    // Handle session changes - scroll behavior managed by messages effect above
   }, [currentSessionId, chatMessages.length]);
 
   useEffect(() => {
@@ -303,7 +299,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         }
       } else if (file.type === 'application/pdf') {
         try {
-          console.log(`🔍 [PDF] Preparing PDF ${file.name} for backend processing`);
+          // Prepare PDF for backend processing
           const arrayBuffer = await file.arrayBuffer();
           const base64Data = arrayBufferToBase64(arrayBuffer);
           uploadedFile.extractedData = {
@@ -321,7 +317,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             note: 'PDF ready for backend pdf-parse processing'
           };
           uploadedFile.fileData = base64Data;
-          console.log(`🔍 [PDF] Successfully prepared PDF: ${file.name}, fileData length: ${uploadedFile.fileData.length}`);
+          // PDF successfully prepared for backend processing
         } catch (conversionError) {
           console.error(`❌ [PDF] Failed to convert PDF to base64: ${file.name}`, conversionError);
           uploadedFile.extractedData = {

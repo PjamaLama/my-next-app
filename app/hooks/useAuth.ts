@@ -29,10 +29,7 @@ export const useAuth = (): UseAuthReturn => {
     if (!auth) return;
 
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
-      console.log('🔍 [useAuth] Auth state changed:', {
-        hasUser: !!user,
-        userId: user?.uid
-      });
+      // Auth state changed - user presence updated
       setUser(user);
       setLoading(false);
     });

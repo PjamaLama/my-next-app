@@ -75,7 +75,6 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             videoTitle: data.videoTitle || 'SheetyAI Demo Video'
           };
 
-          console.log('Fetched video data:', newVideoData);
           setVideoData(newVideoData);
         } else {
           console.warn('API returned non-OK status:', response.status);
@@ -151,6 +150,14 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
   return (
     <div className="min-h-screen text-white font-sans overflow-x-hidden relative">
+      {/* Skip link for accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 bg-emerald-600 text-white px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
+      >
+        Skip to main content
+      </a>
+
       <SpaceBackground />
       
       <div className="w-full py-2 px-6 sm:px-8 relative z-10">
@@ -173,13 +180,14 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               onClick={onSignIn}
               whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.5)' }}
               whileTap={{ scale: 0.95 }}
-              className="bg-transparent border border-white/30 hover:border-white/60 text-white font-semibold py-2 px-5 rounded-full transition-all duration-300 backdrop-blur-sm hover:bg-white/5"
+              className="bg-transparent border border-white/30 hover:border-white/60 text-white font-semibold py-2 px-5 rounded-full transition-all duration-300 backdrop-blur-sm hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-opacity-50"
+              aria-label="Sign in with Google to access Sheety AI"
             >
               Sign In
             </motion.button>
         </motion.header>
 
-        <main className="text-center pt-0">
+        <main id="main-content" className="text-center pt-0">
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -222,8 +230,6 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                         loading="lazy"
-                        onLoad={() => console.log('Video iframe loaded:', videoData.videoTitle)}
-                        onError={(e) => console.error('Video iframe failed to load:', e)}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -243,8 +249,10 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               onClick={handleBetaSignupWithGoogle}
               whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
               whileTap={{ scale: 0.95 }}
-              className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group"
+              className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group focus:outline-none focus:ring-4 focus:ring-emerald-300 focus:ring-opacity-50"
               disabled={isSigningUp}
+              aria-label={isOpenBeta ? 'Get started with Sheety AI now' : 'Get early access to Sheety AI'}
+              aria-describedby="cta-description"
             >
                   {/* Shimmer effect */}
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
@@ -258,6 +266,14 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                     <span className="relative z-10">{isOpenBeta ? '🚀 Get Started Now' : '🔥 Get Early Access Now'}</span>
                   )}
                 </motion.button>
+
+                {/* Hidden description for screen readers */}
+                <div id="cta-description" className="sr-only">
+                  {isOpenBeta
+                    ? 'Sign up for free to start using Sheety AI\'s voice-to-spreadsheet automation features'
+                    : 'Join our beta program to get early access to AI-powered voice commands for Google Sheets'
+                  }
+                </div>
 
                 {/* Info Badges - Positioned below button as subtle info */}
                 <div className="mt-8 space-y-3">
