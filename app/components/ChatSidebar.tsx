@@ -373,8 +373,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                     cancelText: 'Cancel',
                   });
                   if (ok) {
-                    await deleteSession(s.id);
-                    // Session creation is now handled automatically in ChatProvider
+                    console.log('🔍 [ChatSidebar] User confirmed deletion of session:', s.id);
+                    try {
+                      await deleteSession(s.id);
+                      console.log('🔍 [ChatSidebar] Session deleted successfully');
+                    } catch (error) {
+                      console.error('🔍 [ChatSidebar] Failed to delete session:', error);
+                      // Error handling is done in the provider
+                    }
                   }
                 }}
                 className={`grid place-items-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-300/30 leading-none`}

@@ -115,6 +115,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   // Cache for instant chat switching
   const [messageCache, setMessageCache] = useState<Record<string, ChatMessage[]>>({});
 
+  // Flag to prevent session switching during title generation
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+
   const cancelChatGeneration = useCallback(() => {
     if (abortController) {
       console.log('🔍 [ChatProvider] Aborting ongoing chat generation...');
@@ -144,6 +147,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     const q = query(sessionsColRef, orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log('🔍 [ChatProvider] Session subscription fired - docs:', snapshot.docs.length, 'currentSessionId:', currentSessionId);
       const loadedSessions = snapshot.docs
         .filter(doc => !doc.data().deleted)
         .map(doc => {
@@ -180,6 +184,14 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         setCurrentSessionId(uniqueSessions[0].id);
       } else if (currentSessionId) {
         console.log('🔍 [ChatProvider] Current session already set:', currentSessionId);
+        // Check if current session still exists in the updated sessions
+        const currentSessionExists = uniqueSessions.some(s => s.id === currentSessionId);
+        if (!currentSessionExists && uniqueSessions.length > 0 && !isGeneratingTitle) {
+          console.log('🔍 [ChatProvider] Current session no longer exists, switching to:', uniqueSessions[0].id);
+          setCurrentSessionId(uniqueSessions[0].id);
+        } else if (!currentSessionExists && uniqueSessions.length > 0 && isGeneratingTitle) {
+          console.log('🔍 [ChatProvider] Skipping session switch during title generation');
+        }
       } else if (uniqueSessions.length === 0) {
         // No sessions exist - create a new one automatically
         console.log('🔍 [ChatProvider] No sessions found, creating new session automatically');
@@ -246,7 +258,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     console.log('🔍 [ChatProvider] Listening to messages for session:', currentSessionId);
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log('🔍 [ChatProvider] Received', snapshot.docs.length, 'messages for session:', currentSessionId);
+      console.log('🔍 [ChatProvider] Message subscription fired for session:', currentSessionId, 'docs:', snapshot.docs.length);
 
       const messages = snapshot.docs.map(doc => {
         const data = doc.data();
@@ -264,7 +276,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         } as ChatMessage;
       });
 
-      console.log('🔍 [ChatProvider] Setting', messages.length, 'messages for session:', currentSessionId);
+      console.log('🔍 [ChatProvider] Processing', messages.length, 'messages for session:', currentSessionId);
 
       // Cache the messages for instant switching
       setMessageCache(prev => ({
@@ -273,6 +285,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       }));
 
       // Update current chat messages (only if this is still the current session)
+      console.log('🔍 [ChatProvider] Updating chatMessages state with', messages.length, 'messages');
       setChatMessages(messages);
       setError(null);
     }, (err) => {
@@ -351,18 +364,35 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       // once this write is complete, replacing the optimistic message.
       await addDoc(messagesColRef, sanitizedMessage);
 
-      // Automatically generate AI title after first few messages (background task)
+      // Automatically generate AI title after first user message (background task)
       if (message.role === 'user') {
-        // Check current message count for this session
-        const currentMessageCount = chatMessages.filter(m => m.role === 'user').length;
+        // Check if this is the first message by looking at session message count
+        const existingSession = sessions.find(s => s.id === sessionId);
+        const isFirstMessage = (existingSession?.message_count || 0) === 0;
 
-        // Generate title after 2 user messages (enough context but not too frequent)
-        if (currentMessageCount >= 2) {
-          const existingSession = sessions.find(s => s.id === sessionId);
+        console.log('🔍 [ChatProvider] Message sent - session:', sessionId, 'isFirst:', isFirstMessage, 'title:', existingSession?.title);
+
+        // Generate title after FIRST user message for immediate context
+        if (isFirstMessage) {
           // Only generate if it still has the default title
           if (existingSession && (existingSession.title.startsWith('Chat ') || existingSession.title === 'New Chat')) {
-            generateChatTitle(sessionId).catch(error => {
+            console.log('🔍 [ChatProvider] Generating title for session:', sessionId, 'after first message');
+            console.log('🔍 [ChatProvider] Current chatMessages length before title gen:', chatMessages.length);
+
+            // Generate title immediately without delay - the onSnapshot will handle consistency
+            setIsGeneratingTitle(true);
+            generateChatTitle(sessionId).then(newTitle => {
+              console.log('🔍 [ChatProvider] Title generated successfully:', newTitle);
+              console.log('🔍 [ChatProvider] Current chatMessages length after title gen:', chatMessages.length);
+            }).catch(error => {
               console.log('🔍 [ChatProvider] Auto title generation failed (non-blocking):', error);
+            }).finally(() => {
+              setIsGeneratingTitle(false);
+            });
+          } else {
+            console.log('🔍 [ChatProvider] Skipping title generation - session not found or title already set:', {
+              sessionExists: !!existingSession,
+              title: existingSession?.title
             });
           }
         }
@@ -489,30 +519,58 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   const deleteSession = async (sessionId: string): Promise<void> => {
     if (!user) return;
 
+    console.log('🔍 [ChatProvider] Starting deleteSession:', sessionId, 'current:', currentSessionId, 'total sessions:', sessions.length);
+
     try {
       const db = getDb();
       if (!db) {
         setError("Firebase not initialized. Please refresh the page.");
         return;
       }
-      
-      // If we're deleting the current session and it's the last one, create a new session first
-      if (currentSessionId === sessionId && sessions.length <= 1) {
+
+      // Check if we're deleting the current session
+      const isCurrentSession = currentSessionId === sessionId;
+      const remainingSessions = sessions.filter(s => s.id !== sessionId);
+      const willHaveNoSessions = remainingSessions.length === 0;
+
+      console.log('🔍 [ChatProvider] Delete analysis:', {
+        isCurrentSession,
+        remainingSessionsCount: remainingSessions.length,
+        willHaveNoSessions
+      });
+
+      // If deleting current session and it will leave no sessions, create new one first
+      if (isCurrentSession && willHaveNoSessions) {
+        console.log('🔍 [ChatProvider] Creating new session before deleting the last one');
         const newSessionId = await createSession('New Chat');
-        setCurrentSessionId(newSessionId);
+        console.log('🔍 [ChatProvider] New session created:', newSessionId);
+        // The createSession function already sets this as current, so we don't need to do it again
       }
-      
+      // If deleting current session but there are others, switch to the first remaining session
+      else if (isCurrentSession && remainingSessions.length > 0) {
+        console.log('🔍 [ChatProvider] Switching to remaining session:', remainingSessions[0].id);
+        setCurrentSessionId(remainingSessions[0].id);
+      }
+
       // Delete all messages in the session first
+      console.log('🔍 [ChatProvider] Deleting messages for session:', sessionId);
       const messagesColRef = collection(db, 'users', user.uid, 'sessions', sessionId, 'messages');
       const messagesSnapshot = await getDocs(messagesColRef);
       const deletePromises = messagesSnapshot.docs.map(doc => deleteDoc(doc.ref));
       await Promise.all(deletePromises);
-      
-      // Then mark the session as deleted
+
+      // Then mark the session as deleted (soft delete for data integrity)
+      console.log('🔍 [ChatProvider] Marking session as deleted:', sessionId);
       const sessionDocRef = doc(db, 'users', user.uid, 'sessions', sessionId);
       await setDoc(sessionDocRef, { deleted: true }, { merge: true });
-      
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
+
+      // Update local state immediately
+      console.log('🔍 [ChatProvider] Updating local sessions state');
+      setSessions(prev => {
+        const updated = prev.filter(s => s.id !== sessionId);
+        console.log('🔍 [ChatProvider] Sessions after deletion:', updated.length);
+        return updated;
+      });
 
       // Clean up cache for deleted session
       setMessageCache(prev => {
@@ -521,15 +579,10 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
         return newCache;
       });
 
-      // If we're deleting the current session, switch to another available session
-      if (currentSessionId === sessionId) {
-        const remainingSessions = sessions.filter(s => s.id !== sessionId);
-        if (remainingSessions.length > 0) {
-          setCurrentSessionId(remainingSessions[0].id);
-        }
-      }
+      console.log('🔍 [ChatProvider] Session deletion completed successfully');
+
     } catch (err) {
-      console.error("Error deleting session:", err);
+      console.error("🔍 [ChatProvider] Error deleting session:", err);
       setError("Failed to delete session.");
     }
   };
@@ -732,11 +785,19 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       const result = await response.json();
       const newTitle = result.title || 'New Chat';
 
-      // Update the session with the new title
+      // Update the session with the new title - use updateDoc instead of setDoc to be more precise
       const sessionDocRef = doc(db, 'users', user.uid, 'sessions', sessionId);
       await setDoc(sessionDocRef, { title: newTitle }, { merge: true });
 
       console.log('🔍 [ChatProvider] Successfully generated and saved title:', newTitle);
+
+      // Update local state immediately to avoid subscription delay
+      setSessions(prev => prev.map(session =>
+        session.id === sessionId
+          ? { ...session, title: newTitle }
+          : session
+      ));
+
       return newTitle;
 
     } catch (error) {
