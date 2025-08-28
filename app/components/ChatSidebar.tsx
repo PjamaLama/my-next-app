@@ -5,7 +5,7 @@ import { useChat } from "../providers/ChatProvider";
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Plus, Trash2, MessageSquare, Table as TableIcon, ExternalLink, BookOpen } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+
 import { useSheet } from "../providers/SheetProvider";
 import { useFirebase } from "../providers/FirebaseProvider";
 import { useDialog } from "../providers/DialogProvider";
@@ -30,7 +30,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     appendMessage,
     chatMessages
   } = useChat();
-  const router = useRouter();
   const { user } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();
@@ -329,11 +328,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     // Do not call ensureSession here, as it may race and override the selection.
     console.log('🔍 [ChatSidebar] Switching to session:', id);
 
-    // Add immediate visual feedback by updating current session
+    // Switch session instantly without navigation - the ChatProvider handles caching
     setCurrentSessionId(id);
-
-    // Navigate to report page (this will trigger the session loading)
-    router.push('/report');
   };
 
 
