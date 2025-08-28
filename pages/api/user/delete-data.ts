@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb, getAdminAuth } from '../../../lib/firebaseAdmin';
 import { auditLogger } from '../../../lib/auditLogger';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -48,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const recentActivityDocs = await recentActivityQuery.get();
       
       const batch = db.batch();
-      recentActivityDocs.docs.forEach(doc => {
+      recentActivityDocs.docs.forEach((doc: DocumentData) => {
         batch.delete(doc.ref);
       });
       await batch.commit();
@@ -66,7 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const feedbackDocs = await feedbackQuery.get();
       
       const batch = db.batch();
-      feedbackDocs.docs.forEach(doc => {
+      feedbackDocs.docs.forEach((doc: DocumentData) => {
         batch.delete(doc.ref);
       });
       await batch.commit();
@@ -84,7 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const voteDocs = await votesQuery.get();
       
       const batch = db.batch();
-      voteDocs.docs.forEach(doc => {
+      voteDocs.docs.forEach((doc: DocumentData) => {
         batch.delete(doc.ref);
       });
       await batch.commit();

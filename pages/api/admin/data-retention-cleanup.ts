@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb, getAdminAuth } from '../../../lib/firebaseAdmin';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 const DATA_RETENTION_DAYS = parseInt(process.env.DATA_RETENTION_DAYS || '90');
 
@@ -65,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const recentActivity = await recentActivityQuery.get();
     
     const batch = db.batch();
-    recentActivity.docs.forEach(doc => {
+    recentActivity.docs.forEach((doc: DocumentData) => {
       batch.delete(doc.ref);
     });
     

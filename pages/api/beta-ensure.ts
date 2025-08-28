@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '../../lib/firebaseAdmin';
 import { getAuth } from 'firebase-admin/auth';
 import { auditLogger } from '../../lib/auditLogger';
+import type { Transaction } from 'firebase-admin/firestore';
 
 type EnsureResponse = {
   status: 'tester' | 'waitlist' | 'unchanged';
@@ -42,15 +43,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const userProfileRef = db.doc(`users/${uid}/private/profile`);
     const metaRef = db.doc('meta/beta');
 
-    const result = await db.runTransaction(async (tx) => {
+    const result = await db.runTransaction(async (tx: Transaction) => {
       // Read meta
-      const metaSnap = await tx.get(metaRef);
+      const metaSnap = await tx.get(metaRef) as any; // DocumentSnapshot
       const capacity = (metaSnap.exists && typeof metaSnap.get('capacity') === 'number') ? (metaSnap.get('capacity') as number) : 100;
       const open = (metaSnap.exists && typeof metaSnap.get('open') === 'boolean') ? (metaSnap.get('open') as boolean) : false;
       let testerCount = (metaSnap.exists && typeof metaSnap.get('testerCount') === 'number') ? (metaSnap.get('testerCount') as number) : 0;
 
       // Ensure profile exists
-      const profileSnap = await tx.get(userProfileRef);
+      const profileSnap = await tx.get(userProfileRef) as any; // DocumentSnapshot
       const exists = profileSnap.exists;
       const data = exists ? (profileSnap.data() || {}) : {};
       const alreadyTester = !!data.betaTester;

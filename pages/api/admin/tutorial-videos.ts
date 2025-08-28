@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '@/lib/firebaseAdmin';
 import { getAuth } from 'firebase-admin/auth';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 type TutorialVideo = {
   id: string;
@@ -39,7 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const snap = await tutorialVideosRef.orderBy('order').get();
       const videos: TutorialVideo[] = [];
       
-      snap.forEach((doc) => {
+      snap.forEach((doc: DocumentData) => {
         const data = doc.data();
         videos.push({
           id: doc.id,
@@ -127,7 +128,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Clear existing videos
         const existingSnap = await tutorialVideosRef.get();
         const batch = db.batch();
-        existingSnap.docs.forEach((doc) => {
+        existingSnap.docs.forEach((doc: DocumentData) => {
           batch.delete(doc.ref);
         });
 

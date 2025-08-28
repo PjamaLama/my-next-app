@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminAuth, getAdminDb } from '../../../lib/firebaseAdmin';
 import { firestore } from 'firebase-admin';
+import type { Transaction } from 'firebase-admin/firestore';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -54,11 +55,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const currentWaId = userDoc.exists ? userDoc.data()?.wa_id : null;
 
     // Use a transaction to ensure atomicity
-    await db.runTransaction(async (transaction) => {
+    await db.runTransaction(async (transaction: Transaction) => {
       // Remove old claim if user had a different WhatsApp ID
       if (currentWaId && currentWaId !== wa_id.trim()) {
         const oldClaimRef = db.collection('wa_id_claims').doc(currentWaId);
-        const oldClaim = await transaction.get(oldClaimRef);
+        const oldClaim = await transaction.get(oldClaimRef) as any; // DocumentSnapshot
         if (oldClaim.exists && oldClaim.data()?.uid === uid) {
           transaction.delete(oldClaimRef);
         }

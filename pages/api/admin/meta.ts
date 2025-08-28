@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '@/lib/firebaseAdmin';
 import { getAuth } from 'firebase-admin/auth';
+import type { Transaction } from 'firebase-admin/firestore';
 
 type MetaDoc = { capacity?: number; testerCount?: number; open?: boolean; showWhatsAppMessaging?: boolean; updatedAt?: any };
 
@@ -66,13 +67,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!email) return res.status(400).json({ error: 'Missing email' });
         const { uid } = await auth.getUserByEmail(email);
         const userProfileRef = db.doc(`users/${uid}/private/profile`);
-        const result = await db.runTransaction(async (tx) => {
-          const metaSnap = await tx.get(metaRef);
+        const result = await db.runTransaction(async (tx: Transaction) => {
+          const metaSnap = await tx.get(metaRef) as any; // DocumentSnapshot
           const capacity = (metaSnap.exists && typeof metaSnap.get('capacity') === 'number') ? (metaSnap.get('capacity') as number) : 100;
           const open = (metaSnap.exists && typeof metaSnap.get('open') === 'boolean') ? (metaSnap.get('open') as boolean) : false;
           let testerCount = (metaSnap.exists && typeof metaSnap.get('testerCount') === 'number') ? (metaSnap.get('testerCount') as number) : 0;
 
-          const profileSnap = await tx.get(userProfileRef);
+          const profileSnap = await tx.get(userProfileRef) as any; // DocumentSnapshot
           const alreadyTester = profileSnap.exists && !!profileSnap.get('betaTester');
           if (!alreadyTester) {
             tx.set(userProfileRef, { betaTester: true, betaWaitlist: false, lastUpdatedAt: new Date() }, { merge: true });
@@ -90,13 +91,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!email) return res.status(400).json({ error: 'Missing email' });
         const { uid } = await auth.getUserByEmail(email);
         const userProfileRef = db.doc(`users/${uid}/private/profile`);
-        const result = await db.runTransaction(async (tx) => {
-          const metaSnap = await tx.get(metaRef);
+        const result = await db.runTransaction(async (tx: Transaction) => {
+          const metaSnap = await tx.get(metaRef) as any; // DocumentSnapshot
           const capacity = (metaSnap.exists && typeof metaSnap.get('capacity') === 'number') ? (metaSnap.get('capacity') as number) : 100;
           const open = (metaSnap.exists && typeof metaSnap.get('open') === 'boolean') ? (metaSnap.get('open') as boolean) : false;
           let testerCount = (metaSnap.exists && typeof metaSnap.get('testerCount') === 'number') ? (metaSnap.get('testerCount') as number) : 0;
 
-          const profileSnap = await tx.get(userProfileRef);
+          const profileSnap = await tx.get(userProfileRef) as any; // DocumentSnapshot
           const wasTester = profileSnap.exists && !!profileSnap.get('betaTester');
           if (wasTester) {
             tx.set(userProfileRef, { betaTester: false, betaWaitlist: true, lastUpdatedAt: new Date() }, { merge: true });

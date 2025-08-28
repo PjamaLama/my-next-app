@@ -5,6 +5,7 @@ import type { FeedbackDoc } from '@/lib/feedback';
 import { normalizeText, heuristicCategory, scoreSimilarity, buildSimilarityKey } from '@/lib/feedback';
 import { getAuth } from 'firebase-admin/auth';
 import { getStorage } from 'firebase-admin/storage';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 type Data = { success: boolean; data?: unknown; error?: string };
 
@@ -93,7 +94,7 @@ async function createFeedback({ title, description, type, user, ip, attachments 
   let duplicateOf: string | null = null;
   let bestScore = 0;
   const newText = `${title} ${description || ''}`;
-  candidatesSnap.forEach((doc) => {
+  candidatesSnap.forEach((doc: DocumentData) => {
     const data = doc.data() as FeedbackDoc;
     const score = scoreSimilarity(newText, data.title + ' ' + (data.description || ''));
     if (score > 0.6 && score > bestScore) {
@@ -166,7 +167,7 @@ async function searchSimilar(query: string, userId?: string) {
   const db = getAdminDb();
   const key = buildSimilarityKey(query);
   const snap = await db.collection('feedback').where('similarityKey', '==', key).get();
-  const list = await Promise.all(snap.docs.map(async (d) => {
+  const list = await Promise.all(snap.docs.map(async (d: DocumentData) => {
     const base = { id: d.id, ...(d.data() as any) } as any;
     if (userId) {
       try {

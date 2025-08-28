@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '@/lib/firebaseAdmin';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 type TutorialVideo = {
   id: string;
@@ -21,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const snap = await tutorialVideosRef.orderBy('order').get();
     const videos: TutorialVideo[] = [];
     
-    snap.forEach((doc) => {
+    snap.forEach((doc: DocumentData) => {
       const data = doc.data();
       videos.push({
         id: doc.id,

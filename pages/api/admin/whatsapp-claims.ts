@@ -1,5 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminAuth, getAdminDb } from '../../../lib/firebaseAdmin';
+import type { DocumentData } from 'firebase-admin/firestore';
+
+type WhatsAppClaim = {
+  waId: string;
+  uid: string;
+  claimedAt: any;
+  updatedAt: any;
+};
 
 function isAllowedAdmin(decoded: any): boolean {
   const admins = (process.env.ADMIN_EMAILS || '')
@@ -27,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       // Get all WhatsApp claims
       const claimsSnapshot = await db.collection('wa_id_claims').get();
-      const claims = claimsSnapshot.docs.map(doc => ({
+      const claims: WhatsAppClaim[] = claimsSnapshot.docs.map((doc: DocumentData) => ({
         waId: doc.id,
         uid: doc.data().uid,
         claimedAt: doc.data().claimedAt?.toDate?.() || doc.data().claimedAt,
@@ -36,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Get user details for each claim
       const claimsWithUserDetails = await Promise.all(
-        claims.map(async (claim) => {
+        claims.map(async (claim: WhatsAppClaim) => {
           try {
             const userDoc = await db.collection('users').doc(claim.uid).get();
             if (userDoc.exists) {

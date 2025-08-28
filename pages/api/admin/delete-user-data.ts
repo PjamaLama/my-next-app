@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb, getAdminAuth } from '../../../lib/firebaseAdmin';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -39,7 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const recentActivityDocs = await recentActivityQuery.get();
     
     const batch = db.batch();
-    recentActivityDocs.docs.forEach(doc => {
+    recentActivityDocs.docs.forEach((doc: DocumentData) => {
       batch.delete(doc.ref);
     });
     await batch.commit();

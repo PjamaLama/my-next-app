@@ -118,6 +118,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
   // Flag to prevent session switching during title generation
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
 
+  // Error recovery state
+  const [retryCount, setRetryCount] = useState(0);
+
   const cancelChatGeneration = useCallback(() => {
     if (abortController) {
       console.log('🔍 [ChatProvider] Aborting ongoing chat generation...');
@@ -209,8 +212,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       setError(null); // Clear any previous errors on successful load
     }, (err) => {
       console.error("Error fetching sessions:", err);
-      setLastError(err);
-      
+
       // Provide more specific error messages based on error type
       let errorMessage = "Failed to load sessions.";
       if (err.code === 'permission-denied') {
@@ -222,7 +224,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       } else if (err.code === 'unauthenticated') {
         errorMessage = "Authentication required. Please sign in again.";
       }
-      
+
       setError(errorMessage);
     });
 
@@ -740,6 +742,14 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     }
   };
 
+  // Error recovery function
+  const retrySessionLoad = useCallback(() => {
+    console.log('🔍 [ChatProvider] Retrying session load, attempt:', retryCount + 1);
+    setRetryCount(prev => prev + 1);
+    setError(null);
+    // The session subscription will automatically retry when the error is cleared
+  }, [retryCount]);
+
   // Generate AI-powered title for a chat session
   const generateChatTitle = async (sessionId: string): Promise<string> => {
     if (!user || !sessionId) {
@@ -825,6 +835,10 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
 
     // Error handling
     clearErrorAndCreateSession,
+
+    // Error recovery
+    retrySessionLoad,
+    retryCount,
 
     // Chat title generation
     generateChatTitle,

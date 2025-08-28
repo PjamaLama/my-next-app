@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminAuth, getAdminDb } from '../../../lib/firebaseAdmin';
 import { firestore } from 'firebase-admin';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 function isAllowedAdmin(decoded: any): boolean {
   const admins = (process.env.ADMIN_EMAILS || '')
@@ -31,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Get all users with WhatsApp IDs
     const usersSnapshot = await db.collection('users').where('wa_id', '!=', null).get();
-    const usersWithWaId = usersSnapshot.docs.filter(doc => doc.data().wa_id);
+    const usersWithWaId = usersSnapshot.docs.filter((doc: DocumentData) => doc.data().wa_id);
 
     let migratedCount = 0;
     let skippedCount = 0;

@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb, getAdminAuth } from '../../../lib/firebaseAdmin';
 import { auditLogger } from '../../../lib/auditLogger';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -71,7 +72,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const sessionsSnapshot = await sessionsQuery.get();
       const sessions: any[] = [];
       
-      sessionsSnapshot.forEach(doc => {
+      sessionsSnapshot.forEach((doc: DocumentData) => {
         const sessionData = doc.data();
         // Remove sensitive data like API keys
         const { geminiApiKey, ...cleanSessionData } = sessionData;
@@ -95,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const activitySnapshot = await activityQuery.get();
       const activities: any[] = [];
       
-      activitySnapshot.forEach(doc => {
+      activitySnapshot.forEach((doc: DocumentData) => {
         activities.push({
           activityId: doc.id,
           ...doc.data()
@@ -116,7 +117,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const feedbackSnapshot = await feedbackQuery.get();
       const feedbacks: any[] = [];
       
-      feedbackSnapshot.forEach(doc => {
+      feedbackSnapshot.forEach((doc: DocumentData) => {
         feedbacks.push({
           feedbackId: doc.id,
           ...doc.data()
