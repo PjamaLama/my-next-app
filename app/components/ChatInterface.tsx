@@ -913,12 +913,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             )}
           </button>
         </form>
-        {/* Debug info - remove in production */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="text-center text-xs text-gray-500 mt-2">
-            Debug: waId={waId ? 'yes' : 'no'}, showMessaging={adminMeta.showWhatsAppMessaging ? 'yes' : 'no'}
-          </div>
-        )}
+
         
         {adminMeta.showWhatsAppMessaging && waId ? (
           <div className="text-center text-xs text-gray-400 mt-4">
