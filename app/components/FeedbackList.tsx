@@ -117,7 +117,7 @@ export default function FeedbackList({
       </div>
 
       {/* Feedback items list */}
-      <div className="space-y-3 max-h-[500px] overflow-y-auto">
+      <div className="space-y-3">
         {sortedItems.map((item, index) => (
           <div
             key={item.id}

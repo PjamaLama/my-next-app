@@ -20,24 +20,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Auth check
     const bearer = req.headers.authorization || '';
     const idToken = bearer.startsWith('Bearer ') ? bearer.slice(7) : undefined;
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+    if (!idToken) {
+      console.error('admin/meta: No authorization token provided');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const auth = getAuth();
-    const decoded = await auth.verifyIdToken(idToken);
-    if (!isAllowedAdmin(decoded)) return res.status(403).json({ error: 'Forbidden' });
+    let decoded;
+    try {
+      decoded = await auth.verifyIdToken(idToken);
+    } catch (authError) {
+      console.error('admin/meta: Token verification failed:', authError);
+      return res.status(401).json({ error: 'Invalid token' });
+    }
 
-    const db = getAdminDb();
+    if (!isAllowedAdmin(decoded)) {
+      console.error('admin/meta: User not allowed admin access:', decoded?.email);
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    let db;
+    try {
+      db = getAdminDb();
+    } catch (dbError) {
+      console.error('admin/meta: Database initialization failed:', dbError);
+      return res.status(500).json({ error: 'Database configuration error' });
+    }
+
     const metaRef = db.doc('meta/beta');
 
     if (req.method === 'GET') {
-      const snap = await metaRef.get();
-      const data: MetaDoc = snap.exists ? (snap.data() as MetaDoc) : { capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: false };
-      return res.status(200).json({
-        capacity: typeof data.capacity === 'number' ? data.capacity : 100,
-        testerCount: typeof data.testerCount === 'number' ? data.testerCount : 0,
-        open: !!data.open,
-        showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : false,
-      });
+      try {
+        const snap = await metaRef.get();
+        const data: MetaDoc = snap.exists ? (snap.data() as MetaDoc) : { capacity: 100, testerCount: 0, open: false, showWhatsAppMessaging: false };
+        console.log('admin/meta: GET successful, data:', { exists: snap.exists, capacity: data.capacity, testerCount: data.testerCount });
+        return res.status(200).json({
+          capacity: typeof data.capacity === 'number' ? data.capacity : 100,
+          testerCount: typeof data.testerCount === 'number' ? data.testerCount : 0,
+          open: !!data.open,
+          showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : false,
+        });
+      } catch (getError) {
+        console.error('admin/meta: GET operation failed:', getError);
+        return res.status(500).json({ error: 'Failed to read meta data' });
+      }
     }
 
     if (req.method === 'POST') {
@@ -45,20 +71,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Update meta fields (capacity/open/showWhatsAppMessaging)
       if (!action || action === 'updateMeta') {
-        const { capacity, open, showWhatsAppMessaging } = req.body || {};
-        const updates: Record<string, any> = { updatedAt: new Date() };
-        if (typeof capacity === 'number' && capacity >= 0) updates.capacity = capacity;
-        if (typeof open === 'boolean') updates.open = open;
-        if (typeof showWhatsAppMessaging === 'boolean') updates.showWhatsAppMessaging = showWhatsAppMessaging;
-        await metaRef.set(updates, { merge: true });
-        const snap = await metaRef.get();
-        const data = snap.data() as MetaDoc;
-        return res.status(200).json({
-          capacity: typeof data.capacity === 'number' ? data.capacity : 100,
-          testerCount: typeof data.testerCount === 'number' ? data.testerCount : 0,
-          open: !!data.open,
-          showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : true,
-        });
+        try {
+          const { capacity, open, showWhatsAppMessaging } = req.body || {};
+          const updates: Record<string, any> = { updatedAt: new Date() };
+          if (typeof capacity === 'number' && capacity >= 0) updates.capacity = capacity;
+          if (typeof open === 'boolean') updates.open = open;
+          if (typeof showWhatsAppMessaging === 'boolean') updates.showWhatsAppMessaging = showWhatsAppMessaging;
+
+          console.log('admin/meta: POST updateMeta, updates:', updates);
+          await metaRef.set(updates, { merge: true });
+          const snap = await metaRef.get();
+          const data = snap.data() as MetaDoc;
+          console.log('admin/meta: POST updateMeta successful');
+          return res.status(200).json({
+            capacity: typeof data.capacity === 'number' ? data.capacity : 100,
+            testerCount: typeof data.testerCount === 'number' ? data.testerCount : 0,
+            open: !!data.open,
+            showWhatsAppMessaging: typeof data.showWhatsAppMessaging === 'boolean' ? data.showWhatsAppMessaging : true,
+          });
+        } catch (updateError) {
+          console.error('admin/meta: POST updateMeta failed:', updateError);
+          return res.status(500).json({ error: 'Failed to update meta data' });
+        }
       }
 
       // Grant tester by email
@@ -114,7 +148,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err: any) {
-    console.error('admin/meta error', err);
+    console.error('admin/meta: Unexpected error:', err);
+    console.error('admin/meta: Error stack:', err?.stack);
     return res.status(500).json({ error: err?.message || 'Internal error' });
   }
 }

@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { Plus } from 'lucide-react';
 import { compressImageFile } from '@/lib/imageCompression';
-import SwipeableFeedbackStack from './SwipeableFeedbackStack';
+import FeedbackList from './FeedbackList';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
@@ -25,10 +25,12 @@ interface FeedbackItem {
 type Attachment = { url: string; mimeType: string; name?: string };
 
 const PERSIST_KEY = 'feedbackModalState_v1';
+const TAB_PERSIST_KEY = 'feedbackActiveTab_v1';
 const COOLDOWN_MS = 800;
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'submit' | 'browse'>('submit');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<FeedbackType>('feature');
@@ -68,6 +70,21 @@ export default function FeedbackButton() {
     } catch {}
   }, [title, description, type, attachments]);
 
+  // Persist active tab
+  useEffect(() => {
+    try {
+      const savedTab = localStorage.getItem(TAB_PERSIST_KEY);
+      if (savedTab === 'submit' || savedTab === 'browse') {
+        setActiveTab(savedTab);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_PERSIST_KEY, activeTab);
+    } catch {}
+  }, [activeTab]);
+
 
 
   // Listen for global open event to trigger from anywhere (e.g., sidebar button)
@@ -76,6 +93,27 @@ export default function FeedbackButton() {
     window.addEventListener('open-feedback', handler as EventListener);
     return () => window.removeEventListener('open-feedback', handler as EventListener);
   }, []);
+
+  // Keyboard shortcuts for tab switching
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!open) return;
+
+      // Ctrl/Cmd + 1 for Submit tab
+      if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+        e.preventDefault();
+        setActiveTab('submit');
+      }
+      // Ctrl/Cmd + 2 for Browse tab
+      if ((e.ctrlKey || e.metaKey) && e.key === '2') {
+        e.preventDefault();
+        setActiveTab('browse');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
 
   // Load all feedback when modal opens (for browse tab)
   useEffect(() => {
@@ -224,9 +262,9 @@ export default function FeedbackButton() {
       {open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-                     <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(1200px,98vw)] h-[min(850px,92vh)] p-6 modal-content">
+                     <div className="relative bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl w-[min(1200px,98vw)] max-h-[92vh] h-auto p-0 modal-content overflow-hidden flex flex-col">
             {/* Header with enhanced design */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between p-6 pb-4 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-emerald-600/20 flex items-center justify-center">
                   <Plus className="w-5 h-5 text-emerald-400" />
@@ -245,14 +283,49 @@ export default function FeedbackButton() {
               </div>
             </div>
 
-            {/* Main Content - Combined Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left Column - Submit Feedback */}
-              <div className="space-y-4">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-white mb-1">Submit Feedback</h3>
-                  <p className="text-sm text-white/60">Share your ideas, report bugs, or give us general feedback</p>
-                </div>
+            {/* Tab Toggles */}
+            <div className="flex items-center justify-center px-6 pb-4 flex-shrink-0">
+              <div className="flex items-center bg-zinc-800/50 rounded-xl p-1 border border-white/10">
+                <button
+                  onClick={() => setActiveTab('submit')}
+                  className={`px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                    activeTab === 'submit'
+                      ? 'bg-emerald-600 text-white shadow-lg'
+                      : 'text-white/70 hover:text-white hover:bg-white/5'
+                  }`}
+                  title="Ctrl/Cmd + 1"
+                >
+                  <Plus className="w-4 h-4" />
+                  Submit
+                  <span className="text-xs opacity-60 ml-1">⌘1</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('browse')}
+                  className={`px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                    activeTab === 'browse'
+                      ? 'bg-emerald-600 text-white shadow-lg'
+                      : 'text-white/70 hover:text-white hover:bg-white/5'
+                  }`}
+                  title="Ctrl/Cmd + 2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                  </svg>
+                  Browse
+                  <span className="text-xs opacity-60 ml-1">⌘2</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Main Content - Tabbed Layout */}
+            <div className="flex-1 overflow-y-auto px-6 pb-6">
+              {/* Submit Tab */}
+              {activeTab === 'submit' && (
+                <div className="space-y-4">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-white mb-1">Submit Feedback</h3>
+                    <p className="text-sm text-white/60">Share your ideas, report bugs, or give us general feedback</p>
+                  </div>
 
                 {/* Form Fields */}
                 <div className="space-y-4">
@@ -449,54 +522,53 @@ export default function FeedbackButton() {
                       </div>
                     </button>
                   </div>
-                </div>
-              </div>
-
-              {/* Right Column - Browse & Vote */}
-              <div className="space-y-4">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-white mb-1">Browse & Vote</h3>
-                  <p className="text-sm text-white/60">Review and vote on feedback from the community</p>
-                </div>
-
-                {/* Browse Controls */}
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <input
-                      value={browseQuery}
-                      onChange={(e) => setBrowseQuery(e.target.value)}
-                      placeholder="Search feedback..."
-                      className="w-full pl-4 pr-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
-                    />
                   </div>
                 </div>
-                
-                {/* Swipeable Feedback Stack */}
-                <div className="max-h-[60vh] overflow-hidden">
-                  {allLoading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500"></div>
-                      <span className="ml-2 text-white/60">Loading...</span>
+              )}
+
+              {/* Browse Tab */}
+              {activeTab === 'browse' && (
+                <div className="space-y-4">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-white mb-1">Browse & Vote</h3>
+                    <p className="text-sm text-white/60">Review and vote on feedback from the community</p>
+                  </div>
+
+                  {/* Browse Controls */}
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-1">
+                      <input
+                        value={browseQuery}
+                        onChange={(e) => setBrowseQuery(e.target.value)}
+                        placeholder="Search feedback..."
+                        className="w-full pl-4 pr-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
+                      />
                     </div>
-                  ) : (
-                    <SwipeableFeedbackStack
-                      items={allItems.filter((i) => {
-                        // Apply search filter only
-                        const q = browseQuery.trim().toLowerCase();
-                        if (!q) return true;
-                        const text = `${i.title} ${i.description || ''}`.toLowerCase();
-                        return text.includes(q);
-                      })}
-                      onVote={vote}
-                      onSkip={(id) => {
-                        // Skip logic - could be used for analytics or just to move to next item
-                        console.log('Skipped item:', id);
-                      }}
-                      className="max-w-full"
-                    />
-                  )}
+                  </div>
+
+                  {/* Feedback List */}
+                  <div className="max-h-[calc(100vh-300px)] overflow-y-auto">
+                    {allLoading ? (
+                      <div className="flex items-center justify-center py-6">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500"></div>
+                        <span className="ml-2 text-white/60">Loading...</span>
+                      </div>
+                    ) : (
+                      <FeedbackList
+                        items={allItems.filter((i) => {
+                          // Apply search filter only
+                          const q = browseQuery.trim().toLowerCase();
+                          if (!q) return true;
+                          const text = `${i.title} ${i.description || ''}`.toLowerCase();
+                          return text.includes(q);
+                        })}
+                        onVote={vote}
+                        className="max-w-full"
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
