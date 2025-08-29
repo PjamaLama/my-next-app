@@ -23,7 +23,16 @@ const SheetChipSelector: React.FC = () => {
 
   // Only fetch sheet names when explicitly requested or when there's a new spreadsheet ID
   const [hasInitialized, setHasInitialized] = useState(false);
-  
+
+  useEffect(() => {
+    // Reset initialization state when spreadsheet changes
+    if (defaultSpreadsheetId) {
+      setHasInitialized(false);
+      setSheetNames([]);
+      setError(null);
+    }
+  }, [defaultSpreadsheetId]);
+
   useEffect(() => {
     if (defaultSpreadsheetId && !hasInitialized) {
       setIsLoading(true);
