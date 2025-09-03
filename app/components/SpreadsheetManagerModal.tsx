@@ -5,6 +5,7 @@ import { useFirebase } from "../providers/FirebaseProvider";
 import { useSheet } from "../providers/SheetProvider";
 import { useServiceAccount } from "../providers/ServiceAccountProvider";
 import ServiceAccountInfo from "./ServiceAccountInfo";
+import { googleAnalytics } from "@/lib/analytics/googleAnalytics";
 
 interface SpreadsheetManagerModalProps {
   open: boolean;
@@ -40,18 +41,33 @@ const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open,
 
   const saveSpreadsheetOption = async (spreadsheetId: string) => {
     if (!user || !spreadsheetId) return;
-    const { collection, addDoc } = await import('firebase/firestore');
+    const { collection, addDoc, getDocs } = await import('firebase/firestore');
     const { getDb } = await import('../providers/FirebaseProvider');
     const db = getDb();
     if (!db) return;
-    
+
     const optionsRef = collection(db, 'users', user.uid, 'options');
+
+    // Check if this is the user's first spreadsheet connection
+    const existingSheets = await getDocs(optionsRef);
+    const isFirstSheet = existingSheets.empty;
+
     const meta = await fetch(`/api/get-sheet-names?spreadsheetId=${encodeURIComponent(spreadsheetId)}`).then(r => r.json()).catch(() => ({}));
     const payload: any = { spreadsheetId };
     if (meta && typeof meta.spreadsheetTitle === 'string' && meta.spreadsheetTitle.trim()) {
       payload.title = meta.spreadsheetTitle.trim();
     }
     await addDoc(optionsRef, payload);
+
+    // Track first sheet connection
+    if (isFirstSheet) {
+      googleAnalytics.trackBusinessConversion('first_sheet_connected', 0, 'USD');
+      googleAnalytics.setUserProperty('has_connected_sheet', 'true');
+      console.log('📊 Tracked: First Sheet Connected');
+    } else {
+      googleAnalytics.trackUserEngagement('additional_sheet_connected');
+      console.log('📊 Tracked: Additional Sheet Connected');
+    }
   };
 
   const handleAddSpreadsheet = async () => {

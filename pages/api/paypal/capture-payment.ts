@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAuth } from 'firebase-admin/auth';
 import { getAdminDb } from '../../../lib/firebaseAdmin';
 import { paypalClient } from '../../../lib/paypal';
+import { googleAnalytics } from '../../../lib/analytics/googleAnalytics';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -92,6 +93,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }, { merge: true });
 
     console.log(`paypal/capture-payment: Successfully upgraded user ${decoded.email} to pro with payment ${capture.id}`);
+
+    // Track Pro upgrade conversion (highest value event)
+    try {
+      googleAnalytics.trackBusinessConversion('pro_upgrade', parseFloat(capture.amount?.value || '29.99'), capture.amount?.currencyCode || 'USD');
+      googleAnalytics.setUserProperty('user_type', 'pro');
+      console.log('📊 Tracked: Pro Upgrade Conversion');
+    } catch (trackingError) {
+      console.error('Failed to track Pro upgrade:', trackingError);
+    }
 
     return res.status(200).json({
       success: true,

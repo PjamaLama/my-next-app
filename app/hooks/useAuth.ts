@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider } from 'firebase/auth';
 import { getFirebaseAuth } from '../providers/FirebaseProvider';
+import { googleAnalytics } from '@/lib/analytics/googleAnalytics';
 
 interface UseAuthReturn {
   user: User | null;
@@ -31,6 +32,28 @@ export const useAuth = (): UseAuthReturn => {
       // Auth state changed - user presence updated
       setUser(user);
       setLoading(false);
+
+      // Track authentication events
+      if (user) {
+        // Check if this is a new user (account creation)
+        const creationTime = user.metadata.creationTime;
+        const lastSignInTime = user.metadata.lastSignInTime;
+
+        if (creationTime === lastSignInTime) {
+          // This is likely a new account creation
+          googleAnalytics.trackBusinessConversion('account_created', 0, 'USD');
+          googleAnalytics.setUserProperty('user_type', 'free');
+          console.log('📊 Tracked: Account Created');
+        } else {
+          // This is a returning user sign-in
+          googleAnalytics.trackUserEngagement('user_signin');
+          console.log('📊 Tracked: User Sign In');
+        }
+
+        // Set user properties for analytics
+        googleAnalytics.setUserProperty('user_id', user.uid);
+        googleAnalytics.setUserProperty('user_email', user.email);
+      }
     });
 
     return () => unsubscribe();
