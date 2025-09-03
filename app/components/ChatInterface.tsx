@@ -11,8 +11,11 @@ import EditRowModal from './EditRowModal';
 import ChatMessage from './ChatMessage';
 import VoiceRecorder from './VoiceRecorder';
 import WhatsAppComingSoonBanner from './WhatsAppComingSoonBanner';
+
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useAdminMeta } from '../hooks/useAdminMeta';
+import { useMessageLimits } from '../hooks/useMessageLimits';
+import { useUpgradeModal } from '../providers/UpgradeModalProvider';
 import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
 
 interface ChatInterfaceProps {
@@ -27,8 +30,10 @@ interface ChatInterfaceProps {
 export default function ChatInterface({ className = '', onShowTutorial }: ChatInterfaceProps) {
   const { chatMessages, addMessage, error, ensureSession, setChatMessages, updateMessageTables, currentSessionId, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
-  const { user, waId } = useFirebase();
+  const { user, waId, userType } = useFirebase();
   const { meta: adminMeta } = useAdminMeta();
+  const { canSendMessage, incrementUsage, isLimitReached, dailyUsage, limit } = useMessageLimits();
+  const { openModal } = useUpgradeModal();
   const [inputValue, setInputValue] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -430,6 +435,17 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     e.preventDefault();
     if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles) return;
 
+    // Check message limits for free users
+    if (userType === 'free' && !canSendMessage) {
+      openModal(); // Open upgrade modal
+      return;
+    }
+
+    // Increment usage counter for free users
+    if (userType === 'free') {
+      incrementUsage();
+    }
+
     const message = inputValue.trim() || 'Extract data from uploaded files and add to selected sheets';
     setInputValue('');
     setIsSending(true);
@@ -826,9 +842,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             ))}
           </div>
         )}
-        
 
-        
+
+
         <form ref={formRef} onSubmit={handleSubmit} className="flex gap-3 items-center">
           <input
             ref={fileInputRef}
@@ -843,20 +859,24 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Ask about your data, request analysis, or get insights..."
-            className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-            disabled={isSending}
+            placeholder={
+              userType === 'free' && isLimitReached
+                ? "Daily limit reached. Upgrade to Pro for unlimited messages!"
+                : "Ask about your data, request analysis, or get insights..."
+            }
+            className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isSending || (userType === 'free' && isLimitReached)}
           />
           <VoiceRecorder
             onTranscriptChange={handleTranscriptChange}
-            disabled={isSending}
-            className="p-3 rounded-lg transition-colors bg-white/10 hover:bg-white/20 text-white"
+            disabled={isSending || (userType === 'free' && isLimitReached)}
+            className="p-3 rounded-lg transition-colors bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
-            disabled={isSending}
+            className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isSending || (userType === 'free' && isLimitReached)}
           >
             <Paperclip className="w-5 h-5" />
           </button>
@@ -898,13 +918,68 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               // Re-enable stop button after a brief delay
               setTimeout(() => setIsStopping(false), 500);
             } : handleSubmit}
-            disabled={isSending ? (isStopping) : ((!inputValue.trim() && uploadedFiles.length === 0))}
-            aria-label={isSending ? "Stop chat generation" : "Send message"}
+            disabled={
+              isSending
+                ? isStopping
+                : (userType === 'free' && isLimitReached)
+                  ? true
+                  : (!inputValue.trim() && uploadedFiles.length === 0)
+            }
+            onClick={
+              userType === 'free' && isLimitReached
+                ? () => openModal()
+                : isSending
+                  ? () => {
+                      if (isStopping) return;
+                      console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
+                      setIsStopping(true);
+                      cancelChatGeneration();
+                      setIsSending(false);
+                      setIsProcessingFiles(false);
+                      if (filesBeingSent.length > 0) {
+                        setUploadedFiles(prev => [...prev, ...filesBeingSent]);
+                        setFilesBeingSent([]);
+                      }
+                      if (firebaseFileUrlsRef.current && firebaseFileUrlsRef.current.length > 0) {
+                        try {
+                          const storage = getStorage();
+                          for (const fileInfo of firebaseFileUrlsRef.current) {
+                            const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+                            if (fileName) {
+                              const storageRef = ref(storage, `temp-uploads/${fileName}`);
+                              deleteObject(storageRef).then(() => {
+                                console.log(`Cleaned up Firebase file after stop: ${fileName}`);
+                              }).catch((cleanupError) => {
+                                console.error('Failed to cleanup Firebase file after stop:', cleanupError);
+                              });
+                            }
+                          }
+                        } catch (cleanupError) {
+                          console.error('Failed to cleanup Firebase files after stop:', cleanupError);
+                        }
+                      }
+                      setTimeout(() => setIsStopping(false), 500);
+                    }
+                  : handleSubmit
+            }
+            aria-label={
+              userType === 'free' && isLimitReached
+                ? "Upgrade to Pro for unlimited messages"
+                : isSending
+                  ? "Stop chat generation"
+                  : "Send message"
+            }
             className={`p-3 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-              isSending 
-                ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105 focus:ring-red-500' 
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500'
-            } ${(!inputValue.trim() && uploadedFiles.length === 0) ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`}
+              isSending
+                ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105 focus:ring-red-500'
+                : userType === 'free' && isLimitReached
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500 cursor-pointer'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500'
+            } ${
+              (userType === 'free' && isLimitReached) || (!inputValue.trim() && uploadedFiles.length === 0)
+                ? 'opacity-50 cursor-not-allowed'
+                : 'hover:shadow-md cursor-pointer'
+            }`}
           >
             {isSending ? (
               <Square className="h-5 w-5" /> // Stop icon

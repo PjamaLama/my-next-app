@@ -11,6 +11,7 @@ import { useFirebase } from "../providers/FirebaseProvider";
 import { useDialog } from "../providers/DialogProvider";
 import SpreadsheetManagerModal from "./SpreadsheetManagerModal";
 import EditRowModal from "./EditRowModal";
+import MessageCounter from "./MessageCounter";
 dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
@@ -30,7 +31,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     appendMessage,
     chatMessages
   } = useChat();
-  const { user } = useFirebase();
+  const { user, userType } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();
   const [creating, setCreating] = useState(false);
@@ -442,6 +443,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             )}
           </div>
 
+          {/* Message Counter for Free Users */}
+          {userType === 'free' && (
+            <div className="mt-2 mx-3">
+              <MessageCounter />
+            </div>
+          )}
+
           {/* Spreadsheets manager header (list stays below) */}
           <div className="mt-2 mx-3 rounded-lg border border-white/10 bg-white/5 overflow-hidden">
             {/* Header */}
@@ -613,6 +621,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             </div>
           )}
         </div>
+
+          {/* Message Counter for Free Users */}
+          {userType === 'free' && (
+            <div className="mt-2 mx-3">
+              <MessageCounter />
+            </div>
+          )}
 
           {/* Spreadsheets manager header (list stays below) */}
         <div className="mt-2 mx-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
