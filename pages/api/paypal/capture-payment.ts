@@ -96,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Track Pro upgrade conversion (highest value event)
     try {
-      googleAnalytics.trackBusinessConversion('pro_upgrade', parseFloat(capture.amount?.value || '29.99'), capture.amount?.currencyCode || 'USD');
+      googleAnalytics.trackBusinessConversion('pro_upgrade', parseFloat(capture.amount?.value || '19.97'), capture.amount?.currencyCode || 'USD');
       googleAnalytics.setUserProperty('user_type', 'pro');
       console.log('📊 Tracked: Pro Upgrade Conversion');
     } catch (trackingError) {

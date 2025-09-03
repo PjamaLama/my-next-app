@@ -9,7 +9,7 @@ Your app now has **Google Tag Manager (GTM)** installed with **Google Ads conver
 1. **Account Creation** (`account_created`) - When users sign up
 2. **First Sheet Connection** (`first_sheet_connected`) - When users connect their first Google Sheet
 3. **First Message Sent** (`first_message_sent`) - When users send their first chat message
-4. **Pro Upgrade** (`pro_upgrade`) - When users upgrade to Pro (highest value conversion)
+4. **Pro Upgrade** (`pro_upgrade`) - When users upgrade to Pro ($19.97)
 
 ### 🔧 Technical Implementation
 
@@ -148,7 +148,7 @@ Create Google Ads Conversion tags for each trigger:
 4. **Pro Upgrade** ⭐ (Most Important)
    - Name: "Pro Upgrade"
    - Category: "Purchase"
-   - Value: "$29.99" (actual price)
+   - Value: "$19.97" (actual price)
    - Attribution: "Last click" or "Data-driven"
 
 ### Step 7: Link GTM to Google Ads
@@ -184,7 +184,7 @@ Create Google Ads Conversion tags for each trigger:
 1. **Account Created**: $0.00 (awareness metric)
 2. **First Sheet Connected**: $0.00 (engagement metric)
 3. **First Message Sent**: $0.00 (engagement metric)
-4. **Pro Upgrade**: $29.99 (actual revenue)
+4. **Pro Upgrade**: $19.97 (actual revenue)
 
 ### Why This Structure Works:
 
