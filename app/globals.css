@@ -850,3 +850,100 @@ html.theme-dark {
 .feedback-interactive:active {
   transform: translateY(0);
 }
+
+/* Matrix-style golden shimmer animations */
+@keyframes golden-matrix {
+  0% {
+    transform: translateX(-100%) translateY(-50%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(200%) translateY(-50%);
+    opacity: 0;
+  }
+}
+
+@keyframes golden-stream {
+  0% {
+    transform: translateY(-100%) rotate(12deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+  }
+  85% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(200%) rotate(12deg);
+    opacity: 0;
+  }
+}
+
+@keyframes golden-particles {
+  0% {
+    transform: translateY(100px) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-100px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes golden-wave {
+  0% {
+    transform: scaleX(0) scaleY(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scaleX(1) scaleY(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scaleX(1) scaleY(0.5);
+    opacity: 0;
+  }
+}
+
+.animate-golden-matrix {
+  animation: golden-matrix 3s linear infinite;
+}
+
+.animate-golden-stream {
+  animation: golden-stream 2.5s ease-in-out infinite;
+}
+
+.animate-golden-particles {
+  animation: golden-particles 4s linear infinite;
+}
+
+.animate-golden-wave {
+  animation: golden-wave 2s ease-out infinite;
+}
+
+/* Enhanced shimmer for button */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%) skewX(-12deg);
+  }
+  100% {
+    transform: translateX(200%) skewX(-12deg);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
