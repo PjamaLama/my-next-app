@@ -149,6 +149,7 @@ export default function RootLayout({
             __html: JSON.stringify(structuredData),
           }}
         />
+
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

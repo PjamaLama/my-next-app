@@ -1,30 +1,69 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Star, Zap, Shield, HeadphonesIcon } from 'lucide-react';
+import { useFirebase } from '../providers/FirebaseProvider';
+
+// Extend window interface for PayPal
+declare global {
+  interface Window {
+    paypal?: any;
+  }
+}
 
 interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgrade: () => void;
   userType: 'free' | 'pro';
+  isProcessing?: boolean;
 }
 
-export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType }: UpgradeModalProps) {
-  const [isUpgrading, setIsUpgrading] = useState(false);
+export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isProcessing = false }: UpgradeModalProps) {
+  const { user } = useFirebase();
 
   const handleUpgrade = async () => {
-    setIsUpgrading(true);
     try {
-      await onUpgrade();
-      // Success message will be handled by parent component
+      // Directly create PayPal payment and redirect
+      const token = await user?.getIdToken();
+      const returnUrl = `${window.location.origin}${window.location.pathname}?paypal_order_id={order_id}`;
+      const cancelUrl = window.location.href;
+
+      const response = await fetch('/api/paypal/create-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          returnUrl,
+          cancelUrl,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.approvalUrl) {
+          // Redirect to PayPal for payment
+          window.location.href = data.approvalUrl;
+        } else {
+          console.error('No approval URL received from PayPal');
+        }
+      } else {
+        console.error('Payment creation failed');
+      }
     } catch (error) {
-      console.error('Upgrade failed:', error);
-    } finally {
-      setIsUpgrading(false);
+      console.error('Payment creation error:', error);
     }
   };
+
+  // Clean up when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      // Modal cleanup if needed
+    }
+  }, [isOpen]);
 
   if (userType === 'pro') {
     return (
@@ -165,10 +204,10 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType }: U
             {/* CTA Button */}
             <button
               onClick={handleUpgrade}
-              disabled={isUpgrading}
+              disabled={isProcessing}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isUpgrading ? (
+              {isProcessing ? (
                 <div className="flex items-center justify-center gap-2">
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                   Processing...
@@ -180,6 +219,9 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType }: U
                 </div>
               )}
             </button>
+
+            {/* PayPal Buttons Container (hidden but functional) */}
+            <div id="paypal-button-container" className="hidden"></div>
 
             {/* Footer */}
             <p className="text-white/50 text-xs text-center mt-4">

@@ -1,16 +1,16 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
+import { useUpgradeModal } from '../providers/UpgradeModalProvider';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LogOut, Crown } from 'lucide-react';
-import UpgradeModal from './UpgradeModal';
 
 const UserProfile = ({ peek }: { peek?: boolean }) => {
   const { user, signOutUser, waId, userType } = useFirebase();
+  const { openModal } = useUpgradeModal();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -33,35 +33,6 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
   const handleSignOut = async () => {
     await signOutUser();
     router.push('/');
-  };
-
-  const handleUpgrade = async () => {
-    if (!user) return;
-
-    try {
-      const token = await user.getIdToken();
-      const response = await fetch('/api/user/upgrade', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // The userType will be updated automatically via the useUserProfile hook
-        setUpgradeModalOpen(false);
-        // You could add a success notification here
-        console.log('Upgrade successful:', data.message);
-      } else {
-        console.error('Upgrade failed');
-        // You could add an error notification here
-      }
-    } catch (error) {
-      console.error('Upgrade error:', error);
-      // You could add an error notification here
-    }
   };
 
   return (
@@ -124,7 +95,7 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
               <button
                 onClick={() => {
                   setDropdownOpen(false);
-                  setUpgradeModalOpen(true);
+                  openModal();
                 }}
                 className="block w-full text-left px-4 py-2 text-sm text-emerald-400 hover:bg-gray-700 flex items-center gap-2"
               >
@@ -144,12 +115,7 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
         </div>
       )}
 
-      <UpgradeModal
-        isOpen={upgradeModalOpen}
-        onClose={() => setUpgradeModalOpen(false)}
-        onUpgrade={handleUpgrade}
-        userType={userType}
-      />
+
     </div>
   );
 };

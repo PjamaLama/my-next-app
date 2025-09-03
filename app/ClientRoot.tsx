@@ -7,12 +7,14 @@ import { SheetProvider } from './providers/SheetProvider';
 import { ServiceAccountProvider } from './providers/ServiceAccountProvider';
 import { ChatProvider } from './providers/ChatProvider';
 import { TutorialProvider } from './providers/TutorialProvider';
+import { UpgradeModalProvider } from './providers/UpgradeModalProvider';
 import SidePanel from './components/SidePanel';
 import FeedbackButton from './components/FeedbackButton';
 import FeedbackNudge from './components/FeedbackNudge';
 import { ClientGatedLayout } from './providers/ClientGatedLayout';
 import PWAInstaller from './components/PWAInstaller';
 import InteractiveTutorial from './components/InteractiveTutorial';
+import PayPalScriptLoader from './components/PayPalScriptLoader';
 
 export default function ClientRoot({ children }: { children: React.ReactNode }) {
   return (
@@ -22,18 +24,22 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
           <ServiceAccountProvider>
             <ChatProvider>
               <TutorialProvider>
-                {/* InteractiveTutorial rendered at top level so it's accessible from anywhere */}
-                <InteractiveTutorial />
-                {/* Sidebar + NavBar hidden on landing by ClientGatedLayout/SidePanel */}
-                <SidePanel />
-                <div className="transition-all min-h-screen flex flex-col">
-                  <ClientGatedLayout>
-                    {children}
-                  </ClientGatedLayout>
-                  <FeedbackNudge />
-                  <FeedbackButton />
-                  <PWAInstaller />
-                </div>
+                <UpgradeModalProvider>
+                  {/* Load PayPal SDK on client side to avoid hydration errors */}
+                  <PayPalScriptLoader />
+                  {/* InteractiveTutorial rendered at top level so it's accessible from anywhere */}
+                  <InteractiveTutorial />
+                  {/* Sidebar + NavBar hidden on landing by ClientGatedLayout/SidePanel */}
+                  <SidePanel />
+                  <div className="transition-all min-h-screen flex flex-col">
+                    <ClientGatedLayout>
+                      {children}
+                    </ClientGatedLayout>
+                    <FeedbackNudge />
+                    <FeedbackButton />
+                    <PWAInstaller />
+                  </div>
+                </UpgradeModalProvider>
               </TutorialProvider>
             </ChatProvider>
           </ServiceAccountProvider>
