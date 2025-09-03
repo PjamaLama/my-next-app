@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAuth } from 'firebase-admin/auth';
-import { paypalClient } from '../../../lib/paypal';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -31,50 +30,103 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Missing returnUrl or cancelUrl' });
     }
 
-    // Create PayPal order
-    const ordersController = paypalClient.getOrdersController();
-    const createOrderRequest = {
-      body: {
-        intent: 'CAPTURE',
-        purchaseUnits: [
-          {
-            amount: {
-              currencyCode: 'USD',
-              value: '19.00',
-              breakdown: {
-                itemTotal: {
-                  currencyCode: 'USD',
-                  value: '19.00',
-                },
+    // Create PayPal order using REST API
+    // Check if we have sandbox credentials, otherwise use production
+    const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
+    const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
+
+    const paypalUrl = isProduction
+      ? 'https://api.paypal.com'
+      : 'https://api.sandbox.paypal.com';
+
+    const clientId = isProduction
+      ? process.env.PAYPAL_CLIENT_ID
+      : process.env.PAYPAL_SANDBOX_CLIENT_ID || process.env.PAYPAL_CLIENT_ID;
+
+    const clientSecret = isProduction
+      ? process.env.PAYPAL_SECRET_KEY
+      : process.env.PAYPAL_SANDBOX_SECRET_KEY || process.env.PAYPAL_SECRET_KEY;
+
+    console.log('PayPal Debug Info:', {
+      nodeEnv: process.env.NODE_ENV,
+      environment: isProduction ? 'PRODUCTION' : 'SANDBOX',
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      clientIdLength: clientId?.length,
+      clientSecretLength: clientSecret?.length,
+      paypalUrl,
+      hasSandboxCredentials
+    });
+
+    if (!clientId || !clientSecret) {
+      console.error('❌ PAYPAL CREDENTIALS MISSING!');
+      console.error('Please add these to your .env.local file:');
+      console.error('PAYPAL_CLIENT_ID=your_paypal_client_id_here');
+      console.error('PAYPAL_SECRET_KEY=your_paypal_secret_key_here');
+
+      return res.status(500).json({
+        error: 'PayPal configuration error',
+        details: 'Missing PayPal credentials',
+        debug: {
+          hasClientId: !!clientId,
+          hasClientSecret: !!clientSecret,
+          nodeEnv: process.env.NODE_ENV,
+          solution: 'Add PAYPAL_CLIENT_ID and PAYPAL_SECRET_KEY to .env.local'
+        }
+      });
+    }
+
+    const paypalAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+    const orderData = {
+      intent: 'CAPTURE',
+      purchase_units: [
+        {
+          amount: {
+            currency_code: 'USD',
+            value: '19.97',
+            breakdown: {
+              item_total: {
+                currency_code: 'USD',
+                value: '19.97',
               },
             },
-            items: [
-              {
-                name: 'SheetyAI Pro Subscription',
-                description: 'Monthly subscription to SheetyAI Pro',
-                quantity: '1',
-                unitAmount: {
-                  currencyCode: 'USD',
-                  value: '19.00',
-                },
-              },
-            ],
           },
-        ],
-        applicationContext: {
-          returnUrl: returnUrl,
-          cancelUrl: cancelUrl,
-          brandName: 'SheetyAI',
-          userAction: 'PAY_NOW',
+          items: [
+            {
+              name: 'SheetyAI Pro Subscription',
+              description: 'Monthly subscription to SheetyAI Pro',
+              quantity: '1',
+              unit_amount: {
+                currency_code: 'USD',
+                value: '19.97',
+              },
+            },
+          ],
         },
+      ],
+      application_context: {
+        return_url: returnUrl,
+        cancel_url: cancelUrl,
+        brand_name: 'SheetyAI',
+        user_action: 'PAY_NOW',
       },
     };
 
-    const { result, ...httpResponse } = await ordersController.ordersCreate(createOrderRequest);
+    const createResponse = await fetch(`${paypalUrl}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${paypalAuth}`,
+      },
+      body: JSON.stringify(orderData),
+    });
 
-    if (httpResponse.statusCode !== 201) {
+    const result = await createResponse.json();
+
+    if (!createResponse.ok) {
       console.error('paypal/create-payment: Failed to create PayPal order:', result);
-      return res.status(httpResponse.statusCode).json({
+      return res.status(createResponse.status).json({
         error: 'Failed to create PayPal order',
         details: result
       });
@@ -88,7 +140,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
       orderId,
       approvalUrl: result.links?.find((link: any) => link.rel === 'approve')?.href,
-      result
     });
 
   } catch (err: any) {

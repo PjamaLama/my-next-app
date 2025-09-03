@@ -7,9 +7,10 @@ import UpgradeModal from '../components/UpgradeModal';
 
 interface UpgradeModalContextType {
   isOpen: boolean;
-  openModal: () => void;
+  openModal: (plan?: string) => void;
   closeModal: () => void;
   isProcessing: boolean;
+  selectedPlan: string | null;
 }
 
 const UpgradeModalContext = createContext<UpgradeModalContextType | undefined>(undefined);
@@ -29,11 +30,18 @@ interface UpgradeModalProviderProps {
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { user, userType } = useFirebase();
   const router = useRouter();
 
-  const openModal = () => setIsOpen(true);
-  const closeModal = () => setIsOpen(false);
+  const openModal = (plan?: string) => {
+    setSelectedPlan(plan || null);
+    setIsOpen(true);
+  };
+  const closeModal = () => {
+    setIsOpen(false);
+    setSelectedPlan(null);
+  };
 
   // Handle PayPal return from URL parameters
   useEffect(() => {
@@ -89,7 +97,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
   };
 
   return (
-    <UpgradeModalContext.Provider value={{ isOpen, openModal, closeModal, isProcessing }}>
+    <UpgradeModalContext.Provider value={{ isOpen, openModal, closeModal, isProcessing, selectedPlan }}>
       {children}
       <UpgradeModal
         isOpen={isOpen}
@@ -97,6 +105,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
         onUpgrade={handleUpgrade}
         userType={userType}
         isProcessing={isProcessing}
+        selectedPlan={selectedPlan}
       />
     </UpgradeModalContext.Provider>
   );

@@ -55,7 +55,7 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
 
   const handleUpgradeClick = (planName: string) => {
     if (planName === 'Pro' && userType !== 'pro') {
-      openModal();
+      openModal(planName);
     }
   };
 

@@ -50,11 +50,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Capture PayPal payment using REST API
-    const paypalUrl = process.env.NODE_ENV === 'production'
+    // Check if we have sandbox credentials, otherwise use production
+    const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
+    const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
+
+    const paypalUrl = isProduction
       ? 'https://api.paypal.com'
       : 'https://api.sandbox.paypal.com';
 
-    const paypalAuth = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET_KEY}`).toString('base64');
+    const clientId = isProduction
+      ? process.env.PAYPAL_CLIENT_ID
+      : process.env.PAYPAL_SANDBOX_CLIENT_ID || process.env.PAYPAL_CLIENT_ID;
+
+    const clientSecret = isProduction
+      ? process.env.PAYPAL_SECRET_KEY
+      : process.env.PAYPAL_SANDBOX_SECRET_KEY || process.env.PAYPAL_SECRET_KEY;
+
+    console.log('PayPal Capture Debug Info:', {
+      nodeEnv: process.env.NODE_ENV,
+      environment: isProduction ? 'PRODUCTION' : 'SANDBOX',
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      clientIdLength: clientId?.length,
+      clientSecretLength: clientSecret?.length,
+      paypalUrl,
+      hasSandboxCredentials
+    });
+
+    if (!clientId || !clientSecret) {
+      console.error('❌ PAYPAL CREDENTIALS MISSING!');
+      console.error('Please add these to your .env.local file:');
+      console.error('PAYPAL_CLIENT_ID=your_paypal_client_id_here');
+      console.error('PAYPAL_SECRET_KEY=your_paypal_secret_key_here');
+
+      return res.status(500).json({
+        error: 'PayPal configuration error',
+        details: 'Missing PayPal credentials',
+        debug: {
+          hasClientId: !!clientId,
+          hasClientSecret: !!clientSecret,
+          nodeEnv: process.env.NODE_ENV,
+          environment: isProduction ? 'PRODUCTION' : 'SANDBOX'
+        }
+      });
+    }
+
+    const paypalAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     const captureResponse = await fetch(`${paypalUrl}/v2/checkout/orders/${orderId}/capture`, {
       method: 'POST',
