@@ -9,10 +9,9 @@ interface UseUserProfileReturn {
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
   saveGeminiApiKey: (key: string) => Promise<void>;
-  betaTester: boolean;
-  betaWaitlist: boolean;
   waId: string | null;
   message_count: number;
+  userType: 'free' | 'pro';
 }
 
 /**
@@ -20,10 +19,9 @@ interface UseUserProfileReturn {
  */
 export const useUserProfile = (user: User | null): UseUserProfileReturn => {
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
-  const [betaTester, setBetaTester] = useState(false);
-  const [betaWaitlist, setBetaWaitlist] = useState(false);
   const [waId, setWaId] = useState<string | null>(null);
   const [message_count, setMessage_count] = useState(0);
+  const [userType, setUserType] = useState<'free' | 'pro'>('free');
 
   const db = getDb();
 
@@ -44,6 +42,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
           lastLoginAt: serverTimestamp(),
           selectedSheetNames: [],
           defaultSpreadsheetId: "",
+          userType: 'free',
         };
 
         // Check if profile exists
@@ -69,7 +68,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
     void ensureUserDoc();
   }, [user, db]);
 
-  // Load profile fields (Gemini API key, beta flags) from profile subdocument
+  // Load profile fields (Gemini API key) from profile subdocument
   useEffect(() => {
     if (!user || !db) {
       setWaId(null);
@@ -87,12 +86,12 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
         if (data.geminiApiKey) {
           setGeminiApiKey(data.geminiApiKey);
         }
-        setBetaTester(!!data.betaTester);
-        setBetaWaitlist(!!data.betaWaitlist);
+        setUserType(data.userType === 'pro' ? 'pro' : 'free');
       } else {
         // If profile doesn't exist, create it with initial values
         await setDoc(profileRef, {
-          geminiApiKey: ''
+          geminiApiKey: '',
+          userType: 'free'
         }, { merge: true });
       }
     });
@@ -133,9 +132,8 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
     geminiApiKey,
     setGeminiApiKey,
     saveGeminiApiKey,
-    betaTester,
-    betaWaitlist,
     waId,
-    message_count
+    message_count,
+    userType
   };
 };

@@ -4,11 +4,13 @@ import { useFirebase } from '../providers/FirebaseProvider';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import { LogOut, Crown } from 'lucide-react';
+import UpgradeModal from './UpgradeModal';
 
 const UserProfile = ({ peek }: { peek?: boolean }) => {
-  const { user, signOutUser, waId } = useFirebase();
+  const { user, signOutUser, waId, userType } = useFirebase();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -31,6 +33,35 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
   const handleSignOut = async () => {
     await signOutUser();
     router.push('/');
+  };
+
+  const handleUpgrade = async () => {
+    if (!user) return;
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/user/upgrade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // The userType will be updated automatically via the useUserProfile hook
+        setUpgradeModalOpen(false);
+        // You could add a success notification here
+        console.log('Upgrade successful:', data.message);
+      } else {
+        console.error('Upgrade failed');
+        // You could add an error notification here
+      }
+    } catch (error) {
+      console.error('Upgrade error:', error);
+      // You could add an error notification here
+    }
   };
 
   return (
@@ -62,6 +93,18 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
           <div className="px-4 py-2 border-b border-gray-700">
             <p className="text-sm font-semibold text-white truncate">{user.displayName || 'User'}</p>
             <p className="text-xs text-gray-400 truncate">{user.email}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                userType === 'pro'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-gray-600/20 text-gray-400 border border-gray-600/30'
+              }`}>
+                {userType === 'pro' ? 'Pro' : 'Free'}
+              </span>
+              {userType === 'pro' && (
+                <Crown className="w-3 h-3 text-emerald-400" fill="currentColor" />
+              )}
+            </div>
           </div>
           <div className="py-1">
             <Link href="/whatsapp-setup"
@@ -77,6 +120,18 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
             >
               Privacy
             </Link>
+            {userType === 'free' && (
+              <button
+                onClick={() => {
+                  setDropdownOpen(false);
+                  setUpgradeModalOpen(true);
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-emerald-400 hover:bg-gray-700 flex items-center gap-2"
+              >
+                <Crown className="w-4 h-4" />
+                Upgrade to Pro
+              </button>
+            )}
           </div>
           <div className="py-1 border-t border-gray-700">
             <button
@@ -88,6 +143,13 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
           </div>
         </div>
       )}
+
+      <UpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        onUpgrade={handleUpgrade}
+        userType={userType}
+      />
     </div>
   );
 };

@@ -12,10 +12,6 @@ interface LandingPageProps {
 
 export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   const [message, setMessage] = useState('');
-  const [remainingSpots, setRemainingSpots] = useState<number | null>(null);
-  const [userCount, setUserCount] = useState<number | null>(null);
-  const [isSigningUp, setIsSigningUp] = useState(false);
-  const [isOpenBeta, setIsOpenBeta] = useState(false);
   const [videoData, setVideoData] = useState<{
     videoUrl: string;
     videoTitle: string;
@@ -23,37 +19,6 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   const [isLoadingVideo, setIsLoadingVideo] = useState(true);
 
   useEffect(() => {
-    const fetchBetaStats = async () => {
-      try {
-        const response = await fetch('/api/beta-stats');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setRemainingSpots(data.spotsLeft);
-        setIsOpenBeta(data.open || false);
-      } catch (error) {
-        console.error('Error fetching beta stats:', error);
-        setRemainingSpots(null);
-      }
-    };
-
-    const fetchUserCount = async () => {
-      try {
-        const response = await fetch('/api/user-count');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        if (data.success) {
-          setUserCount(data.userCount);
-        }
-      } catch (error) {
-        console.error('Error fetching user count:', error);
-        setUserCount(null);
-      }
-    };
-
     const fetchVideoData = async () => {
       try {
         setIsLoadingVideo(true);
@@ -96,42 +61,17 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
       }
     };
 
-    fetchBetaStats();
-    fetchUserCount();
     fetchVideoData();
   }, []);
 
-  const handleBetaSignupWithGoogle = async () => {
-    setIsSigningUp(true);
+  const handleSignIn = async () => {
     setMessage('');
     try {
-      // This will trigger the Google Sign-in flow via the parent component (app/page.tsx)
       await onSignIn();
-
-      // After successful sign-in, call the Firebase-based beta signup API
-      if (user) { // Check if user object is available after sign-in
-        const response = await fetch('/api/beta-signup-firebase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uid: user.uid, email: user.email }),
-        });
-        const data = await response.json();
-        if (response.ok && data.success) {
-          setMessage(data.message);
-          if (data.remainingSpots !== undefined) {
-            setRemainingSpots(data.remainingSpots);
-          }
-        } else {
-          setMessage(data.message || 'Failed to register for beta.');
-        }
-      } else {
-        setMessage('Sign-in cancelled or failed.');
-      }
+      setMessage('Welcome! You are now signed in.');
     } catch (error) {
-      console.error('Google Sign-in or beta registration failed:', error);
-      setMessage('Sign-in or beta registration failed.');
-    } finally {
-      setIsSigningUp(false);
+      console.error('Sign-in failed:', error);
+      setMessage('Sign-in failed. Please try again.');
     }
   };
 
@@ -209,7 +149,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             className="mb-32"
           >
             {user ? (
-              <p className="text-xl text-white/70">You are signed in. Beta registration logic will be implemented here.</p>
+              <p className="text-xl text-white/70">Welcome back! You are signed in and ready to use SheetyAI.</p>
             ) : (
               <div className="text-center">
                 {/* YouTube Video */}
@@ -245,91 +185,22 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 </motion.div>
 
                 {/* Main CTA Button */}
-                            <motion.button
-              onClick={handleBetaSignupWithGoogle}
-              whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
-              whileTap={{ scale: 0.95 }}
-              className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group focus:outline-none focus:ring-4 focus:ring-emerald-300 focus:ring-opacity-50"
-              disabled={isSigningUp}
-              aria-label={isOpenBeta ? 'Get started with Sheety AI now' : 'Get early access to Sheety AI'}
-              aria-describedby="cta-description"
-            >
+                <motion.button
+                  onClick={handleSignIn}
+                  whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
+                  whileTap={{ scale: 0.95 }}
+                  className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group focus:outline-none focus:ring-4 focus:ring-emerald-300 focus:ring-opacity-50"
+                  aria-label="Get started with Sheety AI"
+                >
                   {/* Shimmer effect */}
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                  
-                  {isSigningUp ? (
-                    <svg className="animate-spin h-6 w-6 mr-3 text-white" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <span className="relative z-10">{isOpenBeta ? '🚀 Get Started Now' : '🔥 Get Early Access Now'}</span>
-                  )}
+
+                  <span className="relative z-10">🚀 Get Started Now</span>
                 </motion.button>
 
                 {/* Hidden description for screen readers */}
                 <div id="cta-description" className="sr-only">
-                  {isOpenBeta
-                    ? 'Sign up for free to start using Sheety AI\'s voice-to-spreadsheet automation features'
-                    : 'Join our beta program to get early access to AI-powered voice commands for Google Sheets'
-                  }
-                </div>
-
-                {/* Info Badges - Positioned below button as subtle info */}
-                <div className="mt-8 space-y-3">
-                  {!isOpenBeta && (
-                    <>
-                      {/* Limited Time Badge */}
-                      <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ duration: 0.6, delay: 0.6 }}
-                        className="inline-flex items-center gap-2 text-orange-300/80 text-sm font-medium"
-                      >
-                        <span>🚀</span>
-                        <span>Limited Time: Private Beta Access</span>
-                      </motion.div>
-
-                      {/* Scarcity Badge */}
-                      {remainingSpots !== null && (
-                        <motion.div
-                          initial={{ y: 20, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          transition={{ duration: 0.5, delay: 0.8 }}
-                          className="block"
-                        >
-                          {remainingSpots > 0 ? (
-                            <div className="inline-flex items-center gap-2 text-red-300/80 text-sm font-medium">
-                              <span>⏰</span>
-                              <span>
-                                Only <span className="text-white font-semibold">{remainingSpots}</span> spots remaining!
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center gap-2 text-yellow-300/80 text-sm font-medium">
-                              <span>🚫</span>
-                              <span>Beta is currently full</span>
-                            </div>
-                          )}
-                        </motion.div>
-                      )}
-                    </>
-                  )}
-
-                  {/* Social Proof Badge */}
-                  {userCount !== null && (
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.5, delay: 1.0 }}
-                      className="inline-flex items-center gap-2 text-blue-300/80 text-sm font-medium mt-3"
-                    >
-                      <span>👥</span>
-                      <span>
-                        <span className="text-white font-semibold">{userCount}</span> users already joined
-                      </span>
-                    </motion.div>
-                  )}
+                  Sign up for free to start using Sheety AI's voice-to-spreadsheet automation features
                 </div>
 
                 {/* Success Message */}
@@ -440,7 +311,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               </div>
             </div>
             
-            {/* Why Beta Users Love SheetyAI */}
+            {/* Why Users Love SheetyAI */}
             <motion.div
               initial={{ y: 20, opacity: 0 }}
               whileInView={{ y: 0, opacity: 1 }}
@@ -448,7 +319,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               transition={{ duration: 0.5, delay: 1.8 }}
               className="mt-20"
             >
-              <h3 className="text-4xl font-bold mb-12 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent text-center">Why Beta Users Love SheetyAI</h3>
+              <h3 className="text-4xl font-bold mb-12 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent text-center">Why Users Love SheetyAI</h3>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="text-center p-6 border border-white/20 rounded-xl bg-black/20 backdrop-blur-sm">
                   <div className="text-3xl mb-3">✨</div>
@@ -516,23 +387,15 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               className="mt-16 text-center"
             >
               <motion.button
-                onClick={handleBetaSignupWithGoogle}
+                onClick={handleSignIn}
                 whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
                 whileTap={{ scale: 0.95 }}
                 className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group"
-                disabled={isSigningUp}
               >
                 {/* Shimmer effect */}
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                
-                {isSigningUp ? (
-                  <svg className="animate-spin h-6 w-6 mr-3 text-white" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : (
-                  <span className="relative z-10">🔥 Get Early Access Now</span>
-                )}
+
+                <span className="relative z-10">🚀 Get Started Now</span>
               </motion.button>
             </motion.div>
 

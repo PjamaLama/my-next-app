@@ -5,7 +5,7 @@ import { getAuth, User, setPersistence, browserLocalPersistence } from "firebase
 import { getFirestore } from "firebase/firestore";
 import { useAuth } from '../hooks/useAuth';
 import { useUserProfile } from '../hooks/useUserProfile';
-import { useBetaFeatures } from '../hooks/useBetaFeatures';
+
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -49,16 +49,14 @@ interface IFirebaseContext {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
-  joinBeta: () => Promise<void>;
   signOutUser: () => Promise<void>;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
   saveGeminiApiKey: (key: string) => Promise<void>;
   authError: string | null;
-  betaTester: boolean;
-  betaWaitlist: boolean;
   waId: string | null;
   message_count: number;
+  userType: 'free' | 'pro';
   continueWithGoogle?: (loginHint?: string) => Promise<void>;
 }
 
@@ -66,16 +64,14 @@ const FirebaseContext = createContext<IFirebaseContext>({
   user: null,
   loading: true,
   signInWithGoogle: async () => {},
-  joinBeta: async () => {},
   signOutUser: async () => {},
   geminiApiKey: "",
   setGeminiApiKey: () => {},
   saveGeminiApiKey: async () => {},
   authError: null,
-  betaTester: false,
-  betaWaitlist: false,
   waId: null,
   message_count: 0,
+  userType: 'free',
   continueWithGoogle: async () => {}
 });
 
@@ -84,8 +80,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const auth = useAuth();
   const userProfile = useUserProfile(auth.user);
 
-  // Use beta features hook
-  useBetaFeatures(auth.user);
+
 
   // Store minimal UI preference on login
   React.useEffect(() => {
@@ -109,16 +104,14 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       user: auth.user,
       loading: auth.loading,
       signInWithGoogle: auth.signInWithGoogle,
-      joinBeta: auth.joinBeta,
       signOutUser,
       geminiApiKey: userProfile.geminiApiKey,
       setGeminiApiKey: userProfile.setGeminiApiKey,
       saveGeminiApiKey: userProfile.saveGeminiApiKey,
       authError: auth.authError,
-      betaTester: userProfile.betaTester,
-      betaWaitlist: userProfile.betaWaitlist,
       waId: userProfile.waId,
       message_count: userProfile.message_count,
+      userType: userProfile.userType,
       continueWithGoogle: auth.continueWithGoogle
     }}>
       {children}

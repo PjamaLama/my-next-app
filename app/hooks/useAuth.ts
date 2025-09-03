@@ -8,7 +8,6 @@ interface UseAuthReturn {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
-  joinBeta: () => Promise<void>;
   signOutUser: () => Promise<void>;
   continueWithGoogle: (loginHint?: string) => Promise<void>;
   authError: string | null;
@@ -95,28 +94,7 @@ export const useAuth = (): UseAuthReturn => {
     }
   }, [auth, startGoogleSignIn]);
 
-  const joinBeta = useCallback(async () => {
-    if (!auth) {
-      setAuthError('Firebase not initialized. Please refresh the page.');
-      return;
-    }
 
-    try {
-      setAuthError(null);
-      if (auth.currentUser) return;
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      await startGoogleSignIn(provider);
-    } catch (error: any) {
-      console.error('Firebase join beta error:', error);
-      const code = error?.code as string | undefined;
-      if (code === 'auth/unauthorized-domain') {
-        setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
-      } else {
-        setAuthError(error?.message || 'Authentication failed. Please try again.');
-      }
-    }
-  }, [auth, startGoogleSignIn]);
 
   const continueWithGoogle = useCallback(async (loginHint?: string) => {
     if (!auth) {
@@ -150,7 +128,6 @@ export const useAuth = (): UseAuthReturn => {
     user,
     loading,
     signInWithGoogle,
-    joinBeta,
     signOutUser,
     continueWithGoogle,
     authError
