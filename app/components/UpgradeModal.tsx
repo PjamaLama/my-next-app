@@ -38,8 +38,6 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isP
 
       // Directly create PayPal payment and redirect
       const token = await user.getIdToken();
-      const returnUrl = `${window.location.origin}${window.location.pathname}?paypal_order_id={order_id}`;
-      const cancelUrl = window.location.href;
 
       console.log('Creating PayPal payment...');
 
@@ -49,10 +47,7 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isP
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          returnUrl,
-          cancelUrl,
-        }),
+        body: JSON.stringify({}),
       });
 
       if (response.ok) {

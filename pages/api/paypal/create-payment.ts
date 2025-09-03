@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getAuth } from 'firebase-admin/auth';
+import { getAdminAuth } from '../../../lib/firebaseAdmin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const auth = getAuth();
+    const auth = getAdminAuth();
     let decoded;
     try {
       decoded = await auth.verifyIdToken(idToken);
@@ -24,11 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    const { returnUrl, cancelUrl } = req.body;
-
-    if (!returnUrl || !cancelUrl) {
-      return res.status(400).json({ error: 'Missing returnUrl or cancelUrl' });
-    }
+    // returnUrl and cancelUrl are now handled internally
 
     // Create PayPal order using REST API
     // Check if we have sandbox credentials, otherwise use production
@@ -106,40 +102,92 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
       ],
       application_context: {
-        return_url: returnUrl,
-        cancel_url: cancelUrl,
+        return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/paypal/success`,
+        cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/paypal/cancel`,
         brand_name: 'SheetyAI',
         user_action: 'PAY_NOW',
       },
     };
+
+    console.log('Making PayPal API call to:', paypalUrl);
+    console.log('Order data:', JSON.stringify(orderData, null, 2));
 
     const createResponse = await fetch(`${paypalUrl}/v2/checkout/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Basic ${paypalAuth}`,
+        'Accept': 'application/json',
+        'PayPal-Request-Id': `order-${Date.now()}`, // Unique request ID
       },
       body: JSON.stringify(orderData),
     });
 
-    const result = await createResponse.json();
+    console.log('PayPal API response status:', createResponse.status);
+    console.log('PayPal API response headers:', Object.fromEntries(createResponse.headers.entries()));
+
+    let result;
+    try {
+      const responseText = await createResponse.text();
+      console.log('PayPal API raw response:', responseText);
+
+      if (responseText.trim()) {
+        result = JSON.parse(responseText);
+        console.log('PayPal API parsed response:', result);
+      } else {
+        result = { error: 'Empty response body' };
+      }
+    } catch (parseError) {
+      console.error('Error parsing PayPal response:', parseError);
+      result = { error: 'Invalid JSON response', parseError: parseError.message };
+    }
 
     if (!createResponse.ok) {
-      console.error('paypal/create-payment: Failed to create PayPal order:', result);
+      console.error('❌ PayPal API call failed with status:', createResponse.status);
+      console.error('❌ PayPal API error details:', result);
+
+      // Return more detailed error information
       return res.status(createResponse.status).json({
         error: 'Failed to create PayPal order',
-        details: result
+        details: result,
+        debug: {
+          status: createResponse.status,
+          statusText: createResponse.statusText,
+          paypalUrl,
+          hasAuth: !!paypalAuth,
+          authLength: paypalAuth?.length,
+          orderData: orderData,
+          environment: isProduction ? 'PRODUCTION' : 'SANDBOX'
+        }
       });
     }
 
     // Store order ID in session for later verification
     const orderId = result.id;
+    const approvalUrl = result.links?.find((link: any) => link.rel === 'approve')?.href;
 
-    console.log(`paypal/create-payment: Created PayPal order ${orderId} for user ${decoded.email}`);
+    console.log(`✅ paypal/create-payment: Successfully created PayPal order ${orderId}`);
+    console.log(`✅ PayPal approval URL: ${approvalUrl}`);
+    console.log(`✅ Order created for user: ${decoded.email}`);
+
+    if (!approvalUrl) {
+      console.error('❌ No approval URL found in PayPal response');
+      console.error('PayPal response links:', result.links);
+      return res.status(500).json({
+        error: 'No approval URL in PayPal response',
+        details: result
+      });
+    }
 
     return res.status(200).json({
       orderId,
-      approvalUrl: result.links?.find((link: any) => link.rel === 'approve')?.href,
+      approvalUrl,
+      status: 'success',
+      debug: {
+        hasOrderId: !!orderId,
+        hasApprovalUrl: !!approvalUrl,
+        environment: isProduction ? 'PRODUCTION' : 'SANDBOX'
+      }
     });
 
   } catch (err: any) {

@@ -46,14 +46,24 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
   // Handle PayPal return from URL parameters
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const paypalOrderId = urlParams.get('paypal_order_id');
+    const paypalToken = urlParams.get('paypal_token');
+    const paypalCancelled = urlParams.get('paypal_cancelled');
 
-    if (paypalOrderId && user) {
-      handlePayPalReturn(paypalOrderId);
+    if (paypalCancelled) {
+      console.log('PayPal payment was cancelled by user');
+      // Clean up URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('paypal_cancelled');
+      window.history.replaceState({}, '', url.toString());
+      return;
+    }
+
+    if (paypalToken && user) {
+      handlePayPalReturn(paypalToken);
     }
   }, [user]);
 
-  const handlePayPalReturn = async (orderId: string) => {
+  const handlePayPalReturn = async (paypalToken: string) => {
     try {
       setIsProcessing(true);
 
@@ -64,7 +74,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({ paypalToken }),
       });
 
       if (response.ok) {
@@ -73,7 +83,8 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
 
         // Clean up URL
         const url = new URL(window.location.href);
-        url.searchParams.delete('paypal_order_id');
+        url.searchParams.delete('paypal_token');
+        url.searchParams.delete('PayerID');
         window.history.replaceState({}, '', url.toString());
 
         // Refresh user data to update userType
@@ -81,10 +92,11 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
       } else {
         const error = await response.json();
         console.error('Payment capture failed:', error);
-        // You might want to show an error notification here
+        alert('Payment processing failed. Please contact support.');
       }
     } catch (error) {
       console.error('Payment capture error:', error);
+      alert('Payment processing failed. Please try again.');
     } finally {
       setIsProcessing(false);
     }

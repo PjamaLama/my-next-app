@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getAuth } from 'firebase-admin/auth';
-import { getAdminDb } from '../../../lib/firebaseAdmin';
+import { getAdminAuth, getAdminDb } from '../../../lib/firebaseAdmin';
 import { googleAnalytics } from '../../../lib/analytics/googleAnalytics';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -17,7 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const auth = getAuth();
+    const auth = getAdminAuth();
     let decoded;
     try {
       decoded = await auth.verifyIdToken(idToken);
@@ -26,10 +25,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    const { orderId } = req.body;
+    const { paypalToken } = req.body;
 
-    if (!orderId) {
-      return res.status(400).json({ error: 'Missing orderId' });
+    if (!paypalToken) {
+      return res.status(400).json({ error: 'Missing paypalToken' });
     }
 
     const db = getAdminDb();
@@ -71,10 +70,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       environment: isProduction ? 'PRODUCTION' : 'SANDBOX',
       hasClientId: !!clientId,
       hasClientSecret: !!clientSecret,
-      clientIdLength: clientId?.length,
-      clientSecretLength: clientSecret?.length,
       paypalUrl,
-      hasSandboxCredentials
+      paypalToken: paypalToken.substring(0, 10) + '...' // Log partial token for debugging
     });
 
     if (!clientId || !clientSecret) {
@@ -97,7 +94,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const paypalAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
-    const captureResponse = await fetch(`${paypalUrl}/v2/checkout/orders/${orderId}/capture`, {
+    console.log('Making PayPal capture API call...');
+    const captureResponse = await fetch(`${paypalUrl}/v2/checkout/orders/${paypalToken}/capture`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
