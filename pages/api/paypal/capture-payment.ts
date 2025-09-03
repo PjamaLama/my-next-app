@@ -127,7 +127,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await userProfileRef.set({
       userType: 'pro',
       upgradedAt: new Date(),
-      paypalOrderId: orderId,
+      paypalOrderId: paypalToken, // Store the token as order ID for tracking
       paypalPaymentId: capture.id,
       paypalPaymentAmount: capture.amount?.value,
       paypalPaymentCurrency: capture.amount?.currencyCode,
@@ -155,7 +155,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       message: 'Successfully upgraded to Pro! Welcome to SheetyAI Pro.',
       userType: 'pro',
       paymentId: capture.id,
-      orderId: orderId
+      orderId: paypalToken // Return the token as orderId for consistency
     });
 
   } catch (err: any) {
