@@ -109,7 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } catch (parseError) {
       console.error('Test Payment - Error parsing response:', parseError);
-      result = { error: 'Invalid JSON response', parseError: parseError.message };
+      result = { error: 'Invalid JSON response', parseError: parseError instanceof Error ? parseError.message : 'Unknown parsing error' };
     }
 
     if (createResponse.ok) {

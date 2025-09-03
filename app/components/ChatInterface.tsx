@@ -882,64 +882,25 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           </button>
           <button
             type={isSending ? "button" : "submit"}
-            onClick={isSending ? () => {
-              if (isStopping) return; // Prevent rapid clicking
-              console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
-              setIsStopping(true);
-              cancelChatGeneration();
-              // Immediately reset sending states for better UX
-              setIsSending(false);
-              setIsProcessingFiles(false);
-                             // Restore files to upload area if they were being sent
-               if (filesBeingSent.length > 0) {
-                 setUploadedFiles(prev => [...prev, ...filesBeingSent]);
-                 setFilesBeingSent([]);
-               }
-               
-               // Clean up Firebase files if stop was clicked
-               if (firebaseFileUrlsRef.current && firebaseFileUrlsRef.current.length > 0) {
-                 try {
-                   const storage = getStorage();
-                   for (const fileInfo of firebaseFileUrlsRef.current) {
-                     const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-                     if (fileName) {
-                       const storageRef = ref(storage, `temp-uploads/${fileName}`);
-                       deleteObject(storageRef).then(() => {
-                         console.log(`Cleaned up Firebase file after stop: ${fileName}`);
-                       }).catch((cleanupError) => {
-                         console.error('Failed to cleanup Firebase file after stop:', cleanupError);
-                       });
-                     }
-                   }
-                 } catch (cleanupError) {
-                   console.error('Failed to cleanup Firebase files after stop:', cleanupError);
-                 }
-               }
-              // Re-enable stop button after a brief delay
-              setTimeout(() => setIsStopping(false), 500);
-            } : handleSubmit}
-            disabled={
-              isSending
-                ? isStopping
-                : (userType === 'free' && isLimitReached)
-                  ? true
-                  : (!inputValue.trim() && uploadedFiles.length === 0)
-            }
             onClick={
               userType === 'free' && isLimitReached
                 ? () => openModal()
                 : isSending
                   ? () => {
-                      if (isStopping) return;
+                      if (isStopping) return; // Prevent rapid clicking
                       console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
                       setIsStopping(true);
                       cancelChatGeneration();
+                      // Immediately reset sending states for better UX
                       setIsSending(false);
                       setIsProcessingFiles(false);
+                      // Restore files to upload area if they were being sent
                       if (filesBeingSent.length > 0) {
                         setUploadedFiles(prev => [...prev, ...filesBeingSent]);
                         setFilesBeingSent([]);
                       }
+
+                      // Clean up Firebase files if stop was clicked
                       if (firebaseFileUrlsRef.current && firebaseFileUrlsRef.current.length > 0) {
                         try {
                           const storage = getStorage();
@@ -958,9 +919,17 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                           console.error('Failed to cleanup Firebase files after stop:', cleanupError);
                         }
                       }
+                      // Re-enable stop button after a brief delay
                       setTimeout(() => setIsStopping(false), 500);
                     }
                   : handleSubmit
+            }
+            disabled={
+              isSending
+                ? isStopping
+                : (userType === 'free' && isLimitReached)
+                  ? true
+                  : (!inputValue.trim() && uploadedFiles.length === 0)
             }
             aria-label={
               userType === 'free' && isLimitReached

@@ -12,7 +12,7 @@ import PhoneNumberInput from '../components/PhoneNumberInput';
 function WhatsAppSetupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading, joinBeta } = useFirebase();
+  const { user, loading, signInWithGoogle } = useFirebase();
   const { serviceAccountEmail } = useServiceAccount();
 
   const [waId, setWaId] = useState('');
@@ -114,7 +114,7 @@ function WhatsAppSetupContent() {
       // We can't pass state through the redirect, so the user will have to re-enter the number after login.
       // We need to store the full number in session storage.
       sessionStorage.setItem('pending_wa_id', waId);
-      joinBeta(); // This will trigger the Google Sign-in flow
+      signInWithGoogle(); // This will trigger the Google Sign-in flow
       return;
     }
 

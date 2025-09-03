@@ -95,7 +95,7 @@ export default function MessageCounter() {
 
         {isLimitReached && (
           <button
-            onClick={openModal}
+            onClick={() => openModal('Pro')}
             className="text-emerald-400 hover:text-emerald-300 text-xs font-medium flex items-center gap-1"
           >
             <Crown className="w-3 h-3" />
