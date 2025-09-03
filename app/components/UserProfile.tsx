@@ -5,12 +5,14 @@ import { useUpgradeModal } from '../providers/UpgradeModalProvider';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LogOut, Crown } from 'lucide-react';
+import { LogOut, Crown, Settings } from 'lucide-react';
+import SubscriptionManager from './SubscriptionManager';
 
 const UserProfile = ({ peek }: { peek?: boolean }) => {
   const { user, signOutUser, waId, userType } = useFirebase();
   const { openModal } = useUpgradeModal();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -91,6 +93,18 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
             >
               Privacy
             </Link>
+            {userType === 'pro' && (
+              <button
+                onClick={() => {
+                  setDropdownOpen(false);
+                  setSubscriptionModalOpen(true);
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-700 flex items-center gap-2"
+              >
+                <Settings className="w-4 h-4" />
+                Manage Subscription
+              </button>
+            )}
             {userType === 'free' && (
               <button
                 onClick={() => {
@@ -115,6 +129,11 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
         </div>
       )}
 
+      {/* Subscription Manager Modal */}
+      <SubscriptionManager
+        isOpen={subscriptionModalOpen}
+        onClose={() => setSubscriptionModalOpen(false)}
+      />
 
     </div>
   );

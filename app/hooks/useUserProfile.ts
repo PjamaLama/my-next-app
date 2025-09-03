@@ -12,6 +12,12 @@ interface UseUserProfileReturn {
   waId: string | null;
   message_count: number;
   userType: 'free' | 'pro';
+  subscription: {
+    status: string;
+    cancelledAt?: Date;
+    endDate?: Date;
+    plan?: string;
+  } | null;
 }
 
 /**
@@ -22,6 +28,12 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
   const [waId, setWaId] = useState<string | null>(null);
   const [message_count, setMessage_count] = useState(0);
   const [userType, setUserType] = useState<'free' | 'pro'>('free');
+  const [subscription, setSubscription] = useState<{
+    status: string;
+    cancelledAt?: Date;
+    endDate?: Date;
+    plan?: string;
+  } | null>(null);
 
   const db = getDb();
 
@@ -86,13 +98,57 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
         if (data.geminiApiKey) {
           setGeminiApiKey(data.geminiApiKey);
         }
-        setUserType(data.userType === 'pro' ? 'pro' : 'free');
+
+        // Handle subscription data
+        const subscriptionData = data.subscription;
+        setSubscription(subscriptionData ? {
+          status: subscriptionData.status || 'inactive',
+          cancelledAt: subscriptionData.cancelledAt?.toDate(),
+          endDate: subscriptionData.endDate?.toDate(),
+          plan: subscriptionData.plan || 'none'
+        } : null);
+
+        // Determine effective user type based on subscription status
+        let effectiveUserType: 'free' | 'pro' = 'free';
+
+        if (data.userType === 'pro') {
+          // Check if subscription is cancelled but still within grace period
+          if (subscriptionData?.status === 'cancelled' && subscriptionData.endDate) {
+            const endDate = subscriptionData.endDate.toDate();
+            const now = new Date();
+
+            if (now <= endDate) {
+              // Still within grace period, keep pro access
+              effectiveUserType = 'pro';
+            } else {
+              // Grace period expired, revert to free and update database
+              effectiveUserType = 'free';
+              // Update the database to reflect expired subscription
+              userProfileRef.update({
+                userType: 'free',
+                subscription: {
+                  ...subscriptionData,
+                  status: 'expired'
+                }
+              }).catch(err => console.error('Failed to update expired subscription:', err));
+            }
+          } else if (subscriptionData?.status === 'active') {
+            // Active subscription
+            effectiveUserType = 'pro';
+          } else {
+            // No subscription data or inactive, use stored userType
+            effectiveUserType = 'pro';
+          }
+        }
+
+        setUserType(effectiveUserType);
       } else {
         // If profile doesn't exist, create it with initial values
         await setDoc(profileRef, {
           geminiApiKey: '',
           userType: 'free'
         }, { merge: true });
+        setSubscription(null);
       }
     });
 
@@ -134,6 +190,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
     saveGeminiApiKey,
     waId,
     message_count,
-    userType
+    userType,
+    subscription
   };
 };
