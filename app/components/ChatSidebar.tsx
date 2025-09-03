@@ -12,6 +12,7 @@ import { useDialog } from "../providers/DialogProvider";
 import SpreadsheetManagerModal from "./SpreadsheetManagerModal";
 import EditRowModal from "./EditRowModal";
 import MessageCounter from "./MessageCounter";
+import { useMessageLimits } from "../hooks/useMessageLimits";
 dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
@@ -34,7 +35,16 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const { user, userType } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();
+  const { dailyUsage } = useMessageLimits();
   const [creating, setCreating] = useState(false);
+  const [counterKey, setCounterKey] = useState(0);
+
+  // Debug: Log when dailyUsage changes and force re-render
+  React.useEffect(() => {
+    console.log('📊 ChatSidebar dailyUsage changed:', dailyUsage);
+    // Force re-render by updating key
+    setCounterKey(prev => prev + 1);
+  }, [dailyUsage]);
   const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; spreadsheetId: string; title?: string }>>([]);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -446,7 +456,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           {/* Message Counter for Free Users */}
           {userType === 'free' && (
             <div className="mt-2 mx-3">
-              <MessageCounter />
+              <MessageCounter key={`counter-${dailyUsage}-${counterKey}`} />
             </div>
           )}
 
@@ -625,7 +635,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           {/* Message Counter for Free Users */}
           {userType === 'free' && (
             <div className="mt-2 mx-3">
-              <MessageCounter />
+              <MessageCounter key={`counter-${dailyUsage}-${counterKey}`} />
             </div>
           )}
 

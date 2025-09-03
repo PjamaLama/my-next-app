@@ -31,18 +31,27 @@ export const useMessageLimits = () => {
     const storageKey = `sheetyai_messages_${user.uid}_${today}`;
 
     const storedUsage = parseInt(localStorage.getItem(storageKey) || '0', 10);
+    console.log('📊 loadUsage called:', {
+      userId: user.uid,
+      storageKey,
+      storedUsage,
+      userType
+    });
 
     const isLimitReached = storedUsage >= DAILY_LIMIT && userType === 'free';
     const isNearLimit = storedUsage >= DAILY_LIMIT * 0.8 && userType === 'free';
     const canSendMessage = userType === 'pro' || !isLimitReached;
 
-    setState({
+    const newState = {
       dailyUsage: storedUsage,
       limit: DAILY_LIMIT,
       isLimitReached,
       isNearLimit,
       canSendMessage,
-    });
+    };
+
+    console.log('📊 loadUsage setting state:', newState);
+    setState(newState);
   }, [user, userType]);
 
   // Increment usage when a message is sent
@@ -55,8 +64,16 @@ export const useMessageLimits = () => {
     const currentUsage = parseInt(localStorage.getItem(storageKey) || '0', 10);
     const newUsage = currentUsage + 1;
 
+    console.log('📊 incrementUsage called:', {
+      userId: user.uid,
+      currentUsage,
+      newUsage,
+      limit: DAILY_LIMIT
+    });
+
     // Check if limit would be exceeded
     if (newUsage > DAILY_LIMIT) {
+      console.log('📊 Limit would be exceeded, blocking message');
       setState(prev => ({
         ...prev,
         dailyUsage: currentUsage,
@@ -66,14 +83,36 @@ export const useMessageLimits = () => {
       return false; // Block the message
     }
 
-    // Update storage and state
+    // Update storage and state immediately
     localStorage.setItem(storageKey, newUsage.toString());
-    setState(prev => ({
-      ...prev,
-      dailyUsage: newUsage,
-      isNearLimit: newUsage >= DAILY_LIMIT * 0.8,
-      canSendMessage: true,
+    console.log('📊 Updated localStorage:', { storageKey, newUsage });
+
+    // Force immediate state update
+    setState(prev => {
+      const updatedState = {
+        ...prev,
+        dailyUsage: newUsage,
+        isNearLimit: newUsage >= DAILY_LIMIT * 0.8,
+        canSendMessage: true,
+      };
+      console.log('📊 Updated state:', updatedState);
+      return updatedState;
+    });
+
+    // Dispatch a custom event to notify other components of usage change
+    console.log('📊 Dispatching usage-updated event');
+    window.dispatchEvent(new CustomEvent('usage-updated', {
+      detail: {
+        newUsage,
+        userId: user.uid,
+        timestamp: Date.now()
+      }
     }));
+
+    // Also dispatch a direct refresh event for immediate updates
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('message-counter-refresh'));
+    }, 50);
 
     return true; // Allow the message
   }, [user, userType]);

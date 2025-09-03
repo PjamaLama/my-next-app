@@ -1,52 +1,68 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { MessageSquare, AlertTriangle, Crown } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { useUpgradeModal } from '../providers/UpgradeModalProvider';
+import { useMessageLimits } from '../hooks/useMessageLimits';
 
 export default function MessageCounter() {
   const { user, userType } = useFirebase();
   const { openModal } = useUpgradeModal();
-  const [dailyUsage, setDailyUsage] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const { dailyUsage, limit, isLimitReached, isNearLimit, canSendMessage, loadUsage } = useMessageLimits();
 
-  const DAILY_LIMIT = 5;
+  // Debug: Log re-renders
+  React.useEffect(() => {
+    console.log('📊 MessageCounter re-rendered with:', {
+      dailyUsage,
+      limit,
+      isLimitReached,
+      isNearLimit,
+      userType
+    });
+  });
 
-  // Simulate message tracking (in a real app, this would come from your backend)
-  useEffect(() => {
-    if (!user) return;
-
-    // For demo purposes, we'll use localStorage to track messages
-    // In production, this should come from your backend API
-    const today = new Date().toDateString();
-    const storageKey = `sheetyai_messages_${user.uid}_${today}`;
-
-    const storedUsage = localStorage.getItem(storageKey);
-    if (storedUsage) {
-      setDailyUsage(parseInt(storedUsage, 10));
+  // Force refresh usage data when component mounts or when userType changes
+  React.useEffect(() => {
+    if (user && userType === 'free') {
+      loadUsage();
     }
+  }, [user, userType, loadUsage]);
 
-    setIsLoading(false);
-  }, [user]);
+  // Listen for usage update events to refresh immediately - more robust approach
+  React.useEffect(() => {
+    const handleUsageUpdate = (event: CustomEvent) => {
+      console.log('📊 MessageCounter received usage update event:', event.detail);
+      // Always refresh for free users when any usage event occurs
+      if (userType === 'free') {
+        console.log('📊 Refreshing usage data for free user');
+        loadUsage();
+      }
+    };
 
-  const incrementUsage = () => {
-    if (!user) return;
+    console.log('📊 Setting up usage update listener for MessageCounter');
+    window.addEventListener('usage-updated', handleUsageUpdate as EventListener);
 
-    const today = new Date().toDateString();
-    const storageKey = `sheetyai_messages_${user.uid}_${today}`;
+    // Also listen for a more direct update event
+    const handleDirectUpdate = () => {
+      if (userType === 'free') {
+        console.log('📊 Direct refresh triggered');
+        loadUsage();
+      }
+    };
 
-    const newUsage = dailyUsage + 1;
-    setDailyUsage(newUsage);
-    localStorage.setItem(storageKey, newUsage.toString());
-  };
+    window.addEventListener('message-counter-refresh', handleDirectUpdate);
+
+    return () => {
+      console.log('📊 Cleaning up usage update listener for MessageCounter');
+      window.removeEventListener('usage-updated', handleUsageUpdate as EventListener);
+      window.removeEventListener('message-counter-refresh', handleDirectUpdate);
+    };
+  }, [userType, loadUsage]);
 
   const getUsagePercentage = () => {
-    return Math.min((dailyUsage / DAILY_LIMIT) * 100, 100);
+    return Math.min((dailyUsage / limit) * 100, 100);
   };
-
-  const isLimitReached = dailyUsage >= DAILY_LIMIT && userType === 'free';
-  const isNearLimit = dailyUsage >= DAILY_LIMIT * 0.8 && userType === 'free';
 
   if (userType === 'pro' || !user) {
     return null; // Don't show counter for pro users or when not logged in
@@ -61,7 +77,7 @@ export default function MessageCounter() {
           <span className="text-sm text-gray-300 font-medium">Messages</span>
         </div>
         <div className="text-xs text-gray-400">
-          {dailyUsage}/{DAILY_LIMIT}
+          {dailyUsage}/{limit}
         </div>
       </div>
 
@@ -89,7 +105,7 @@ export default function MessageCounter() {
           </div>
         ) : (
           <span className="text-xs text-gray-500">
-            {DAILY_LIMIT - dailyUsage} left
+            {limit - dailyUsage} left
           </span>
         )}
 
@@ -106,15 +122,3 @@ export default function MessageCounter() {
     </div>
   );
 }
-
-// Export the increment function for use in chat components
-export const incrementMessageCount = (userId: string) => {
-  const today = new Date().toDateString();
-  const storageKey = `sheetyai_messages_${userId}_${today}`;
-
-  const currentUsage = parseInt(localStorage.getItem(storageKey) || '0', 10);
-  const newUsage = currentUsage + 1;
-
-  localStorage.setItem(storageKey, newUsage.toString());
-  return newUsage;
-};

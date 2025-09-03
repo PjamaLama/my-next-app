@@ -444,10 +444,13 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     // Increment usage counter for free users
     if (userType === 'free') {
       incrementUsage();
+      // Force immediate refresh of message counter
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('message-counter-refresh'));
+      }, 100);
     }
 
     const message = inputValue.trim() || 'Extract data from uploaded files and add to selected sheets';
-    setInputValue('');
     setIsSending(true);
     setIsProcessingFiles(true);
 
@@ -553,6 +556,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         role: 'user',
         content: message,
       });
+
+      // Clear input only after message is successfully added
+      setInputValue('');
 
       // Show processing message for files if there are files
       if (structuredExtracts.length > 0) {
@@ -708,6 +714,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       setIsSending(false);
       setIsProcessingFiles(false);
       setAbortController(null); // Clear the abort controller
+
+      // Fallback: ensure input is cleared even if message addition failed
+      if (inputValue.trim() && inputValue.trim() === message) {
+        setInputValue('');
+      }
     }
   };
 
