@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAuth } from 'firebase-admin/auth';
 import { getAdminDb } from '../../../lib/firebaseAdmin';
-import { paypalClient } from '../../../lib/paypal';
 import { googleAnalytics } from '../../../lib/analytics/googleAnalytics';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -50,24 +49,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'User is already pro' });
     }
 
-    // Capture PayPal payment
-    const ordersController = paypalClient.getOrdersController();
-    const captureOrderRequest = {
-      id: orderId,
-    };
+    // Capture PayPal payment using REST API
+    const paypalUrl = process.env.NODE_ENV === 'production'
+      ? 'https://api.paypal.com'
+      : 'https://api.sandbox.paypal.com';
 
-    const { result, ...httpResponse } = await ordersController.ordersCapture(captureOrderRequest);
+    const paypalAuth = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET_KEY}`).toString('base64');
 
-    if (httpResponse.statusCode !== 201) {
+    const captureResponse = await fetch(`${paypalUrl}/v2/checkout/orders/${orderId}/capture`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${paypalAuth}`,
+      },
+    });
+
+    const result = await captureResponse.json();
+
+    if (!captureResponse.ok) {
       console.error('paypal/capture-payment: Failed to capture PayPal payment:', result);
-      return res.status(httpResponse.statusCode).json({
+      return res.status(captureResponse.status).json({
         error: 'Failed to capture payment',
         details: result
       });
     }
 
     // Verify payment was successful
-    const capture = result.purchaseUnits?.[0]?.payments?.captures?.[0];
+    const capture = result.purchase_units?.[0]?.payments?.captures?.[0];
     if (!capture || capture.status !== 'COMPLETED') {
       console.error('paypal/capture-payment: Payment not completed:', capture?.status);
       return res.status(400).json({
