@@ -28,18 +28,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const db = getAdminDb();
     const uid = decoded.uid;
 
-    // Get user profile
-    const userProfileRef = db.doc(`users/${uid}/private/profile`);
-    const profileSnap = await userProfileRef.get();
+    // Get main user document (userType is now stored here)
+    const userDocRef = db.doc(`users/${uid}`);
+    const userDocSnap = await userDocRef.get();
 
-    if (!profileSnap.exists) {
-      return res.status(404).json({ error: 'User profile not found' });
+    if (!userDocSnap.exists) {
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    const profileData = profileSnap.data();
+    const userData = userDocSnap.data();
 
     // Check if user is already pro
-    if (profileData?.userType === 'pro') {
+    if (userData?.userType === 'pro') {
       return res.status(400).json({ error: 'User is already pro' });
     }
 
@@ -49,8 +49,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Simulate payment processing delay
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Update user type to pro
-    await userProfileRef.set({
+    // Update user type to pro in main document
+    await userDocRef.set({
       userType: 'pro',
       upgradedAt: new Date(),
       // TODO: Add subscription details when payment is integrated

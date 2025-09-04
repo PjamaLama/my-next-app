@@ -13,6 +13,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "migrate:users": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts",
+    "migrate:usertype": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-userType-to-main-doc.ts",
+    "migrate:upgradedAt": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-upgradedAt-only.ts",
     "test:migration": "ts-node --project scripts/tsconfig.migrate.json scripts/test-migration.ts",
     "cleanup:denormalized-fields": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts --cleanup"
   },

@@ -58,8 +58,8 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
         if (!userDocExists && !profileExists) {
           console.log(`Initializing new user: ${user.uid}`);
 
-          // Initialize profile subdocument
-          const baseData: Record<string, unknown> = {
+          // Initialize profile subdocument (without userType now)
+          const profileData: Record<string, unknown> = {
             email: user.email || null,
             displayName: user.displayName || null,
             photoURL: user.photoURL || null,
@@ -67,22 +67,22 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
             createdAt: serverTimestamp(),
             selectedSheetNames: [],
             defaultSpreadsheetId: "",
-            userType: 'free',
           };
 
-          await setDoc(profileRef, baseData);
+          await setDoc(profileRef, profileData);
 
-          // Initialize main user document with message tracking
-          const denormalizedData: Record<string, unknown> = {
+          // Initialize main user document with message tracking AND userType
+          const userData: Record<string, unknown> = {
             message_count: 0,
             last_reset: serverTimestamp(),
             wa_id: null,
+            userType: 'free', // Moved here from profile
           };
-          await setDoc(userDocRef, denormalizedData);
+          await setDoc(userDocRef, userData);
 
           console.log(`✅ Initialized new user data for ${user.uid}`);
         } else {
-          // User exists, just update last login time (don't touch message_count or last_reset)
+          // User exists, just update last login time (don't touch message_count, last_reset, or userType)
           await updateDoc(profileRef, {
             lastLoginAt: serverTimestamp()
           }).catch(err => {
@@ -169,15 +169,17 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
       }
     });
 
-    // Listener for the main user document to get wa_id and denormalized message_count
+    // Listener for the main user document to get wa_id, message_count, and userType
     const unsubUserDoc = onSnapshot(userDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setMessage_count(data.message_count || 0);
         setWaId(data.wa_id || null);
+        setUserType(data.userType || 'free'); // Now reading from main document
       } else {
         setWaId(null);
         setMessage_count(0);
+        setUserType('free');
       }
     });
 
