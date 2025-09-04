@@ -15,7 +15,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
   // Hardcoded video data
   const videoData = {
-    videoUrl: 'https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0',
+    videoUrl: 'https://www.youtube.com/embed/9EtaDAxoqv0?rel=0&modestbranding=1&showinfo=0&iv_load_policy=3',
     videoTitle: 'SheetyAI Demo Video'
   };
 
