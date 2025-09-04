@@ -12,57 +12,12 @@ interface LandingPageProps {
 
 export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   const [message, setMessage] = useState('');
-  const [videoData, setVideoData] = useState<{
-    videoUrl: string;
-    videoTitle: string;
-  } | null>(null);
-  const [isLoadingVideo, setIsLoadingVideo] = useState(true);
 
-  useEffect(() => {
-    const fetchVideoData = async () => {
-      try {
-        setIsLoadingVideo(true);
-
-        // Add cache-busting parameter to prevent browser/API caching
-        const cacheBust = Date.now();
-        const response = await fetch(`/api/landing-page?_t=${cacheBust}`, {
-          cache: 'no-store', // Disable browser caching
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const newVideoData = {
-            videoUrl: data.videoUrl || 'https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0',
-            videoTitle: data.videoTitle || 'SheetyAI Demo Video'
-          };
-
-          setVideoData(newVideoData);
-        } else {
-          console.warn('API returned non-OK status:', response.status);
-          // Set default values on API error
-          setVideoData({
-            videoUrl: 'https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0',
-            videoTitle: 'SheetyAI Demo Video'
-          });
-        }
-      } catch (error) {
-        console.error('Error fetching video data:', error);
-        // Set default values on error
-        setVideoData({
-          videoUrl: 'https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0',
-          videoTitle: 'SheetyAI Demo Video'
-        });
-      } finally {
-        setIsLoadingVideo(false);
-      }
-    };
-
-    fetchVideoData();
-  }, []);
+  // Hardcoded video data
+  const videoData = {
+    videoUrl: 'https://www.youtube.com/embed/ZDazRU_PqGc?rel=0&loop=1&playlist=ZDazRU_PqGc&modestbranding=1&showinfo=0',
+    videoTitle: 'SheetyAI Demo Video'
+  };
 
   const handleSignIn = async () => {
     setMessage('');
@@ -160,27 +115,15 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                   className="mb-8"
                 >
                   <div className="relative w-full max-w-4xl mx-auto aspect-video bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl border border-white/20 backdrop-blur-sm overflow-hidden mx-4 sm:mx-auto">
-                    {videoData ? (
-                      <iframe
-                        key={videoData.videoUrl} // Force re-mount when URL changes
-                        src={videoData.videoUrl}
-                        title={videoData.videoTitle}
-                        className="w-full h-full rounded-2xl"
-                        frameBorder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                          <span className="text-white/70 text-sm">
-                            {isLoadingVideo ? 'Loading video...' : 'Video unavailable'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                    <iframe
+                      src={videoData.videoUrl}
+                      title={videoData.videoTitle}
+                      className="w-full h-full rounded-2xl"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      loading="lazy"
+                    />
                   </div>
                 </motion.div>
 

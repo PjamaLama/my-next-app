@@ -1,4 +1,4 @@
-// Test that the clean implementation has no errors
+im// Test that the clean implementation has no errors
 const DAILY_LIMIT = 3;
 
 // Mock Firebase data

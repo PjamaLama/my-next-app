@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useFirebase } from '@/app/providers/FirebaseProvider';
 import WhatsAppLinkForm from '../components/WhatsAppLinkForm';
-import AdminLandingPagePanel from '../components/AdminLandingPagePanel';
+import AdminWhatsAppBannerPanel from '../components/AdminWhatsAppBannerPanel';
 
 
 
@@ -65,6 +65,10 @@ export default function AdminPage() {
       <div className="max-w-3xl mx-auto p-6">
         <h1 className="text-2xl font-bold mb-4">Admin</h1>
         <WhatsAppLinkForm />
+
+        {/* WhatsApp Banner Control */}
+        <AdminWhatsAppBannerPanel />
+
         {error && (
           <div className="mb-4 p-3 rounded bg-red-600/20 border border-red-400/40 text-red-200">{error}</div>
         )}
@@ -73,8 +77,6 @@ export default function AdminPage() {
 
 
 
-        {/* Landing Page Video management */}
-        <AdminLandingPagePanel />
 
         {/* Feedback management */}
         <AdminFeedbackPanel />

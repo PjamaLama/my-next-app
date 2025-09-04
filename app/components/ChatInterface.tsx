@@ -11,11 +11,13 @@ import EditRowModal from './EditRowModal';
 import ChatMessage from './ChatMessage';
 import VoiceRecorder from './VoiceRecorder';
 import WhatsAppComingSoonBanner from './WhatsAppComingSoonBanner';
+import WhatsAppStartChattingBanner from './WhatsAppStartChattingBanner';
 
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useAdminMeta } from '../hooks/useAdminMeta';
 import { useMessageLimits } from '../hooks/useMessageLimits';
 import { useUpgradeModal } from '../providers/UpgradeModalProvider';
+import { useWhatsAppBannerVisibility } from '../hooks/useWhatsAppBannerVisibility';
 import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
 
 interface ChatInterfaceProps {
@@ -34,6 +36,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const { meta: adminMeta } = useAdminMeta();
   const { canSendMessage, incrementUsage, isLimitReached, dailyUsage, limit } = useMessageLimits();
   const { openModal } = useUpgradeModal();
+  const { bannerMode, isVisible: isWhatsAppBannerVisible } = useWhatsAppBannerVisibility();
   const [inputValue, setInputValue] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -975,13 +978,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         </form>
 
         
-        {adminMeta.showWhatsAppMessaging && waId ? (
-          <div className="text-center text-xs text-gray-400 mt-4">
-            WhatsApp linked: <span className="font-semibold">{waId}</span>. Start messaging at <a href="https://wa.me/27615258918" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:underline">+27 61 525 8918</a>.
-          </div>
-        ) : (
-          <WhatsAppComingSoonBanner />
-        )}
+        {/* Always show WhatsApp banner for now */}
+        <WhatsAppComingSoonBanner />
       </div>
       <EditRowModal
         isOpen={editModalOpen && editModalData !== null}
