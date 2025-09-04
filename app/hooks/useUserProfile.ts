@@ -97,11 +97,11 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
     void ensureUserDoc();
   }, [user, db]);
 
-  // Load profile fields (Gemini API key) from profile subdocument
+  // Load profile fields (Gemini API key and subscription) from profile subdocument
   useEffect(() => {
     if (!user || !db) {
-      setWaId(null);
-      setMessage_count(0);
+      setGeminiApiKey('');
+      setSubscription(null);
       return;
     }
 
@@ -116,7 +116,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
           setGeminiApiKey(data.geminiApiKey);
         }
 
-        // Handle subscription data
+        // Handle subscription data from profile
         const subscriptionData = data.subscription;
         setSubscription(subscriptionData ? {
           status: subscriptionData.status || 'inactive',
@@ -124,58 +124,32 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
           endDate: subscriptionData.endDate?.toDate(),
           plan: subscriptionData.plan || 'none'
         } : null);
-
-        // Determine effective user type based on subscription status
-        let effectiveUserType: 'free' | 'pro' = 'free';
-
-        if (data.userType === 'pro') {
-          // Check if subscription is cancelled but still within grace period
-          if (subscriptionData?.status === 'cancelled' && subscriptionData.endDate) {
-            const endDate = subscriptionData.endDate.toDate();
-            const now = new Date();
-
-            if (now <= endDate) {
-              // Still within grace period, keep pro access
-              effectiveUserType = 'pro';
-            } else {
-              // Grace period expired, revert to free and update database
-              effectiveUserType = 'free';
-              // Update the database to reflect expired subscription
-              updateDoc(profileRef, {
-                userType: 'free',
-                subscription: {
-                  ...subscriptionData,
-                  status: 'expired'
-                }
-              }).catch(err => console.error('Failed to update expired subscription:', err));
-            }
-          } else if (subscriptionData?.status === 'active') {
-            // Active subscription
-            effectiveUserType = 'pro';
-          } else {
-            // No subscription data or inactive, use stored userType
-            effectiveUserType = 'pro';
-          }
-        }
-
-        setUserType(effectiveUserType);
       } else {
-        // If profile doesn't exist, create it with initial values
+        // If profile doesn't exist, create it with initial values (NO userType here)
         await setDoc(profileRef, {
           geminiApiKey: '',
-          userType: 'free'
+          email: user.email || null,
+          displayName: user.displayName || null,
+          photoURL: user.photoURL || null,
+          lastLoginAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          selectedSheetNames: [],
+          defaultSpreadsheetId: ""
         }, { merge: true });
         setSubscription(null);
       }
     });
 
     // Listener for the main user document to get wa_id, message_count, and userType
-    const unsubUserDoc = onSnapshot(userDocRef, async (docSnap) => {
+    const unsubUserDoc = onSnapshot(userDocRef, async (docSnap: any) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setMessage_count(data.message_count || 0);
         setWaId(data.wa_id || null);
-        setUserType(data.userType || 'free'); // Now reading from main document
+
+        // Read userType directly from main document (it should already reflect subscription status)
+        // The upgrade API and subscription management should keep this in sync
+        setUserType(data.userType || 'free');
       } else {
         setWaId(null);
         setMessage_count(0);
