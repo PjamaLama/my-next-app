@@ -166,6 +166,19 @@ export default function RootLayout({
           />
         )}
 
+        {/* Google Ads Conversion Tracking */}
+        <script async src="https://www.googletagmanager.com/gtag/js?id=AW-17507562116"></script>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'AW-17507562116');
+            `,
+          }}
+        />
+
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
