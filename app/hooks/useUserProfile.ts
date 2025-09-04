@@ -45,33 +45,50 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
       try {
         const profileRef = doc(db, "users", user.uid, "private", "profile");
         const userDocRef = doc(db, "users", user.uid);
-        const snap = await onSnapshot(profileRef, () => {}); // Just to check existence
 
-        const baseData: Record<string, unknown> = {
-          email: user.email || null,
-          displayName: user.displayName || null,
-          photoURL: user.photoURL || null,
-          lastLoginAt: serverTimestamp(),
-          selectedSheetNames: [],
-          defaultSpreadsheetId: "",
-          userType: 'free',
-        };
+        // Check if main user document exists first
+        const userDocSnap = await getDoc(userDocRef);
+        const userDocExists = userDocSnap.exists();
 
-        // Check if profile exists
+        // Check if profile subdocument exists
         const profileSnap = await getDoc(profileRef);
-        if (!profileSnap.exists()) {
-          baseData.createdAt = serverTimestamp();
+        const profileExists = profileSnap.exists();
+
+        // Only initialize if both documents don't exist (truly new user)
+        if (!userDocExists && !profileExists) {
+          console.log(`Initializing new user: ${user.uid}`);
+
+          // Initialize profile subdocument
+          const baseData: Record<string, unknown> = {
+            email: user.email || null,
+            displayName: user.displayName || null,
+            photoURL: user.photoURL || null,
+            lastLoginAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            selectedSheetNames: [],
+            defaultSpreadsheetId: "",
+            userType: 'free',
+          };
+
+          await setDoc(profileRef, baseData);
+
+          // Initialize main user document with message tracking
+          const denormalizedData: Record<string, unknown> = {
+            message_count: 0,
+            last_reset: serverTimestamp(),
+            wa_id: null,
+          };
+          await setDoc(userDocRef, denormalizedData);
+
+          console.log(`✅ Initialized new user data for ${user.uid}`);
+        } else {
+          // User exists, just update last login time (don't touch message_count or last_reset)
+          await updateDoc(profileRef, {
+            lastLoginAt: serverTimestamp()
+          }).catch(err => {
+            console.warn("Could not update last login time:", err);
+          });
         }
-
-        await setDoc(profileRef, baseData, { merge: true });
-
-        // Denormalize: Also store message_count and last_reset on the main user document
-        const denormalizedData: Record<string, unknown> = {
-          message_count: 0,
-          last_reset: serverTimestamp(),
-        };
-        await setDoc(userDocRef, denormalizedData, { merge: true });
-        console.log(`Denormalized user data for ${user.uid}`);
       } catch (e) {
         console.error("Error ensuring user document:", e);
       }

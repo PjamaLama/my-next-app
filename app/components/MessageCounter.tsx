@@ -9,7 +9,7 @@ import { useMessageLimits } from '../hooks/useMessageLimits';
 export default function MessageCounter() {
   const { user, userType } = useFirebase();
   const { openModal } = useUpgradeModal();
-  const { dailyUsage, limit, isLimitReached, isNearLimit, canSendMessage, loadUsage } = useMessageLimits();
+  const { dailyUsage, limit, isLimitReached, isNearLimit, canSendMessage } = useMessageLimits();
 
   // Debug: Log re-renders
   React.useEffect(() => {
@@ -22,43 +22,8 @@ export default function MessageCounter() {
     });
   });
 
-  // Force refresh usage data when component mounts or when userType changes
-  React.useEffect(() => {
-    if (user && userType === 'free') {
-      loadUsage();
-    }
-  }, [user, userType, loadUsage]);
-
-  // Listen for usage update events to refresh immediately - more robust approach
-  React.useEffect(() => {
-    const handleUsageUpdate = (event: CustomEvent) => {
-      console.log('📊 MessageCounter received usage update event:', event.detail);
-      // Always refresh for free users when any usage event occurs
-      if (userType === 'free') {
-        console.log('📊 Refreshing usage data for free user');
-        loadUsage();
-      }
-    };
-
-    console.log('📊 Setting up usage update listener for MessageCounter');
-    window.addEventListener('usage-updated', handleUsageUpdate as EventListener);
-
-    // Also listen for a more direct update event
-    const handleDirectUpdate = () => {
-      if (userType === 'free') {
-        console.log('📊 Direct refresh triggered');
-        loadUsage();
-      }
-    };
-
-    window.addEventListener('message-counter-refresh', handleDirectUpdate);
-
-    return () => {
-      console.log('📊 Cleaning up usage update listener for MessageCounter');
-      window.removeEventListener('usage-updated', handleUsageUpdate as EventListener);
-      window.removeEventListener('message-counter-refresh', handleDirectUpdate);
-    };
-  }, [userType, loadUsage]);
+  // State automatically updates via Firebase listeners in useUserProfile
+  // No need for manual refresh calls with the new computed state architecture
 
   const getUsagePercentage = () => {
     return Math.min((dailyUsage / limit) * 100, 100);
@@ -68,12 +33,46 @@ export default function MessageCounter() {
     return null; // Don't show counter for pro users or when not logged in
   }
 
-  // Compact design that's less intrusive
+  // Enhanced design with better upgrade messaging
+  if (isLimitReached) {
+    return (
+      <div className="bg-gradient-to-r from-red-900/20 to-orange-900/20 border border-red-500/30 rounded-lg p-4 mb-3">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-red-300 mb-1">
+              Daily Message Limit Reached
+            </div>
+            <div className="text-xs text-gray-300 mb-3">
+              You've used all {limit} daily messages. Upgrade to Pro for unlimited messages and premium features.
+            </div>
+            <div className="text-xs text-gray-400 mb-3">
+              <div className="font-medium text-emerald-400 mb-1">Pro Benefits:</div>
+              <ul className="space-y-0.5 ml-2">
+                <li>• Unlimited messages daily</li>
+                <li>• Advanced AI features</li>
+                <li>• Priority support</li>
+                <li>• Higher file upload limits</li>
+              </ul>
+            </div>
+            <button
+              onClick={() => openModal('Pro')}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors w-full justify-center"
+            >
+              <Crown className="w-4 h-4" />
+              Upgrade to Pro - Unlimited Messages
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-800/30 border border-gray-700/30 rounded-lg p-3 mb-3">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <MessageSquare className={`w-4 h-4 ${isLimitReached ? 'text-red-400' : isNearLimit ? 'text-yellow-400' : 'text-gray-400'}`} />
+          <MessageSquare className={`w-4 h-4 ${isNearLimit ? 'text-yellow-400' : 'text-gray-400'}`} />
           <span className="text-sm text-gray-300 font-medium">Messages</span>
         </div>
         <div className="text-xs text-gray-400">
@@ -85,7 +84,7 @@ export default function MessageCounter() {
       <div className="w-full bg-gray-700 rounded-full h-1.5 mb-2">
         <div
           className={`h-1.5 rounded-full transition-all duration-300 ${
-            isLimitReached ? 'bg-red-500' : isNearLimit ? 'bg-yellow-500' : 'bg-emerald-500'
+            isNearLimit ? 'bg-yellow-500' : 'bg-emerald-500'
           }`}
           style={{ width: `${getUsagePercentage()}%` }}
         ></div>
@@ -93,12 +92,7 @@ export default function MessageCounter() {
 
       {/* Compact Status */}
       <div className="flex items-center justify-between">
-        {isLimitReached ? (
-          <div className="flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3 text-red-400" />
-            <span className="text-xs text-red-400">Limit reached</span>
-          </div>
-        ) : isNearLimit ? (
+        {isNearLimit ? (
           <div className="flex items-center gap-1">
             <AlertTriangle className="w-3 h-3 text-yellow-400" />
             <span className="text-xs text-yellow-400">Almost full</span>
@@ -109,7 +103,7 @@ export default function MessageCounter() {
           </span>
         )}
 
-        {isLimitReached && (
+        {isNearLimit && (
           <button
             onClick={() => openModal('Pro')}
             className="text-emerald-400 hover:text-emerald-300 text-xs font-medium flex items-center gap-1"

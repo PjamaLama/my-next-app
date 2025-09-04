@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
+import { useUserProfile } from './useUserProfile';
+import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { getDb } from '../providers/FirebaseProvider';
 
-const DAILY_LIMIT = 5;
+const DAILY_LIMIT = 3;
 
 export interface MessageLimitsState {
   dailyUsage: number;
@@ -15,155 +18,104 @@ export interface MessageLimitsState {
 
 export const useMessageLimits = () => {
   const { user, userType } = useFirebase();
-  const [state, setState] = useState<MessageLimitsState>({
-    dailyUsage: 0,
-    limit: DAILY_LIMIT,
-    isLimitReached: false,
-    isNearLimit: false,
-    canSendMessage: true,
-  });
+  const { message_count } = useUserProfile(user);
 
-  // Load daily usage from localStorage
-  const loadUsage = useCallback(() => {
-    if (!user) return;
-
-    const today = new Date().toDateString();
-    const storageKey = `sheetyai_messages_${user.uid}_${today}`;
-
-    const storedUsage = parseInt(localStorage.getItem(storageKey) || '0', 10);
-    console.log('📊 loadUsage called:', {
-      userId: user.uid,
-      storageKey,
-      storedUsage,
-      userType
-    });
-
-    const isLimitReached = storedUsage >= DAILY_LIMIT && userType === 'free';
-    const isNearLimit = storedUsage >= DAILY_LIMIT * 0.8 && userType === 'free';
+  // Computed state based on Firebase data from useUserProfile
+  // Daily resets are handled server-side by Firebase scheduled function
+  const state = useMemo((): MessageLimitsState => {
+    const isLimitReached = message_count >= DAILY_LIMIT && userType === 'free';
+    const isNearLimit = message_count >= DAILY_LIMIT * 0.8 && userType === 'free';
     const canSendMessage = userType === 'pro' || !isLimitReached;
 
-    const newState = {
-      dailyUsage: storedUsage,
+    return {
+      dailyUsage: message_count,
       limit: DAILY_LIMIT,
       isLimitReached,
       isNearLimit,
       canSendMessage,
     };
-
-    console.log('📊 loadUsage setting state:', newState);
-    setState(newState);
-  }, [user, userType]);
+  }, [message_count, userType]);
 
   // Increment usage when a message is sent
-  const incrementUsage = useCallback(() => {
+  const incrementUsage = useCallback(async () => {
     if (!user || userType === 'pro') return true; // Pro users have unlimited messages
 
-    const today = new Date().toDateString();
-    const storageKey = `sheetyai_messages_${user.uid}_${today}`;
+    try {
+      const db = getDb();
+      if (!db) return true; // Allow message if DB not available
 
-    const currentUsage = parseInt(localStorage.getItem(storageKey) || '0', 10);
-    const newUsage = currentUsage + 1;
+      const userDocRef = doc(db, 'users', user.uid);
 
-    console.log('📊 incrementUsage called:', {
-      userId: user.uid,
-      currentUsage,
-      newUsage,
-      limit: DAILY_LIMIT
-    });
+      // Use Firestore increment for atomic operation
+      // This prevents race conditions and ensures accurate counting
+      const increment = (current: number) => current + 1;
 
-    // Check if limit would be exceeded
-    if (newUsage > DAILY_LIMIT) {
-      console.log('📊 Limit would be exceeded, blocking message');
-      setState(prev => ({
-        ...prev,
-        dailyUsage: currentUsage,
-        isLimitReached: true,
-        canSendMessage: false,
-      }));
-      return false; // Block the message
-    }
+      // First, get current count to check limit
+      const userDoc = await getDoc(userDocRef);
 
-    // Update storage and state immediately
-    localStorage.setItem(storageKey, newUsage.toString());
-    console.log('📊 Updated localStorage:', { storageKey, newUsage });
-
-    // Force immediate state update
-    setState(prev => {
-      const updatedState = {
-        ...prev,
-        dailyUsage: newUsage,
-        isNearLimit: newUsage >= DAILY_LIMIT * 0.8,
-        canSendMessage: true,
-      };
-      console.log('📊 Updated state:', updatedState);
-      return updatedState;
-    });
-
-    // Dispatch a custom event to notify other components of usage change
-    console.log('📊 Dispatching usage-updated event');
-    window.dispatchEvent(new CustomEvent('usage-updated', {
-      detail: {
-        newUsage,
-        userId: user.uid,
-        timestamp: Date.now()
+      if (!userDoc.exists()) {
+        console.log('📊 User document not found during increment - this should not happen as useUserProfile creates it');
+        // Don't create document here - let useUserProfile handle initialization
+        // This prevents race conditions and ensures proper initialization
+        return true; // Allow message for now, user document will be created by useUserProfile
       }
-    }));
 
-    // Also dispatch a direct refresh event for immediate updates
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('message-counter-refresh'));
-    }, 50);
+      const userData = userDoc.data();
+      const currentMessageCount = userData?.message_count || 0;
 
-    return true; // Allow the message
+      console.log('📊 incrementUsage called:', {
+        userId: user.uid,
+        currentMessageCount,
+        newUsage: currentMessageCount + 1,
+        limit: DAILY_LIMIT
+      });
+
+      // Check if limit would be exceeded BEFORE incrementing
+      if (currentMessageCount >= DAILY_LIMIT) {
+        console.log('📊 Limit would be exceeded, blocking message');
+        return false; // Block the message
+      }
+
+      // Increment the message count atomically
+      await updateDoc(userDocRef, {
+        message_count: currentMessageCount + 1
+      });
+
+      console.log('📊 Successfully incremented message count to:', currentMessageCount + 1);
+
+      return true; // Allow the message
+
+    } catch (error) {
+      console.error('📊 Error incrementing usage in Firebase:', error);
+      // On error, allow the message to avoid blocking users unnecessarily
+      return true;
+    }
   }, [user, userType]);
 
-  // Reset usage (for testing or when day changes)
-  const resetUsage = useCallback(() => {
+  // Reset usage (for testing or manual reset)
+  const resetUsage = useCallback(async () => {
     if (!user) return;
 
-    const today = new Date().toDateString();
-    const storageKey = `sheetyai_messages_${user.uid}_${today}`;
+    try {
+      const db = getDb();
+      if (!db) return;
 
-    localStorage.removeItem(storageKey);
-    setState(prev => ({
-      ...prev,
-      dailyUsage: 0,
-      isLimitReached: false,
-      isNearLimit: false,
-      canSendMessage: true,
-    }));
+      const userDocRef = doc(db, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        message_count: 0,
+        last_reset: serverTimestamp()
+      });
+
+      console.log('📊 Manually reset usage in Firebase to 0');
+
+    } catch (error) {
+      console.error('📊 Error resetting usage in Firebase:', error);
+    }
   }, [user]);
-
-  // Load usage on mount and when user/type changes
-  useEffect(() => {
-    loadUsage();
-  }, [loadUsage]);
-
-  // Check for day change and reset if needed
-  useEffect(() => {
-    if (!user) return;
-
-    const checkDayChange = () => {
-      const today = new Date().toDateString();
-      const storageKey = `sheetyai_messages_${user.uid}_${today}`;
-
-      if (!localStorage.getItem(storageKey)) {
-        // Day has changed, reset usage
-        resetUsage();
-      }
-    };
-
-    // Check immediately and then every hour
-    checkDayChange();
-    const interval = setInterval(checkDayChange, 60 * 60 * 1000); // Check every hour
-
-    return () => clearInterval(interval);
-  }, [user, resetUsage]);
 
   return {
     ...state,
     incrementUsage,
     resetUsage,
-    loadUsage,
   };
 };

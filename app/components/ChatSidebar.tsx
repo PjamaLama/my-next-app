@@ -13,6 +13,7 @@ import SpreadsheetManagerModal from "./SpreadsheetManagerModal";
 import EditRowModal from "./EditRowModal";
 import MessageCounter from "./MessageCounter";
 import { useMessageLimits } from "../hooks/useMessageLimits";
+import { useUpgradeModal } from "../providers/UpgradeModalProvider";
 dayjs.extend(relativeTime);
 
 interface ChatSidebarProps {
@@ -35,7 +36,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const { user, userType } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();
-  const { dailyUsage } = useMessageLimits();
+  const { dailyUsage, canSendMessage, incrementUsage, isLimitReached } = useMessageLimits();
+  const { openModal } = useUpgradeModal();
   const [creating, setCreating] = useState(false);
   const [counterKey, setCounterKey] = useState(0);
 
@@ -294,10 +296,29 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   }, [chatMessages]);
   const hasClarify = Boolean(clarifyText && clarifyText.trim());
   const handleProvideDetails = async () => {
+    // Check message limits for free users before allowing clarification
+    if (userType === 'free' && !canSendMessage) {
+      confirm({
+        title: 'Message Limit Reached',
+        description: 'You\'ve reached your daily message limit. Upgrade to Pro for unlimited messages.',
+        tone: 'warning',
+        confirmText: 'Upgrade to Pro',
+        cancelText: 'Cancel',
+      }).then((ok) => {
+        if (ok) openModal('Pro');
+      });
+      return;
+    }
+
     const hint = 'Provide more details (e.g., CLIENT SEEN, TOWN, SALES MADE, DETAILS OF VISIT):';
     // Prompt the user for more details and append as a user message
     const text = typeof window !== 'undefined' ? window.prompt(hint) : '';
     if (text && text.trim()) {
+      // Increment usage for free users
+      if (userType === 'free') {
+        await incrementUsage();
+      }
+
       await appendMessage(currentSessionId || '', {
         id: `local_${Date.now()}`,
         role: 'user',

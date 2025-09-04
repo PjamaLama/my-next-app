@@ -443,7 +443,12 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
     // Increment usage counter for free users
     if (userType === 'free') {
-      incrementUsage();
+      const canIncrement = await incrementUsage();
+      if (!canIncrement) {
+        // Limit reached, open upgrade modal
+        openModal();
+        return;
+      }
       // Force immediate refresh of message counter
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('message-counter-refresh'));
