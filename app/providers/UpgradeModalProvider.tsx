@@ -43,10 +43,9 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
     setSelectedPlan(null);
   };
 
-  // Handle PayPal return from URL parameters
+  // Handle PayPal cancellation from URL parameters
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const paypalToken = urlParams.get('paypal_token');
     const paypalCancelled = urlParams.get('paypal_cancelled');
 
     if (paypalCancelled) {
@@ -55,52 +54,8 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
       const url = new URL(window.location.href);
       url.searchParams.delete('paypal_cancelled');
       window.history.replaceState({}, '', url.toString());
-      return;
     }
-
-    if (paypalToken && user) {
-      handlePayPalReturn(paypalToken);
-    }
-  }, [user]);
-
-  const handlePayPalReturn = async (paypalToken: string) => {
-    try {
-      setIsProcessing(true);
-
-      const token = await user!.getIdToken();
-      const response = await fetch('/api/paypal/capture-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ paypalToken }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Payment capture successful:', data.message);
-
-        // Clean up URL
-        const url = new URL(window.location.href);
-        url.searchParams.delete('paypal_token');
-        url.searchParams.delete('PayerID');
-        window.history.replaceState({}, '', url.toString());
-
-        // Refresh user data to update userType
-        window.location.reload();
-      } else {
-        const error = await response.json();
-        console.error('Payment capture failed:', error);
-        alert('Payment processing failed. Please contact support.');
-      }
-    } catch (error) {
-      console.error('Payment capture error:', error);
-      alert('Payment processing failed. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  }, []);
 
   const handleUpgrade = () => {
     // PayPal buttons handle the payment flow directly now

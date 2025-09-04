@@ -102,7 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
       ],
       application_context: {
-        return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/paypal/success`,
+        return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/paypal-success`,
         cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/paypal/cancel`,
         brand_name: 'SheetyAI',
         user_action: 'PAY_NOW',

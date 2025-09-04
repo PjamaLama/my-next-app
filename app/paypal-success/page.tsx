@@ -1,0 +1,151 @@
+"use client";
+
+import React, { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { useFirebase } from '../providers/FirebaseProvider';
+
+function PayPalSuccessContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useFirebase();
+  const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
+  const [message, setMessage] = useState('Processing your payment...');
+
+  useEffect(() => {
+    // Inject Google Ads conversion tracking script
+    const injectGoogleAdsConversion = () => {
+      // Remove any existing conversion scripts to prevent duplicates
+      const existingScript = document.querySelector('script[data-gtag-conversion]');
+      if (existingScript) {
+        existingScript.remove();
+      }
+
+      // Create and inject the conversion script
+      const script = document.createElement('script');
+      script.setAttribute('data-gtag-conversion', 'true');
+      script.innerHTML = `
+        gtag('event', 'conversion', {
+          'send_to': 'AW-17507562116/fDpoCP3expMbEITloJxB',
+          'value': 19.97,
+          'currency': 'USD',
+          'transaction_id': '${Date.now()}'
+        });
+      `;
+      document.head.appendChild(script);
+
+      console.log('Google Ads conversion tracking injected');
+    };
+
+    const handlePaymentSuccess = async () => {
+      if (!searchParams) {
+        setStatus('error');
+        setMessage('Invalid URL parameters. Please try again.');
+        return;
+      }
+
+      const paypalToken = searchParams.get('paypal_token');
+
+      if (!paypalToken) {
+        setStatus('error');
+        setMessage('Missing payment token. Please try again.');
+        return;
+      }
+
+      if (!user) {
+        setStatus('error');
+        setMessage('User not authenticated. Please log in and try again.');
+        return;
+      }
+
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch('/api/paypal/capture-payment', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ paypalToken }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setStatus('success');
+          setMessage('🎉 Welcome to SheetyAI Pro! Your payment was successful.');
+          injectGoogleAdsConversion();
+
+          // Redirect to main page after showing success message
+          setTimeout(() => {
+            router.push('/');
+          }, 3000);
+        } else {
+          const error = await response.json();
+          setStatus('error');
+          setMessage(`Payment processing failed: ${error.error || 'Please contact support.'}`);
+        }
+      } catch (error) {
+        console.error('Payment capture error:', error);
+        setStatus('error');
+        setMessage('Payment processing failed. Please try again or contact support.');
+      }
+    };
+
+    handlePaymentSuccess();
+  }, [searchParams, user, router]);
+
+  return (
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-gray-800 rounded-xl p-8 text-center border border-gray-700">
+        {status === 'processing' && (
+          <>
+            <Loader2 className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
+            <h1 className="text-2xl font-bold text-white mb-2">Processing Payment</h1>
+            <p className="text-gray-300">{message}</p>
+          </>
+        )}
+
+        {status === 'success' && (
+          <>
+            <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-white mb-2">Payment Successful!</h1>
+            <p className="text-gray-300 mb-4">{message}</p>
+            <p className="text-sm text-gray-400">
+              You will be redirected to the main page in a few seconds...
+            </p>
+          </>
+        )}
+
+        {status === 'error' && (
+          <>
+            <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-white mb-2">Payment Error</h1>
+            <p className="text-gray-300 mb-4">{message}</p>
+            <button
+              onClick={() => router.push('/')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Return to Home
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function PayPalSuccess() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-gray-800 rounded-xl p-8 text-center border border-gray-700">
+          <Loader2 className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
+          <h1 className="text-2xl font-bold text-white mb-2">Loading...</h1>
+          <p className="text-gray-300">Please wait while we process your payment.</p>
+        </div>
+      </div>
+    }>
+      <PayPalSuccessContent />
+    </Suspense>
+  );
+}
