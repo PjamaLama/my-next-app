@@ -2,17 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Crown, Sparkles, CreditCard } from 'lucide-react';
+import { X, Check, Crown, Sparkles, CreditCard, CheckCircle } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import PricingPlans from './PricingPlans';
 import CustomCardPayment from './CustomCardPayment';
 
-// Extend window interface for PayPal
-declare global {
-  interface Window {
-    paypal?: any;
-  }
-}
 
 interface UpgradeModalProps {
   isOpen: boolean;

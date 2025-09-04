@@ -5,7 +5,6 @@ import { useFirebase } from "../providers/FirebaseProvider";
 import { useSheet } from "../providers/SheetProvider";
 import { useServiceAccount } from "../providers/ServiceAccountProvider";
 import ServiceAccountInfo from "./ServiceAccountInfo";
-import { googleAnalytics } from "@/lib/analytics/googleAnalytics";
 
 interface SpreadsheetManagerModalProps {
   open: boolean;
@@ -61,12 +60,9 @@ const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open,
 
     // Track first sheet connection
     if (isFirstSheet) {
-      googleAnalytics.trackBusinessConversion('first_sheet_connected', 0, 'USD');
-      googleAnalytics.setUserProperty('has_connected_sheet', 'true');
-      console.log('📊 Tracked: First Sheet Connected');
+      console.log('📊 First Sheet Connected');
     } else {
-      googleAnalytics.trackUserEngagement('additional_sheet_connected');
-      console.log('📊 Tracked: Additional Sheet Connected');
+      console.log('📊 Additional Sheet Connected');
     }
   };
 

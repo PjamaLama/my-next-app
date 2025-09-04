@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useFirebase, getDb } from './FirebaseProvider';
-import { googleAnalytics } from '@/lib/analytics/googleAnalytics';
 
 // Basic message type
 export interface ChatMessage {
@@ -375,11 +374,7 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
 
         // Track first message conversion
         if (isFirstMessage) {
-          googleAnalytics.trackBusinessConversion('first_message_sent', 0, 'USD');
-          googleAnalytics.setUserProperty('has_sent_first_message', 'true');
-          console.log('📊 Tracked: First Message Sent');
-        } else {
-          googleAnalytics.trackUserEngagement('message_sent');
+          console.log('📊 First Message Sent');
         }
 
         console.log('🔍 [ChatProvider] Message sent - session:', sessionId, 'isFirst:', isFirstMessage, 'title:', existingSession?.title);
