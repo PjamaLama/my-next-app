@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Crown, Sparkles } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import PricingPlans from './PricingPlans';
+import CustomCardPayment from './CustomCardPayment';
 
 // Extend window interface for PayPal
 declare global {
@@ -26,101 +27,41 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isP
   const { user } = useFirebase();
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
   const [hasStartedPayment, setHasStartedPayment] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  const handleUpgrade = async () => {
-    if (!user || hasStartedPayment) {
-      return;
-    }
+  console.log('🎨 UpgradeModal: Rendering with props:', {
+    isOpen,
+    userType,
+    selectedPlan,
+    isProcessing
+  });
 
-    try {
-      setIsCreatingPayment(true);
-      setHasStartedPayment(true);
+  const handlePaymentSuccess = async (details: any) => {
+    console.log('Payment successful:', details);
+    setPaymentSuccess(true);
+    setPaymentError(null);
 
-      // Directly create PayPal payment and redirect
-      const token = await user.getIdToken();
-
-      console.log('Creating PayPal payment...');
-
-      const response = await fetch('/api/paypal/create-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({}),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ PayPal API call successful');
-        console.log('PayPal response data:', data);
-
-        if (data.approvalUrl) {
-          console.log('Redirecting to PayPal:', data.approvalUrl);
-          // Redirect to PayPal for payment
-          window.location.href = data.approvalUrl;
-        } else {
-          console.error('❌ No approval URL received from PayPal API');
-          console.error('Response data:', data);
-          alert('Payment setup failed - no payment URL received. Please try again.');
-          setHasStartedPayment(false);
-        }
-      } else {
-        console.error('❌ PayPal API call failed');
-        console.error('Response status:', response.status);
-        console.error('Response status text:', response.statusText);
-        console.error('Response headers:', Object.fromEntries(response.headers.entries()));
-
-        let errorData;
-        try {
-          // Try to parse the error response
-          const responseText = await response.text();
-          console.error('Raw response text:', responseText);
-
-          if (responseText.trim()) {
-            errorData = JSON.parse(responseText);
-          } else {
-            errorData = { error: 'Empty response body' };
-          }
-        } catch (parseError) {
-          console.error('Error parsing response:', parseError);
-          errorData = { error: 'Invalid JSON response', rawStatus: response.status };
-        }
-
-        console.error('Parsed error data:', errorData);
-
-        // Show specific error message
-        if (errorData.error === 'PayPal configuration error') {
-          alert('PayPal is not configured. Please contact support.');
-        } else if (response.status === 401) {
-          alert('PayPal authentication failed. Please check your credentials.');
-        } else if (response.status === 400) {
-          alert('Invalid payment request. Please try again.');
-        } else {
-          alert(`Payment setup failed (${response.status}). Please try again.`);
-        }
-        setHasStartedPayment(false);
-      }
-    } catch (error) {
-      console.error('Payment creation error:', error);
-      alert('Payment setup failed. Please try again.');
-      setHasStartedPayment(false);
-    } finally {
-      setIsCreatingPayment(false);
-    }
+    // Close modal and show success message
+    setTimeout(() => {
+      onClose();
+      onUpgrade();
+    }, 2000);
   };
 
-  // Auto-start payment process when modal opens for Pro
-  useEffect(() => {
-    if (isOpen && selectedPlan === 'Pro' && user && userType !== 'pro' && !hasStartedPayment) {
-      console.log('Auto-starting payment process...');
-      const timer = setTimeout(() => {
-        handleUpgrade();
-      }, 1000); // 1 second delay so user can see the modal
+  const handlePaymentError = (error: any) => {
+    console.error('Payment failed:', error);
+    setPaymentError('Payment failed. Please try again.');
+    setPaymentSuccess(false);
+  };
 
-      return () => clearTimeout(timer);
+  // Auto-show payment buttons when modal opens for Pro
+  useEffect(() => {
+    if (isOpen && selectedPlan === 'Pro' && user && userType !== 'pro') {
+      console.log('Showing payment options...');
+      setHasStartedPayment(true);
     }
-  }, [isOpen, selectedPlan, user, userType, hasStartedPayment]);
+  }, [isOpen, selectedPlan, user, userType]);
 
   // Clean up when modal closes
   useEffect(() => {
@@ -357,13 +298,62 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isP
                     </motion.div>
                   </div>
 
-                  <motion.button
-                    whileHover={{ scale: 1.05, y: -2 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleUpgrade}
-                    disabled={isCreatingPayment}
-                    className="relative w-full overflow-hidden rounded-xl transition-all duration-300 mb-4 group"
-                  >
+                  {/* PayPal Smart Buttons for Pro Upgrade */}
+                  {selectedPlan === 'Pro' && userType !== 'pro' && hasStartedPayment && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="w-full mb-6"
+                    >
+                      <div className="text-center mb-4">
+                        <h3 className="text-lg font-semibold text-white mb-2">Complete Your Upgrade</h3>
+                        <p className="text-gray-300 text-sm">Choose your payment method below</p>
+                      </div>
+
+                      {paymentError && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4">
+                          <p className="text-red-400 text-sm">{paymentError}</p>
+                        </div>
+                      )}
+
+                      {paymentSuccess ? (
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 text-center">
+                          <Crown className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                          <h3 className="text-green-400 font-semibold">Payment Successful!</h3>
+                          <p className="text-green-300 text-sm">Welcome to SheetyAI Pro</p>
+                        </div>
+                      ) : (
+                        <CustomCardPayment
+                          amount="19.97"
+                          currency="USD"
+                          onSuccess={handlePaymentSuccess}
+                          onError={handlePaymentError}
+                          onCancel={() => setHasStartedPayment(false)}
+                          disabled={isCreatingPayment}
+                        />
+                      )}
+
+                      <div className="text-center mt-4">
+                        <button
+                          onClick={onClose}
+                          className="text-gray-400 hover:text-white text-sm transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Original upgrade button for when payment hasn't started */}
+                  {(!hasStartedPayment || selectedPlan !== 'Pro' || userType === 'pro') && (
+                    <>
+                      <motion.button
+                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setHasStartedPayment(true)}
+                      disabled={isCreatingPayment}
+                      className="relative w-full overflow-hidden rounded-xl transition-all duration-300 mb-4 group"
+                    >
                     {/* Matrix golden streams across button */}
                     <div className="absolute inset-0 overflow-hidden rounded-xl">
                       {/* Horizontal golden streams */}
@@ -503,15 +493,17 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isP
                         className="w-0.5 h-0.5 bg-yellow-500 rounded-full shadow-lg"
                       />
                     </div>
-                  </motion.button>
+                    </motion.button>
 
-                  <button
-                    onClick={onClose}
-                    disabled={isCreatingPayment}
-                    className="w-full bg-transparent text-gray-400 hover:text-white text-sm py-2 px-4 transition-colors duration-200"
-                  >
-                    Maybe later
-                  </button>
+                      <button
+                        onClick={onClose}
+                        disabled={isCreatingPayment}
+                        className="w-full bg-transparent text-gray-400 hover:text-white text-sm py-2 px-4 transition-colors duration-200"
+                      >
+                        Maybe later
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>

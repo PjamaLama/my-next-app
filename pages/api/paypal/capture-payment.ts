@@ -25,11 +25,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    const { paypalToken } = req.body;
+    const { paypalToken, orderId } = req.body;
 
-    if (!paypalToken) {
-      return res.status(400).json({ error: 'Missing paypalToken' });
+    if (!paypalToken && !orderId) {
+      return res.status(400).json({ error: 'Missing paypalToken or orderId' });
     }
+
+    // Use orderId if provided (from Smart Buttons), otherwise use paypalToken
+    const paymentId = orderId || paypalToken;
 
     const db = getAdminDb();
     const uid = decoded.uid;
@@ -95,7 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const paypalAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     console.log('Making PayPal capture API call...');
-    const captureResponse = await fetch(`${paypalUrl}/v2/checkout/orders/${paypalToken}/capture`, {
+    const captureResponse = await fetch(`${paypalUrl}/v2/checkout/orders/${paymentId}/capture`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

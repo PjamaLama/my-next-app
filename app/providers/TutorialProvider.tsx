@@ -33,6 +33,13 @@ export const TutorialProvider: React.FC<TutorialProviderProps> = ({ children }) 
   const hideTutorial = useCallback(() => {
     console.log('🔍 [TutorialProvider] hideTutorial called');
     setIsTutorialVisible(false);
+    // Mark tutorial as seen in localStorage when hiding
+    try {
+      localStorage.setItem('hasSeenTutorial', 'true');
+      console.log('🔍 [TutorialProvider] Tutorial marked as seen');
+    } catch (error) {
+      console.warn('Failed to save tutorial status to localStorage:', error);
+    }
   }, []);
 
   // Debug logging

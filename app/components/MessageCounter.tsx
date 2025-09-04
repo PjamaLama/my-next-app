@@ -56,7 +56,10 @@ export default function MessageCounter() {
               </ul>
             </div>
             <button
-              onClick={() => openModal('Pro')}
+              onClick={() => {
+                console.log('🔄 MessageCounter: Opening upgrade modal from daily limit reached');
+                openModal('Pro');
+              }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors w-full justify-center"
             >
               <Crown className="w-4 h-4" />
@@ -105,7 +108,10 @@ export default function MessageCounter() {
 
         {isNearLimit && (
           <button
-            onClick={() => openModal('Pro')}
+            onClick={() => {
+              console.log('🔄 MessageCounter: Opening upgrade modal from near limit');
+              openModal('Pro');
+            }}
             className="text-emerald-400 hover:text-emerald-300 text-xs font-medium flex items-center gap-1"
           >
             <Crown className="w-3 h-3" />

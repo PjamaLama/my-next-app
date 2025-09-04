@@ -47,7 +47,6 @@ export default function Home() {
 
   const handleCloseTutorial = () => {
     hideTutorial();
-    localStorage.setItem('hasSeenTutorial', 'true'); // Mark tutorial as seen
   };
 
   const handleOpenGoogleSheets = () => {

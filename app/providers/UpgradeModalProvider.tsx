@@ -35,6 +35,9 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
   const router = useRouter();
 
   const openModal = (plan?: string) => {
+    console.log('🚀 UpgradeModalProvider: Opening modal with plan:', plan);
+    console.log('🚀 UpgradeModalProvider: Current userType:', userType);
+    console.log('🚀 UpgradeModalProvider: Stack trace:', new Error().stack);
     setSelectedPlan(plan || null);
     setIsOpen(true);
   };

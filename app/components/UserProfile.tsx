@@ -108,8 +108,9 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
             {userType === 'free' && (
               <button
                 onClick={() => {
+                  console.log('🔄 UserProfile: Opening upgrade modal from profile dropdown');
                   setDropdownOpen(false);
-                  openModal();
+                  openModal('Pro');
                 }}
                 className="block w-full text-left px-4 py-2 text-sm text-emerald-400 hover:bg-gray-700 flex items-center gap-2"
               >
