@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 import { getDb } from '../providers/FirebaseProvider';
 
 interface UseUserProfileReturn {
@@ -124,7 +124,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
               // Grace period expired, revert to free and update database
               effectiveUserType = 'free';
               // Update the database to reflect expired subscription
-              userProfileRef.update({
+              updateDoc(profileRef, {
                 userType: 'free',
                 subscription: {
                   ...subscriptionData,

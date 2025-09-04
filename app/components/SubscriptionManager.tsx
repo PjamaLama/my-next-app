@@ -13,7 +13,7 @@ interface SubscriptionManagerProps {
 
 export default function SubscriptionManager({ isOpen, onClose }: SubscriptionManagerProps) {
   const { user } = useFirebase();
-  const { userType, subscription } = useUserProfile();
+  const { userType, subscription } = useUserProfile(user);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
