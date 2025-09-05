@@ -5,7 +5,7 @@
 
 declare global {
   interface Window {
-    fbq: (action: string, eventName: string, parameters?: any) => void;
+    fbq?: (action: string, eventName: string, parameters?: any) => void;
   }
 }
 
@@ -55,7 +55,7 @@ export const PRODUCT_CATALOG = {
  * Track a custom event
  */
 export const trackEvent = (eventName: string, parameters?: any) => {
-  if (typeof window !== 'undefined' && window.fbq) {
+  if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
     window.fbq('track', eventName, parameters);
     console.log(`Meta Pixel: Tracked ${eventName}`, parameters);
   }

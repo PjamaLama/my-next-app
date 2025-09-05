@@ -10,7 +10,7 @@ export default function MetaPixelTest() {
   useEffect(() => {
     // Check if Meta Pixel is loaded
     const checkPixelStatus = () => {
-      if (typeof window !== 'undefined' && window.fbq) {
+      if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
         setPixelStatus('loaded');
       } else {
         setPixelStatus('not-loaded');
