@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import { trackAddToCart } from '../../lib/metaPixel';
 
 interface PayPalSubscriptionProps {
   planId?: string;
@@ -45,6 +46,9 @@ export default function PayPalSubscription({
 
       // Render PayPal button
       renderPayPalButton(planIdToUse);
+
+      // Track AddToCart when PayPal button is ready
+      trackAddToCart('sheetyai_pro_monthly');
 
       setIsLoading(false);
     } catch (err: any) {

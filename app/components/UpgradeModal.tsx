@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Crown, Sparkles, CheckCircle, ArrowRight } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import PayPalSubscription from './PayPalSubscription';
+import { trackViewContent, trackInitiateCheckout, trackAddToCart } from '../../lib/metaPixel';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -62,6 +63,13 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
       setHasStartedPayment(true); // Start with PayPal subscription
     }
   }, [isOpen, selectedPlan, user, userType]);
+
+  // Track modal view when it opens
+  useEffect(() => {
+    if (isOpen) {
+      trackViewContent('sheetyai_pro_monthly');
+    }
+  }, [isOpen]);
 
   // Clean up when modal closes
   useEffect(() => {
@@ -168,7 +176,10 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
               ) : (
                 <div className="space-y-3">
                   <button
-                    onClick={() => setHasStartedPayment(true)}
+                    onClick={() => {
+                      trackInitiateCheckout('sheetyai_pro_monthly');
+                      setHasStartedPayment(true);
+                    }}
                     className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-yellow-500/25"
                   >
                     Upgrade to Pro - $19.97/month

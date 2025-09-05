@@ -4,6 +4,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
+import { trackPurchase } from '../../lib/metaPixel';
 
 function PayPalSuccessContent() {
   const router = useRouter();
@@ -35,6 +36,14 @@ function PayPalSuccessContent() {
       document.head.appendChild(script);
 
       console.log('Google Ads conversion tracking injected');
+    };
+
+    // Track Meta Pixel Purchase event
+    const trackMetaPixelPurchase = () => {
+      trackPurchase({
+        value: 19.97,
+        currency: 'USD'
+      });
     };
 
     const handlePaymentSuccess = async () => {
@@ -72,6 +81,7 @@ function PayPalSuccessContent() {
             setStatus('success');
             setMessage('🎉 Welcome to SheetyAI Pro! Your PayPal subscription is now active.');
             injectGoogleAdsConversion();
+            trackMetaPixelPurchase();
 
             // Redirect to main page after showing success message
             setTimeout(() => {
@@ -119,6 +129,7 @@ function PayPalSuccessContent() {
           setStatus('success');
           setMessage('🎉 Welcome to SheetyAI Pro! Your payment was successful.');
           injectGoogleAdsConversion();
+          trackMetaPixelPurchase();
 
           // Redirect to main page after showing success message
           setTimeout(() => {
