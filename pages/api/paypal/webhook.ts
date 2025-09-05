@@ -1,0 +1,200 @@
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { getAdminAuth } from '../../../lib/firebaseAdmin';
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const event = req.body;
+    const eventType = event.event_type;
+    const resource = event.resource;
+
+    console.log('PayPal webhook received:', eventType, resource?.id);
+
+    // Verify webhook signature (important for production)
+    // Note: In production, you should verify the webhook signature using PayPal's SDK
+
+    const { getFirestore } = require('firebase-admin/firestore');
+    const db = getFirestore();
+    const auth = getAdminAuth();
+
+    switch (eventType) {
+      case 'PAYMENT.SALE.COMPLETED':
+        // Handle successful payment
+        await handlePaymentCompleted(db, resource);
+        break;
+
+      case 'BILLING.SUBSCRIPTION.CREATED':
+        // Handle subscription creation (backup to our success handler)
+        await handleSubscriptionCreated(db, auth, resource);
+        break;
+
+      case 'BILLING.SUBSCRIPTION.ACTIVATED':
+        // Handle subscription activation
+        await handleSubscriptionActivated(db, resource);
+        break;
+
+      case 'BILLING.SUBSCRIPTION.RENEWED':
+        // Handle subscription renewal
+        await handleSubscriptionRenewed(db, resource);
+        break;
+
+      case 'BILLING.SUBSCRIPTION.CANCELLED':
+        // Handle subscription cancellation
+        await handleSubscriptionCancelled(db, resource);
+        break;
+
+      case 'BILLING.SUBSCRIPTION.SUSPENDED':
+        // Handle subscription suspension
+        await handleSubscriptionSuspended(db, resource);
+        break;
+
+      case 'PAYMENT.SALE.PENDING':
+      case 'PAYMENT.SALE.DENIED':
+      case 'PAYMENT.SALE.REFUNDED':
+        // Handle other payment events
+        console.log(`Payment event ${eventType} for subscription ${resource?.billing_agreement_id}`);
+        break;
+
+      default:
+        console.log(`Unhandled webhook event: ${eventType}`);
+    }
+
+    // Always respond with 200 to acknowledge receipt
+    res.status(200).json({ received: true });
+
+  } catch (err: any) {
+    console.error('PayPal webhook error:', err);
+    // Still return 200 to prevent PayPal from retrying
+    res.status(200).json({ error: err.message });
+  }
+}
+
+async function handlePaymentCompleted(db: any, resource: any) {
+  const subscriptionId = resource.billing_agreement_id;
+
+  if (!subscriptionId) {
+    console.log('No subscription ID in payment completed event');
+    return;
+  }
+
+  console.log(`Payment completed for subscription: ${subscriptionId}`);
+
+  // Update subscription status if needed
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Update subscription status and extend end date if it's a renewal
+    const subscriptionUpdate = {
+      ...userData.subscription,
+      status: 'active',
+      lastPaymentDate: new Date(),
+      lastUpdated: new Date()
+    };
+
+    await userDoc.ref.update({
+      subscription: subscriptionUpdate
+    });
+
+    console.log(`✅ Updated subscription status for user ${userDoc.id}`);
+  }
+}
+
+async function handleSubscriptionCreated(db: any, auth: any, resource: any) {
+  console.log(`Subscription created: ${resource.id}`);
+  // This is handled by our subscription-success API, but webhook provides backup
+}
+
+async function handleSubscriptionActivated(db: any, resource: any) {
+  const subscriptionId = resource.id;
+  console.log(`Subscription activated: ${subscriptionId}`);
+
+  // Find user by subscription ID and ensure they're marked as pro
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    await userDoc.ref.update({
+      userType: 'pro',
+      'subscription.status': 'active',
+      'subscription.lastUpdated': new Date()
+    });
+    console.log(`✅ Activated subscription for user ${userDoc.id}`);
+  }
+}
+
+async function handleSubscriptionRenewed(db: any, resource: any) {
+  const subscriptionId = resource.id;
+  console.log(`Subscription renewed: ${subscriptionId}`);
+
+  // Find user and extend their subscription
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Extend subscription by one month
+    const currentEndDate = userData.subscription?.endDate?.toDate() || new Date();
+    const newEndDate = new Date(currentEndDate);
+    newEndDate.setMonth(newEndDate.getMonth() + 1);
+
+    await userDoc.ref.update({
+      userType: 'pro',
+      'subscription.status': 'active',
+      'subscription.endDate': newEndDate,
+      'subscription.lastRenewalDate': new Date(),
+      'subscription.lastUpdated': new Date()
+    });
+
+    console.log(`✅ Renewed subscription for user ${userDoc.id} until ${newEndDate.toISOString()}`);
+  }
+}
+
+async function handleSubscriptionCancelled(db: any, resource: any) {
+  const subscriptionId = resource.id;
+  console.log(`Subscription cancelled: ${subscriptionId}`);
+
+  // Find user and update subscription status
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    await userDoc.ref.update({
+      userType: 'free', // Downgrade to free
+      'subscription.status': 'cancelled',
+      'subscription.cancelledAt': new Date(),
+      'subscription.lastUpdated': new Date()
+    });
+    console.log(`✅ Cancelled subscription for user ${userDoc.id}`);
+  }
+}
+
+async function handleSubscriptionSuspended(db: any, resource: any) {
+  const subscriptionId = resource.id;
+  console.log(`Subscription suspended: ${subscriptionId}`);
+
+  // Find user and update subscription status
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    await userDoc.ref.update({
+      userType: 'free', // Suspend access
+      'subscription.status': 'suspended',
+      'subscription.suspendedAt': new Date(),
+      'subscription.lastUpdated': new Date()
+    });
+    console.log(`✅ Suspended subscription for user ${userDoc.id}`);
+  }
+}
