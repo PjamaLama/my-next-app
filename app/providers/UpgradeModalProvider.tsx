@@ -9,7 +9,6 @@ interface UpgradeModalContextType {
   isOpen: boolean;
   openModal: (plan?: string) => void;
   closeModal: () => void;
-  isProcessing: boolean;
   selectedPlan: string | null;
 }
 
@@ -29,7 +28,6 @@ interface UpgradeModalProviderProps {
 
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { user, userType } = useFirebase();
   const router = useRouter();
@@ -67,14 +65,13 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({ chil
   };
 
   return (
-    <UpgradeModalContext.Provider value={{ isOpen, openModal, closeModal, isProcessing, selectedPlan }}>
+    <UpgradeModalContext.Provider value={{ isOpen, openModal, closeModal, selectedPlan }}>
       {children}
       <UpgradeModal
         isOpen={isOpen}
         onClose={closeModal}
         onUpgrade={handleUpgrade}
         userType={userType}
-        isProcessing={isProcessing}
         selectedPlan={selectedPlan}
       />
     </UpgradeModalContext.Provider>

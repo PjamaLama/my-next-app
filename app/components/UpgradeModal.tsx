@@ -2,45 +2,52 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Crown, Sparkles, CreditCard, CheckCircle } from 'lucide-react';
+import { X, Check, Crown, Sparkles, CheckCircle, ArrowRight } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
-import PricingPlans from './PricingPlans';
-import CustomCardPayment from './CustomCardPayment';
-
+import PayPalSubscription from './PayPalSubscription';
 
 interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgrade: () => void;
   userType: 'free' | 'pro';
-  isProcessing?: boolean;
   selectedPlan?: string | null;
 }
 
-export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isProcessing = false, selectedPlan }: UpgradeModalProps) {
+export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, selectedPlan }: UpgradeModalProps) {
   const { user } = useFirebase();
-  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
-  const [hasStartedPayment, setHasStartedPayment] = useState(false);
+  const [hasStartedPayment, setHasStartedPayment] = useState<boolean>(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  console.log('🎨 UpgradeModal: Rendering with props:', {
+  console.log('🎨 UpgradeModal:', new Date().toISOString(), {
     isOpen,
     userType,
     selectedPlan,
-    isProcessing
+    hasStartedPayment
   });
 
-  const handlePaymentSuccess = async (details: any) => {
-    console.log('Payment successful:', details);
+  const handlePaymentSuccess = async (subscriptionId: string) => {
+    console.log('PayPal subscription successful:', subscriptionId);
     setPaymentSuccess(true);
     setPaymentError(null);
 
-    // Close modal and show success message
-    setTimeout(() => {
-      onClose();
-      onUpgrade();
-    }, 2000);
+    // TODO: Here you would typically call your backend API to update the user's subscription
+    // For now, we'll just show success and close the modal
+    try {
+      // You could call an API here to save the subscription details
+      console.log('Subscription ID:', subscriptionId);
+
+      // Close modal and show success message
+      setTimeout(() => {
+        onClose();
+        onUpgrade();
+      }, 2000);
+    } catch (error) {
+      console.error('Error processing subscription:', error);
+      setPaymentError('Subscription created but failed to update account. Please contact support.');
+      setPaymentSuccess(false);
+    }
   };
 
   const handlePaymentError = (error: any) => {
@@ -49,19 +56,19 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isP
     setPaymentSuccess(false);
   };
 
-  // Auto-show payment buttons when modal opens for Pro
+  // Auto-show PayPal subscription when modal opens for Pro
   useEffect(() => {
     if (isOpen && selectedPlan === 'Pro' && user && userType !== 'pro') {
-      console.log('Showing payment options...');
-      setHasStartedPayment(true);
+      setHasStartedPayment(true); // Start with PayPal subscription
     }
   }, [isOpen, selectedPlan, user, userType]);
 
   // Clean up when modal closes
   useEffect(() => {
     if (!isOpen) {
-      setIsCreatingPayment(false);
       setHasStartedPayment(false);
+      setPaymentSuccess(false);
+      setPaymentError(null);
     }
   }, [isOpen]);
 
@@ -145,21 +152,27 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, isP
 
               {/* Payment Section */}
               {hasStartedPayment ? (
-                <CustomCardPayment
-                  amount="19.97"
-                  currency="USD"
-                  onSuccess={handlePaymentSuccess}
-                  onError={handlePaymentError}
-                  onCancel={() => setHasStartedPayment(false)}
-                />
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                >
+                  <PayPalSubscription
+                    clientId={process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || ""}
+                    amount="19.97"
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                    onCancel={() => setHasStartedPayment(false)}
+                  />
+                </motion.div>
               ) : (
                 <div className="space-y-3">
                   <button
                     onClick={() => setHasStartedPayment(true)}
                     className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-yellow-500/25"
                   >
-                    <CreditCard className="w-5 h-5" />
-                    Pay with Card - $19.97
+                    Upgrade to Pro - $19.97/month
+                    <ArrowRight className="w-4 h-4" />
                   </button>
 
                   <button

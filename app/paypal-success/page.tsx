@@ -44,8 +44,53 @@ function PayPalSuccessContent() {
         return;
       }
 
+      const paymentType = searchParams.get('type');
+      const subscriptionId = searchParams.get('subscription_id');
       const paypalToken = searchParams.get('paypal_token');
 
+      // Handle PayPal Subscription
+      if (paymentType === 'subscription' && subscriptionId) {
+        setMessage('Processing your PayPal subscription...');
+
+        if (!user) {
+          setStatus('error');
+          setMessage('User not authenticated. Please log in and try again.');
+          return;
+        }
+
+        try {
+          // Call our subscription success API
+          const token = await user.getIdToken();
+          const response = await fetch(`/api/paypal/subscription-success?subscription_id=${subscriptionId}`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (response.ok) {
+            setStatus('success');
+            setMessage('🎉 Welcome to SheetyAI Pro! Your PayPal subscription is now active.');
+            injectGoogleAdsConversion();
+
+            // Redirect to main page after showing success message
+            setTimeout(() => {
+              router.push('/');
+            }, 3000);
+          } else {
+            const error = await response.json();
+            setStatus('error');
+            setMessage(`Subscription setup failed: ${error.error || 'Please contact support.'}`);
+          }
+        } catch (error) {
+          console.error('Subscription processing error:', error);
+          setStatus('error');
+          setMessage('Subscription processing failed. Please try again or contact support.');
+        }
+        return;
+      }
+
+      // Handle regular PayPal payment
       if (!paypalToken) {
         setStatus('error');
         setMessage('Missing payment token. Please try again.');
