@@ -154,32 +154,27 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              (function() {
-                // Only load if Meta domains are accessible (not blocked)
-                var testScript = document.createElement('script');
-                testScript.src = 'https://connect.facebook.net/en_US/fbevents.js?' + Date.now();
-                testScript.onload = function() {
-                  // If script loads successfully, initialize pixel
-                  try {
-                    !function(f,b,e,v,n,t,s)
-                    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-                    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-                    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-                    n.queue=[];t=b.createElement(e);t.async=!0;
-                    t.src=v;s=b.getElementsByTagName(e)[0];
-                    s.parentNode.insertBefore(t,s)}(window, document,'script',
-                    'https://connect.facebook.net/en_US/fbevents.js');
-                    fbq('init', '1478214820196184');
-                    fbq('track', 'PageView');
-                  } catch(e) {
-                    // Silent fail - don't spam console
-                  }
+              // Initialize Facebook Pixel queue before loading script
+              !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+              n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+              n.push=n;n.loaded=!0;n.version='2.0';n.queue=[]}(window, document,'script',
+              'https://connect.facebook.net/en_US/fbevents.js');
+
+              // Queue pixel initialization and tracking
+              fbq('init', '1478214820196184');
+              fbq('track', 'PageView');
+
+              // Load the pixel script asynchronously
+              (function(d, s, id) {
+                var js, fjs = d.getElementsByTagName(s)[0];
+                if (d.getElementById(id)) return;
+                js = d.createElement(s); js.id = id;
+                js.src = 'https://connect.facebook.net/en_US/fbevents.js';
+                js.onerror = function() {
+                  // Silently handle blocking - don't log errors
                 };
-                testScript.onerror = function() {
-                  // If blocked, don't load pixel and don't log error
-                };
-                document.head.appendChild(testScript);
-              })();
+                fjs.parentNode.insertBefore(js, fjs);
+              }(document, 'script', 'facebook-jssdk'));
             `,
           }}
         />
