@@ -150,15 +150,16 @@ export default function RootLayout({
           }}
         />
 
-        {/* Meta Pixel Code - Only load if not blocked */}
+        {/* Meta Pixel Code - Essential for Facebook/Instagram/WhatsApp Ads */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
-                // Check if the script can be loaded (not blocked by client)
-                var testImg = new Image();
-                testImg.onload = function() {
-                  // If we can load images from FB, try loading the pixel
+                // Only load if Meta domains are accessible (not blocked)
+                var testScript = document.createElement('script');
+                testScript.src = 'https://connect.facebook.net/en_US/fbevents.js?' + Date.now();
+                testScript.onload = function() {
+                  // If script loads successfully, initialize pixel
                   try {
                     !function(f,b,e,v,n,t,s)
                     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -171,13 +172,13 @@ export default function RootLayout({
                     fbq('init', '1478214820196184');
                     fbq('track', 'PageView');
                   } catch(e) {
-                    // Silently fail - don't log anything
+                    // Silent fail - don't spam console
                   }
                 };
-                testImg.onerror = function() {
-                  // If FB is blocked, don't load pixel at all
+                testScript.onerror = function() {
+                  // If blocked, don't load pixel and don't log error
                 };
-                testImg.src = 'https://connect.facebook.net/en_US/fbevents.js?' + Date.now();
+                document.head.appendChild(testScript);
               })();
             `,
           }}
