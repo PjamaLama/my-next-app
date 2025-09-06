@@ -1,13 +1,59 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
-import { Trash2, Download, Eye, Shield } from 'lucide-react';
+import { Trash2, Download, Eye, Shield, BarChart3, Settings } from 'lucide-react';
+import {
+  getConsentStatus,
+  updateConsent,
+  resetConsent,
+  hasAnalyticsConsent,
+  isCCPAOptOut,
+  setCCPAOptOut
+} from '@/lib/analytics/consentManager';
 
 export default function PrivacyControls() {
   const { user } = useFirebase();
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Analytics consent state
+  const [analyticsConsent, setAnalyticsConsent] = useState(false);
+  const [ccpaOptOut, setCCPAOptOutState] = useState(false);
+  const [consentStatus, setConsentStatus] = useState<any>(null);
+
+  useEffect(() => {
+    // Load current consent status
+    const status = getConsentStatus();
+    setAnalyticsConsent(hasAnalyticsConsent());
+    setCCPAOptOutState(isCCPAOptOut());
+    setConsentStatus(status);
+  }, []);
+
+  const handleAnalyticsConsentChange = (enabled: boolean) => {
+    setAnalyticsConsent(enabled);
+    updateConsent({ analytics: enabled });
+
+    setMessage({
+      type: 'success',
+      text: `Analytics ${enabled ? 'enabled' : 'disabled'}. Changes will take effect on next page load.`
+    });
+
+    // Clear message after 3 seconds
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleCCPAOptOutChange = (optOut: boolean) => {
+    setCCPAOptOutState(optOut);
+    setCCPAOptOut(optOut);
+
+    setMessage({
+      type: 'success',
+      text: `Analytics ${optOut ? 'opted out' : 'opted in'} under CCPA.`
+    });
+
+    setTimeout(() => setMessage(null), 3000);
+  };
 
   if (!user) return null;
 
@@ -137,6 +183,55 @@ export default function PrivacyControls() {
                 <li>• Chat history and preferences</li>
                 <li>• Beta tester status</li>
               </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 pt-6">
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <BarChart3 className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-medium text-gray-900">Analytics & Tracking</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Control how we use analytics to improve our service. We use Google Analytics and Microsoft Clarity for usage insights.
+              </p>
+              <div className="mt-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-900">Analytics Tracking</label>
+                    <p className="text-xs text-gray-500">Help us improve by sharing anonymous usage data</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={analyticsConsent}
+                      onChange={(e) => handleAnalyticsConsentChange(e.target.checked)}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                {consentStatus?.inCCPARegion && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-sm font-medium text-gray-900">CCPA Opt-out</label>
+                      <p className="text-xs text-gray-500">Do not sell or share my personal information</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={ccpaOptOut}
+                        onChange={(e) => handleCCPAOptOutChange(e.target.checked)}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                    </label>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

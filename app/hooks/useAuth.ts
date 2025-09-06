@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { getFirebaseAuth } from '../providers/FirebaseProvider';
+import { trackConversion, trackUserInteraction } from '@/lib/analytics/safeAnalytics';
 
 interface UseAuthReturn {
   user: User | null;
@@ -80,9 +81,12 @@ export const useAuth = (): UseAuthReturn => {
         if (creationTime === lastSignInTime) {
           // This is likely a new account creation
           console.log('📊 Account Created');
+          trackConversion('account_created');
+          trackUserInteraction('authentication', 'signup', 'google');
         } else {
           // This is a returning user sign-in
           console.log('📊 User Sign In');
+          trackUserInteraction('authentication', 'signin', 'google');
         }
       }
     });
@@ -141,6 +145,9 @@ export const useAuth = (): UseAuthReturn => {
     } catch (error: any) {
       console.error('Firebase auth error:', error);
       const code = error?.code as string | undefined;
+
+      // Track authentication errors
+      trackUserInteraction('authentication', 'error', code || 'unknown');
 
       if (code === 'auth/unauthorized-domain') {
         setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");

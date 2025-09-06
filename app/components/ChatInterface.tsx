@@ -18,6 +18,7 @@ import { useMessageLimits } from '../hooks/useMessageLimits';
 import { useUpgradeModal } from '../providers/UpgradeModalProvider';
 import { useWhatsAppBannerVisibility } from '../hooks/useWhatsAppBannerVisibility';
 import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
+import { trackConversion, trackUserInteraction, trackFeatureUsage } from '@/lib/analytics/safeAnalytics';
 
 interface ChatInterfaceProps {
   className?: string;
@@ -562,6 +563,23 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       await addMessage({
         role: 'user',
         content: message,
+      });
+
+      // Track first message sent conversion
+      if (chatMessages.length === 0) {
+        // This is the first message in the session
+        trackConversion('first_message_sent');
+        trackUserInteraction('chat', 'first_message', 'sent');
+      } else {
+        // Track regular message interactions
+        trackUserInteraction('chat', 'message_sent', 'user');
+      }
+
+      // Track feature usage
+      trackFeatureUsage('chat', 'message_sent', {
+        hasFiles: uploadedFiles.length > 0,
+        messageLength: message.length,
+        fileCount: uploadedFiles.length
       });
 
       // Clear input only after message is successfully added

@@ -84,6 +84,9 @@ export default function PrivacyPolicyPage() {
         <li><strong>Google Firebase</strong> (Authentication, Firestore database)</li>
         <li><strong>Google Sheets API</strong> (read/write your selected spreadsheets)</li>
         <li><strong>Google Gemini via Genkit</strong> (AI model inference)</li>
+        <li><strong>Google Analytics 4</strong> (website analytics and user behavior insights)</li>
+        <li><strong>Microsoft Clarity</strong> (session recordings and heatmaps for UX improvement)</li>
+        <li><strong>Meta Pixel</strong> (Facebook advertising conversion tracking)</li>
         <li><strong>Hosting provider</strong> (e.g., Vercel or equivalent) for running the Service</li>
       </ul>
 
