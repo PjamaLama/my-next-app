@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { useFirebase } from '@/app/providers/FirebaseProvider';
 import WhatsAppLinkForm from '../components/WhatsAppLinkForm';
-import AdminWhatsAppBannerPanel from '../components/AdminWhatsAppBannerPanel';
 import MetaPixelTest from '../components/MetaPixelTest';
 
 
@@ -66,9 +65,6 @@ export default function AdminPage() {
       <div className="max-w-3xl mx-auto p-6">
         <h1 className="text-2xl font-bold mb-4">Admin</h1>
         <WhatsAppLinkForm />
-
-        {/* WhatsApp Banner Control */}
-        <AdminWhatsAppBannerPanel />
 
         {/* Meta Pixel Test Panel */}
         <div className="glass rounded-xl p-5 border border-white/10 mt-6">

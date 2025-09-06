@@ -10,7 +10,6 @@ import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 import ChatMessage from './ChatMessage';
 import VoiceRecorder from './VoiceRecorder';
-import WhatsAppComingSoonBanner from './WhatsAppComingSoonBanner';
 import WhatsAppStartChattingBanner from './WhatsAppStartChattingBanner';
 
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -979,7 +978,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
         
         {/* Always show WhatsApp banner for now */}
-        <WhatsAppComingSoonBanner />
+        <WhatsAppStartChattingBanner />
       </div>
       <EditRowModal
         isOpen={editModalOpen && editModalData !== null}

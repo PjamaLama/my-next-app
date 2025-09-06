@@ -76,7 +76,7 @@ export default function MessageCounter() {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <MessageSquare className={`w-4 h-4 ${isNearLimit ? 'text-yellow-400' : 'text-gray-400'}`} />
-          <span className="text-sm text-gray-300 font-medium">Messages</span>
+          <span className="text-sm text-gray-300 font-medium">Daily Messages</span>
         </div>
         <div className="text-xs text-gray-400">
           {dailyUsage}/{limit}
