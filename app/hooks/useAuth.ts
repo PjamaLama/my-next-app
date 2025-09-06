@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { getFirebaseAuth } from '../providers/FirebaseProvider';
 
 interface UseAuthReturn {
@@ -24,8 +24,47 @@ export const useAuth = (): UseAuthReturn => {
   // Get auth instance
   const auth = getFirebaseAuth();
 
+  // Debug logging for mobile authentication
+  useEffect(() => {
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+      const ua = navigator.userAgent || '';
+      const isIOS = /iP(ad|hone|od)/i.test(ua);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+      const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+      const isMobile = /Mobi|Android/i.test(ua);
+
+      console.log('🔍 Auth environment detection:', {
+        userAgent: ua.substring(0, 100) + '...',
+        isIOS,
+        isSafari,
+        isStandalonePWA,
+        isMobile,
+        willUseRedirect: (isIOS && isSafari) || isStandalonePWA
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (!auth) return;
+
+    // Handle redirect result on app initialization
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log('📊 Redirect authentication successful');
+          // Clear any pending redirect state
+          try { sessionStorage.removeItem('authRedirectPending'); } catch {}
+        }
+      } catch (error: any) {
+        console.error('Redirect result error:', error);
+        // Clear pending state even on error
+        try { sessionStorage.removeItem('authRedirectPending'); } catch {}
+        setAuthError('Authentication failed. Please try again.');
+      }
+    };
+
+    handleRedirectResult();
 
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
       // Auth state changed - user presence updated
@@ -64,20 +103,27 @@ export const useAuth = (): UseAuthReturn => {
       const isIOS = /iP(ad|hone|od)/i.test(ua);
       const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
       const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-      const isMobile = /Mobi|Android/i.test(ua);
-      return isIOS || isSafari || isStandalonePWA || isMobile;
+      // Only treat iOS Safari and standalone PWAs as popup unreliable
+      // Modern Android browsers handle popups well
+      return (isIOS && isSafari) || isStandalonePWA;
     })();
 
     if (!isPopupUnreliable) {
       try {
         await signInWithPopup(auth, provider);
-        try { sessionStorage.setItem('authRedirectPending', '0'); } catch {}
+        // Clear any pending redirect state
+        try { sessionStorage.removeItem('authRedirectPending'); } catch {}
         return;
       } catch (popupError: any) {
+        console.log('Popup failed, falling back to redirect:', popupError.message);
         // Fallback to redirect for any popup failures
       }
     }
-    try { sessionStorage.setItem('authRedirectPending', '1'); } catch {}
+
+    // Set redirect pending state
+    try { sessionStorage.setItem('authRedirectPending', '1'); } catch (e) {
+      console.warn('Failed to set sessionStorage:', e);
+    }
     await signInWithRedirect(auth, provider);
   }, [auth]);
 
@@ -95,14 +141,20 @@ export const useAuth = (): UseAuthReturn => {
     } catch (error: any) {
       console.error('Firebase auth error:', error);
       const code = error?.code as string | undefined;
+
       if (code === 'auth/unauthorized-domain') {
         setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
+      } else if (code === 'auth/operation-not-supported-in-this-environment') {
+        setAuthError('Authentication is not supported in this environment. Please try using a different browser or device.');
       } else if (
-        code === 'auth/operation-not-supported-in-this-environment' ||
         code === 'auth/popup-blocked' ||
         code === 'auth/popup-closed-by-user'
       ) {
         setAuthError('Popup sign-in was blocked. Please allow popups for this site or try again.');
+      } else if (code === 'auth/network-request-failed') {
+        setAuthError('Network error during authentication. Please check your internet connection and try again.');
+      } else if (code === 'auth/too-many-requests') {
+        setAuthError('Too many authentication attempts. Please wait a moment and try again.');
       } else {
         setAuthError(error?.message || 'Authentication failed. Please try again.');
       }
@@ -125,7 +177,24 @@ export const useAuth = (): UseAuthReturn => {
       await startGoogleSignIn(provider);
     } catch (error: any) {
       console.error('Firebase continue auth error:', error);
-      setAuthError(error?.message || 'Authentication failed. Please try again.');
+      const code = error?.code as string | undefined;
+
+      if (code === 'auth/unauthorized-domain') {
+        setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
+      } else if (code === 'auth/operation-not-supported-in-this-environment') {
+        setAuthError('Authentication is not supported in this environment. Please try using a different browser or device.');
+      } else if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user'
+      ) {
+        setAuthError('Popup sign-in was blocked. Please allow popups for this site or try again.');
+      } else if (code === 'auth/network-request-failed') {
+        setAuthError('Network error during authentication. Please check your internet connection and try again.');
+      } else if (code === 'auth/too-many-requests') {
+        setAuthError('Too many authentication attempts. Please wait a moment and try again.');
+      } else {
+        setAuthError(error?.message || 'Authentication failed. Please try again.');
+      }
     }
   }, [auth, startGoogleSignIn]);
 
