@@ -36,9 +36,19 @@ body {
 
 /* Improve touch targets for mobile */
 button, input, select, textarea, a {
-  /* Minimum touch target size */
-  min-height: 40px;
-  min-width: 40px;
+  /* Minimum touch target size - increased for better mobile UX */
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Enhanced mobile button styles */
+button {
+  /* Better touch feedback with scale animation */
+  transition: transform 0.1s ease, all 0.2s ease;
+}
+
+button:active {
+  transform: scale(0.95);
 }
 
 /* Better input handling on mobile */
@@ -88,6 +98,41 @@ select {
 @media (max-width: 640px) {
   input, textarea, select {
     font-size: 16px !important; /* Prevent zoom on iOS */
+  }
+
+  /* Better mobile spacing */
+  .mobile-padding {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Enhanced mobile touch targets */
+  .mobile-touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  /* Mobile-optimized button styles */
+  .mobile-button {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    min-height: 48px;
+    border-radius: 12px;
+  }
+
+  /* Mobile input improvements */
+  .mobile-input {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    min-height: 48px;
+    border-radius: 12px;
+  }
+
+  /* Better mobile modal sizing */
+  .mobile-modal {
+    margin: 0.5rem;
+    max-height: calc(100vh - 1rem);
+    border-radius: 16px;
   }
 }
 
@@ -286,6 +331,45 @@ button:active {
     padding-bottom: max(0px, env(safe-area-inset-bottom));
     padding-left: max(0px, env(safe-area-inset-left));
     padding-right: max(0px, env(safe-area-inset-right));
+  }
+}
+
+/* Mobile-specific scrolling improvements */
+@media (max-width: 640px) {
+  /* Better scrolling on mobile */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent horizontal scroll on mobile */
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  /* Better mobile scrolling for chat messages */
+  .chat-messages {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* Improved mobile form inputs */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-clip: padding-box;
+  }
+
+  /* Better mobile focus states */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5);
   }
 }
 

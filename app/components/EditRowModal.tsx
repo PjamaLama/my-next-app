@@ -68,23 +68,22 @@ export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activ
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div 
-        className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-w-2xl w-full flex flex-col"
-        style={{ maxHeight: 'calc(100vh - 2rem)' }}
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-w-2xl w-full flex flex-col max-h-[95vh] sm:max-h-[calc(100vh-2rem)]"
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700 flex-shrink-0">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-700 flex-shrink-0">
           <div>
-            <h2 className="text-xl font-semibold text-white">Edit Row Data</h2>
+            <h2 className="text-lg sm:text-xl font-semibold text-white">Edit Row Data</h2>
             {activeSheet && (
               <p className="text-sm text-gray-400 mt-1">Sheet: {activeSheet}</p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors text-2xl font-bold"
+            className="text-gray-400 hover:text-white transition-colors text-xl sm:text-2xl font-bold p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-gray-800 active:scale-95"
             title="Close (Esc)"
           >
             ✕
@@ -92,7 +91,7 @@ export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activ
         </div>
 
         {/* Content - scrollable area */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {/* Preview message if available */}
           {preview.message && (
             <div className="mb-6 p-4 bg-blue-900/20 border border-blue-700/30 rounded-lg">
@@ -114,7 +113,7 @@ export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activ
                       type="text"
                       value={String(row[cellIndex]?.value || '')}
                       onChange={(e) => handleInputChange(rowIndex, cellIndex, e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                      className="w-full px-4 py-3 min-h-[48px] bg-gray-800 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-base"
                       placeholder={`Enter ${header.toLowerCase()}`}
                       autoComplete="off"
                       spellCheck="false"
@@ -127,19 +126,19 @@ export default function EditRowModal({ isOpen, onClose, preview, onSubmit, activ
         </div>
 
         {/* Footer - always visible */}
-        <div className="flex justify-end gap-3 p-6 border-t border-gray-700 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row justify-end gap-3 p-4 sm:p-6 border-t border-gray-700 flex-shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-300 hover:text-white border border-gray-600 hover:border-gray-500 rounded-md transition-colors"
+            className="px-6 py-3 min-h-[48px] text-gray-300 hover:text-white border border-gray-600 hover:border-gray-500 rounded-md transition-colors active:scale-95 order-2 sm:order-1"
             title="Cancel (Esc)"
           >
-            Cancel (Esc)
+            Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors inline-flex items-center gap-2"
-            title="Save Changes (Enter)"
+            className="px-6 py-3 min-h-[48px] bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors inline-flex items-center justify-center gap-2 active:scale-95 order-1 sm:order-2"
+            title="Save Changes"
           >
             {isSaving ? (
               <>

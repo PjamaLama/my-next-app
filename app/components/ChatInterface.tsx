@@ -742,24 +742,24 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   return (
     <div className={`flex flex-col h-full ${className}`}>
       <WhatsAppLinkBanner />
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4">
         {chatMessages.length === 0 ? (
-          <div className="text-center text-white/60 py-12">
-            <div className="text-2xl mb-2">👋</div>
-            <h3 className="text-lg font-semibold mb-2">Welcome to SheetyAI!</h3>
-            <p className="text-sm">
+          <div className="text-center text-white/60 py-8 sm:py-12 px-4">
+            <div className="text-3xl mb-3">👋</div>
+            <h3 className="text-xl sm:text-lg font-semibold mb-3">Welcome to SheetyAI!</h3>
+            <p className="text-base sm:text-sm leading-relaxed">
               Talk to update your sheets! Use voice, type text, or upload files to process and update your Google Sheets.
             </p>
-            <div className="mt-4 text-xs text-white/40">
+            <div className="mt-4 text-sm text-white/40 max-w-md mx-auto">
               Try: "Add this data to my sales sheet" or "Upload this PDF and extract the information"
             </div>
             {onShowTutorial && (
-              <div className="mt-6">
+              <div className="mt-8">
                 <button
                   onClick={onShowTutorial}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm"
+                  className="inline-flex items-center gap-3 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-base font-medium min-h-[48px] active:scale-95"
                 >
-                  <BookOpen className="w-4 h-4" />
+                  <BookOpen className="w-5 h-5" />
                   Show Tutorial
                 </button>
               </div>
@@ -829,8 +829,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
       {/* Removed session loading states - loads instantly */}
 
-      <div className="border-t border-white/10 p-6">
-        <div className="mb-4">
+      <div className="border-t border-white/10 p-4 sm:p-6 pt-3 sm:pt-6">
+        {/* Mobile-optimized sheet selector */}
+        <div className="mb-3 sm:mb-4">
           <SheetChipSelector />
         </div>
         
@@ -838,7 +839,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         
         {uploadedFiles.length > 0 && (
           <div className="mb-4 space-y-2">
-            <div className="text-xs text-white/60 mb-2 flex items-center gap-2">
+            <div className="text-xs text-white/60 mb-3 flex items-center gap-2 px-1">
               <span>📎 Files ready to send ({uploadedFiles.length})</span>
               {isProcessingFiles && (
                 <div className="flex items-center gap-1">
@@ -847,23 +848,28 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                 </div>
               )}
             </div>
-            {uploadedFiles.map((file) => (
-              <div key={file.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg text-white/80 file-transition-in" data-file-id={file.id}>
-                <div className="flex items-center gap-2">
-                  <FileIcon className="w-4 h-4" />
-                  <span className="text-sm">{file.name}</span>
+            <div className="space-y-2">
+              {uploadedFiles.map((file) => (
+                <div key={file.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl text-white/80 file-transition-in" data-file-id={file.id}>
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <FileIcon className="w-5 h-5 flex-shrink-0 text-emerald-400" />
+                    <span className="text-sm truncate font-medium">{file.name}</span>
+                  </div>
+                  <button
+                    onClick={() => removeFile(file.id)}
+                    className="p-2 hover:bg-white/10 rounded-lg active:scale-95 min-h-[44px] min-w-[44px] flex items-center justify-center ml-2 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <button onClick={() => removeFile(file.id)} className="p-1 hover:bg-white/10 rounded">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
 
 
-        <form ref={formRef} onSubmit={handleSubmit} className="flex gap-3 items-center">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -873,6 +879,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             className="hidden"
             disabled={isSending}
           />
+
+          {/* Main input field */}
           <input
             type="text"
             value={inputValue}
@@ -882,103 +890,143 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                 ? "Daily limit reached. Upgrade to Pro for unlimited messages!"
                 : "Ask about your data, request analysis, or get insights..."
             }
-            className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-4 py-3 min-h-[52px] bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed text-base"
             disabled={isSending || (userType === 'free' && isLimitReached)}
           />
-          <VoiceRecorder
-            onTranscriptChange={handleTranscriptChange}
-            disabled={isSending || (userType === 'free' && isLimitReached)}
-            className="p-3 rounded-lg transition-colors bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isSending || (userType === 'free' && isLimitReached)}
-          >
-            <Paperclip className="w-5 h-5" />
-          </button>
-          <button
-            type={isSending ? "button" : "submit"}
-            onClick={
-              userType === 'free' && isLimitReached
-                ? () => openModal()
-                : isSending
-                  ? () => {
-                      if (isStopping) return; // Prevent rapid clicking
-                      console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
-                      setIsStopping(true);
-                      cancelChatGeneration();
-                      // Immediately reset sending states for better UX
-                      setIsSending(false);
-                      setIsProcessingFiles(false);
-                      // Restore files to upload area if they were being sent
-                      if (filesBeingSent.length > 0) {
-                        setUploadedFiles(prev => [...prev, ...filesBeingSent]);
-                        setFilesBeingSent([]);
-                      }
 
-                      // Clean up Firebase files if stop was clicked
-                      if (firebaseFileUrlsRef.current && firebaseFileUrlsRef.current.length > 0) {
-                        try {
-                          const storage = getStorage();
-                          for (const fileInfo of firebaseFileUrlsRef.current) {
-                            const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-                            if (fileName) {
-                              const storageRef = ref(storage, `temp-uploads/${fileName}`);
-                              deleteObject(storageRef).then(() => {
-                                console.log(`Cleaned up Firebase file after stop: ${fileName}`);
-                              }).catch((cleanupError) => {
-                                console.error('Failed to cleanup Firebase file after stop:', cleanupError);
-                              });
-                            }
-                          }
-                        } catch (cleanupError) {
-                          console.error('Failed to cleanup Firebase files after stop:', cleanupError);
+          {/* Compact WhatsApp-style button layout */}
+          <div className="flex items-center justify-end gap-1.5">
+            {/* Attachment buttons group - compact */}
+            <div className="flex items-center gap-1">
+              <VoiceRecorder
+                onTranscriptChange={handleTranscriptChange}
+                disabled={isSending || (userType === 'free' && isLimitReached)}
+                className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
+                disabled={isSending || (userType === 'free' && isLimitReached)}
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Send button - prominent floating action button */}
+            <button
+              type={isSending ? "button" : "submit"}
+              onClick={
+                userType === 'free' && isLimitReached
+                  ? () => openModal()
+                  : isSending
+                    ? () => {
+                        if (isStopping) return; // Prevent rapid clicking
+                        console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
+                        setIsStopping(true);
+                        cancelChatGeneration();
+                        // Immediately reset sending states for better UX
+                        setIsSending(false);
+                        setIsProcessingFiles(false);
+                        // Restore files to upload area if they were being sent
+                        if (filesBeingSent.length > 0) {
+                          setUploadedFiles(prev => [...prev, ...filesBeingSent]);
+                          setFilesBeingSent([]);
                         }
+
+                        // Clean up Firebase files if stop was clicked
+                        if (firebaseFileUrlsRef.current && firebaseFileUrlsRef.current.length > 0) {
+                          try {
+                            const storage = getStorage();
+                            for (const fileInfo of firebaseFileUrlsRef.current) {
+                              const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+                              if (fileName) {
+                                const storageRef = ref(storage, `temp-uploads/${fileName}`);
+                                deleteObject(storageRef).then(() => {
+                                  console.log(`Cleaned up Firebase file after stop: ${fileName}`);
+                                }).catch((cleanupError) => {
+                                  console.error('Failed to cleanup Firebase file after stop:', cleanupError);
+                                });
+                              }
+                            }
+                          } catch (cleanupError) {
+                            console.error('Failed to cleanup Firebase files after stop:', cleanupError);
+                          }
+                        }
+                        // Re-enable stop button after a brief delay
+                        setTimeout(() => setIsStopping(false), 500);
                       }
-                      // Re-enable stop button after a brief delay
-                      setTimeout(() => setIsStopping(false), 500);
-                    }
-                  : handleSubmit
-            }
-            disabled={
-              isSending
-                ? isStopping
-                : (userType === 'free' && isLimitReached)
-                  ? true
-                  : (!inputValue.trim() && uploadedFiles.length === 0)
-            }
-            aria-label={
-              userType === 'free' && isLimitReached
-                ? "Upgrade to Pro for unlimited messages"
-                : isSending
-                  ? "Stop chat generation"
-                  : "Send message"
-            }
-            className={`p-3 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-              isSending
-                ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105 focus:ring-red-500'
-                : userType === 'free' && isLimitReached
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500 cursor-pointer'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500'
-            } ${
-              (userType === 'free' && isLimitReached) || (!inputValue.trim() && uploadedFiles.length === 0)
-                ? 'opacity-50 cursor-not-allowed'
-                : 'hover:shadow-md cursor-pointer'
-            }`}
-          >
-            {isSending ? (
-              <Square className="h-5 w-5" /> // Stop icon
-            ) : (
-              <Send className="w-5 h-5" />
-            )}
-          </button>
+                    : handleSubmit
+              }
+              disabled={
+                isSending
+                  ? isStopping
+                  : (userType === 'free' && isLimitReached)
+                    ? true
+                    : (!inputValue.trim() && uploadedFiles.length === 0)
+              }
+              aria-label={
+                userType === 'free' && isLimitReached
+                  ? "Upgrade to Pro for unlimited messages"
+                  : isSending
+                    ? "Stop chat generation"
+                    : "Send message"
+              }
+              className={`w-11 h-11 rounded-full transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-lg hover:shadow-xl ml-1 ${
+                isSending
+                  ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
+                  : userType === 'free' && isLimitReached
+                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+                    : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+              } ${
+                (userType === 'free' && isLimitReached) || (!inputValue.trim() && uploadedFiles.length === 0)
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:scale-105 cursor-pointer active:scale-95'
+              }`}
+            >
+              {isSending ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </form>
 
-        
-        {/* Always show WhatsApp banner for now */}
-        <WhatsAppStartChattingBanner />
+
+        {/* WhatsApp banner with mobile spacing */}
+        <div className="mt-2 sm:mt-0">
+          {waId ? (
+            <WhatsAppStartChattingBanner />
+          ) : (
+            <div className="text-center text-xs text-gray-400 mt-3">
+              <div
+                className="bg-gradient-to-r from-blue-600/20 to-blue-700/20 border border-blue-500/30 rounded-md p-2 inline-block cursor-pointer hover:bg-blue-600/30 transition-colors"
+                onClick={() => window.location.href = '/whatsapp-setup'}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    window.location.href = '/whatsapp-setup';
+                  }
+                }}
+                aria-label="Link your WhatsApp number"
+              >
+                <div className="flex items-center gap-2 text-blue-300">
+                  <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                    <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <span className="text-sm font-medium">Link your WhatsApp number</span>
+                  <svg className="w-3 h-3 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <EditRowModal
         isOpen={editModalOpen && editModalData !== null}
