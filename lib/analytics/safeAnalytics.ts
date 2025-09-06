@@ -13,24 +13,18 @@ declare global {
 
 /**
  * Check if analytics should be enabled based on environment and consent
+ * Note: Analytics scripts are now loaded directly in layout.tsx
  */
 export const shouldEnableAnalytics = (): boolean => {
-  // Only enable in production
-  if (process.env.NEXT_PUBLIC_ENVIRONMENT !== 'production') return false;
-
-  // Check if analytics is explicitly enabled
-  if (process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== 'true') return false;
-
-  // Check consent (will be handled by consentManager)
+  // Analytics are now always enabled since scripts load directly
   return true;
 };
 
 /**
  * Initialize Google Analytics 4
+ * Note: GA script is now loaded directly in layout.tsx
  */
 export const initGoogleAnalytics = () => {
-  if (!shouldEnableAnalytics()) return;
-  if (!process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID) return;
   if (typeof window === 'undefined') return;
 
   // Prevent duplicate initialization
@@ -45,10 +39,9 @@ export const initGoogleAnalytics = () => {
       window.dataLayer?.push(arguments);
     };
 
-    // Initialize GA4
+    // Initialize GA4 with hardcoded ID (script loaded directly in layout.tsx)
     window.gtag('js', new Date());
-    window.gtag('config', process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID, {
-      debug_mode: process.env.NEXT_PUBLIC_GA_DEBUG === 'true',
+    window.gtag('config', 'G-KMKJ9N8BNS', {
       anonymize_ip: true,
       allow_google_signals: false,
       allow_ad_personalization_signals: false,
@@ -62,10 +55,9 @@ export const initGoogleAnalytics = () => {
 
 /**
  * Initialize Microsoft Clarity
+ * Note: Clarity script is now loaded directly in layout.tsx
  */
 export const initMicrosoftClarity = () => {
-  if (!shouldEnableAnalytics()) return;
-  if (!process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID) return;
   if (typeof window === 'undefined') return;
 
   // Prevent duplicate initialization
@@ -100,7 +92,7 @@ export const trackEvent = (
 
   try {
     // Google Analytics 4
-    if (window.gtag && process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID) {
+    if (window.gtag) {
       window.gtag('event', eventName, {
         ...parameters,
         custom_map: { dimension1: 'user_type' }
@@ -112,7 +104,7 @@ export const trackEvent = (
       window.clarity('event', eventName, parameters);
     }
 
-    // Debug logging
+    // Debug logging (can be enabled by setting NEXT_PUBLIC_GA_DEBUG=true)
     if (process.env.NEXT_PUBLIC_GA_DEBUG === 'true') {
       console.log('📊 Analytics Event:', eventName, parameters);
     }
@@ -129,8 +121,8 @@ export const trackPageView = (pagePath: string) => {
 
   try {
     // Google Analytics 4
-    if (window.gtag && process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID) {
-      window.gtag('config', process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID, {
+    if (window.gtag) {
+      window.gtag('config', 'G-KMKJ9N8BNS', {
         page_path: pagePath,
       });
     }
@@ -212,9 +204,9 @@ export const trackError = (
  */
 export const getAnalyticsStatus = () => {
   return {
-    googleAnalytics: !!(window.gtag && process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID),
-    microsoftClarity: !!(window.clarity && process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID),
+    googleAnalytics: !!window.gtag, // GA script loaded directly
+    microsoftClarity: !!window.clarity, // Clarity script loaded directly
     enabled: shouldEnableAnalytics(),
-    environment: process.env.NEXT_PUBLIC_ENVIRONMENT,
+    environment: process.env.NEXT_PUBLIC_ENVIRONMENT || 'production',
   };
 };
