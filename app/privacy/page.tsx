@@ -125,8 +125,7 @@ export default function PrivacyPolicyPage() {
 
       <h2 className="text-xl font-bold mt-8 mb-3">Contact</h2>
       <p className="mb-6">
-        Questions or requests? Contact us at <span className="font-semibold">[your contact email]</span> or use our {" "}
-        <Link className="text-yellow-300 underline" href="/feedback">Feedback</Link> page.
+        Questions or requests? Contact us at <span className="font-semibold">[your contact email]</span> or use our feedback system within the app.
       </p>
 
       <div className="mt-10 text-xs text-white/50">
