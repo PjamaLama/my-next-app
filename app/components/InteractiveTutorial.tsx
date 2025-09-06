@@ -7,28 +7,19 @@ import WhatsAppLinkForm from './WhatsAppLinkForm';
 
 const ServiceAccountInfoWrapper = () => {
   const { serviceAccountEmail, isLoading } = useServiceAccount();
-  const [timeoutReached, setTimeoutReached] = useState(false);
-  
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setTimeoutReached(true);
-    }, 3000); // 3 second timeout for service account loading
-    
-    return () => clearTimeout(timer);
-  }, []);
-  
-  if (isLoading && !timeoutReached) {
+
+  if (isLoading) {
     return <div className="text-white/70">Loading service account email...</div>;
   }
-  
-  if (timeoutReached || !serviceAccountEmail) {
+
+  if (!serviceAccountEmail) {
     return (
       <div className="text-red-400 text-sm">
         Service account not configured. Please check your setup.
       </div>
     );
   }
-  
+
   return <ServiceAccountInfo serviceAccountEmail={serviceAccountEmail} />;
 };
 
