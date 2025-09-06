@@ -150,24 +150,35 @@ export default function RootLayout({
           }}
         />
 
-        {/* Meta Pixel Code */}
+        {/* Meta Pixel Code - Only load if not blocked */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              try {
-                !function(f,b,e,v,n,t,s)
-                {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-                n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-                if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-                n.queue=[];t=b.createElement(e);t.async=!0;
-                t.src=v;s=b.getElementsByTagName(e)[0];
-                s.parentNode.insertBefore(t,s)}(window, document,'script',
-                'https://connect.facebook.net/en_US/fbevents.js');
-                fbq('init', '1478214820196184');
-                fbq('track', 'PageView');
-              } catch(e) {
-                console.warn('Meta Pixel failed to load:', e);
-              }
+              (function() {
+                // Check if the script can be loaded (not blocked by client)
+                var testImg = new Image();
+                testImg.onload = function() {
+                  // If we can load images from FB, try loading the pixel
+                  try {
+                    !function(f,b,e,v,n,t,s)
+                    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+                    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+                    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+                    n.queue=[];t=b.createElement(e);t.async=!0;
+                    t.src=v;s=b.getElementsByTagName(e)[0];
+                    s.parentNode.insertBefore(t,s)}(window, document,'script',
+                    'https://connect.facebook.net/en_US/fbevents.js');
+                    fbq('init', '1478214820196184');
+                    fbq('track', 'PageView');
+                  } catch(e) {
+                    // Silently fail - don't log anything
+                  }
+                };
+                testImg.onerror = function() {
+                  // If FB is blocked, don't load pixel at all
+                };
+                testImg.src = 'https://connect.facebook.net/en_US/fbevents.js?' + Date.now();
+              })();
             `,
           }}
         />
