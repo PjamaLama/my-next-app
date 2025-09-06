@@ -79,14 +79,25 @@ const NavBar: React.FC = () => {
           )}
 
           {NAV_LINKS.map(link => (
-            <Link
-              key={link.name}
-              href={link.href}
-              className="relative text-base font-medium text-white/90 hover:text-yellow-300 transition-colors duration-200 px-3 py-2 min-h-[44px] flex items-center"
-            >
-              <span className="relative z-10">{link.name}</span>
-              <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 hover:scale-x-100 transition-all duration-300 origin-left" />
-            </Link>
+            link.name === 'Feedback' ? (
+              <button
+                key={link.name}
+                onClick={() => window.dispatchEvent(new CustomEvent('open-feedback'))}
+                className="relative text-base font-medium text-white/90 hover:text-yellow-300 transition-colors duration-200 px-3 py-2 min-h-[44px] flex items-center"
+              >
+                <span className="relative z-10">{link.name}</span>
+                <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 hover:opacity-100 scale-x-0 hover:scale-x-100 transition-all duration-300 origin-left" />
+              </button>
+            ) : (
+              <Link
+                key={link.name}
+                href={link.href}
+                className="relative text-base font-medium text-white/90 hover:text-yellow-300 transition-colors duration-200 px-3 py-2 min-h-[44px] flex items-center"
+              >
+                <span className="relative z-10">{link.name}</span>
+                <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 hover:scale-x-100 transition-all duration-300 origin-left" />
+              </Link>
+            )
           ))}
           {/* Mobile hamburger to open sidebar */}
           <button
