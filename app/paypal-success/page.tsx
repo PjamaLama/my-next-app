@@ -4,7 +4,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
-import { trackPurchase } from '../../lib/metaPixel';
+import { trackCombinedPurchase, createUserData } from '../../lib/metaConversionsAPI';
 
 function PayPalSuccessContent() {
   const router = useRouter();
@@ -38,12 +38,25 @@ function PayPalSuccessContent() {
       console.log('Google Ads conversion tracking injected');
     };
 
-    // Track Meta Pixel Purchase event
-    const trackMetaPixelPurchase = () => {
-      trackPurchase({
-        value: 19.97,
-        currency: 'USD'
-      });
+    // Track Meta Pixel Purchase event with Conversions API
+    const trackMetaPixelPurchase = async () => {
+      if (user?.email) {
+        const userData = createUserData({
+          email: user.email,
+          clientUserAgent: navigator.userAgent,
+          clientIpAddress: undefined // Will be set server-side if available
+        });
+
+        await trackCombinedPurchase({
+          userData,
+          value: 19.97,
+          currency: 'USD',
+          contentName: 'SheetyAI Pro Subscription',
+          contentIds: ['sheetyai_pro_monthly'],
+          eventSourceUrl: window.location.href,
+          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_PURCHASE' : undefined
+        });
+      }
     };
 
     const handlePaymentSuccess = async () => {
@@ -81,7 +94,7 @@ function PayPalSuccessContent() {
             setStatus('success');
             setMessage('🎉 Welcome to SheetyAI Pro! Your PayPal subscription is now active.');
             injectGoogleAdsConversion();
-            trackMetaPixelPurchase();
+            await trackMetaPixelPurchase();
 
             // Redirect to main page after showing success message
             setTimeout(() => {
@@ -129,7 +142,7 @@ function PayPalSuccessContent() {
           setStatus('success');
           setMessage('🎉 Welcome to SheetyAI Pro! Your payment was successful.');
           injectGoogleAdsConversion();
-          trackMetaPixelPurchase();
+          await trackMetaPixelPurchase();
 
           // Redirect to main page after showing success message
           setTimeout(() => {

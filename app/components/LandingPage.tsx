@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Database, Feather, Zap, BarChart, PieChart, Table } from 'lucide-react';
 import { User } from 'firebase/auth';
 import SpaceBackground from './SpaceBackground';
+import { trackCombinedViewContent, trackLead, createUserData } from '../../lib/metaConversionsAPI';
 
 interface LandingPageProps {
   onSignIn: () => Promise<void>;
@@ -12,6 +13,26 @@ interface LandingPageProps {
 
 export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   const [message, setMessage] = useState('');
+
+  // Track ViewContent when landing page loads
+  useEffect(() => {
+    const trackViewContent = async () => {
+      const userData = createUserData({
+        clientUserAgent: navigator.userAgent
+      });
+
+      await trackCombinedViewContent({
+        userData,
+        contentName: 'Landing Page',
+        contentIds: ['landing_page'],
+        contentType: 'website',
+        eventSourceUrl: window.location.href,
+        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_LANDING_VIEW' : undefined
+      });
+    };
+
+    trackViewContent();
+  }, []);
 
   // Hardcoded video data
   const videoData = {
@@ -24,6 +45,22 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
     try {
       await onSignIn();
       setMessage('Welcome! You are now signed in.');
+
+      // Track Lead event after successful sign-in
+      const trackLeadEvent = async () => {
+        const userData = createUserData({
+          email: user?.email,
+          clientUserAgent: navigator.userAgent
+        });
+
+        await trackLead({
+          userData,
+          eventSourceUrl: window.location.href,
+          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_LEAD_SIGNIN' : undefined
+        });
+      };
+
+      trackLeadEvent();
     } catch (error) {
       console.error('Sign-in failed:', error);
       setMessage('Sign-in failed. Please try again.');

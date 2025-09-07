@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { trackAddToCart } from '../../lib/metaPixel';
+import { trackAddPaymentInfo, createUserData } from '../../lib/metaConversionsAPI';
+import { useFirebase } from '../providers/FirebaseProvider';
 
 interface PayPalSubscriptionProps {
   planId?: string;
@@ -27,6 +28,7 @@ export default function PayPalSubscription({
   onError,
   onCancel
 }: PayPalSubscriptionProps) {
+  const { user } = useFirebase();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,8 +49,21 @@ export default function PayPalSubscription({
       // Render PayPal button
       renderPayPalButton(planIdToUse);
 
-      // Track AddToCart when PayPal button is ready
-      trackAddToCart('sheetyai_pro_monthly');
+      // Track AddPaymentInfo when PayPal button is ready
+      const trackPaymentInfo = async () => {
+        const userData = createUserData({
+          email: user?.email,
+          clientUserAgent: navigator.userAgent
+        });
+
+        await trackAddPaymentInfo({
+          userData,
+          eventSourceUrl: window.location.href,
+          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_ADD_PAYMENT_INFO' : undefined
+        });
+      };
+
+      trackPaymentInfo();
 
       setIsLoading(false);
     } catch (err: any) {

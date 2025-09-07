@@ -1,9 +1,10 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Check, X, Zap, Crown, MessageSquare, Users, TrendingUp } from 'lucide-react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { useUpgradeModal } from '../providers/UpgradeModalProvider';
+import { trackCombinedViewContent, trackInitiateCheckout, createUserData } from '../../lib/metaConversionsAPI';
 
 interface PricingPlansProps {
   compact?: boolean;
@@ -13,6 +14,27 @@ interface PricingPlansProps {
 export default function PricingPlans({ compact = false, showTitle = true }: PricingPlansProps) {
   const { user, userType } = useFirebase();
   const { openModal } = useUpgradeModal();
+
+  // Track ViewContent when pricing page is viewed
+  useEffect(() => {
+    const trackViewContent = async () => {
+      const userData = createUserData({
+        email: user?.email,
+        clientUserAgent: navigator.userAgent
+      });
+
+      await trackCombinedViewContent({
+        userData,
+        contentName: 'Pricing Plans Page',
+        contentIds: ['pricing_plans'],
+        contentType: 'product',
+        eventSourceUrl: window.location.href,
+        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_VIEW_CONTENT' : undefined
+      });
+    };
+
+    trackViewContent();
+  }, [user?.email]);
 
   const plans = [
     {
@@ -53,8 +75,20 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
     },
   ];
 
-  const handleUpgradeClick = (planName: string) => {
+  const handleUpgradeClick = async (planName: string) => {
     if (planName === 'Pro' && userType !== 'pro') {
+      // Track InitiateCheckout event
+      const userData = createUserData({
+        email: user?.email,
+        clientUserAgent: navigator.userAgent
+      });
+
+      await trackInitiateCheckout({
+        userData,
+        eventSourceUrl: window.location.href,
+        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_INITIATE_CHECKOUT' : undefined
+      });
+
       openModal(planName);
     }
   };
