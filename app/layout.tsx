@@ -161,7 +161,7 @@ export default function RootLayout({
               'https://connect.facebook.net/en_US/fbevents.js');
 
               // Queue pixel initialization and tracking
-              fbq('init', '1478214820196184');
+              fbq('init', '1447640459621523');
               fbq('track', 'PageView');
 
               // Load the pixel script asynchronously
@@ -236,7 +236,7 @@ export default function RootLayout({
             height="1"
             width="1"
             style={{ display: 'none' }}
-            src="https://www.facebook.com/tr?id=1478214820196184&ev=PageView&noscript=1"
+            src="https://www.facebook.com/tr?id=1447640459621523&ev=PageView&noscript=1"
             alt=""
           />
         </noscript>

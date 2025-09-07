@@ -38,7 +38,7 @@ function loadEnvFile() {
 const envVars = loadEnvFile();
 
 // Test configuration
-const PIXEL_ID = envVars.NEXT_PUBLIC_META_PIXEL_ID || process.env.NEXT_PUBLIC_META_PIXEL_ID || '1478214820196184';
+const PIXEL_ID = envVars.NEXT_PUBLIC_META_PIXEL_ID || process.env.NEXT_PUBLIC_META_PIXEL_ID || '1447640459621523';
 const ACCESS_TOKEN = envVars.META_CONVERSIONS_API_TOKEN || process.env.META_CONVERSIONS_API_TOKEN || 'EAAQ1TZC3ZBYQEBPRTQzfZBej0lMsln9OlGm883afgmqdgyAro0JJupjrFzlCdf95zmSrQLCUeslxechA9YeaZAWOWiS6khfwtZBz3xOOEiCGyjGXGZBzP8XZBZAHx6qSfJTuCXmiyyOsrsZCZBOvF8EUHYvOMF9iCfcFgxpVdKVYkbSFGk8mOuXoKvcUKLdZCbK81zleQZDZD';
 const API_VERSION = 'v18.0';
 
