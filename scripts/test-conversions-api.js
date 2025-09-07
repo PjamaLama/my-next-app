@@ -74,7 +74,7 @@ const testPayload = {
       }
     }
   ],
-  test_event_code: 'TEST_SCRIPT_001'
+  test_event_code: 'TEST65930'
 };
 
 console.log('🚀 Testing Facebook Conversions API...');

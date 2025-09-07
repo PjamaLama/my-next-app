@@ -27,7 +27,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
         contentIds: ['landing_page'],
         contentType: 'website',
         eventSourceUrl: window.location.href,
-        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_LANDING_VIEW' : undefined
+        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
     };
 
@@ -49,14 +49,14 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
       // Track Lead event after successful sign-in
       const trackLeadEvent = async () => {
         const userData = createUserData({
-          email: user?.email,
+          email: user?.email || undefined,
           clientUserAgent: navigator.userAgent
         });
 
         await trackLead({
           userData,
           eventSourceUrl: window.location.href,
-          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_LEAD_SIGNIN' : undefined
+          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
         });
       };
 

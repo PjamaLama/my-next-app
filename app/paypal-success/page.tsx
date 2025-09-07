@@ -54,7 +54,7 @@ function PayPalSuccessContent() {
           contentName: 'SheetyAI Pro Subscription',
           contentIds: ['sheetyai_pro_monthly'],
           eventSourceUrl: window.location.href,
-          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_PURCHASE' : undefined
+          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
         });
       }
     };

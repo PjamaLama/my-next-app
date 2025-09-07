@@ -19,7 +19,7 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
   useEffect(() => {
     const trackViewContent = async () => {
       const userData = createUserData({
-        email: user?.email,
+        email: user?.email || undefined,
         clientUserAgent: navigator.userAgent
       });
 
@@ -29,7 +29,7 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
         contentIds: ['pricing_plans'],
         contentType: 'product',
         eventSourceUrl: window.location.href,
-        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_VIEW_CONTENT' : undefined
+        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
     };
 
@@ -79,14 +79,14 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
     if (planName === 'Pro' && userType !== 'pro') {
       // Track InitiateCheckout event
       const userData = createUserData({
-        email: user?.email,
+        email: user?.email || undefined,
         clientUserAgent: navigator.userAgent
       });
 
       await trackInitiateCheckout({
         userData,
         eventSourceUrl: window.location.href,
-        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_INITIATE_CHECKOUT' : undefined
+        testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
 
       openModal(planName);

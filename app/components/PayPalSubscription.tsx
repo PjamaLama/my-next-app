@@ -52,14 +52,14 @@ export default function PayPalSubscription({
       // Track AddPaymentInfo when PayPal button is ready
       const trackPaymentInfo = async () => {
         const userData = createUserData({
-          email: user?.email,
+          email: user?.email || undefined,
           clientUserAgent: navigator.userAgent
         });
 
         await trackAddPaymentInfo({
           userData,
           eventSourceUrl: window.location.href,
-          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST_ADD_PAYMENT_INFO' : undefined
+          testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
         });
       };
 
