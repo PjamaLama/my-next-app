@@ -125,13 +125,8 @@ export default function PrivacyPolicyPage() {
 
       <h2 className="text-xl font-bold mt-8 mb-3">Contact</h2>
       <p className="mb-6">
-        Questions or requests? Contact us at <span className="font-semibold">[your contact email]</span> or use our feedback system within the app.
+        Questions or requests? Contact us at <span className="font-semibold">admin@sheetyai.com</span> or use our feedback system within the app.
       </p>
-
-      <div className="mt-10 text-xs text-white/50">
-        Note: Replace placeholders like contact email with your actual details. This Policy reflects the app’s current behavior
-        (Firebase Auth/Firestore, Google Sheets, Gemini/Genkit, transient uploads) as implemented in code.
-      </div>
     </main>
   );
 }

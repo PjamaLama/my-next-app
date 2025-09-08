@@ -76,7 +76,7 @@ export default function TermsOfServicePage() {
       <p className="mb-6">We may update these Terms. We will post the updated version with a new “Last updated” date.</p>
 
       <h2 className="text-xl font-bold mt-8 mb-3">12. Contact</h2>
-      <p className="mb-6">Questions? Contact us at <span className="font-semibold">[your contact email]</span>.</p>
+      <p className="mb-6">Questions? Contact us at <span className="font-semibold">admin@sheetyai.com</span>.</p>
     </main>
   );
 }
