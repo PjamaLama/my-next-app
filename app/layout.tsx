@@ -231,12 +231,38 @@ export default function RootLayout({
           }}
         />
 
+        {/* TikTok Pixel */}
+        <Script
+          id="tiktok-pixel"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                !function (w, d, t) {
+                  w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i=ttq._i||[],n=0;n<e.length;n++)if(e[n][0]===t)return e[n];return e[e.length]=[t,new ttq],e[e.length-1]},ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||[],ttq._i.push([e,n]),n=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;o.onload=o.onreadystatechange=function(){var e=this.readyState;if(e&&!/loaded|complete/.test(e))return;o.onload=o.onreadystatechange=null,ttq.instance(e).ready()},document.getElementsByTagName("head")[0].appendChild(o)},ttq._t=ttq._t||{};ttq.ready=function(e){ttq._t[e]=ttq._t[e]||[],ttq._t[e].push(function(){ttq.instance(e).ready()})};ttq.call=function(){var t=Array.prototype.slice.call(arguments),e=t.shift();ttq._t[e]=ttq._t[e]||[],ttq._t[e].push(function(){ttq[e].apply(ttq,[e].concat(t))})};
+                  ttq.load('D2VDTKRC77U649U8UH9G');
+                  ttq.page();
+                }(window, document, 'ttq');
+              } catch(e) {
+                console.warn('TikTok Pixel failed to load:', e);
+              }
+            `,
+          }}
+        />
+
         <noscript>
           <img
             height="1"
             width="1"
             style={{ display: 'none' }}
             src="https://www.facebook.com/tr?id=1447640459621523&ev=PageView&noscript=1"
+            alt=""
+          />
+          <img
+            height="1"
+            width="1"
+            style={{ display: 'none' }}
+            src="https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=D2VDTKRC77U649U8UH9G&lib=ttq"
             alt=""
           />
         </noscript>
