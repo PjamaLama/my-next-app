@@ -111,7 +111,7 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                   <Crown className="w-6 h-6 text-white" />
                 </div>
                 <h2 className="text-xl font-bold text-white mb-1">Upgrade to Pro</h2>
-                <p className="text-gray-400 text-sm">Unlock unlimited AI power</p>
+                <p className="text-gray-400 text-sm">Unlock unlimited data conversions</p>
               </div>
 
               {/* Pro Benefits */}
@@ -123,11 +123,15 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2 text-gray-300">
                     <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Unlimited AI conversations daily</span>
+                    <span>Unlimited data conversions daily</span>
                   </div>
                   <div className="flex items-center gap-2 text-gray-300">
                     <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Advanced AI models & features</span>
+                    <span>WhatsApp & in-app chat integration</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-300">
+                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                    <span>All input types: text, voice, files, images</span>
                   </div>
                   <div className="flex items-center gap-2 text-gray-300">
                     <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
@@ -135,15 +139,11 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                   </div>
                   <div className="flex items-center gap-2 text-gray-300">
                     <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Higher file upload limits</span>
+                    <span>Advanced AI processing & templates</span>
                   </div>
                   <div className="flex items-center gap-2 text-gray-300">
                     <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Custom integrations available</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-300">
-                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Premium analytics dashboard</span>
+                    <span>Premium analytics & bulk processing</span>
                   </div>
                 </div>
               </div>

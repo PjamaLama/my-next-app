@@ -111,13 +111,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Structured data for SEO
+  // Structured data for SEO - Generate once to ensure consistency
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Sheety AI",
     "description": "AI-powered voice-to-spreadsheet reporting tool that converts speech to structured data in Google Sheets effortlessly",
-    "url": process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+    "url": siteUrl,
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Web Browser",
     "offers": {
@@ -132,7 +133,7 @@ export default function RootLayout({
       "AI-powered data entry",
       "Real-time updates"
     ],
-    "screenshot": `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/icon-512x512.png`,
+    "screenshot": `${siteUrl}/icon-512x512.png`,
     "author": {
       "@type": "Organization",
       "name": "Sheety AI Team"
@@ -143,7 +144,8 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <head>
         <meta name="facebook-domain-verification" content="ej7xnzg04hdwpuagfpyu10c32wmlgj" />
-        <script
+        <Script
+          id="structured-data"
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData),
@@ -151,37 +153,29 @@ export default function RootLayout({
         />
 
         {/* Meta Pixel Code - Essential for Facebook/Instagram/WhatsApp Ads */}
-        <script
+        <Script
+          id="facebook-pixel"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              // Initialize Facebook Pixel queue before loading script
               !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
               n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
               n.push=n;n.loaded=!0;n.version='2.0';n.queue=[]}(window, document,'script',
               'https://connect.facebook.net/en_US/fbevents.js');
-
-              // Queue pixel initialization and tracking
               fbq('init', '1447640459621523');
               fbq('track', 'PageView');
-
-              // Load the pixel script asynchronously
-              (function(d, s, id) {
-                var js, fjs = d.getElementsByTagName(s)[0];
-                if (d.getElementById(id)) return;
-                js = d.createElement(s); js.id = id;
-                js.src = 'https://connect.facebook.net/en_US/fbevents.js';
-                js.onerror = function() {
-                  // Silently handle blocking - don't log errors
-                };
-                fjs.parentNode.insertBefore(js, fjs);
-              }(document, 'script', 'facebook-jssdk'));
             `,
           }}
         />
 
         {/* Google Ads tracking */}
-        <script async src="https://www.googletagmanager.com/gtag/js?id=AW-17507562116"></script>
-        <script
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=AW-17507562116"
+          strategy="afterInteractive"
+        />
+        <Script
+          id="google-ads"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               try {
@@ -196,9 +190,14 @@ export default function RootLayout({
           }}
         />
 
-        {/* Google tag (gtag.js) */}
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-4PSKB5BJY1"></script>
-        <script
+        {/* Google Analytics */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-4PSKB5BJY1"
+          strategy="afterInteractive"
+        />
+        <Script
+          id="google-analytics"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               try {
@@ -214,8 +213,9 @@ export default function RootLayout({
         />
 
         {/* Microsoft Clarity */}
-        <script
-          type="text/javascript"
+        <Script
+          id="microsoft-clarity"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               try {
