@@ -14,28 +14,19 @@ function PayPalSuccessContent() {
   const [message, setMessage] = useState('Processing your payment...');
 
   useEffect(() => {
-    // Inject Google Ads conversion tracking script
-    const injectGoogleAdsConversion = () => {
-      // Remove any existing conversion scripts to prevent duplicates
-      const existingScript = document.querySelector('script[data-gtag-conversion]');
-      if (existingScript) {
-        existingScript.remove();
-      }
-
-      // Create and inject the conversion script
-      const script = document.createElement('script');
-      script.setAttribute('data-gtag-conversion', 'true');
-      script.innerHTML = `
-        gtag('event', 'conversion', {
+    // Track Google Ads conversion using existing gtag function
+    const trackGoogleAdsConversion = () => {
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('event', 'conversion', {
           'send_to': 'AW-17507562116/fDpoCP3expMbEITloJxB',
           'value': 19.97,
           'currency': 'USD',
-          'transaction_id': '${Date.now()}'
+          'transaction_id': Date.now().toString()
         });
-      `;
-      document.head.appendChild(script);
-
-      console.log('Google Ads conversion tracking injected');
+        console.log('Google Ads conversion tracked via gtag');
+      } else {
+        console.warn('Google Ads conversion tracking failed - gtag not available');
+      }
     };
 
     // Track Meta Pixel Purchase event with Conversions API
@@ -93,7 +84,7 @@ function PayPalSuccessContent() {
           if (response.ok) {
             setStatus('success');
             setMessage('🎉 Welcome to SheetyAI Pro! Your PayPal subscription is now active.');
-            injectGoogleAdsConversion();
+            trackGoogleAdsConversion();
             await trackMetaPixelPurchase();
 
             // Redirect to main page after showing success message

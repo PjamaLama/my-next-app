@@ -78,6 +78,12 @@ export default function PayPalSubscription({
 
   const loadPayPalSDK = (): Promise<void> => {
     return new Promise((resolve, reject) => {
+      // Check if PayPal SDK is already loaded
+      if (window.paypal) {
+        resolve();
+        return;
+      }
+
       // Use sandbox in development if sandbox credentials are available
       const hasSandboxCredentials = process.env.NEXT_PUBLIC_PAYPAL_SANDBOX_CLIENT_ID;
       const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
@@ -92,7 +98,9 @@ export default function PayPalSubscription({
       script.async = true;
       script.onload = () => resolve();
       script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
-      document.body.appendChild(script);
+
+      // Use head instead of body to avoid hydration issues
+      document.head.appendChild(script);
     });
   };
 

@@ -22,34 +22,16 @@ export const shouldEnableAnalytics = (): boolean => {
 
 /**
  * Initialize Google Analytics 4
- * Note: GA script is now loaded directly in layout.tsx
+ * Note: GA script is now loaded directly in layout.tsx, so we only need to check if it's loaded
  */
 export const initGoogleAnalytics = () => {
   if (typeof window === 'undefined') return;
 
-  // Prevent duplicate initialization
-  if (window.gtag) return;
-
-  try {
-    // Initialize dataLayer
-    window.dataLayer = window.dataLayer || [];
-
-    // Define gtag function
-    window.gtag = function() {
-      window.dataLayer?.push(arguments);
-    };
-
-    // Initialize GA4 with hardcoded ID (script loaded directly in layout.tsx)
-    window.gtag('js', new Date());
-    window.gtag('config', 'G-KMKJ9N8BNS', {
-      anonymize_ip: true,
-      allow_google_signals: false,
-      allow_ad_personalization_signals: false,
-    });
-
-    console.log('✅ Google Analytics 4 initialized safely');
-  } catch (error) {
-    console.warn('⚠️ Failed to initialize Google Analytics:', error);
+  // Just check if gtag is available (loaded by layout.tsx)
+  if (window.gtag) {
+    console.log('✅ Google Analytics 4 script loaded from layout.tsx');
+  } else {
+    console.warn('⚠️ Google Analytics script not found - may not be loaded yet');
   }
 };
 
@@ -122,7 +104,7 @@ export const trackPageView = (pagePath: string) => {
   try {
     // Google Analytics 4
     if (window.gtag) {
-      window.gtag('config', 'G-KMKJ9N8BNS', {
+      window.gtag('config', 'G-4PSKB5BJY1', {
         page_path: pagePath,
       });
     }
