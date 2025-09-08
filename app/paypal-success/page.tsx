@@ -132,7 +132,7 @@ function PayPalSuccessContent() {
           const data = await response.json();
           setStatus('success');
           setMessage('🎉 Welcome to SheetyAI Pro! Your payment was successful.');
-          injectGoogleAdsConversion();
+          trackGoogleAdsConversion();
           await trackMetaPixelPurchase();
 
           // Redirect to main page after showing success message

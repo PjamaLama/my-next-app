@@ -1031,3 +1031,52 @@ html.theme-dark {
 .animate-shimmer {
   animation: shimmer 2s ease-in-out infinite;
 }
+
+/* More subtle shimmer for delicate attention-grabbing */
+@keyframes shimmer-subtle {
+  0% {
+    transform: translateX(-100%) skewX(-8deg);
+  }
+  100% {
+    transform: translateX(200%) skewX(-8deg);
+  }
+}
+
+.animate-shimmer-subtle {
+  animation: shimmer-subtle 3s ease-in-out infinite;
+}
+
+/* Enhanced shimmer for landing page demo section */
+@keyframes shimmer-landing {
+  0% {
+    transform: translateX(-100%) skewX(-12deg);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(200%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+.animate-shimmer-landing {
+  animation: shimmer-landing 8s ease-in-out infinite;
+}
+
+/* Slow pulse animation for attention-grabbing elements */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.005);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 4s ease-in-out infinite;
+}
