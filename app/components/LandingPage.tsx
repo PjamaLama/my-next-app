@@ -8,6 +8,8 @@ import { trackCombinedViewContent, trackLead, createUserData } from '../../lib/m
 import { DemoInputManager } from '../../lib/demoInputManager';
 import VoiceRecorder from './VoiceRecorder';
 import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
+import { handleHashNavigation, setupHashNavigation, setupScrollBasedHashUpdate } from '../../lib/utils/smoothScroll';
+import SiteLinks, { GoogleAdsSiteLinks } from './SiteLinks';
 
 interface LandingPageProps {
   onSignIn: () => Promise<void>;
@@ -95,6 +97,24 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
     };
 
     trackViewContent();
+  }, []);
+
+  // Set up smooth scrolling for site links
+  useEffect(() => {
+    // Handle initial hash navigation on page load
+    handleHashNavigation();
+
+    // Set up hash change listener for browser navigation
+    setupHashNavigation();
+
+    // Set up automatic hash updates when scrolling
+    setupScrollBasedHashUpdate();
+
+    // Cleanup on unmount
+    return () => {
+      window.removeEventListener('hashchange', () => {});
+      window.removeEventListener('scroll', () => {});
+    };
   }, []);
 
 
@@ -615,6 +635,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
             {/* Interactive Demo Input */}
             <motion.div
+              id="try-demo"
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ duration: 0.3, delay: 0.15 }}
@@ -875,8 +896,22 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             )}
           </motion.div>
 
+          {/* Site Links for Google Ads */}
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.3, delay: 0.25 }}
+            className="mt-12"
+          >
+            <SiteLinks />
+          </motion.div>
+
+          {/* Google Ads Site Links (hidden for structured data) */}
+          <GoogleAdsSiteLinks />
+
           {/* Multi-Input Types Showcase */}
           <motion.div
+            id="input-types"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
@@ -922,6 +957,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
           {/* Main Features Grid */}
           <motion.div
+            id="features"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
@@ -978,6 +1014,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
           {/* Demo Video Section - Social Proof */}
           <motion.div
+            id="demo"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
@@ -1005,6 +1042,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
           {/* Pricing Tiers Section */}
           <motion.div
+            id="pricing"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
@@ -1083,6 +1121,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
           </motion.div>
 
           <motion.div
+            id="process"
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.1 }}
