@@ -67,7 +67,7 @@ export const trackTikTokEvent = (eventName: string, parameters?: TikTokEventData
       }
     } catch (error) {
       console.warn('❌ TikTok tracking error:', error);
-      console.warn('❌ Error details:', error.message);
+      console.warn('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
     }
   } else {
     console.warn('❌ TikTok pixel not loaded - Check pixel base code installation');
