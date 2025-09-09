@@ -9,6 +9,11 @@ export const config = {
 };
 
 // 🚀 UNIFIED FILE PROCESSOR
+// Enhanced for better Gemini Vision analysis and robust error handling
+// - More comprehensive prompts for image analysis
+// - Fallback data when Gemini returns empty results
+// - Better error handling with graceful degradation
+// - Improved logging for debugging
 interface UnifiedFileProcessor {
   processFile(file: any, sheetContext: string): Promise<any>;
   extractText(file: any): Promise<string>;
@@ -152,37 +157,84 @@ class GeminiFileProcessor implements UnifiedFileProcessor {
   }
 
   createStructuredPrompt(fileType: string, extractedText: string, sheetContext: string): string {
-    const basePrompt = `Extract structured data from this ${fileType} content. Output as a valid JSON array of objects with keys like date, vendor, amount, category, details. Infer categories (e.g., Food, Fuel, Accommodation). Normalize dates to YYYY-MM-DD and amounts to numbers. Do not include any text outside of the JSON response.
+    // Enhanced base prompt for better extraction
+    const basePrompt = `Analyze this ${fileType} and extract any structured data you can find. Be comprehensive and look for:
 
-Consider the following existing sheet data for context when extracting information. Prioritize extracting data that aligns with these structures:
+1. **Financial Data**: amounts, prices, totals, costs, payments
+2. **Dates**: any dates in various formats (normalize to YYYY-MM-DD)
+3. **Names/Entities**: people, companies, vendors, organizations
+4. **Categories**: infer logical categories (Food, Travel, Utilities, etc.)
+5. **Numbers**: quantities, measurements, IDs, codes
+6. **Addresses**: locations, addresses, contact information
+7. **Text Content**: important text, labels, descriptions
+
+Output as a valid JSON array of objects. Each object should have relevant keys based on what you find.
+If you find multiple different types of data, create separate objects for each logical group.
+If no structured data is found, return an empty array [].
+
+Example formats:
+- [{"type": "receipt", "vendor": "Store Name", "amount": 25.99, "date": "2024-01-15"}]
+- [{"type": "contact", "name": "John Doe", "phone": "555-0123"}]
+- [{"type": "measurement", "width": 10, "height": 20, "unit": "inches"}]
+
+Context from existing sheet data:
 ${sheetContext}
 
 Content: ${extractedText}`;
 
-    // Customize prompt based on file type
+    // More flexible image prompt
     if (fileType.startsWith('image/')) {
-      return `Analyze this image and extract structured data. Look for:
-- Receipts: date, vendor, total amount, items, tax
-- Invoices: invoice number, date, vendor, amounts, line items
-- Forms: form fields, dates, names, amounts
-- Any other structured information
+      return `You are an expert at analyzing images and extracting structured information. Look at this image carefully and extract any meaningful data you can find.
+
+Focus on:
+• Text content and labels
+• Numbers and measurements
+• Names and identifiers
+• Dates and times
+• Financial information
+• Contact details
+• Any structured or tabular data
+• Charts, graphs, or visual data
+• Forms, receipts, invoices, documents
+• Screenshots, interfaces, or displays
+
+Be creative but accurate - if you see something that could be structured data, extract it.
+Return the data as a JSON array of objects with appropriate keys and values.
 
 ${basePrompt}`;
     }
-    
+
     return basePrompt;
   }
 
   async sendToGemini(file: any, prompt: string, extractedText: string): Promise<any> {
     try {
       let result;
-      
+
       if (file.mimeType.startsWith('image/') && file.firebaseUrl) {
         // Use Gemini Vision API with Firebase URL
         console.log(`🖼️ [UNIFIED PROCESSOR] Using Gemini Vision with Firebase URL for ${file.name}`);
-        
-        // Gemini can handle URLs directly for images
-        result = await this.model.generateContent([prompt, file.firebaseUrl]);
+        console.log(`🔗 [VISION] Firebase URL: ${file.firebaseUrl}`);
+
+        // Download the image from Firebase and send as base64 to Gemini
+        console.log(`📥 [VISION] Downloading image from Firebase for Gemini processing...`);
+        const imageResponse = await fetch(file.firebaseUrl);
+        if (!imageResponse.ok) {
+          throw new Error(`Failed to download image: ${imageResponse.statusText}`);
+        }
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+
+        // Send to Gemini with base64 data
+        result = await this.model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              mimeType: file.mimeType,
+              data: imageBase64
+            }
+          }
+        ]);
       } else {
         // Use Gemini Text API for text-based files
         console.log(`📝 [UNIFIED PROCESSOR] Using Gemini Text for ${file.name}`);
@@ -191,23 +243,36 @@ ${basePrompt}`;
 
       const response = result.response;
       const text = response.text();
-      
+
       // 🚀 ENHANCED LOGGING: Log the AI reasoning process
       console.log('🚀 [AI REASONING] Unified Gemini Processing:', {
         fileName: file.name,
         mimeType: file.mimeType,
-        prompt: prompt,
+        usingVision: file.mimeType.startsWith('image/') && file.firebaseUrl,
+        promptLength: prompt.length,
         responseLength: text.length,
-        rawResponse: text,
+        rawResponse: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
         hasJson: text.includes('{') && text.includes('}'),
         timestamp: new Date().toISOString()
       });
 
       return this.parseAIResponse(text);
-      
+
     } catch (error) {
       console.error(`❌ [UNIFIED PROCESSOR] Gemini API call failed for ${file.name}:`, error);
-      throw error;
+      // Return a basic fallback response instead of throwing
+      console.log(`⚠️ [FALLBACK] Gemini failed, using fallback data for ${file.name}`);
+      return {
+        success: false,
+        error: `Gemini processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        fallbackData: [{
+          type: 'processing_error',
+          fileName: file.name,
+          mimeType: file.mimeType,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          processedAt: new Date().toISOString()
+        }]
+      };
     }
   }
 
@@ -368,11 +433,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             // Still process with Gemini to get structured data
             const result = await processor.processFile(fileContent, sheetContextString);
-            
+
             if (result.success) {
               fileContent.extractedData.geminiStructuredData = result.structuredData;
               fileContent.extractedData.geminiProcessed = true;
             } else {
+              // Handle PDF processing errors with fallback data
+              console.error(`❌ [PDF PROCESSOR] Failed to process PDF ${fileContent.name}:`, result.error);
+              if (result.fallbackData) {
+                fileContent.extractedData.geminiStructuredData = result.fallbackData;
+              } else {
+                fileContent.extractedData.geminiStructuredData = [{
+                  type: 'pdf_processing_error',
+                  fileName: fileContent.name,
+                  mimeType: fileContent.mimeType,
+                  error: result.error,
+                  processedAt: new Date().toISOString()
+                }];
+              }
               fileContent.extractedData.geminiError = result.error;
               fileContent.extractedData.geminiProcessed = false;
             }
@@ -380,24 +458,78 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
           
           const result = await processor.processFile(fileContent, sheetContextString);
-          
+
           if (result.success) {
-            // Update the file content with unified processing results
-            fileContent.extractedData.geminiStructuredData = result.structuredData;
+            // Handle empty structured data gracefully
+            const structuredData = result.structuredData || [];
+
+            // If we got empty structured data but have text content, create basic metadata
+            if (Array.isArray(structuredData) && structuredData.length === 0 && result.textLength > 0) {
+              // Create a basic fallback object with extracted information
+              const fallbackData = [{
+                type: fileContent.mimeType.startsWith('image/') ? 'image_analysis' : 'document_analysis',
+                fileName: fileContent.name,
+                mimeType: fileContent.mimeType,
+                extractedTextLength: result.textLength,
+                hasContent: true,
+                analysisTimestamp: new Date().toISOString(),
+                source: 'gemini_fallback'
+              }];
+              console.log(`⚠️ [FALLBACK] Gemini returned empty data, using fallback for ${fileContent.name}:`, fallbackData);
+              fileContent.extractedData.geminiStructuredData = fallbackData;
+            } else if (Array.isArray(structuredData) && structuredData.length > 0) {
+              console.log(`✅ [SUCCESS] Gemini extracted real data for ${fileContent.name}:`, structuredData);
+              fileContent.extractedData.geminiStructuredData = structuredData;
+            } else {
+              // Handle case where structuredData is not an array or is null
+              const basicData = [{
+                type: 'basic_analysis',
+                fileName: fileContent.name,
+                mimeType: fileContent.mimeType,
+                extractedTextLength: result.textLength || 0,
+                processedAt: new Date().toISOString(),
+                source: 'basic_fallback'
+              }];
+              console.log(`⚠️ [FALLBACK] Using basic fallback for ${fileContent.name}:`, basicData);
+              fileContent.extractedData.geminiStructuredData = basicData;
+            }
+
             fileContent.extractedData.geminiProcessed = true;
             fileContent.extractedData.extractedText = result.extractedText;
             fileContent.extractedData.textLength = result.textLength;
             fileContent.extractedData.hasTextContent = result.textLength > 0;
-            
+
             console.log(`✅ [UNIFIED PROCESSOR] Successfully processed ${fileContent.name}:`, {
-              structuredDataType: Array.isArray(result.structuredData) ? 'array' : typeof result.structuredData,
-              structuredDataLength: Array.isArray(result.structuredData) ? result.structuredData.length : 'N/A',
-              textLength: result.textLength
+              structuredDataType: Array.isArray(fileContent.extractedData.geminiStructuredData) ? 'array' : typeof fileContent.extractedData.geminiStructuredData,
+              structuredDataLength: Array.isArray(fileContent.extractedData.geminiStructuredData) ? fileContent.extractedData.geminiStructuredData.length : 'N/A',
+              textLength: result.textLength,
+              hasFallbackData: Array.isArray(fileContent.extractedData.geminiStructuredData) && fileContent.extractedData.geminiStructuredData.length > 0 && fileContent.extractedData.geminiStructuredData[0]?.source === 'gemini_fallback'
             });
           } else {
+            // Handle processing errors with fallback data
+            console.error(`❌ [UNIFIED PROCESSOR] Failed to process ${fileContent.name}:`, result.error);
+
+            // Use fallback data if available, otherwise create basic error metadata
+            if (result.fallbackData) {
+              console.log(`⚠️ [FALLBACK] Using fallback data for ${fileContent.name}:`, result.fallbackData);
+              fileContent.extractedData.geminiStructuredData = result.fallbackData;
+            } else {
+              fileContent.extractedData.geminiStructuredData = [{
+                type: 'processing_error',
+                fileName: fileContent.name,
+                mimeType: fileContent.mimeType,
+                error: result.error,
+                processedAt: new Date().toISOString()
+              }];
+            }
+
             fileContent.extractedData.geminiError = result.error;
             fileContent.extractedData.geminiProcessed = false;
-            console.error(`❌ [UNIFIED PROCESSOR] Failed to process ${fileContent.name}:`, result.error);
+
+            // Still mark as having some data for processing
+            fileContent.extractedData.extractedText = result.extractedText || `Error processing ${fileContent.name}`;
+            fileContent.extractedData.textLength = result.textLength || fileContent.name.length;
+            fileContent.extractedData.hasTextContent = true;
           }
         }
         
@@ -442,13 +574,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasGeminiStructuredData: extractedFileContents.some((f: any) => f.extractedData?.geminiStructuredData)
     };
 
+    // Debug logging to understand the data structure
+    console.log('🔍 [DEBUG] Checking structuredExtracts data structure:');
+    extractedFileContents.forEach((f: any, index: number) => {
+      console.log(`🔍 [DEBUG] File ${index} (${f.name}):`, {
+        hasExtractedData: !!f.extractedData,
+        hasGeminiData: !!f.extractedData?.geminiStructuredData,
+        dataType: typeof f.extractedData?.geminiStructuredData,
+        isArray: Array.isArray(f.extractedData?.geminiStructuredData),
+        data: f.extractedData?.geminiStructuredData
+      });
+    });
+
     const structuredExtracts = extractedFileContents
-      .filter((f: any) => f.extractedData?.geminiStructuredData)
+      .filter((f: any) => {
+        const hasData = f.extractedData?.geminiStructuredData;
+        console.log(`🔍 [FILTER] ${f.name}: hasData=${!!hasData}`);
+        return !!hasData; // Include ANY file that has geminiStructuredData
+      })
       .map((f: any) => ({
         fileName: f.name,
         mimeType: f.mimeType,
-        structuredData: f.extractedData.geminiStructuredData
+        structuredData: f.extractedData.geminiStructuredData,
+        hasRealData: Array.isArray(f.extractedData.geminiStructuredData) ?
+          f.extractedData.geminiStructuredData.some((item: any) =>
+            item && item.source !== 'gemini_fallback' && item.type !== 'processing_error'
+          ) : false
       }));
+
+    console.log(`🔍 [DEBUG] Final structuredExtracts result:`, {
+      count: structuredExtracts.length,
+      files: structuredExtracts.map(se => ({
+        fileName: se.fileName,
+        dataType: Array.isArray(se.structuredData) ? 'array' : typeof se.structuredData,
+        dataLength: Array.isArray(se.structuredData) ? se.structuredData.length : 'N/A',
+        hasRealData: se.hasRealData,
+        sampleData: se.structuredData
+      }))
+    });
 
     // 🚀 ENHANCED LOGGING: Log the final data being sent to N8N
     console.log('🚀 [AI REASONING] Final Data Summary for AI Processing:', {
@@ -521,7 +684,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         hasGeminiStructuredData: webhookData.fileSummary.hasGeminiStructuredData,
         geminiErrors: webhookData.fileSummary.geminiErrors,
         structuredExtractsCount: webhookData.structuredExtracts?.length || 0,
-        structuredExtractsFiles: webhookData.structuredExtracts?.map((extract: any) => extract.fileName) || []
+        structuredExtractsFiles: webhookData.structuredExtracts?.map((extract: any) => ({
+          fileName: extract.fileName,
+          hasRealData: extract.hasRealData,
+          dataCount: extract.structuredData?.length || 0
+        })) || []
       }
     });
 

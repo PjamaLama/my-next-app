@@ -488,7 +488,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               name: file.name,
               mimeType: file.mimeType,
               size: file.size,
-              downloadURL: downloadURL
+              downloadURL: downloadURL,
+              storagePath: `temp-uploads/${fileName}` // Store the original storage path for cleanup
             });
           }
         }
@@ -663,22 +664,33 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
                  setFilesBeingSent([]); // Clear the "being sent" files
          
-         // Clean up Firebase files after successful processing
-         if (firebaseFileUrlsRef.current.length > 0) {
-           try {
-             const storage = getStorage();
-             for (const fileInfo of firebaseFileUrlsRef.current) {
-               const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-               if (fileName) {
-                 const storageRef = ref(storage, `temp-uploads/${fileName}`);
-                 await deleteObject(storageRef);
-                 console.log(`Cleaned up Firebase file: ${fileName}`);
-               }
-             }
-           } catch (cleanupError) {
-             console.error('Failed to cleanup Firebase files:', cleanupError);
-           }
-         }
+        // Clean up Firebase files after successful processing
+        if (firebaseFileUrlsRef.current.length > 0) {
+          try {
+            const storage = getStorage();
+            for (const fileInfo of firebaseFileUrlsRef.current) {
+              if (fileInfo.storagePath) {
+                const storageRef = ref(storage, fileInfo.storagePath);
+                await deleteObject(storageRef);
+                console.log(`Cleaned up Firebase file: ${fileInfo.storagePath}`);
+              } else {
+                // Fallback to old method if storagePath is not available
+                const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+                if (fileName && fileName.includes('temp-uploads%2F')) {
+                  // Extract just the filename part after temp-uploads%2F
+                  const actualFileName = fileName.split('temp-uploads%2F')[1];
+                  if (actualFileName) {
+                    const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
+                    await deleteObject(storageRef);
+                    console.log(`Cleaned up Firebase file (fallback): temp-uploads/${actualFileName}`);
+                  }
+                }
+              }
+            }
+          } catch (cleanupError) {
+            console.error('Failed to cleanup Firebase files:', cleanupError);
+          }
+        }
        } else {
         // Remove the processing message if it exists
         if (structuredExtracts.length > 0) {
@@ -724,17 +736,28 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           try {
             const storage = getStorage();
             for (const fileInfo of firebaseFileUrlsRef.current) {
-             const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-             if (fileName) {
-               const storageRef = ref(storage, `temp-uploads/${fileName}`);
-               await deleteObject(storageRef);
-               console.log(`Cleaned up Firebase file after error: ${fileName}`);
-             }
-           }
-         } catch (cleanupError) {
-           console.error('Failed to cleanup Firebase files after error:', cleanupError);
-         }
-       }
+              if (fileInfo.storagePath) {
+                const storageRef = ref(storage, fileInfo.storagePath);
+                await deleteObject(storageRef);
+                console.log(`Cleaned up Firebase file after error: ${fileInfo.storagePath}`);
+              } else {
+                // Fallback to old method if storagePath is not available
+                const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+                if (fileName && fileName.includes('temp-uploads%2F')) {
+                  // Extract just the filename part after temp-uploads%2F
+                  const actualFileName = fileName.split('temp-uploads%2F')[1];
+                  if (actualFileName) {
+                    const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
+                    await deleteObject(storageRef);
+                    console.log(`Cleaned up Firebase file after error (fallback): temp-uploads/${actualFileName}`);
+                  }
+                }
+              }
+            }
+          } catch (cleanupError) {
+            console.error('Failed to cleanup Firebase files after error:', cleanupError);
+          }
+        }
     } finally {
       setIsSending(false);
       setIsProcessingFiles(false);
@@ -957,14 +980,28 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                           try {
                             const storage = getStorage();
                             for (const fileInfo of firebaseFileUrlsRef.current) {
-                              const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-                              if (fileName) {
-                                const storageRef = ref(storage, `temp-uploads/${fileName}`);
+                              if (fileInfo.storagePath) {
+                                const storageRef = ref(storage, fileInfo.storagePath);
                                 deleteObject(storageRef).then(() => {
-                                  console.log(`Cleaned up Firebase file after stop: ${fileName}`);
+                                  console.log(`Cleaned up Firebase file after stop: ${fileInfo.storagePath}`);
                                 }).catch((cleanupError) => {
                                   console.error('Failed to cleanup Firebase file after stop:', cleanupError);
                                 });
+                              } else {
+                                // Fallback to old method if storagePath is not available
+                                const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+                                if (fileName && fileName.includes('temp-uploads%2F')) {
+                                  // Extract just the filename part after temp-uploads%2F
+                                  const actualFileName = fileName.split('temp-uploads%2F')[1];
+                                  if (actualFileName) {
+                                    const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
+                                    deleteObject(storageRef).then(() => {
+                                      console.log(`Cleaned up Firebase file after stop (fallback): temp-uploads/${actualFileName}`);
+                                    }).catch((cleanupError) => {
+                                      console.error('Failed to cleanup Firebase file after stop (fallback):', cleanupError);
+                                    });
+                                  }
+                                }
                               }
                             }
                           } catch (cleanupError) {
