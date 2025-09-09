@@ -985,21 +985,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               />
               <button
                 type="button"
-                onClick={() => {
-                  const link = document.createElement('a');
-                  link.href = '/templates/structured-sheet-template.csv';
-                  link.download = 'structured-sheet-template.csv';
-                  link.click();
-                }}
-                className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
-                disabled={isSending || (userType === 'free' && isLimitReached)}
-                title="Download template"
-                data-tutorial="template-download"
-              >
-                <BookOpen className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
                 disabled={isSending || (userType === 'free' && isLimitReached)}

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTutorial } from '../providers/TutorialProvider';
-import { X, ChevronRight, ChevronLeft, Check, Shield, Lock, Phone, FileText, Zap, FileSpreadsheet, MessageSquare } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Check, Shield, Lock, Phone, FileText, Zap, FileSpreadsheet, MessageSquare, Copy } from 'lucide-react';
 
 interface TutorialStep {
   id: string;
@@ -19,6 +19,7 @@ interface InteractiveTutorialProps {
 
 export default function InteractiveTutorial({ isVisible, onClose }: InteractiveTutorialProps) {
   const [currentStep, setCurrentStep] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!isVisible) {
@@ -28,7 +29,7 @@ export default function InteractiveTutorial({ isVisible, onClose }: InteractiveT
 
   const handleTemplateClick = () => {
     // Open template in new tab
-    window.open('https://docs.google.com/spreadsheets/d/1BxmVa4Y6x8z5Q7y9wRtJcKdNzMwLpT8qSrNfHdJxEo/template/preview', '_blank');
+    window.open('https://docs.google.com/spreadsheets/d/1PKJQFrlahs0Q4p3OOC8m6qNt8FKEDWn-a6ryGHwNeTs/edit?usp=sharing', '_blank');
   };
 
   const handleWhatsAppManage = () => {
@@ -52,6 +53,16 @@ export default function InteractiveTutorial({ isVisible, onClose }: InteractiveT
 
   const skipTutorial = () => {
     onClose();
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+    }
   };
 
   const TUTORIAL_STEPS: TutorialStep[] = [
@@ -107,12 +118,26 @@ export default function InteractiveTutorial({ isVisible, onClose }: InteractiveT
       description: 'Grant secure access to your Google Sheets',
       content: (
         <div className="space-y-4">
-          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <div className="text-white font-semibold text-sm mb-2">1. Copy the service account email below</div>
-            <div className="bg-gray-900 rounded p-2 border border-gray-600">
-              <code className="text-xs text-blue-400 font-mono break-all">report-ai@report-ai-23599.iam.gserviceaccount.com</code>
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <div className="text-white font-semibold text-sm mb-2">1. Copy the service account email below</div>
+          <div className="relative">
+            <div className="bg-gray-900 rounded p-2 pr-12 border border-gray-600 flex items-center justify-between break-all">
+              <code className="text-xs text-blue-400 font-mono select-all">report-ai@report-ai-23599.iam.gserviceaccount.com</code>
             </div>
+            <button
+              onClick={() => copyToClipboard('report-ai@report-ai-23599.iam.gserviceaccount.com')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 h-9 w-9 inline-flex items-center justify-center rounded-full bg-white/10 border border-white/10 text-white/90 hover:bg-white/20 hover:scale-105 transition"
+              aria-label="Copy service account email"
+              title={copied ? 'Copied!' : 'Copy'}
+            >
+              {copied ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
           </div>
+        </div>
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
             <div className="text-white font-semibold text-sm mb-2">2. Share your Google Sheet with this email as "Editor"</div>
             <div className="text-gray-300 text-xs">Open your Google Sheet → Click "Share" → Paste the email → Set as "Editor" → Send</div>
