@@ -1,0 +1,14 @@
+warning: in the working copy of 'app/components/InteractiveTutorial.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/app/components/InteractiveTutorial.tsx b/app/components/InteractiveTutorial.tsx[m
+[1mindex be919bd..936f05e 100644[m
+[1m--- a/app/components/InteractiveTutorial.tsx[m
+[1m+++ b/app/components/InteractiveTutorial.tsx[m
+[36m@@ -235,7 +235,7 @@[m [mexport default function InteractiveTutorial({ isVisible, onClose }: InteractiveT[m
+               </>[m
+             )}[m
+           </button>[m
+[31m-          </div>[m
+[32m+[m[32m        </div>[m
+         </div>[m
+ [m
+         {/* Arrow pointer */}[m

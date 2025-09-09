@@ -1,55 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTutorial } from '../providers/TutorialProvider';
-import { X, ChevronRight, ChevronLeft, Check } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Check, Shield, Lock, Phone, FileText, Zap, FileSpreadsheet, MessageSquare } from 'lucide-react';
 
 interface TutorialStep {
   id: string;
   title: string;
   description: string;
-  targetSelector?: string; // CSS selector for element to highlight
-  position?: 'top' | 'bottom' | 'left' | 'right';
-  action?: () => void; // Action to perform when step is completed
+  content: string | React.ReactNode;
+  icon?: React.ReactNode;
 }
-
-const TUTORIAL_STEPS: TutorialStep[] = [
-  {
-    id: 'excel-conversion',
-    title: 'Convert Excel Files to Google Sheets',
-    description: 'Upload your Excel file to Google Drive, right-click → Open with → Google Sheets. Copy the new Google Sheets URL.',
-    targetSelector: '[data-tutorial="spreadsheet-input"]',
-    position: 'bottom'
-  },
-  {
-    id: 'spreadsheet-input',
-    title: 'Connect Your Google Sheet',
-    description: 'Paste your Google Sheets URL here to connect your data. We support Excel files converted to Google Sheets format.',
-    targetSelector: '[data-tutorial="spreadsheet-input"]',
-    position: 'bottom'
-  },
-  {
-    id: 'sheet-selection',
-    title: 'Select Sheets to Work With',
-    description: 'Choose which sheets from your spreadsheet you want to edit or analyze. Only structured sheets (with headers) are fully supported.',
-    targetSelector: '[data-tutorial="sheet-selector"]',
-    position: 'top'
-  },
-  {
-    id: 'chat-input',
-    title: 'Chat with Your Data',
-    description: 'Type natural language commands to analyze, edit, or generate insights from your spreadsheet data.',
-    targetSelector: '[data-tutorial="chat-input"]',
-    position: 'top'
-  },
-  {
-    id: 'file-upload',
-    title: 'Upload Additional Files',
-    description: 'Upload more Excel files, CSVs, or images to process them alongside your connected spreadsheet.',
-    targetSelector: '[data-tutorial="file-upload"]',
-    position: 'top'
-  }
-];
 
 interface InteractiveTutorialProps {
   isVisible: boolean;
@@ -58,68 +19,22 @@ interface InteractiveTutorialProps {
 
 export default function InteractiveTutorial({ isVisible, onClose }: InteractiveTutorialProps) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isVisible) {
       setCurrentStep(0);
-      setHighlightedElement(null);
-      return;
     }
+  }, [isVisible]);
 
-    // Find and highlight the target element for current step
-    const step = TUTORIAL_STEPS[currentStep];
-    if (step.targetSelector) {
-      const element = document.querySelector(step.targetSelector);
-      setHighlightedElement(element);
-    }
+  const handleTemplateClick = () => {
+    // Open template in new tab
+    window.open('https://docs.google.com/spreadsheets/d/1BxmVa4Y6x8z5Q7y9wRtJcKdNzMwLpT8qSrNfHdJxEo/template/preview', '_blank');
+  };
 
-    // Add tutorial data attributes to key elements
-    const addTutorialAttributes = () => {
-      // Find spreadsheet input (likely in a form or input field)
-      const inputs = document.querySelectorAll('input[type="text"], input[type="url"]');
-      inputs.forEach(input => {
-        const htmlInput = input as HTMLInputElement;
-        if (htmlInput.placeholder?.toLowerCase().includes('spreadsheet') ||
-            htmlInput.placeholder?.toLowerCase().includes('google') ||
-            htmlInput.placeholder?.toLowerCase().includes('sheet')) {
-          input.setAttribute('data-tutorial', 'spreadsheet-input');
-        }
-      });
-
-      // Find sheet selector
-      const sheetSelectors = document.querySelectorAll('[class*="sheet"], [class*="Sheet"]');
-      sheetSelectors.forEach(el => {
-        if (el.textContent?.includes('Available Sheets') || el.textContent?.includes('sheet')) {
-          el.setAttribute('data-tutorial', 'sheet-selector');
-        }
-      });
-
-      // Find chat input
-      const chatInputs = document.querySelectorAll('textarea, input[type="text"]');
-      chatInputs.forEach(input => {
-        const htmlInput = input as HTMLInputElement | HTMLTextAreaElement;
-        if (htmlInput.placeholder?.toLowerCase().includes('message') ||
-            htmlInput.placeholder?.toLowerCase().includes('ask') ||
-            htmlInput.placeholder?.toLowerCase().includes('chat')) {
-          input.setAttribute('data-tutorial', 'chat-input');
-        }
-      });
-
-      // Find file upload
-      const fileUploads = document.querySelectorAll('input[type="file"], button');
-      fileUploads.forEach(el => {
-        if (el.textContent?.includes('upload') ||
-            el.textContent?.includes('file') ||
-            el.getAttribute('type') === 'file') {
-          el.setAttribute('data-tutorial', 'file-upload');
-        }
-      });
-    };
-
-    addTutorialAttributes();
-  }, [isVisible, currentStep]);
+  const handleWhatsAppManage = () => {
+    // Navigate to WhatsApp setup page
+    window.location.href = '/whatsapp-setup';
+  };
 
   const nextStep = () => {
     if (currentStep < TUTORIAL_STEPS.length - 1) {
@@ -135,173 +50,280 @@ export default function InteractiveTutorial({ isVisible, onClose }: InteractiveT
     }
   };
 
+  const skipTutorial = () => {
+    onClose();
+  };
+
+  const TUTORIAL_STEPS: TutorialStep[] = [
+    {
+      id: 'welcome',
+      title: 'Welcome to Report AI!',
+      description: 'Your secure AI-powered spreadsheet assistant',
+      content: 'Report AI helps you connect your Google Sheets and chat with your data using natural language. Analyze, edit, and generate insights while keeping your data completely private.',
+      icon: <Zap className="w-6 h-6" />
+    },
+    {
+      id: 'privacy-security',
+      title: '🔒 Privacy & Security First',
+      description: 'Your data stays private and secure',
+      content: (
+        <div className="space-y-4">
+          <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-3">
+            <div className="text-green-400 font-semibold text-sm mb-1">🔒 Zero Data Storage</div>
+            <div className="text-green-300 text-xs">We never store your spreadsheet data on our servers. Your data stays in your Google Sheets account only.</div>
+          </div>
+          <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+            <div className="text-blue-400 font-semibold text-sm mb-1">🔐 Secure Access</div>
+            <div className="text-blue-300 text-xs">We use Google's secure OAuth and service account authentication. No passwords are ever shared.</div>
+          </div>
+          <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-3">
+            <div className="text-purple-400 font-semibold text-sm mb-1">📊 Temporary Processing</div>
+            <div className="text-purple-300 text-xs">Data is only processed in memory during your session and is immediately discarded when you close the app.</div>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-3">
+            <div className="text-white font-semibold text-sm mb-2">Privacy Features</div>
+            <div className="space-y-2 text-xs text-gray-300">
+              <div className="flex items-start gap-2">
+                <span className="text-green-400 mt-0.5">✓</span>
+                <div><strong>No Data Logging</strong> - We don't log or track your spreadsheet contents</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-green-400 mt-0.5">✓</span>
+                <div><strong>Session-Based Access</strong> - Access exists only while you're using the app</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-green-400 mt-0.5">✓</span>
+                <div><strong>Google's Security</strong> - Protected by enterprise-grade infrastructure</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+      icon: <Shield className="w-6 h-6" />
+    },
+    {
+      id: 'service-account',
+      title: 'Service Account Setup',
+      description: 'Grant secure access to your Google Sheets',
+      content: (
+        <div className="space-y-4">
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="text-white font-semibold text-sm mb-2">1. Copy the service account email below</div>
+            <div className="bg-gray-900 rounded p-2 border border-gray-600">
+              <code className="text-xs text-blue-400 font-mono break-all">report-ai@report-ai-23599.iam.gserviceaccount.com</code>
+            </div>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="text-white font-semibold text-sm mb-2">2. Share your Google Sheet with this email as "Editor"</div>
+            <div className="text-gray-300 text-xs">Open your Google Sheet → Click "Share" → Paste the email → Set as "Editor" → Send</div>
+          </div>
+          <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3">
+            <div className="text-yellow-400 font-semibold text-sm mb-1">⚠️ Important</div>
+            <div className="text-yellow-300 text-xs">Granting Editor access allows AI to read and write data. You can revoke access anytime.</div>
+          </div>
+        </div>
+      ),
+      icon: <Lock className="w-6 h-6" />
+    },
+    {
+      id: 'template',
+      title: '📋 Get Template',
+      description: 'Use our structured template for optimal AI analysis',
+      content: (
+        <div className="space-y-4">
+          <div className="text-center mb-4">
+            <button
+              onClick={handleTemplateClick}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Open Template
+            </button>
+            <div className="text-xs text-gray-400 mt-2">Click to open the template in Google Sheets, then make a copy to use for your data</div>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="text-white font-semibold text-sm mb-3">📋 Template Structure Rules</div>
+            <div className="space-y-3 text-xs text-gray-300">
+              <div className="flex items-start gap-2">
+                <span className="text-blue-400 mt-0.5">📋</span>
+                <div><strong>Header Row (Row 1)</strong> - First row must contain column headers. Use clear, descriptive names.</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-blue-400 mt-0.5">🔢</span>
+                <div><strong>Data Rows (Row 2+)</strong> - All data starts from row 2. Keep headers in row 1 only.</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-blue-400 mt-0.5">📊</span>
+                <div><strong>Optional Total Row (Row 2)</strong> - You can add a second row above headers for column totals or summaries.</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-blue-400 mt-0.5">📊</span>
+                <div><strong>Consistent Format</strong> - Each column should contain the same type of data throughout.</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-red-400 mt-0.5">🚫</span>
+                <div><strong>No Empty Header Rows</strong> - Avoid blank rows between headers and data.</div>
+              </div>
+            </div>
+            <div className="bg-blue-900/20 border border-blue-500/30 rounded p-3 mt-3">
+              <div className="text-blue-400 font-semibold text-sm mb-1">💡 Pro Tip</div>
+              <div className="text-blue-300 text-xs">Use our template as a starting point and modify the columns to match your data needs. The AI will automatically detect your structure!</div>
+            </div>
+          </div>
+        </div>
+      ),
+      icon: <FileText className="w-6 h-6" />
+    },
+    {
+      id: 'connect-sheet',
+      title: 'Connect Your Google Sheet',
+      description: 'Link your spreadsheet for AI analysis',
+      content: 'Copy the full URL from your browser\'s address bar when viewing your Google Sheet. Paste it below and we\'ll automatically detect the sheet structure and prepare it for analysis.',
+      icon: <FileSpreadsheet className="w-6 h-6" />
+    },
+    {
+      id: 'whatsapp-setup',
+      title: '📱 WhatsApp Integration',
+      description: 'Connect WhatsApp to interact with your sheets on the go',
+      content: (
+        <div className="space-y-4">
+          <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+            <div className="text-green-400 font-semibold text-sm mb-2">✓ WhatsApp Linked Successfully!</div>
+            <div className="text-green-300 text-xs">Your WhatsApp number +27659315189 is now linked to your account.</div>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="text-white font-semibold text-sm mb-2">Link WhatsApp</div>
+            <div className="text-gray-300 text-xs mb-3">Connect your WhatsApp to interact with your sheets on the go.</div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleWhatsAppManage}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs"
+              >
+                Manage Spreadsheets
+              </button>
+              <button
+                onClick={handleWhatsAppManage}
+                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs"
+              >
+                Unlink WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      ),
+      icon: <Phone className="w-6 h-6" />
+    },
+    {
+      id: 'chat-analysis',
+      title: 'Chat with Your Data',
+      description: 'Ask questions and get AI-powered insights',
+      content: 'Use natural language to ask questions like "What are my top-selling products?" or "Show me sales trends". You can request edits, calculations, visualizations, and export results back to your spreadsheet.',
+      icon: <MessageSquare className="w-6 h-6" />
+    }
+  ];
+
   const step = TUTORIAL_STEPS[currentStep];
 
   if (!isVisible) return null;
 
   return (
     <>
-      {/* Overlay */}
-      <div
-        ref={overlayRef}
-        className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-[2px] pointer-events-none"
-        style={{
-          maskImage: highlightedElement ? `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3cdefs%3e%3cmask id='mask'%3e%3crect width='100%25' height='100%25' fill='white'/%3e%3crect x='${highlightedElement.getBoundingClientRect().left}' y='${highlightedElement.getBoundingClientRect().top}' width='${highlightedElement.getBoundingClientRect().width}' height='${highlightedElement.getBoundingClientRect().height}' fill='black' rx='8'/%3e%3c/mask%3e%3c/defs%3e%3crect width='100%25' height='100%25' mask='url(%23mask)'/%3e%3c/svg%3e")` : undefined,
-          WebkitMaskImage: highlightedElement ? `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3cdefs%3e%3cmask id='mask'%3e%3crect width='100%25' height='100%25' fill='white'/%3e%3crect x='${highlightedElement.getBoundingClientRect().left}' y='${highlightedElement.getBoundingClientRect().top}' width='${highlightedElement.getBoundingClientRect().width}' height='${highlightedElement.getBoundingClientRect().height}' fill='black' rx='8'/%3e%3c/mask%3e%3c/defs%3e%3crect width='100%25' height='100%25' mask='url(%23mask)'/%3e%3c/svg%3e")` : undefined
-        }}
-      />
+      {/* Simple backdrop */}
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={skipTutorial} />
 
-      {/* Highlight ring around target element */}
-      {highlightedElement && (
-        <div
-          className="fixed z-[95] pointer-events-none"
-          style={{
-            left: highlightedElement.getBoundingClientRect().left - 4,
-            top: highlightedElement.getBoundingClientRect().top - 4,
-            width: highlightedElement.getBoundingClientRect().width + 8,
-            height: highlightedElement.getBoundingClientRect().height + 8,
-            border: '2px solid #10b981',
-            borderRadius: '12px',
-            boxShadow: '0 0 0 4px rgba(16, 185, 129, 0.2)',
-            animation: 'pulse 2s infinite'
-          }}
-        />
-      )}
-
-      {/* Tutorial tooltip */}
-      <div className={`fixed z-[100] max-w-sm ${getTooltipPosition(step.position, highlightedElement)}`}>
-        <div className="bg-gray-900 border border-white/20 rounded-xl shadow-2xl p-4">
+      {/* Simple centered modal */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-gray-900 border border-white/20 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center text-xs font-bold text-white">
-                {currentStep + 1}
+          <div className="flex items-center justify-between p-6 border-b border-white/10">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white">
+                {step.icon || <span className="text-lg font-bold">{currentStep + 1}</span>}
               </div>
-              <h3 className="text-white font-semibold text-sm">{step.title}</h3>
+              <div>
+                <h3 className="text-white font-semibold text-xl">{step.title}</h3>
+                <div className="text-sm text-gray-400">
+                  Step {currentStep + 1} of {TUTORIAL_STEPS.length}
+                </div>
+              </div>
             </div>
-        <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
-        >
-              <X className="w-4 h-4" />
-        </button>
+            <button
+              onClick={skipTutorial}
+              className="text-gray-400 hover:text-white transition-colors p-2"
+              title="Skip tutorial"
+            >
+              <X className="w-6 h-6" />
+            </button>
           </div>
 
           {/* Content */}
-          <p className="text-gray-300 text-sm mb-4 leading-relaxed">
-            {step.description}
-          </p>
+          <div className="p-6">
+            <p className="text-gray-300 text-lg leading-relaxed mb-6">
+              {step.description}
+            </p>
 
-        {/* Progress indicator */}
-          <div className="flex items-center gap-1 mb-4">
-            {TUTORIAL_STEPS.map((_, index) => (
-              <div
-                key={index}
-                className={`h-1.5 flex-1 rounded-full transition-colors ${
-                  index <= currentStep ? 'bg-emerald-500' : 'bg-gray-700'
-                }`}
-              />
-            ))}
-        </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-between">
-          <button
-              onClick={prevStep}
-              disabled={currentStep === 0}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft className="w-3 h-3" />
-            Previous
-          </button>
-
-            <span className="text-xs text-gray-500">
-              {currentStep + 1} of {TUTORIAL_STEPS.length}
-            </span>
-
-          <button
-              onClick={nextStep}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-          >
-              {currentStep === TUTORIAL_STEPS.length - 1 ? (
-              <>
-                  <Check className="w-3 h-3" />
-                  Finish
-              </>
-            ) : (
-              <>
-                Next
-                  <ChevronRight className="w-3 h-3" />
-              </>
+            <div className="mb-8">
+              {typeof step.content === 'string' ? (
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+                  <p className="text-gray-200 text-base leading-relaxed">
+                    {step.content}
+                </p>
+              </div>
+              ) : (
+                step.content
             )}
-          </button>
+            </div>
+
+            {/* Progress indicator */}
+            <div className="flex items-center gap-2 mb-8">
+              {TUTORIAL_STEPS.map((_, index) => (
+                <div
+                  key={index}
+                  className={`h-3 flex-1 rounded-full transition-colors ${
+                    index <= currentStep ? 'bg-emerald-500' : 'bg-gray-700'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between">
+              <button
+                onClick={prevStep}
+                disabled={currentStep === 0}
+                className="flex items-center gap-2 px-6 py-3 text-base text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+                Previous
+              </button>
+
+              <button
+                onClick={skipTutorial}
+                className="px-6 py-3 text-base text-gray-500 hover:text-gray-400 transition-colors"
+              >
+                Skip
+              </button>
+
+              <button
+                onClick={nextStep}
+                className="flex items-center gap-2 px-6 py-3 text-base bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+              >
+                {currentStep === TUTORIAL_STEPS.length - 1 ? (
+                  <>
+                    <Check className="w-5 h-5" />
+                    Get Started!
+                  </>
+                ) : (
+                  <>
+                    Next
+                    <ChevronRight className="w-5 h-5" />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Arrow pointer */}
-        {highlightedElement && (
-          <div
-            className={`absolute w-0 h-0 ${getArrowStyles(step.position)}`}
-            style={getArrowPosition(step.position, highlightedElement)}
-          />
-        )}
       </div>
     </>
   );
-}
-
-// Helper functions for positioning
-function getTooltipPosition(position: string = 'top', element?: Element | null) {
-  if (!element) return 'top-4 left-4';
-
-  const rect = element.getBoundingClientRect();
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-
-  switch (position) {
-    case 'top':
-      return `left-[${centerX}px] top-[${rect.top - 120}px] -translate-x-1/2`;
-    case 'bottom':
-      return `left-[${centerX}px] top-[${rect.bottom + 16}px] -translate-x-1/2`;
-    case 'left':
-      return `left-[${rect.left - 320}px] top-[${centerY}px] -translate-y-1/2`;
-    case 'right':
-      return `left-[${rect.right + 16}px] top-[${centerY}px] -translate-y-1/2`;
-    default:
-      return 'top-4 left-4';
-  }
-}
-
-function getArrowStyles(position: string = 'top') {
-  const baseStyles = 'border-solid border-gray-900 border-white/20';
-
-  switch (position) {
-    case 'top':
-      return `${baseStyles} border-t-0 border-r-[6px] border-b-[6px] border-l-[6px] border-r-transparent border-l-transparent`;
-    case 'bottom':
-      return `${baseStyles} border-t-[6px] border-r-[6px] border-b-0 border-l-[6px] border-r-transparent border-l-transparent`;
-    case 'left':
-      return `${baseStyles} border-t-[6px] border-r-[6px] border-b-[6px] border-l-0 border-t-transparent border-b-transparent`;
-    case 'right':
-      return `${baseStyles} border-t-[6px] border-r-0 border-b-[6px] border-l-[6px] border-t-transparent border-b-transparent`;
-    default:
-      return baseStyles;
-  }
-}
-
-function getArrowPosition(position: string = 'top', element?: Element | null) {
-  if (!element) return {};
-
-  switch (position) {
-    case 'top':
-      return { bottom: '-6px', left: '50%', transform: 'translateX(-50%)' };
-    case 'bottom':
-      return { top: '-6px', left: '50%', transform: 'translateX(-50%)' };
-    case 'left':
-      return { right: '-6px', top: '50%', transform: 'translateY(-50%)' };
-    case 'right':
-      return { left: '-6px', top: '50%', transform: 'translateY(-50%)' };
-    default:
-      return {};
-  }
 }

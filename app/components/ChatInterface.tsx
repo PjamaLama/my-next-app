@@ -969,8 +969,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                 ? "Daily limit reached. Upgrade to Pro for unlimited messages!"
                 : "Ask about your data, request analysis, or get insights..."
             }
-            data-tutorial="chat-input"
             className="w-full px-4 py-3 min-h-[52px] bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed text-base"
+            data-tutorial="chat-input"
             disabled={isSending || (userType === 'free' && isLimitReached)}
           />
 
@@ -985,10 +985,25 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               />
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                data-tutorial="file-upload"
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = '/templates/structured-sheet-template.csv';
+                  link.download = 'structured-sheet-template.csv';
+                  link.click();
+                }}
                 className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
                 disabled={isSending || (userType === 'free' && isLimitReached)}
+                title="Download template"
+                data-tutorial="template-download"
+              >
+                <BookOpen className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
+                disabled={isSending || (userType === 'free' && isLimitReached)}
+                data-tutorial="file-upload"
               >
                 <Paperclip className="w-4 h-4" />
               </button>

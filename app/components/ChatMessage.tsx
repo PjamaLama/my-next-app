@@ -297,7 +297,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
                             </button>
                             <button
                               onClick={() => {
-                                const event = new CustomEvent('chat:approve-update', {
+                                const event = new CustomEvent('chat:reject-update', {
                                   detail: {
                                     preview: {
                                       headers: table.headers,
