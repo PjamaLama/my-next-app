@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import ClientRoot from './ClientRoot';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import TikTokPixelTest from './components/TikTokPixelTest';
 
 // Genkit telemetry is initialized client-side inside ClientRoot
 
@@ -233,15 +234,20 @@ export default function RootLayout({
 
         {/* TikTok Pixel */}
         <Script
-          id="tiktok-pixel"
+          src="https://analytics.tiktok.com/i18n/pixel/sdk.js?sdkid=D2VDTKRC77U649U8UH9G"
           strategy="afterInteractive"
+        />
+        <Script
+          id="tiktok-pixel-init"
+          strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `
-              !function (w, d, t) {
-                w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i=ttq._i||[],n=0;n<e.length;n++)if(e[n][0]===t)return e[n];return e[e.length]=[t,new ttq],e[e.length-1]},ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||[],ttq._i.push([e,n]),n=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;o.onload=o.onreadystatechange=function(){var e=this.readyState;if(e&&!/loaded|complete/.test(e))return;o.onload=o.onreadystatechange=null,ttq.instance(e).ready()},document.getElementsByTagName("head")[0].appendChild(o)},ttq._t=ttq._t||{};ttq.ready=function(e){ttq._t[e]=ttq._t[e]||[],ttq._t[e].push(function(){ttq.instance(e).ready()})};ttq.call=function(){var t=Array.prototype.slice.call(arguments),e=t.shift();ttq._t[e]=ttq._t[e]||[],ttq._t[e].push(function(){ttq[e].apply(ttq,[e].concat(t))})};
+              if (typeof ttq !== 'undefined') {
                 ttq.load('D2VDTKRC77U649U8UH9G');
                 ttq.page();
-              }(window, document, 'ttq');
+              } else {
+                console.warn('TikTok pixel SDK not loaded yet');
+              }
             `,
           }}
         />
@@ -263,6 +269,7 @@ export default function RootLayout({
         <ErrorBoundary>
           <ClientRoot>{children}</ClientRoot>
         </ErrorBoundary>
+        {process.env.NODE_ENV === 'development' && <TikTokPixelTest />}
       </body>
     </html>
   );

@@ -97,7 +97,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
       });
 
       // Also track to TikTok pixel
-      trackTikTokViewContent('landing_page');
+      trackTikTokViewContent('sheetyai_pro_monthly');
     };
 
     trackViewContent();
@@ -868,7 +868,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               <div className="text-center">
                 {/* Main CTA Button */}
                 <motion.button
-                  onClick={handleFreeConversionFirst}
+                  onClick={handleSignIn}
                   whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
                   whileTap={{ scale: 0.95 }}
                   className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group focus:outline-none focus:ring-4 focus:ring-emerald-300 focus:ring-opacity-50"
@@ -1254,7 +1254,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               className="mt-16 text-center"
             >
               <motion.button
-                onClick={handleFreeConversionFirst}
+                onClick={handleSignIn}
                 whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
                 whileTap={{ scale: 0.95 }}
                 className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group"

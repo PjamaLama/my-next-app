@@ -53,15 +53,26 @@ export const TIKTOK_PRODUCT_CATALOG = {
  * Track a custom event to TikTok pixel
  */
 export const trackTikTokEvent = (eventName: string, parameters?: TikTokEventData) => {
+  console.log(`🎯 TikTok Event Called: ${eventName}`, parameters); // Always log when function is called
+
   if (typeof window !== 'undefined' && window.ttq) {
     try {
       window.ttq.track(eventName, parameters);
-      console.log(`TikTok Pixel: Tracked ${eventName}`, parameters);
+      console.log(`✅ TikTok Pixel: Tracked ${eventName}`, parameters);
+
+      // Debug logging for development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 TikTok Debug - Pixel loaded:', !!window.ttq);
+        console.log('🔍 TikTok Debug - Event:', eventName, parameters);
+      }
     } catch (error) {
-      console.warn('TikTok tracking error:', error);
+      console.warn('❌ TikTok tracking error:', error);
+      console.warn('❌ Error details:', error.message);
     }
   } else {
-    console.warn('TikTok pixel not loaded');
+    console.warn('❌ TikTok pixel not loaded - Check pixel base code installation');
+    console.warn('💡 Make sure the TikTok pixel base code is properly installed in layout.tsx');
+    console.warn('💡 ttq object:', typeof window !== 'undefined' ? window.ttq : 'window undefined');
   }
 };
 

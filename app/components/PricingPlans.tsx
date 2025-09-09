@@ -34,7 +34,7 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
       });
 
       // Also track to TikTok pixel
-      trackTikTokViewContent('pricing_plans');
+      trackTikTokViewContent('sheetyai_pro_monthly');
     };
 
     trackViewContent();
