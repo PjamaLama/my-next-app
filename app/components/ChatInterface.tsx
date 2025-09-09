@@ -17,8 +17,10 @@ import { useAdminMeta } from '../hooks/useAdminMeta';
 import { useMessageLimits } from '../hooks/useMessageLimits';
 import { useUpgradeModal } from '../providers/UpgradeModalProvider';
 import { useWhatsAppBannerVisibility } from '../hooks/useWhatsAppBannerVisibility';
+import { useTutorial } from '../providers/TutorialProvider';
 import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
 import { trackConversion, trackUserInteraction, trackFeatureUsage } from '@/lib/analytics/safeAnalytics';
+import InteractiveTutorial from './InteractiveTutorial';
 
 interface ChatInterfaceProps {
   className?: string;
@@ -37,6 +39,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const { canSendMessage, incrementUsage, isLimitReached, dailyUsage, limit } = useMessageLimits();
   const { openModal } = useUpgradeModal();
   const { bannerMode, isVisible: isWhatsAppBannerVisible } = useWhatsAppBannerVisibility();
+  const { isTutorialVisible, hideTutorial } = useTutorial();
   const [inputValue, setInputValue] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -437,6 +440,18 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles) return;
+
+    // Check if any files are still processing
+    const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+    if (processingFiles.length > 0) {
+      console.log('⏳ [ChatInterface] Waiting for file processing to complete:', processingFiles.map(f => f.name));
+      // Show user feedback that files are still processing
+      await addMessage({
+        role: 'assistant',
+        content: `⏳ Please wait, I'm still processing ${processingFiles.length} file${processingFiles.length > 1 ? 's' : ''}. This usually takes just a few seconds...`
+      });
+      return;
+    }
 
     // Check message limits for free users
     if (userType === 'free' && !canSendMessage) {
@@ -893,12 +908,35 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               {uploadedFiles.map((file) => (
                 <div key={file.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl text-white/80 file-transition-in" data-file-id={file.id}>
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <FileIcon className="w-5 h-5 flex-shrink-0 text-emerald-400" />
+                    {file.status === 'processing' ? (
+                      <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin text-amber-400" />
+                    ) : file.status === 'completed' ? (
+                      <div className="w-5 h-5 flex-shrink-0 rounded-full bg-emerald-500 flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    ) : file.status === 'error' ? (
+                      <div className="w-5 h-5 flex-shrink-0 rounded-full bg-red-500 flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </div>
+                    ) : (
+                      <FileIcon className="w-5 h-5 flex-shrink-0 text-emerald-400" />
+                    )}
                     <span className="text-sm truncate font-medium">{file.name}</span>
+                    {file.status === 'processing' && (
+                      <span className="text-xs text-amber-400 ml-2">Processing...</span>
+                    )}
+                    {file.status === 'error' && (
+                      <span className="text-xs text-red-400 ml-2">Error</span>
+                    )}
                   </div>
                   <button
                     onClick={() => removeFile(file.id)}
                     className="p-2 hover:bg-white/10 rounded-lg active:scale-95 min-h-[44px] min-w-[44px] flex items-center justify-center ml-2 transition-colors"
+                    disabled={file.status === 'processing'}
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -931,6 +969,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                 ? "Daily limit reached. Upgrade to Pro for unlimited messages!"
                 : "Ask about your data, request analysis, or get insights..."
             }
+            data-tutorial="chat-input"
             className="w-full px-4 py-3 min-h-[52px] bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed text-base"
             disabled={isSending || (userType === 'free' && isLimitReached)}
           />
@@ -947,6 +986,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
+                data-tutorial="file-upload"
                 className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
                 disabled={isSending || (userType === 'free' && isLimitReached)}
               >
@@ -1011,36 +1051,58 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                         // Re-enable stop button after a brief delay
                         setTimeout(() => setIsStopping(false), 500);
                       }
-                    : handleSubmit
+                    : () => {
+                        // Check if files are still processing before allowing submit
+                        const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+                        if (processingFiles.length > 0) {
+                          console.log('⏳ [ChatInterface] Files still processing, showing message');
+                          // Don't call handleSubmit, just show the processing message
+                          addMessage({
+                            role: 'assistant',
+                            content: `⏳ Please wait, I'm still processing ${processingFiles.length} file${processingFiles.length > 1 ? 's' : ''}. This usually takes just a few seconds...`
+                          });
+                        } else {
+                          handleSubmit(new Event('submit') as any);
+                        }
+                      }
               }
               disabled={
                 isSending
                   ? isStopping
                   : (userType === 'free' && isLimitReached)
                     ? true
-                    : (!inputValue.trim() && uploadedFiles.length === 0)
+                    : (!inputValue.trim() && uploadedFiles.length === 0) ||
+                      uploadedFiles.some(file => file.status === 'processing')
               }
               aria-label={
                 userType === 'free' && isLimitReached
                   ? "Upgrade to Pro for unlimited messages"
                   : isSending
                     ? "Stop chat generation"
-                    : "Send message"
+                    : uploadedFiles.some(file => file.status === 'processing')
+                      ? "Files are still processing..."
+                      : "Send message"
               }
               className={`w-11 h-11 rounded-full transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-lg hover:shadow-xl ml-1 ${
                 isSending
                   ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
-                  : userType === 'free' && isLimitReached
-                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
-                    : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+                  : uploadedFiles.some(file => file.status === 'processing')
+                    ? 'bg-amber-500 hover:bg-amber-600 text-white focus:ring-amber-500'
+                    : userType === 'free' && isLimitReached
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+                      : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
               } ${
-                (userType === 'free' && isLimitReached) || (!inputValue.trim() && uploadedFiles.length === 0)
+                (userType === 'free' && isLimitReached) ||
+                (!inputValue.trim() && uploadedFiles.length === 0) ||
+                uploadedFiles.some(file => file.status === 'processing')
                   ? 'opacity-50 cursor-not-allowed'
                   : 'hover:scale-105 cursor-pointer active:scale-95'
               }`}
             >
               {isSending ? (
                 <Square className="h-4 w-4" />
+              ) : uploadedFiles.some(file => file.status === 'processing') ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
@@ -1125,6 +1187,12 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           setEditModalData(null);
         }}
         activeSheet={selectedSheetNames && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined}
+      />
+
+      {/* Interactive Tutorial */}
+      <InteractiveTutorial
+        isVisible={isTutorialVisible}
+        onClose={hideTutorial}
       />
     </div>
   );

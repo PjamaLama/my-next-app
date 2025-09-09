@@ -38,7 +38,8 @@ export default function Home() {
     if (!hasSeenTutorial && !tutorialTriggered.current) {
       tutorialTriggered.current = true;
       console.log('🔍 [Home] Showing tutorial for first-time user');
-      showTutorial();
+      // Delay tutorial to ensure page is fully loaded
+      setTimeout(() => showTutorial(), 1000);
     }
   }, []); // Empty dependency array - only run once on mount
 

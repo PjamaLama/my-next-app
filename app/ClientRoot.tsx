@@ -15,6 +15,18 @@ import { ClientGatedLayout } from './providers/ClientGatedLayout';
 import PWAInstaller from './components/PWAInstaller';
 import InteractiveTutorial from './components/InteractiveTutorial';
 import AnalyticsTracker from './components/AnalyticsTracker';
+import { useTutorial } from './providers/TutorialProvider';
+
+// Component to use tutorial context
+function TutorialWrapper() {
+  const { isTutorialVisible, hideTutorial } = useTutorial();
+  return (
+    <InteractiveTutorial
+      isVisible={isTutorialVisible}
+      onClose={hideTutorial}
+    />
+  );
+}
 
 export default function ClientRoot({ children }: { children: React.ReactNode }) {
   return (
@@ -29,7 +41,7 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
                   <AnalyticsTracker />
 
                   {/* InteractiveTutorial rendered at top level so it's accessible from anywhere */}
-                  <InteractiveTutorial />
+                  <TutorialWrapper />
                   {/* Sidebar + NavBar hidden on landing by ClientGatedLayout/SidePanel */}
                   <SidePanel />
                   <div className="transition-all min-h-screen flex flex-col">

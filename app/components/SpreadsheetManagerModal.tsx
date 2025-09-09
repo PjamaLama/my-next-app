@@ -100,6 +100,7 @@ const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open,
                 value={newSheetId}
                 onChange={(e) => setNewSheetId(e.target.value)}
                 placeholder="Paste full Google Sheets URL or ID"
+                data-tutorial="spreadsheet-input"
                 className="flex-1 px-2 py-1 text-xs rounded-md bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none"
               />
               <button

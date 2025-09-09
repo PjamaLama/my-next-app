@@ -133,51 +133,108 @@ const SheetChipSelector: React.FC = () => {
         </div>
         {/* If not a Google Sheet, show in-app modal trigger and inline GIF spot */}
         {typeof error === 'string' && error.includes('The provided ID is not a Google Sheet') && (
-          <div className="mt-3 space-y-2">
-            <button
-              type="button"
-              className="px-3 py-1.5 rounded-md text-xs font-medium border border-white/15 bg-white/5 text-white/90 hover:bg-white/10"
-              onClick={() =>
-                notify({
-                  title: 'Convert to Google Sheets',
-                  tone: 'info',
-                  okText: 'Got it',
-                  description: (
-                    <div className="space-y-3">
-                      <div className="text-white/80 text-sm">
-                        You can convert your file to Google Sheets in a few seconds:
-                      </div>
-                      <ol className="list-decimal list-inside space-y-1 text-white/80 text-sm">
-                        <li>Open the file in Google Drive.</li>
-                        <li>Click <span className="font-semibold">Open with → Google Sheets</span> (or upload and open in Sheets).</li>
-                        <li>In Google Sheets, click <span className="font-semibold">File → Save as Google Sheets</span>.</li>
-                        <li>Copy the new Sheet URL and paste the ID here.</li>
+          <div className="mt-3 space-y-3">
+            {/* URL Format Error */}
+            <div className="p-3 bg-red-900/20 border border-red-800/50 rounded-lg">
+              <div className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div className="text-xs text-red-200">
+                  <div className="font-medium mb-2">❌ Invalid Google Sheets URL</div>
+                  <div className="space-y-2">
+                    <div className="text-red-300/80">
+                      The URL you provided is not a valid Google Sheets link. Here's how to get the correct URL:
+                    </div>
+                    <div className="bg-red-900/30 border border-red-700/50 rounded p-2">
+                      <div className="text-red-300 text-xs font-medium mb-1">Common Issues:</div>
+                      <ul className="text-red-300/80 text-xs space-y-1 ml-2">
+                        <li>• Using Excel file URL instead of Google Sheets</li>
+                        <li>• Wrong format (needs to be sheets.google.com)</li>
+                        <li>• Private sheet without proper sharing</li>
+                        <li>• Invalid or incomplete URL</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Step-by-Step Solution */}
+            <div className="p-3 bg-amber-900/20 border border-amber-800/50 rounded-lg">
+              <div className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-xs text-amber-200">
+                  <div className="font-medium mb-2">🔧 How to Get the Correct URL</div>
+                  <div className="space-y-3">
+                    {/* Excel Conversion Steps */}
+                    <div>
+                      <div className="font-medium text-amber-300 mb-1">If you have an Excel file:</div>
+                      <ol className="list-decimal list-inside space-y-1 text-amber-300/80 ml-2">
+                        <li>Upload your Excel file to <button
+                            onClick={() => window.open('https://drive.google.com', '_blank')}
+                            className="text-amber-400 underline hover:text-amber-300"
+                          >Google Drive</button></li>
+                        <li>Right-click the file → <strong>Open with → Google Sheets</strong></li>
+                        <li>Click <strong>File → Save as Google Sheets</strong> (if prompted)</li>
+                        <li>Copy the URL from your browser's address bar</li>
+                        <li>Paste the Google Sheets URL here</li>
                       </ol>
-                      {/* Embedded image in modal */}
-                      <div className="rounded-lg overflow-hidden border border-white/10 bg-black/30 p-2">
-                        <img
-                          src="/templates/convert-to-google-sheets.png"
-                          alt="How to convert to Google Sheets"
-                          className="w-full h-auto max-w-[520px] max-h-72 mx-auto object-contain"
-                          loading="lazy"
-                        />
+                    </div>
+
+                    {/* Existing Google Sheets Steps */}
+                    <div>
+                      <div className="font-medium text-amber-300 mb-1">If you already have a Google Sheet:</div>
+                      <ol className="list-decimal list-inside space-y-1 text-amber-300/80 ml-2">
+                        <li>Open your Google Sheet in a web browser</li>
+                        <li>Copy the full URL from the address bar</li>
+                        <li>Make sure the URL starts with <code className="bg-amber-900/50 px-1 rounded text-xs">https://docs.google.com/spreadsheets/</code></li>
+                        <li>Ensure the sheet is shared publicly or you have access</li>
+                      </ol>
+                    </div>
+
+                    {/* URL Format Examples */}
+                    <div className="pt-2 border-t border-amber-800/30">
+                      <div className="text-amber-300/80">
+                        <div className="font-medium mb-1">✅ Correct URL format:</div>
+                        <code className="bg-amber-900/50 px-2 py-1 rounded text-xs block">
+                          https://docs.google.com/spreadsheets/d/1ABC123.../edit
+                        </code>
+                        <div className="font-medium mt-2 mb-1">❌ Wrong formats:</div>
+                        <div className="text-amber-400/60 text-xs space-y-1">
+                          <div>• Excel file URLs (.xlsx, .xls)</div>
+                          <div>• Google Drive folder links</div>
+                          <div>• Incomplete or broken URLs</div>
+                        </div>
                       </div>
                     </div>
-                  ),
-                })
-              }
-            >
-              How to convert (quick steps)
-            </button>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            {/* Inline image fallback spot (no external link) */}
-            <div className="rounded-lg overflow-hidden border border-white/10 bg-black/20 p-2">
-              <img
-                src="/templates/convert-to-google-sheets.png"
-                alt="How to convert to Google Sheets"
-                className="w-full h-auto max-w-[420px] max-h-56 mx-auto object-contain"
-                loading="lazy"
-              />
+            {/* Quick Action Buttons */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="flex-1 px-3 py-2 rounded-md text-sm font-medium border border-white/15 bg-white/5 text-white/90 hover:bg-white/10 transition-colors"
+                onClick={() => {
+                  window.open('https://drive.google.com', '_blank');
+                }}
+              >
+                📁 Open Google Drive
+              </button>
+              <button
+                type="button"
+                className="flex-1 px-3 py-2 rounded-md text-sm font-medium border border-white/15 bg-white/5 text-white/90 hover:bg-white/10 transition-colors"
+                onClick={() => {
+                  window.open('https://sheets.google.com', '_blank');
+                }}
+              >
+                📊 Open Google Sheets
+              </button>
             </div>
           </div>
         )}
@@ -192,7 +249,7 @@ const SheetChipSelector: React.FC = () => {
   console.log('error:', error);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-tutorial="sheet-selector">
       {/* Header with refresh button */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-white/80">Available Sheets</h3>
@@ -244,7 +301,10 @@ const SheetChipSelector: React.FC = () => {
                 <span className="truncate max-w-[40vw] sm:max-w-none">{name}</span>
                 {/* Chart generation removed as per request */}
                 {isUnstructured && (
-                  <span title="Unstructured format" className="ml-1 inline-flex items-center gap-1 text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-300/40">
+                  <span
+                    title={structure ? `Unstructured: ${structure.issues.join(', ')}` : "Unstructured format"}
+                    className="ml-1 inline-flex items-center gap-1 text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-300/40 cursor-help"
+                  >
                     <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5a.75.75 0 00-1.5 0v7a.75.75 0 001.5 0V7zm-1 10a1 1 0 102 0 1 1 0 00-2 0z"/></svg>
                     Unstructured
                   </span>
@@ -260,47 +320,6 @@ const SheetChipSelector: React.FC = () => {
               {selectedSheetNames.length} selected
             </span>
           )}
-          {selectedSheetNames.some(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false))) && (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border border-gray-700 bg-gray-800 hover:bg-gray-700 whitespace-nowrap"
-              onClick={async () => {
-                const spreadsheetId = defaultSpreadsheetId;
-                const targets = selectedSheetNames.filter(n => (unstructuredOverrides[n] ?? (sheetStructureCache[n] ? !sheetStructureCache[n].isStructured : false)));
-                if (!spreadsheetId || targets.length === 0) return;
-                try {
-                  // TODO: Migrate to n8n if needed
-                  const results = await Promise.allSettled(targets.map(async (name) => {
-                    return Promise.resolve({ ok: false });
-                  }));
-                  const okCount = results.filter(r => r.status === 'fulfilled').length;
-                  const failCount = results.length - okCount;
-                  // Refresh sheet list so the new structured sheets appear
-                  await refreshSheetNames();
-                  await notify({
-                    title: failCount === 0 ? 'Conversion complete' : 'Conversion partially complete',
-                    description: failCount === 0 ? `Converted ${okCount} sheet${okCount !== 1 ? 's' : ''}.` : `Converted ${okCount}, ${failCount} failed.`,
-                    tone: failCount === 0 ? 'success' : 'warning',
-                    okText: 'OK'
-                  });
-                } catch (e) {
-                  console.error(e);
-                  await notify({
-                    title: 'Conversion error',
-                    description: 'An error occurred while converting selected sheets.',
-                    tone: 'danger',
-                    okText: 'Close'
-                  });
-                }
-              }}
-              title="Convert selected unstructured sheets into structured sheets"
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M5 4h14a1 1 0 011 1v6a1 1 0 01-1 1h-6v6a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zm1 2v4h4V6H6zm6 0v4h6V6h-6zM6 12v6h6v-6H6z"/>
-              </svg>
-              <span className="hidden sm:inline">Convert</span>
-            </button>
-          )}
           {/* Chart generation controls removed as per request */}
         </div>
       </div>
@@ -311,6 +330,87 @@ const SheetChipSelector: React.FC = () => {
       {selectedSheetNames.length === 0 && sheetNames.length > 0 && (
         <div className="text-xs text-gray-400 text-center py-2">
           Click on sheets above to select which ones to edit
+        </div>
+      )}
+
+      {/* Enhanced error and help guidance */}
+      {sheetNames.some(name => {
+        const structure = sheetStructureCache[name];
+        return structure && !structure.isStructured;
+      }) && (
+        <div className="mt-3 space-y-3">
+          {/* Excel Conversion Issues */}
+          <div className="p-3 bg-red-900/20 border border-red-800/50 rounded-lg">
+            <div className="flex items-start gap-2">
+              <svg className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <div className="text-xs text-red-200">
+                <div className="font-medium mb-2">❌ Sheet Format Issues Detected</div>
+                <div className="space-y-2">
+                  {sheetNames.map(name => {
+                    const structure = sheetStructureCache[name];
+                    if (!structure || structure.isStructured) return null;
+                    return (
+                      <div key={name} className="border-l-2 border-red-600/50 pl-2">
+                        <div className="font-medium text-red-300">Sheet: {name}</div>
+                        <div className="text-red-300/80 mt-1">
+                          {structure.issues.map((issue, idx) => (
+                            <div key={idx} className="mb-1">• {issue}</div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Step-by-Step Fix Instructions */}
+          <div className="p-3 bg-amber-900/20 border border-amber-800/50 rounded-lg">
+            <div className="flex items-start gap-2">
+              <svg className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="text-xs text-amber-200">
+                <div className="font-medium mb-2">🔧 How to Fix Your Sheets</div>
+                <div className="space-y-3">
+                  {/* Excel to Google Sheets Conversion */}
+                  <div>
+                    <div className="font-medium text-amber-300 mb-1">For Excel Files (.xlsx, .xls):</div>
+                    <ol className="list-decimal list-inside space-y-1 text-amber-300/80 ml-2">
+                      <li>Upload your Excel file to <button
+                          onClick={() => window.open('https://drive.google.com', '_blank')}
+                          className="text-amber-400 underline hover:text-amber-300"
+                        >Google Drive</button></li>
+                      <li>Right-click the file → <strong>Open with → Google Sheets</strong></li>
+                      <li>If prompted, click <strong>Save as Google Sheets</strong></li>
+                      <li>Copy the new Google Sheets URL and paste it above</li>
+                    </ol>
+                  </div>
+
+                  {/* Formatting Issues */}
+                  <div>
+                    <div className="font-medium text-amber-300 mb-1">For Formatting Issues:</div>
+                    <ol className="list-decimal list-inside space-y-1 text-amber-300/80 ml-2">
+                      <li>Ensure the <strong>first row</strong> contains column headers (not data)</li>
+                      <li>Add at least <strong>one row of data</strong> below the headers</li>
+                      <li>Remove completely blank rows at the top of your sheet</li>
+                      <li>Make sure headers are in row 1 (not row 2, 3, etc.)</li>
+                    </ol>
+                  </div>
+
+                  {/* Additional Help */}
+                  <div className="pt-2 border-t border-amber-800/30">
+                    <div className="text-amber-300/80">
+                      <strong>💡 Tip:</strong> Google automatically converts most Excel files. If you see formatting issues, try opening the file in Google Sheets and saving it again.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
       

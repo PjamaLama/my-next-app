@@ -137,7 +137,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               body: JSON.stringify({ 
                 spreadsheetId: defaultSpreadsheetId, 
                 sheetName,
-                tailRows: 10 // Only fetch first 10 rows for efficiency
+                maxRows: 10 // Only fetch first 10 rows for efficiency
               })
             });
             

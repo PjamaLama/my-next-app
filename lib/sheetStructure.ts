@@ -22,7 +22,7 @@ export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta
     return {
       isStructured: false,
       confidence: 0,
-      issues: ['Sheet has no rows.'],
+      issues: ['Sheet is completely empty. Add column headers in the first row and data below them.'],
       detectedHeaders: null,
       columnCount: 0,
       dataRowCount: 0,
@@ -36,7 +36,7 @@ export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta
   const headerCount = nonEmptyHeaderCells.length;
   const headerValid = headerCount > 0;
   if (!headerValid) {
-    issues.push('First row does not appear to contain headers.');
+    issues.push('No column headers found in the first row. Add column names like "Name", "Email", "Date" in row 1.');
   }
 
   // Count data rows: any non-empty row below the header counts as data.
@@ -44,6 +44,7 @@ export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta
   // sheets are considered structured if the first row is headers and there are data rows,
   // even when later rows have empty cells or extra cells populated.
   let dataRows = 0;
+  let totalRows = sheetData.length;
   for (let r = 1; r < sheetData.length; r++) {
     const row = sheetData[r] || [];
     const hasAnyData = (row || []).some(c => String(c ?? '').trim() !== '');
@@ -52,12 +53,17 @@ export function analyzeSheetStructure(sheetData: string[][]): SheetStructureMeta
   }
 
   if (dataRows === 0) {
-    issues.push('No data rows found.');
+    if (totalRows === 1) {
+      issues.push('Sheet only has headers. Add at least one row of data below the headers to make it usable.');
+    } else {
+      issues.push(`Sheet has ${totalRows - 1} empty rows below headers. Add actual data values in the cells below your column headers.`);
+    }
   }
 
-  // Confidence: with the relaxed definition, treat valid headers + presence of data as high confidence
-  const confidence = headerValid && dataRows > 0 ? 1 : 0;
-  const isStructured = headerValid && dataRows > 0;
+  // Be more lenient: sheets with headers but no data can still be considered structured
+  // (useful for templates or sheets being prepared)
+  const confidence = headerValid ? (dataRows > 0 ? 1 : 0.7) : 0;
+  const isStructured = headerValid; // Only require headers, data is optional
 
   return {
     isStructured,
