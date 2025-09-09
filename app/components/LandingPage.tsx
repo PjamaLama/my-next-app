@@ -5,6 +5,7 @@ import { Database, Feather, Zap, BarChart, PieChart, Table, Loader2, FileText, M
 import { User } from 'firebase/auth';
 import SpaceBackground from './SpaceBackground';
 import { trackCombinedViewContent, trackLead, createUserData } from '../../lib/metaConversionsAPI';
+import { trackTikTokViewContent } from '../../lib/tiktokPixel';
 import { DemoInputManager } from '../../lib/demoInputManager';
 import VoiceRecorder from './VoiceRecorder';
 import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
@@ -94,6 +95,9 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
         eventSourceUrl: window.location.href,
         testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
+
+      // Also track to TikTok pixel
+      trackTikTokViewContent('landing_page');
     };
 
     trackViewContent();

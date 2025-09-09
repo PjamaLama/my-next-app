@@ -8,6 +8,11 @@ declare global {
     clarity?: (command: string, ...args: any[]) => void;
     gtag?: (command: string, ...args: any[]) => void;
     dataLayer?: any[];
+    ttq?: {
+      track: (eventName: string, parameters?: any) => void;
+      page: () => void;
+      identify: (userData?: any) => void;
+    };
   }
 }
 
@@ -84,6 +89,36 @@ export const trackEvent = (
     // Microsoft Clarity
     if (window.clarity && parameters) {
       window.clarity('event', eventName, parameters);
+    }
+
+    // TikTok Pixel - Map common events to TikTok standard events
+    if (window.ttq) {
+      // Map conversion events to TikTok standard events
+      if (eventName === 'conversion') {
+        const conversionType = parameters?.conversion_type;
+        switch (conversionType) {
+          case 'account_created':
+            window.ttq.track('Lead', {
+              content_name: 'Account Creation',
+              content_type: 'lead',
+              ...parameters
+            });
+            break;
+          case 'first_message_sent':
+            window.ttq.track('Contact', {
+              content_name: 'First Message Sent',
+              content_type: 'engagement',
+              ...parameters
+            });
+            break;
+          default:
+            window.ttq.track('CompletePayment', parameters);
+            break;
+        }
+      } else {
+        // For other custom events, use generic tracking
+        window.ttq.track(eventName, parameters);
+      }
     }
 
     // Debug logging (can be enabled by setting NEXT_PUBLIC_GA_DEBUG=true)
@@ -188,6 +223,7 @@ export const getAnalyticsStatus = () => {
   return {
     googleAnalytics: !!window.gtag, // GA script loaded directly
     microsoftClarity: !!window.clarity, // Clarity script loaded directly
+    tikTokPixel: !!window.ttq, // TikTok pixel loaded directly
     enabled: shouldEnableAnalytics(),
     environment: process.env.NEXT_PUBLIC_ENVIRONMENT || 'production',
   };

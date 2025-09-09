@@ -5,6 +5,7 @@ import { Check, X, Zap, Crown, MessageSquare, Users, TrendingUp } from 'lucide-r
 import { useFirebase } from '../providers/FirebaseProvider';
 import { useUpgradeModal } from '../providers/UpgradeModalProvider';
 import { trackCombinedViewContent, trackInitiateCheckout, createUserData } from '../../lib/metaConversionsAPI';
+import { trackTikTokViewContent, trackTikTokInitiateCheckout } from '../../lib/tiktokPixel';
 
 interface PricingPlansProps {
   compact?: boolean;
@@ -31,6 +32,9 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
         eventSourceUrl: window.location.href,
         testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
+
+      // Also track to TikTok pixel
+      trackTikTokViewContent('pricing_plans');
     };
 
     trackViewContent();
@@ -88,6 +92,9 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
         eventSourceUrl: window.location.href,
         testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
+
+      // Also track to TikTok pixel
+      trackTikTokInitiateCheckout('sheetyai_pro_monthly');
 
       openModal(planName);
     }
