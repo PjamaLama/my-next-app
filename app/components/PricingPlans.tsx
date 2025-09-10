@@ -49,8 +49,8 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
       features: [
         { name: '3 messages per day', included: true, icon: MessageSquare },
         { name: 'All input types: text, voice, files, images', included: true, icon: Zap },
-        { name: 'WhatsApp in‑app chat integration (3/day)', included: true, icon: TrendingUp },
-        { name: 'Basic export options', included: true, icon: Users },
+        { name: 'File uploads up to 5MB each', included: true, icon: TrendingUp },
+        { name: 'WhatsApp integration (3/day total)', included: true, icon: TrendingUp },
       ],
       buttonText: 'Current Plan',
       buttonVariant: 'secondary' as const,
@@ -67,10 +67,9 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
       features: [
         { name: 'Unlimited conversations daily', included: true, icon: MessageSquare },
         { name: 'All input types: text, voice, files, images', included: true, icon: Zap },
+        { name: 'File uploads up to 25MB each', included: true, icon: TrendingUp },
         { name: 'WhatsApp & in‑app chat integration (unlimited)', included: true, icon: TrendingUp },
-        { name: 'Basic export options', included: true, icon: Users },
         { name: 'Advanced AI processing & analysis', included: true, icon: Crown },
-        { name: 'Higher file upload limits', included: true, icon: Crown },
         { name: 'Priority customer support', included: true, icon: Crown },
       ],
       buttonText: userType === 'pro' ? 'Current Plan' : '🚀 Claim Discount',

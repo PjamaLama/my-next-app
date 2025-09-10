@@ -135,11 +135,11 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                     </div>
                     <div className="flex items-center gap-2 text-gray-300">
                       <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                      <span>WhatsApp in‑app chat integration (3/day)</span>
+                      <span>File uploads up to 5MB each</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-300">
                       <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                      <span>Basic export options</span>
+                      <span>WhatsApp integration (3/day total)</span>
                     </div>
                   </div>
                 </div>
@@ -170,11 +170,11 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                     </div>
                     <div className="flex items-center gap-2 text-gray-200">
                       <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
-                      <span>WhatsApp & in‑app chat integration (unlimited)</span>
+                      <span>File uploads up to 25MB each</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-200">
                       <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
-                      <span>Basic export options</span>
+                      <span>WhatsApp & in‑app chat integration (unlimited)</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-200">
                       <Check className="w-4 h-4 text-green-300 flex-shrink-0" />

@@ -448,8 +448,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
       // For demo, just process the first file
       const file = fileArray[0];
 
-      // Validate file before processing
-      const validation = validateFileForUpload(file);
+      // Validate file before processing (using Free tier limits for demo)
+      const validation = validateFileForUpload(file, 'free');
       if (!validation.valid) {
         setDemoError(validation.error || 'Invalid file');
         return;

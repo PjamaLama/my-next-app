@@ -388,14 +388,35 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const handleFileSelect = useCallback(async (files: FileList) => {
     const fileArray = Array.from(files);
     const acceptedTypes = ['image/*', 'application/pdf', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+
+    // Validate files with size limits based on user plan
     const validFiles = fileArray.filter(file => {
-      return acceptedTypes.some(type => {
+      // First check file type
+      const isTypeValid = acceptedTypes.some(type => {
         if (type.includes('*')) {
           return file.type.startsWith(type.replace('*', ''));
         }
         return file.type === type;
       });
+
+      if (!isTypeValid) {
+        alert(`File type not supported: ${file.name}`);
+        return false;
+      }
+
+      // Then check file size based on user plan
+      const validation = validateFileForUpload(file, userType);
+      if (!validation.valid) {
+        alert(`${file.name}: ${validation.error}`);
+        return false;
+      }
+
+      return true;
     });
+
+    if (validFiles.length === 0) {
+      return; // No valid files
+    }
 
     if (uploadedFiles.length + validFiles.length > 5) {
       alert(`You can only upload up to 5 files at a time.`);
@@ -410,7 +431,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
     // Add new files with a staggered entrance effect
     setUploadedFiles(prev => [...prev, ...newFiles]);
-    
+
     // Add entrance animation after a brief delay to ensure DOM update
     setTimeout(() => {
       newFiles.forEach((file, index) => {
@@ -422,7 +443,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         }
       });
     }, 50);
-  }, [uploadedFiles, processFile]);
+  }, [uploadedFiles, processFile, userType]);
 
   const removeFile = useCallback((id: string) => {
     // Add transition effect before removing

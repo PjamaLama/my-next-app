@@ -63,10 +63,12 @@ export const extractPDFText = async (file: File): Promise<string> => {
 };
 
 /**
- * Validate file for upload
+ * Validate file for upload based on user plan
  */
-export const validateFileForUpload = (file: File): { valid: boolean; error?: string } => {
-  const maxSize = 10 * 1024 * 1024; // 10MB
+export const validateFileForUpload = (file: File, userType: 'free' | 'pro' = 'free'): { valid: boolean; error?: string } => {
+  // File size limits based on plan
+  const maxSize = userType === 'pro' ? 25 * 1024 * 1024 : 5 * 1024 * 1024; // Pro: 25MB, Free: 5MB
+
   const allowedTypes = [
     'image/jpeg',
     'image/png',
@@ -79,7 +81,11 @@ export const validateFileForUpload = (file: File): { valid: boolean; error?: str
   ];
 
   if (file.size > maxSize) {
-    return { valid: false, error: 'File size must be less than 10MB' };
+    const maxSizeMB = userType === 'pro' ? 25 : 5;
+    return {
+      valid: false,
+      error: `File size must be less than ${maxSizeMB}MB${userType === 'free' ? '. Upgrade to Pro for up to 25MB files' : ''}`
+    };
   }
 
   if (!allowedTypes.includes(file.type)) {
