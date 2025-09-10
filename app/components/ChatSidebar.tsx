@@ -362,6 +362,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
     // Switch session instantly without navigation - the ChatProvider handles caching
     setCurrentSessionId(id);
+
+    // Navigate to the main chat page if not already there
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      // If not on the main chat page (report page), navigate there
+      if (currentPath !== '/report') {
+        window.location.href = '/report';
+      }
+    }
   };
 
 

@@ -453,6 +453,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       return;
     }
 
+    // Prevent duplicate submissions
+    if (isSending) return;
+
     // Check message limits for free users
     if (userType === 'free' && !canSendMessage) {
       openModal(); // Open upgrade modal
@@ -996,7 +999,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
             {/* Send button - prominent floating action button */}
             <button
-              type={isSending ? "button" : "submit"}
+              type="button"
               onClick={
                 userType === 'free' && isLimitReached
                   ? () => openModal()
@@ -1051,20 +1054,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                         // Re-enable stop button after a brief delay
                         setTimeout(() => setIsStopping(false), 500);
                       }
-                    : () => {
-                        // Check if files are still processing before allowing submit
-                        const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
-                        if (processingFiles.length > 0) {
-                          console.log('⏳ [ChatInterface] Files still processing, showing message');
-                          // Don't call handleSubmit, just show the processing message
-                          addMessage({
-                            role: 'assistant',
-                            content: `⏳ Please wait, I'm still processing ${processingFiles.length} file${processingFiles.length > 1 ? 's' : ''}. This usually takes just a few seconds...`
-                          });
-                        } else {
-                          handleSubmit(new Event('submit') as any);
-                        }
-                      }
+                    : () => handleSubmit(new Event('submit') as any)
               }
               disabled={
                 isSending
