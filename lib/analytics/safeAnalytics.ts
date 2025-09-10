@@ -92,32 +92,37 @@ export const trackEvent = (
     }
 
     // TikTok Pixel - Map common events to TikTok standard events
-    if (window.ttq) {
-      // Map conversion events to TikTok standard events
-      if (eventName === 'conversion') {
-        const conversionType = parameters?.conversion_type;
-        switch (conversionType) {
-          case 'account_created':
-            window.ttq.track('Lead', {
-              content_name: 'Account Creation',
-              content_type: 'lead',
-              ...parameters
-            });
-            break;
-          case 'first_message_sent':
-            window.ttq.track('Contact', {
-              content_name: 'First Message Sent',
-              content_type: 'engagement',
-              ...parameters
-            });
-            break;
-          default:
-            window.ttq.track('CompletePayment', parameters);
-            break;
+    // Note: TikTok pixel is initialized in layout.tsx, avoid duplicate initialization here
+    if (window.ttq && typeof window.ttq.track === 'function') {
+      try {
+        // Map conversion events to TikTok standard events
+        if (eventName === 'conversion') {
+          const conversionType = parameters?.conversion_type;
+          switch (conversionType) {
+            case 'account_created':
+              window.ttq.track('Lead', {
+                content_name: 'Account Creation',
+                content_type: 'lead',
+                ...parameters
+              });
+              break;
+            case 'first_message_sent':
+              window.ttq.track('Contact', {
+                content_name: 'First Message Sent',
+                content_type: 'engagement',
+                ...parameters
+              });
+              break;
+            default:
+              window.ttq.track('CompletePayment', parameters);
+              break;
+          }
+        } else {
+          // For other custom events, use generic tracking
+          window.ttq.track(eventName, parameters);
         }
-      } else {
-        // For other custom events, use generic tracking
-        window.ttq.track(eventName, parameters);
+      } catch (error) {
+        console.warn('TikTok pixel tracking failed:', error);
       }
     }
 

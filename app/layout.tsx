@@ -242,9 +242,13 @@ export default function RootLayout({
           strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `
-              if (typeof ttq !== 'undefined') {
+              if (typeof ttq !== 'undefined' && !window.tiktokPixelLoaded) {
                 ttq.load('D2VDTKRC77U649U8UH9G');
                 ttq.page();
+                window.tiktokPixelLoaded = true;
+                console.log('TikTok pixel initialized successfully');
+              } else if (window.tiktokPixelLoaded) {
+                console.log('TikTok pixel already initialized, skipping duplicate initialization');
               } else {
                 console.warn('TikTok pixel SDK not loaded yet');
               }

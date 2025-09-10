@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminAuth } from '../../../lib/firebaseAdmin';
-import { WebhookSignatureVerification } from '@paypal/paypal-server-sdk';
+import crypto from 'crypto';
+import https from 'https';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -46,18 +47,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      // Create webhook signature verification
-      const webhookVerification = new WebhookSignatureVerification()
-        .webhookId(webhookId)
-        .transmissionId(transmissionId)
-        .transmissionTime(transmissionTime)
-        .transmissionSig(transmissionSig)
-        .authAlgo(authAlgo)
-        .certUrl(certUrl)
-        .webhookEvent(JSON.stringify(event));
-
-      // Verify the webhook signature
-      const isValid = await webhookVerification.verify();
+      // Manual webhook signature verification following PayPal's documentation
+      const isValid = await verifyPayPalWebhookSignature({
+        webhookId,
+        transmissionId,
+        transmissionTime,
+        transmissionSig,
+        authAlgo,
+        certUrl,
+        webhookEvent: JSON.stringify(event)
+      });
 
       if (!isValid) {
         console.error('PayPal webhook: Signature verification failed');
@@ -250,5 +249,85 @@ async function handleSubscriptionSuspended(db: any, resource: any) {
       'subscription.lastUpdated': new Date()
     });
     console.log(`✅ Suspended subscription for user ${userDoc.id}`);
+  }
+}
+
+// Manual PayPal webhook signature verification
+async function verifyPayPalWebhookSignature(params: {
+  webhookId: string;
+  transmissionId: string;
+  transmissionTime: string;
+  transmissionSig: string;
+  authAlgo: string;
+  certUrl: string;
+  webhookEvent: string;
+}): Promise<boolean> {
+  try {
+    const {
+      webhookId,
+      transmissionId,
+      transmissionTime,
+      transmissionSig,
+      authAlgo,
+      certUrl,
+      webhookEvent
+    } = params;
+
+    // Create the expected signature string
+    const expectedSignature = `${transmissionId}|${transmissionTime}|${webhookEvent}|${webhookId}`;
+
+    // Fetch the PayPal certificate
+    const certificate = await fetchCertificate(certUrl);
+    if (!certificate) {
+      console.error('Failed to fetch PayPal certificate');
+      return false;
+    }
+
+    // Verify the signature based on algorithm
+    const isValid = verifySignature(expectedSignature, transmissionSig, certificate, authAlgo);
+
+    return isValid;
+  } catch (error) {
+    console.error('Webhook signature verification error:', error);
+    return false;
+  }
+}
+
+// Fetch certificate from PayPal's certificate URL
+function fetchCertificate(certUrl: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    https.get(certUrl, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        resolve(data);
+      });
+    }).on('error', (err) => {
+      console.error('Error fetching certificate:', err);
+      resolve(null);
+    });
+  });
+}
+
+// Verify signature using the appropriate algorithm
+function verifySignature(
+  expectedSignature: string,
+  transmissionSig: string,
+  certificate: string,
+  authAlgo: string
+): boolean {
+  try {
+    const verify = crypto.createVerify('RSA-SHA256');
+    verify.update(expectedSignature, 'utf8');
+
+    // Decode base64 signature
+    const signature = Buffer.from(transmissionSig, 'base64');
+
+    return verify.verify(certificate, signature);
+  } catch (error) {
+    console.error('Signature verification failed:', error);
+    return false;
   }
 }
