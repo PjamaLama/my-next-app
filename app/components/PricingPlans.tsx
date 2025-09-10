@@ -44,14 +44,13 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
     {
       name: 'Free',
       price: '$0',
-      period: 'forever',
+      period: '',
       description: 'Perfect for getting started',
       features: [
         { name: '3 messages per day', included: true, icon: MessageSquare },
         { name: 'All input types: text, voice, files, images', included: true, icon: Zap },
         { name: 'WhatsApp in‑app chat integration (3/day)', included: true, icon: TrendingUp },
         { name: 'Basic export options', included: true, icon: Users },
-        { name: 'Priority customer support', included: false, icon: Crown },
       ],
       buttonText: 'Current Plan',
       buttonVariant: 'secondary' as const,
@@ -59,16 +58,22 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
     },
     {
       name: 'Pro',
+      originalPrice: '$29.99',
       price: '$19.97',
       period: 'per month',
       description: 'Unlimited conversations and priority support',
+      savings: 'SAVE $10.02/month (33% OFF!)',
+      limitedTime: true,
       features: [
         { name: 'Unlimited conversations daily', included: true, icon: MessageSquare },
-        { name: 'WhatsApp & in‑app chat integration', included: true, icon: Zap },
-        { name: 'All input types: text, voice, files, images', included: true, icon: TrendingUp },
-        { name: 'Priority customer support', included: true, icon: Users },
+        { name: 'All input types: text, voice, files, images', included: true, icon: Zap },
+        { name: 'WhatsApp & in‑app chat integration (unlimited)', included: true, icon: TrendingUp },
+        { name: 'Basic export options', included: true, icon: Users },
+        { name: 'Advanced AI processing & analysis', included: true, icon: Crown },
+        { name: 'Higher file upload limits', included: true, icon: Crown },
+        { name: 'Priority customer support', included: true, icon: Crown },
       ],
-      buttonText: userType === 'pro' ? 'Current Plan' : 'Upgrade to Pro',
+      buttonText: userType === 'pro' ? 'Current Plan' : '🚀 Claim Discount',
       buttonVariant: 'primary' as const,
       popular: true,
     },
@@ -128,9 +133,35 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
 
             <div className="text-center mb-8">
               <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
+
+              {/* Limited Time Offer Badge */}
+              {plan.limitedTime && (
+                <div className="mb-3">
+                  <span className="inline-block bg-red-500/20 text-red-400 text-xs font-bold px-3 py-1 rounded-full border border-red-500/30">
+                    🔥 LIMITED TIME OFFER
+                  </span>
+                </div>
+              )}
+
               <div className="mb-4">
-                <span className="text-4xl font-bold text-white">{plan.price}</span>
-                <span className="text-gray-400 ml-2">{plan.period}</span>
+                {plan.originalPrice && (
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <span className="text-2xl text-gray-500 line-through">{plan.originalPrice}</span>
+                    <span className="text-4xl font-bold text-white">{plan.price}</span>
+                  </div>
+                )}
+                {!plan.originalPrice && (
+                  <span className="text-4xl font-bold text-white">{plan.price}</span>
+                )}
+                {plan.period && <span className="text-gray-400 ml-2">{plan.period}</span>}
+
+                {/* Savings highlight */}
+                {plan.savings && (
+                  <div className="text-emerald-400 font-bold text-sm mt-1">
+                    {plan.savings}
+                  </div>
+                )}
+
               </div>
               <p className="text-gray-300">{plan.description}</p>
             </div>
@@ -168,7 +199,7 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
                 plan.buttonVariant === 'primary'
                   ? plan.name === 'Pro' && userType === 'pro'
                     ? 'bg-emerald-600/50 text-emerald-300 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-emerald-500/25'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-emerald-500/25 animate-pulse'
                   : plan.name === 'Free' && userType === 'free'
                     ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed border border-gray-500/50'
                     : 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'

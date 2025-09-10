@@ -112,8 +112,8 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                 <div className="w-12 h-12 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-3">
                   <Crown className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-white mb-1">Upgrade to Pro</h2>
-                <p className="text-gray-400 text-sm">Unlock unlimited data conversions</p>
+                <h2 className="text-xl font-bold text-white mb-1">🚀 Upgrade to Pro Now!</h2>
+                <p className="text-gray-400 text-sm">Don't miss this exclusive 33% discount - limited time only!</p>
               </div>
 
               {/* Plan comparison */}
@@ -122,7 +122,7 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                 <div className="rounded-xl p-4 border border-gray-700/60 bg-gray-800/40">
                   <div className="mb-3">
                     <div className="text-white font-bold text-lg">Free</div>
-                    <div className="text-gray-400 text-sm">$0 • forever</div>
+                    <div className="text-gray-400 text-sm">$0</div>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2 text-gray-300">
@@ -137,9 +137,9 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                       <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
                       <span>WhatsApp in‑app chat integration (3/day)</span>
                     </div>
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <X className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span>Priority customer support</span>
+                    <div className="flex items-center gap-2 text-gray-300">
+                      <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <span>Basic export options</span>
                     </div>
                   </div>
                 </div>
@@ -151,7 +151,11 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                       <div className="text-white font-bold text-lg flex items-center gap-2">
                         <Crown className="w-5 h-5 text-yellow-400" /> Pro
                       </div>
-                      <div className="text-gray-300 text-sm">$19.97 / month</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 text-sm line-through">$29.99</span>
+                        <span className="text-gray-300 text-sm">$19.97 / month</span>
+                      </div>
+                      <div className="text-xs text-emerald-400 font-semibold">SAVE $10.02/month</div>
                     </div>
                     <div className="text-xs text-yellow-300 bg-yellow-500/10 border border-yellow-500/20 px-2 py-1 rounded-md">Most popular</div>
                   </div>
@@ -162,7 +166,23 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                     </div>
                     <div className="flex items-center gap-2 text-gray-200">
                       <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
-                      <span>WhatsApp & in‑app chat integration</span>
+                      <span>All input types: text, voice, files, images</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-200">
+                      <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
+                      <span>WhatsApp & in‑app chat integration (unlimited)</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-200">
+                      <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
+                      <span>Basic export options</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-200">
+                      <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
+                      <span>Advanced AI processing & analysis</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-200">
+                      <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
+                      <span>Higher file upload limits</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-200">
                       <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
@@ -175,10 +195,30 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
               {/* Pricing */}
               <div className="bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 rounded-xl p-4 mb-6 border border-yellow-500/30">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-white mb-1">
-                    $19.97<span className="text-lg text-gray-400 font-normal">/month</span>
+                  {/* Limited Time Offer Badge */}
+                  <div className="mb-2">
+                    <span className="inline-block bg-red-500/20 text-red-400 text-xs font-bold px-3 py-1 rounded-full border border-red-500/30">
+                      🔥 LIMITED TIME OFFER
+                    </span>
                   </div>
-                  <div className="text-sm text-gray-400">Cancel anytime • 30-day money back</div>
+
+                  {/* Pricing with crossed-out original */}
+                  <div className="mb-2">
+                    <span className="text-2xl text-gray-500 line-through mr-3">$29.99</span>
+                    <span className="text-4xl font-bold text-white">$19.97</span>
+                    <span className="text-lg text-gray-400 font-normal">/month</span>
+                  </div>
+
+                  {/* Savings highlight */}
+                  <div className="text-emerald-400 font-bold text-sm mb-2">
+                    💰 SAVE $10.02/month (33% OFF!)
+                  </div>
+
+                  {/* Urgency elements */}
+                  <div className="space-y-1 text-xs text-gray-400">
+                    <div>⚡ Price subject to change</div>
+                    <div>Cancel anytime • 30-day money back</div>
+                  </div>
                 </div>
               </div>
 
@@ -205,9 +245,9 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                       trackTikTokInitiateCheckout('sheetyai_pro_monthly');
                       setHasStartedPayment(true);
                     }}
-                    className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-yellow-500/25"
+                    className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-yellow-500/25 animate-pulse"
                   >
-                    Upgrade to Pro - $19.97/month
+                    🚀 CLAIM DISCOUNT - Only $19.97/month
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
