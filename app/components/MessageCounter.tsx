@@ -44,15 +44,14 @@ export default function MessageCounter() {
               Daily Message Limit Reached
             </div>
             <div className="text-xs text-gray-300 mb-3">
-              You've used all {limit} daily messages. Upgrade to Pro for unlimited messages and premium features.
+              You've used all {limit} daily messages. Upgrade to Pro for unlimited conversations, WhatsApp & in‑app chat, and priority support.
             </div>
             <div className="text-xs text-gray-400 mb-3">
-              <div className="font-medium text-emerald-400 mb-1">Pro Benefits:</div>
+              <div className="font-medium text-emerald-400 mb-1">Pro includes:</div>
               <ul className="space-y-0.5 ml-2">
-                <li>• Unlimited messages daily</li>
-                <li>• Advanced AI features</li>
-                <li>• Priority support</li>
-                <li>• Higher file upload limits</li>
+                <li>• Unlimited conversations daily</li>
+                <li>• WhatsApp & in‑app chat integration</li>
+                <li>• Priority customer support</li>
               </ul>
             </div>
             <button

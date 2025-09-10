@@ -28,13 +28,35 @@ Create/update your `.env.local` file:
 # For Development (Sandbox)
 PAYPAL_CLIENT_ID=AZXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 PAYPAL_SECRET_KEY=EPXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+PAYPAL_WEBHOOK_ID=WH-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 # For Production (Live)
 # PAYPAL_CLIENT_ID=AZXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # PAYPAL_SECRET_KEY=EPXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+# PAYPAL_WEBHOOK_ID=WH-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
-### 4. Test Setup
+### 4. Configure Webhooks (Important for Security)
+
+**For Sandbox:**
+1. Go to [PayPal Developer Dashboard](https://developer.paypal.com/)
+2. Navigate to your app → "Webhooks"
+3. Click "Add Webhook"
+4. Set Webhook URL: `http://localhost:3000/api/paypal/webhook`
+5. Subscribe to these events:
+   - `PAYMENT.SALE.COMPLETED`
+   - `BILLING.SUBSCRIPTION.CREATED`
+   - `BILLING.SUBSCRIPTION.ACTIVATED`
+   - `BILLING.SUBSCRIPTION.RENEWED`
+   - `BILLING.SUBSCRIPTION.CANCELLED`
+   - `BILLING.SUBSCRIPTION.SUSPENDED`
+6. Copy the Webhook ID and add it to your `.env.local` as `PAYPAL_WEBHOOK_ID`
+
+**For Production:**
+- Use your production domain instead of localhost
+- Follow the same webhook setup process
+
+### 5. Test Setup
 
 Visit: `http://localhost:3000/api/paypal/debug`
 
@@ -43,7 +65,12 @@ This will show you:
 - ✅ Environment (development/sandbox)
 - 🧪 Test your credentials
 
-### 5. Restart Development Server
+**New Webhook Debug:** `http://localhost:3000/api/paypal/webhook-debug`
+- ✅ Whether webhook is configured
+- ✅ Required headers for signature verification
+- 📋 Setup instructions
+
+### 6. Restart Development Server
 
 ```bash
 npm run dev

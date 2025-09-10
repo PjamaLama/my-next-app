@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminAuth } from '../../../lib/firebaseAdmin';
+import { WebhookSignatureVerification } from '@paypal/paypal-server-sdk';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -13,8 +14,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log('PayPal webhook received:', eventType, resource?.id);
 
-    // Verify webhook signature (important for production)
-    // Note: In production, you should verify the webhook signature using PayPal's SDK
+    // Verify webhook signature for security
+    const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+    const transmissionId = req.headers['paypal-transmission-id'] as string;
+    const transmissionTime = req.headers['paypal-transmission-time'] as string;
+    const transmissionSig = req.headers['paypal-transmission-sig'] as string;
+    const authAlgo = req.headers['paypal-auth-algo'] as string;
+    const certUrl = req.headers['paypal-cert-url'] as string;
+
+    // Check if all required headers are present
+    if (!webhookId || !transmissionId || !transmissionTime || !transmissionSig || !authAlgo || !certUrl) {
+      console.error('PayPal webhook: Missing required headers for signature verification');
+      return res.status(400).json({ error: 'Missing required webhook headers' });
+    }
+
+    // Get PayPal configuration
+    const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
+    const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
+
+    const clientId = isProduction
+      ? process.env.PAYPAL_CLIENT_ID
+      : process.env.PAYPAL_SANDBOX_CLIENT_ID || process.env.PAYPAL_CLIENT_ID;
+
+    const clientSecret = isProduction
+      ? process.env.PAYPAL_SECRET_KEY
+      : process.env.PAYPAL_SANDBOX_SECRET_KEY || process.env.PAYPAL_SECRET_KEY;
+
+    if (!clientId || !clientSecret) {
+      console.error('PayPal webhook: Missing PayPal credentials');
+      return res.status(500).json({ error: 'PayPal configuration error' });
+    }
+
+    try {
+      // Create webhook signature verification
+      const webhookVerification = new WebhookSignatureVerification()
+        .webhookId(webhookId)
+        .transmissionId(transmissionId)
+        .transmissionTime(transmissionTime)
+        .transmissionSig(transmissionSig)
+        .authAlgo(authAlgo)
+        .certUrl(certUrl)
+        .webhookEvent(JSON.stringify(event));
+
+      // Verify the webhook signature
+      const isValid = await webhookVerification.verify();
+
+      if (!isValid) {
+        console.error('PayPal webhook: Signature verification failed');
+        return res.status(400).json({ error: 'Invalid webhook signature' });
+      }
+
+      console.log('✅ PayPal webhook signature verified successfully');
+    } catch (verificationError) {
+      console.error('PayPal webhook: Signature verification error:', verificationError);
+      return res.status(400).json({ error: 'Webhook signature verification failed' });
+    }
 
     const { getFirestore } = require('firebase-admin/firestore');
     const db = getFirestore();

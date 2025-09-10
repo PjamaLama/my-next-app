@@ -96,7 +96,7 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="bg-gray-900 rounded-2xl max-w-lg w-full mx-4 relative border border-white/10 shadow-2xl max-h-[90vh] overflow-y-auto"
+            className="bg-gray-900 rounded-2xl max-w-3xl w-full mx-4 relative border border-white/10 shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -116,36 +116,58 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                 <p className="text-gray-400 text-sm">Unlock unlimited data conversions</p>
               </div>
 
-              {/* Pro Benefits */}
-              <div className="bg-gray-800/50 rounded-xl p-4 mb-6 border border-yellow-500/20">
-                <h3 className="text-yellow-400 font-semibold text-sm mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  Pro Benefits
-                </h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-gray-300">
-                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Unlimited data conversions daily</span>
+              {/* Plan comparison */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {/* Free Plan */}
+                <div className="rounded-xl p-4 border border-gray-700/60 bg-gray-800/40">
+                  <div className="mb-3">
+                    <div className="text-white font-bold text-lg">Free</div>
+                    <div className="text-gray-400 text-sm">$0 • forever</div>
                   </div>
-                  <div className="flex items-center gap-2 text-gray-300">
-                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>WhatsApp & in-app chat integration</span>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2 text-gray-300">
+                      <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <span>3 messages per day</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-300">
+                      <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <span>All input types: text, voice, files, images</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-300">
+                      <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <span>WhatsApp in‑app chat integration (3/day)</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <X className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span>Priority customer support</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-gray-300">
-                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>All input types: text, voice, files, images</span>
+                </div>
+
+                {/* Pro Plan */}
+                <div className="rounded-xl p-4 border border-yellow-500/30 bg-yellow-500/10">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <div className="text-white font-bold text-lg flex items-center gap-2">
+                        <Crown className="w-5 h-5 text-yellow-400" /> Pro
+                      </div>
+                      <div className="text-gray-300 text-sm">$19.97 / month</div>
+                    </div>
+                    <div className="text-xs text-yellow-300 bg-yellow-500/10 border border-yellow-500/20 px-2 py-1 rounded-md">Most popular</div>
                   </div>
-                  <div className="flex items-center gap-2 text-gray-300">
-                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Priority customer support</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-300">
-                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Advanced AI processing & templates</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-300">
-                    <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                    <span>Premium analytics & bulk processing</span>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2 text-gray-200">
+                      <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
+                      <span>Unlimited conversations daily</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-200">
+                      <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
+                      <span>WhatsApp & in‑app chat integration</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-200">
+                      <Check className="w-4 h-4 text-green-300 flex-shrink-0" />
+                      <span>Priority customer support</span>
+                    </div>
                   </div>
                 </div>
               </div>

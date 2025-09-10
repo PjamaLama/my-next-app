@@ -41,7 +41,7 @@ export default function UpgradeBanner({ onUpgrade, onDismiss }: UpgradeBannerPro
             Upgrade to Pro
           </h3>
           <p className="text-xs text-white/80">
-            Get unlimited voice commands and premium features for just $19/month
+            Unlimited conversations, WhatsApp & in‑app chat, and priority support — $19.97/mo
           </p>
         </div>
 
