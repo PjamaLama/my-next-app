@@ -40,6 +40,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   const { openModal } = useUpgradeModal();
   const [creating, setCreating] = useState(false);
   const [counterKey, setCounterKey] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Debug: Log when dailyUsage changes and force re-render
   React.useEffect(() => {
@@ -47,6 +48,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     // Force re-render by updating key
     setCounterKey(prev => prev + 1);
   }, [dailyUsage]);
+
+  // Track mobile state for sidebar closing
+  React.useEffect(() => {
+    const updateMobile = () => setIsMobile(window.innerWidth < 640);
+    updateMobile();
+    window.addEventListener('resize', updateMobile);
+    return () => window.removeEventListener('resize', updateMobile);
+  }, []);
   const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; spreadsheetId: string; title?: string }>>([]);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -355,6 +364,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     }
   };
 
+  const handleTutorialClick = () => {
+    // Close sidebar on mobile before opening tutorial
+    if (isMobile && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('close-sidebar'));
+    }
+    // Call the tutorial function
+    if (onShowTutorial) {
+      onShowTutorial();
+    }
+  };
+
   const handleSelect = async (id: string) => {
     // Selecting a chat should only switch the active session.
     // Do not call ensureSession here, as it may race and override the selection.
@@ -452,7 +472,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         <div className="shrink-0 flex items-center gap-2">
           {onShowTutorial && (
             <button
-              onClick={onShowTutorial}
+              onClick={handleTutorialClick}
               className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent`}
               title="Tutorial"
               aria-label="Show tutorial"
@@ -582,7 +602,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         <div className="shrink-0 flex items-center gap-2">
           {onShowTutorial && (
             <button
-              onClick={onShowTutorial}
+              onClick={handleTutorialClick}
               className={`inline-flex items-center justify-center ${peek ? 'h-6 w-6' : 'h-7 w-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50 bg-transparent`}
               title="Tutorial"
               aria-label="Show tutorial"
