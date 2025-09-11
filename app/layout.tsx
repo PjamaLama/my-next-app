@@ -233,26 +233,50 @@ export default function RootLayout({
           }}
         />
 
-        {/* TikTok Pixel */}
+        {/* TikTok Pixel SDK */}
         <Script
           src="https://analytics.tiktok.com/i18n/pixel/sdk.js?sdkid=D2VDTKRC77U649U8UH9G"
           strategy="afterInteractive"
         />
         <Script
           id="tiktok-pixel-init"
-          strategy="lazyOnload"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              if (typeof ttq !== 'undefined' && !window.tiktokPixelLoaded) {
-                ttq.load('D2VDTKRC77U649U8UH9G');
-                ttq.page();
-                window.tiktokPixelLoaded = true;
-                console.log('TikTok pixel initialized successfully');
-              } else if (window.tiktokPixelLoaded) {
-                console.log('TikTok pixel already initialized, skipping duplicate initialization');
-              } else {
-                console.warn('TikTok pixel SDK not loaded yet');
-              }
+              // TikTok Pixel Initialization with enhanced duplicate prevention
+              (function() {
+                // Check if already initialized to prevent duplicates
+                if (window.tiktokPixelInitialized) {
+                  console.log('TikTok pixel already initialized, skipping duplicate initialization');
+                  return;
+                }
+
+                // Wait for ttq to be available
+                var checkTTQ = function() {
+                  if (typeof window.ttq !== 'undefined') {
+                    try {
+                      // Only initialize if not already loaded by SDK
+                      if (!window.ttq._loadedPixels || !window.ttq._loadedPixels.includes('D2VDTKRC77U649U8UH9G')) {
+                        window.ttq.load('D2VDTKRC77U649U8UH9G');
+                        window.ttq.page();
+                        window.tiktokPixelInitialized = true;
+                        console.log('TikTok pixel initialized successfully');
+                      } else {
+                        console.log('TikTok pixel already loaded by SDK');
+                        window.tiktokPixelInitialized = true;
+                      }
+                    } catch (error) {
+                      console.warn('TikTok pixel initialization error:', error);
+                    }
+                  } else {
+                    // Retry after a short delay if ttq is not ready yet
+                    setTimeout(checkTTQ, 100);
+                  }
+                };
+
+                // Start checking for ttq availability
+                checkTTQ();
+              })();
             `,
           }}
         />
