@@ -32,12 +32,36 @@ export const shouldEnableAnalytics = (): boolean => {
 export const initGoogleAnalytics = () => {
   if (typeof window === 'undefined') return;
 
-  // Just check if gtag is available (loaded by layout.tsx)
+  // Check if gtag is available (loaded by layout.tsx)
   if (window.gtag) {
     console.log('✅ Google Analytics 4 script loaded from layout.tsx');
-  } else {
-    console.warn('⚠️ Google Analytics script not found - may not be loaded yet');
+    return;
   }
+
+  // If gtag is not available yet, wait for it to load with retry mechanism
+  const maxRetries = 10;
+  const retryInterval = 500; // 500ms
+  let retryCount = 0;
+
+  const checkGtag = () => {
+    retryCount++;
+
+    if (window.gtag) {
+      console.log('✅ Google Analytics 4 script loaded from layout.tsx (after retry)');
+      return;
+    }
+
+    if (retryCount >= maxRetries) {
+      console.warn('⚠️ Google Analytics script not found after maximum retries - GTM may have failed to load');
+      return;
+    }
+
+    // Try again after a short delay
+    setTimeout(checkGtag, retryInterval);
+  };
+
+  // Start the retry process
+  setTimeout(checkGtag, retryInterval);
 };
 
 /**
