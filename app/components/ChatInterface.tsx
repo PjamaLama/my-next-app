@@ -1169,9 +1169,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           </div>
         </form>
 
-        {/* Prominent upgrade hint for free users */}
+        {/* Prominent upgrade hint for free users - hidden on mobile, visible on desktop */}
         {userType === 'free' && !isLimitReached && (
-          <div className="mt-3 text-center">
+          <div className="mt-3 text-center hidden md:block">
             <div className="inline-flex items-center gap-2 sm:gap-3 text-sm sm:text-base text-yellow-300 bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-xl px-4 py-2.5 cursor-pointer hover:from-yellow-500/30 hover:to-yellow-600/30 hover:border-yellow-400/40 transition-all duration-200 shadow-lg hover:shadow-yellow-500/20"
                  onClick={() => openModal('Pro')}
                  role="button"
