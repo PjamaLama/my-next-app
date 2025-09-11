@@ -50,7 +50,7 @@ export const setupScrollBasedHashUpdate = () => {
   let cachedPositions: { [key: string]: { top: number; height: number } } | null = null;
   let cacheTime = 0;
 
-  const getCachedPositions = () => {
+  const getCachedPositions = (): { [key: string]: { top: number; height: number } } => {
     const now = Date.now();
     // Cache positions for 100ms to avoid excessive recalculations
     if (!cachedPositions || now - cacheTime > 100) {
@@ -59,7 +59,7 @@ export const setupScrollBasedHashUpdate = () => {
       sections.forEach(section => {
         const element = document.getElementById(section);
         if (element) {
-          cachedPositions[section] = {
+          cachedPositions![section] = {
             top: element.offsetTop,
             height: element.offsetHeight
           };
@@ -67,7 +67,7 @@ export const setupScrollBasedHashUpdate = () => {
       });
       cacheTime = now;
     }
-    return cachedPositions;
+    return cachedPositions!;
   };
 
   const updateHashOnScroll = () => {

@@ -17,11 +17,11 @@ export const ClientGatedLayout: React.FC<{ children: React.ReactNode }> = ({ chi
   // Authenticated: include navbar and sidebar margin
   return (
     <div
-      className="transition-all min-h-screen flex flex-col"
+      className="transition-all min-h-screen flex flex-col overflow-hidden"
       style={{ marginLeft: 'var(--sidebar-width, 0px)' }}
     >
       <NavBar />
-      <main className="flex-1 w-full max-w-[110rem] mx-auto px-3 sm:px-6">
+      <main className="flex-1 w-full max-w-[110rem] mx-auto px-3 sm:px-6 flex flex-col min-h-0">
         {children}
       </main>
     </div>

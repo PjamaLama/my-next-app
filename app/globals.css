@@ -68,6 +68,9 @@ body {
   /* Better font rendering on mobile */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Ensure proper mobile viewport height */
+  min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile */
 }
 
 /* Improve touch targets for mobile */
@@ -170,6 +173,19 @@ select {
 }
 
 @media (max-width: 640px) {
+  /* Prevent any scrolling on mobile chat interface */
+  body {
+    overflow: hidden !important;
+    height: 100vh !important;
+    height: 100dvh !important; /* Dynamic viewport height */
+  }
+
+  html {
+    overflow: hidden !important;
+    height: 100vh !important;
+    height: 100dvh !important; /* Dynamic viewport height */
+  }
+
   input, textarea, select {
     font-size: 16px !important; /* Prevent zoom on iOS */
   }
@@ -198,8 +214,39 @@ select {
   .mobile-input {
     padding: 0.75rem 1rem;
     font-size: 1rem;
-    min-height: 48px;
-    border-radius: 12px;
+  }
+
+  /* Mobile chat interface fixes */
+  .mobile-chat-container {
+    height: 100vh;
+    height: 100dvh; /* Use dynamic viewport height */
+    overflow: hidden;
+    position: relative;
+  }
+
+  .mobile-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    overscroll-behavior-y: contain;
+  }
+
+  .mobile-chat-input {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    background: var(--background);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom)); /* Account for iPhone notch */
+  }
+
+  /* Ensure navigation stays sticky on mobile */
+  .mobile-nav-sticky {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 50 !important;
+    -webkit-position: sticky !important;
   }
 
   /* Better mobile modal sizing */

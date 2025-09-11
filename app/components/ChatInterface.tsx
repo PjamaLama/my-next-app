@@ -867,9 +867,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   // Removed blocking loading state - chat loads instantly
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
+    <div className={`flex flex-col h-full min-h-0 ${className} md:hidden:block`}>
       <WhatsAppLinkBanner />
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 min-h-0 mobile-chat-messages">
         {chatMessages.length === 0 ? (
           <div className="text-center text-white/60 py-8 sm:py-12 px-4">
             <div className="text-3xl mb-3">👋</div>
@@ -957,7 +957,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
       {/* Removed session loading states - loads instantly */}
 
-      <div className="border-t border-white/10 p-4 sm:p-6 pt-3 sm:pt-6">
+      <div className="border-t border-white/10 p-4 sm:p-6 pt-3 sm:pt-6 flex-shrink-0 mobile-chat-input">
         {/* Mobile-optimized sheet selector */}
         <div className="mb-3 sm:mb-4">
           <SheetChipSelector />
