@@ -40,7 +40,7 @@ export const useAuth = (): UseAuthReturn => {
         isSafari,
         isStandalonePWA,
         isMobile,
-        willUseRedirect: (isIOS && isSafari) || isStandalonePWA,
+        willUsePopup: !isStandalonePWA, // Prefer popup for all except PWA
         hasRedirectPending: sessionStorage.getItem('authRedirectPending')
       });
     }
@@ -49,15 +49,9 @@ export const useAuth = (): UseAuthReturn => {
   useEffect(() => {
     if (!auth) return;
 
-    // Handle redirect result on app initialization with mobile-specific timing
+    // Handle redirect result on app initialization (for PWA fallback)
     const handleRedirectResult = async () => {
       try {
-        // Add a small delay for mobile devices to ensure redirect result is available
-        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        
         const result = await getRedirectResult(auth);
         if (result) {
           console.log('📊 Redirect authentication successful');
@@ -68,8 +62,8 @@ export const useAuth = (): UseAuthReturn => {
         console.error('Redirect result error:', error);
         // Clear pending state even on error
         try { sessionStorage.removeItem('authRedirectPending'); } catch {}
-        // Don't set error immediately on mobile - let auth state change handle it
-        if (!/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        // Only set error for non-popup scenarios
+        if (shouldUseRedirect()) {
           setAuthError('Authentication failed. Please try again.');
         }
       }
@@ -104,48 +98,44 @@ export const useAuth = (): UseAuthReturn => {
     return () => unsubscribe();
   }, [auth]);
 
-  // Improved mobile detection - more accurate for authentication method selection
-  const isMobileOrPWA = () => {
+  // Simplified mobile detection - prefer popup for all modern browsers
+  const shouldUseRedirect = () => {
     if (typeof window === 'undefined') return false;
     
-    // Check for PWA standalone mode
+    // Only use redirect for PWA standalone mode (which truly can't handle popups)
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
     
-    // More comprehensive mobile detection
-    const userAgent = navigator.userAgent.toLowerCase();
-    const isMobile = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|webos/i.test(userAgent);
-    
-    // Check for iOS Safari specifically (which has popup issues)
-    const isIOSSafari = /iphone|ipad|ipod/i.test(userAgent) && /safari/i.test(userAgent) && !/chrome|crios|fxios/i.test(userAgent);
-    
-    // Use redirect for PWA, iOS Safari, or if explicitly mobile
-    return isStandalone || isIOSSafari || isMobile;
+    // Modern mobile browsers handle popups well, so prefer popup for better UX
+    return isStandalone;
   };
 
-  // Enhanced sign-in logic with better mobile support
+  // Enhanced sign-in logic - prefer popup for all devices except PWA
   const startGoogleSignIn = useCallback(async (provider: GoogleAuthProvider) => {
     if (!auth) throw new Error('Firebase not initialized');
 
-    const shouldUseRedirect = isMobileOrPWA();
+    const useRedirect = shouldUseRedirect();
     const userAgent = navigator.userAgent;
     
-    console.log('🔐 Auth method:', shouldUseRedirect ? 'redirect' : 'popup');
+    console.log('🔐 Auth method:', useRedirect ? 'redirect' : 'popup');
     console.log('🔐 User agent:', userAgent.substring(0, 100) + '...');
 
-    if (!shouldUseRedirect) {
-      // Desktop: Try popup first, fallback to redirect
+    if (!useRedirect) {
+      // Use popup for all modern browsers (including mobile)
       try {
+        console.log('🔐 Attempting popup authentication...');
         await signInWithPopup(auth, provider);
+        console.log('🔐 Popup authentication successful');
         return;
       } catch (error: any) {
-        console.log('🔐 Popup failed, using redirect fallback:', error.code);
-        // Don't throw here, continue to redirect
+        console.log('🔐 Popup failed, trying redirect fallback:', error.code);
+        // If popup fails, try redirect as fallback
       }
     }
 
-    // Mobile/PWA or popup fallback: Always use redirect
+    // PWA or popup fallback: Use redirect
     try {
-      // Store pending state for mobile debugging
+      console.log('🔐 Using redirect authentication...');
+      // Store pending state for debugging
       try { 
         sessionStorage.setItem('authRedirectPending', 'true'); 
       } catch {}
