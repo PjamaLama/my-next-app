@@ -3,9 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Crown } from 'lucide-react';
 import { useFirebase } from './providers/FirebaseProvider';
 import { useSheet } from './providers/SheetProvider';
 import { useServiceAccount } from './providers/ServiceAccountProvider';
+import { useUpgradeModal } from './providers/UpgradeModalProvider';
 
 
 const NAV_LINKS: { name: string; href: string }[] = [
@@ -13,9 +15,10 @@ const NAV_LINKS: { name: string; href: string }[] = [
 ];
 
 const NavBar: React.FC = () => {
-  const { user, continueWithGoogle } = useFirebase();
+  const { user, continueWithGoogle, userType } = useFirebase();
   const { defaultSpreadsheetId } = useSheet();
   const { isLoading: serviceAccountLoading } = useServiceAccount();
+  const { openModal } = useUpgradeModal();
   const [lastGoogle, setLastGoogle] = useState<{ email?: string; name?: string; photo?: string } | null>(null);
 
   useEffect(() => {
@@ -99,6 +102,19 @@ const NavBar: React.FC = () => {
               </Link>
             )
           ))}
+          {/* Upgrade Button - Only show for free users */}
+          {user && userType === 'free' && (
+            <button
+              onClick={() => openModal('Pro')}
+              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 h-11 px-3 sm:px-4 rounded-lg bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 border border-yellow-500/20 text-yellow-300 hover:text-yellow-200 hover:border-yellow-400/30 hover:from-yellow-500/20 hover:to-yellow-600/20 transition-all duration-200 min-h-[44px] text-sm font-medium"
+              title="Upgrade to Pro"
+              aria-label="Upgrade to Pro"
+            >
+              <Crown className="w-4 h-4" fill="currentColor" />
+              <span className="hidden sm:inline">Go Pro</span>
+            </button>
+          )}
+
           {/* Mobile hamburger to open sidebar */}
           <button
             type="button"

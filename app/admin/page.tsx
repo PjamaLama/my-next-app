@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useFirebase } from '@/app/providers/FirebaseProvider';
-import WhatsAppLinkForm from '../components/WhatsAppLinkForm';
-import MetaPixelTest from '../components/MetaPixelTest';
+import AdminMetricsDashboard from '../components/AdminMetricsDashboard';
+import AdminUserManagement from '../components/AdminUserManagement';
 
 
 
@@ -62,29 +62,35 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-      <div className="max-w-3xl mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-4">Admin</h1>
-        <WhatsAppLinkForm />
-
-        {/* Meta Pixel Test Panel */}
-        <div className="glass rounded-xl p-5 border border-white/10 mt-6">
-          <MetaPixelTest />
+      <div className="max-w-7xl mx-auto p-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
+          <p className="text-white/60">Monitor your application metrics, manage users, and handle feedback</p>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded bg-red-600/20 border border-red-400/40 text-red-200">{error}</div>
+          <div className="mb-6 p-4 rounded bg-red-600/20 border border-red-400/40 text-red-200">
+            <div className="font-semibold mb-1">Error</div>
+            {error}
+          </div>
         )}
 
+        <div className="space-y-8">
+          {/* Metrics Dashboard */}
+          <section>
+            <AdminMetricsDashboard />
+          </section>
 
+          {/* User Management */}
+          <section>
+            <AdminUserManagement />
+          </section>
 
-
-
-
-        {/* Feedback management */}
-        <AdminFeedbackPanel />
-        
-        {/* WhatsApp Claims management */}
-        <AdminWhatsAppClaimsPanel />
+          {/* Feedback Management */}
+          <section>
+            <AdminFeedbackPanel />
+          </section>
+        </div>
       </div>
     </div>
   );
@@ -201,327 +207,4 @@ function AdminFeedbackPanel() {
   );
 }
 
-function AdminWhatsAppClaimsPanel() {
-  const { user } = useFirebase();
-  const [claims, setClaims] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [deletingClaim, setDeletingClaim] = useState<string | null>(null);
-  const [migrating, setMigrating] = useState(false);
-
-  const loadClaims = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/whatsapp-claims', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to load claims');
-      const data = await res.json();
-      setClaims(data.claims || []);
-    } catch (error) {
-      console.error('Failed to load WhatsApp claims:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadClaims();
-  }, [user]);
-
-  const deleteClaim = async (waId: string) => {
-    if (!user) return;
-    setDeletingClaim(waId);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/whatsapp-claims', {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify({ waId })
-      });
-      if (!res.ok) throw new Error('Failed to delete claim');
-      await loadClaims(); // Reload the list
-    } catch (error) {
-      console.error('Failed to delete claim:', error);
-    } finally {
-      setDeletingClaim(null);
-    }
-  };
-
-  const runMigration = async () => {
-    if (!user) return;
-    setMigrating(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/migrate-whatsapp-claims', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${token}` 
-        }
-      });
-      if (!res.ok) throw new Error('Failed to run migration');
-      const data = await res.json();
-      console.log('Migration completed:', data);
-      // Reload claims after migration
-      await loadClaims();
-    } catch (error) {
-      console.error('Failed to run migration:', error);
-    } finally {
-      setMigrating(false);
-    }
-  };
-
-  return (
-    <div className="glass rounded-xl p-5 border border-white/10 mt-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <div className="text-white/80 text-sm">WhatsApp Claims</div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={runMigration}
-            disabled={migrating}
-            className="rounded bg-amber-600 hover:bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50"
-          >
-            {migrating ? 'Migrating...' : 'Migrate Existing IDs'}
-          </button>
-          <button
-            onClick={loadClaims}
-            disabled={loading}
-            className="rounded bg-white/10 hover:bg-white/20 px-3 py-2 text-sm"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="text-white/60 text-sm">Loading WhatsApp claims...</div>
-      ) : (
-        <div className="space-y-3 max-h-[60vh] overflow-auto pr-1">
-          {claims.length === 0 ? (
-            <div className="text-white/60 text-sm">No WhatsApp claims found</div>
-          ) : (
-            claims.map((claim) => (
-              <div key={claim.waId} className="flex items-start justify-between gap-3 border border-white/10 rounded-xl p-3">
-                <div className="flex-1">
-                  <div className="text-sm font-semibold text-white">{claim.waId}</div>
-                  <div className="text-xs text-white/60 mt-1">
-                    <span className="px-1.5 py-0.5 rounded bg-white/10 mr-1">{claim.userEmail}</span>
-                    {claim.userDisplayName && (
-                      <span className="px-1.5 py-0.5 rounded bg-white/10 mr-1">{claim.userDisplayName}</span>
-                    )}
-                    {claim.claimedAt && (
-                      <span className="px-1.5 py-0.5 rounded bg-white/10">
-                        Claimed: {new Date(claim.claimedAt).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => deleteClaim(claim.waId)}
-                  disabled={deletingClaim === claim.waId}
-                  className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-xs text-white disabled:opacity-50"
-                >
-                  {deletingClaim === claim.waId ? 'Removing...' : 'Remove Claim'}
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AdminTutorialPanel() {
-  const { user } = useFirebase();
-  const [videos, setVideos] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editingVideo, setEditingVideo] = useState<any>(null);
-
-  const loadVideos = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/tutorial-videos', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to load videos');
-      const data = await res.json();
-      setVideos(data.videos || []);
-    } catch (error) {
-      console.error('Failed to load tutorial videos:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadVideos();
-  }, [user]);
-
-  const updateVideo = async (video: any) => {
-    if (!user) return;
-    setSaving(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/tutorial-videos', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify({
-          action: 'updateVideo',
-          video
-        })
-      });
-      if (!res.ok) throw new Error('Failed to update video');
-      await loadVideos();
-      setEditingVideo(null);
-    } catch (error) {
-      console.error('Failed to update video:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const resetToDefaults = async () => {
-    if (!user) return;
-    setSaving(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/admin/tutorial-videos', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify({
-          action: 'resetToDefaults'
-        })
-      });
-      if (!res.ok) throw new Error('Failed to reset videos');
-      await loadVideos();
-    } catch (error) {
-      console.error('Failed to reset videos:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSave = (video: any) => {
-    updateVideo(video);
-  };
-
-  const handleCancel = () => {
-    setEditingVideo(null);
-  };
-
-  const startEdit = (video: any) => {
-    setEditingVideo({ ...video });
-  };
-
-  return (
-    <div className="glass rounded-xl p-5 border border-white/10 mt-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <div className="text-white/80 text-sm">Tutorial Videos</div>
-        <button
-          onClick={resetToDefaults}
-          disabled={saving}
-          className={`px-3 py-2 rounded bg-amber-600 hover:bg-amber-500 text-sm ${saving ? 'opacity-60' : ''}`}
-        >
-          {saving ? 'Resetting...' : 'Reset to Defaults'}
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="text-white/60 text-sm">Loading tutorial videos...</div>
-      ) : (
-        <div className="space-y-4">
-          {videos.map((video) => (
-            <div key={video.id} className="border border-white/10 rounded-xl p-4">
-              {editingVideo?.id === video.id ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-white/60 mb-1">Title</label>
-                      <input
-                        type="text"
-                        value={editingVideo.title}
-                        onChange={(e) => setEditingVideo({ ...editingVideo, title: e.target.value })}
-                        className="w-full rounded bg-white/10 border border-white/10 px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-white/60 mb-1">YouTube Video ID</label>
-                      <input
-                        type="text"
-                        value={editingVideo.youtubeId}
-                        onChange={(e) => setEditingVideo({ ...editingVideo, youtubeId: e.target.value })}
-                        placeholder="dQw4w9WgXcQ"
-                        className="w-full rounded bg-white/10 border border-white/10 px-3 py-2 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-white/60 mb-1">Description</label>
-                    <textarea
-                      value={editingVideo.description}
-                      onChange={(e) => setEditingVideo({ ...editingVideo, description: e.target.value })}
-                      rows={2}
-                      className="w-full rounded bg-white/10 border border-white/10 px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleSave(editingVideo)}
-                      disabled={saving}
-                      className={`px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-sm ${saving ? 'opacity-60' : ''}`}
-                    >
-                      {saving ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold mb-1">{video.title}</div>
-                    <div className="text-xs text-white/60 mb-2">{video.description}</div>
-                    <div className="text-xs text-white/40">
-                      YouTube ID: {video.youtubeId}
-                      {video.updatedAt && (
-                        <span className="ml-2">
-                          • Updated: {new Date(video.updatedAt?.toDate ? video.updatedAt.toDate() : video.updatedAt).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => startEdit(video)}
-                    className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-sm"
-                  >
-                    Edit
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 

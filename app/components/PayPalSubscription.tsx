@@ -123,27 +123,41 @@ export default function PayPalSubscription({
   const renderPayPalButton = (planIdToUse: string) => {
     if (!window.paypal) return;
 
-    window.paypal.Buttons({
-      createSubscription: (data: any, actions: any) =>
-        actions.subscription.create({ plan_id: planIdToUse }),
+    // Wait for the DOM element to be available
+    const waitForContainer = () => {
+      const container = document.getElementById('paypal-button-container');
+      if (container) {
+        // Clear any existing content in the container
+        container.innerHTML = '';
 
-      onApprove: (data: any) => {
-        console.log('PayPal subscription approved:', data);
-        const successUrl = `${window.location.origin}/paypal-success?type=subscription&subscription_id=${data.subscriptionID}`;
-        window.location.href = successUrl;
-        if (onSuccess) onSuccess(data.subscriptionID);
-      },
+        window.paypal.Buttons({
+          createSubscription: (data: any, actions: any) =>
+            actions.subscription.create({ plan_id: planIdToUse }),
 
-      onError: (err: any) => {
-        console.error('PayPal subscription error:', err);
-        if (onError) onError(err);
-      },
+          onApprove: (data: any) => {
+            console.log('PayPal subscription approved:', data);
+            const successUrl = `${window.location.origin}/paypal-success?type=subscription&subscription_id=${data.subscriptionID}`;
+            window.location.href = successUrl;
+            if (onSuccess) onSuccess(data.subscriptionID);
+          },
 
-      onCancel: (data: any) => {
-        console.log('PayPal subscription cancelled:', data);
-        if (onCancel) onCancel();
+          onError: (err: any) => {
+            console.error('PayPal subscription error:', err);
+            if (onError) onError(err);
+          },
+
+          onCancel: (data: any) => {
+            console.log('PayPal subscription cancelled:', data);
+            if (onCancel) onCancel();
+          }
+        }).render('#paypal-button-container');
+      } else {
+        // If container not found, wait a bit and try again
+        setTimeout(waitForContainer, 100);
       }
-    }).render('#paypal-button-container');
+    };
+
+    waitForContainer();
   };
 
   if (error) {

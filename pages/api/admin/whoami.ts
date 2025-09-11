@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAuth } from 'firebase-admin/auth';
 import { getAdminDb } from '@/lib/firebaseAdmin';
+import { getAdminAuth } from '@/lib/firebaseAdmin';
 
 function isAllowedAdmin(decoded: any): boolean {
   const admins = (process.env.ADMIN_EMAILS || '')

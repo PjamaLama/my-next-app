@@ -5,7 +5,7 @@ import { useChat } from '../providers/ChatProvider';
 import { useSheet } from '../providers/SheetProvider';
 import { useFirebase } from '../providers/FirebaseProvider';
 import WhatsAppLinkBanner from './WhatsAppLinkBanner';
-import { Send, Loader2, Paperclip, File as FileIcon, X, Volume2, Square, BookOpen } from 'lucide-react';
+import { Send, Loader2, Paperclip, File as FileIcon, X, Volume2, Square, BookOpen, Crown } from 'lucide-react';
 import SheetChipSelector from './SheetChipSelector';
 import EditRowModal from './EditRowModal';
 import ChatMessage from './ChatMessage';
@@ -1169,6 +1169,27 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           </div>
         </form>
 
+        {/* Prominent upgrade hint for free users */}
+        {userType === 'free' && !isLimitReached && (
+          <div className="mt-3 text-center">
+            <div className="inline-flex items-center gap-2 sm:gap-3 text-sm sm:text-base text-yellow-300 bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-xl px-4 py-2.5 cursor-pointer hover:from-yellow-500/30 hover:to-yellow-600/30 hover:border-yellow-400/40 transition-all duration-200 shadow-lg hover:shadow-yellow-500/20"
+                 onClick={() => openModal('Pro')}
+                 role="button"
+                 tabIndex={0}
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter' || e.key === ' ') {
+                     e.preventDefault();
+                     openModal('Pro');
+                   }
+                 }}>
+              <Crown className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" />
+              <span className="font-medium">Go Pro for Unlimited Messages & Premium Features</span>
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </div>
+          </div>
+        )}
 
         {/* WhatsApp banner with mobile spacing */}
         <div className="mt-2 sm:mt-0">
