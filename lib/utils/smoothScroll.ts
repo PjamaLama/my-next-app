@@ -2,11 +2,7 @@
 export const smoothScrollToSection = (sectionId: string) => {
   const element = document.getElementById(sectionId);
   if (element) {
-    const headerOffset = 80; // Account for fixed header if any
-    const elementPosition = element.offsetTop;
-    const offsetPosition = elementPosition - headerOffset;
-
-    // Use scrollIntoView for better compatibility
+    // Use scrollIntoView for better compatibility - avoids forced reflow
     element.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
@@ -50,13 +46,35 @@ export const setupHashNavigation = () => {
 // Auto-update URL hash when scrolling to sections (optional enhancement)
 export const setupScrollBasedHashUpdate = () => {
   let ticking = false;
+  // Cache element positions to avoid forced reflow on every scroll
+  let cachedPositions: { [key: string]: { top: number; height: number } } | null = null;
+  let cacheTime = 0;
+
+  const getCachedPositions = () => {
+    const now = Date.now();
+    // Cache positions for 100ms to avoid excessive recalculations
+    if (!cachedPositions || now - cacheTime > 100) {
+      cachedPositions = {};
+      const sections = ['try-demo', 'demo', 'input-types', 'features', 'pricing', 'process'];
+      sections.forEach(section => {
+        const element = document.getElementById(section);
+        if (element) {
+          cachedPositions[section] = {
+            top: element.offsetTop,
+            height: element.offsetHeight
+          };
+        }
+      });
+      cacheTime = now;
+    }
+    return cachedPositions;
+  };
 
   const updateHashOnScroll = () => {
     if (!ticking) {
       requestAnimationFrame(() => {
-        const sections = ['try-demo', 'demo', 'input-types', 'features', 'pricing', 'process'];
         const scrollPosition = window.scrollY + 150; // Offset for header + more precise detection
-        const windowHeight = window.innerHeight;
+        const positions = getCachedPositions();
 
         // Clear hash when at the very top of the page
         if (scrollPosition < 200) {
@@ -69,28 +87,25 @@ export const setupScrollBasedHashUpdate = () => {
 
         let hashUpdated = false;
 
-        for (const section of sections) {
-          const element = document.getElementById(section);
-          if (element) {
-            const { offsetTop, offsetHeight } = element;
-            // Only update hash when section title is near the top of viewport
-            const sectionTriggerPoint = offsetTop - 150; // 150px from top
+        for (const section in positions) {
+          const pos = positions[section];
+          // Only update hash when section title is near the top of viewport
+          const sectionTriggerPoint = pos.top - 150; // 150px from top
 
-            if (scrollPosition >= sectionTriggerPoint && scrollPosition < offsetTop + offsetHeight - 200) {
-              const currentHash = window.location.hash.substring(1);
-              if (currentHash !== section) {
-                history.replaceState(null, '', `#${section}`);
-                hashUpdated = true;
-              }
-              break;
+          if (scrollPosition >= sectionTriggerPoint && scrollPosition < pos.top + pos.height - 200) {
+            const currentHash = window.location.hash.substring(1);
+            if (currentHash !== section) {
+              history.replaceState(null, '', `#${section}`);
+              hashUpdated = true;
             }
+            break;
           }
         }
 
         // If no section matched and we're not at the top, clear hash
         if (!hashUpdated && scrollPosition > 300 && window.location.hash !== '') {
-          const lastSection = document.getElementById('process');
-          if (lastSection && scrollPosition > lastSection.offsetTop + lastSection.offsetHeight) {
+          const lastSectionPos = positions['process'];
+          if (lastSectionPos && scrollPosition > lastSectionPos.top + lastSectionPos.height) {
             history.replaceState(null, '', window.location.pathname);
           }
         }

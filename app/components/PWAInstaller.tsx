@@ -48,38 +48,42 @@ export default function PWAInstaller() {
 
     // Listen for beforeinstallprompt event
     const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
+      // Only prevent default if we're going to handle it ourselves
       e.preventDefault();
       setDeferredPrompt(e);
-      
+
       // Check if we should show the prompt
       const lastDismissed = localStorage.getItem('installPromptLastDismissed');
       const lastShown = localStorage.getItem('installPromptLastShown');
       const now = Date.now();
-      
+
       // Don't show if dismissed in last 7 days
       if (lastDismissed && (now - parseInt(lastDismissed)) < 7 * 24 * 60 * 60 * 1000) {
+        console.log('Install prompt dismissed recently, not showing');
         return;
       }
-      
+
       // Don't show if shown in last 24 hours
       if (lastShown && (now - parseInt(lastShown)) < 24 * 60 * 60 * 1000) {
+        console.log('Install prompt shown recently, not showing');
         return;
       }
-      
-      // Wait for user interaction and add a delay
+
+      // Show prompt immediately after first interaction for better UX
       const checkInteraction = () => {
         if (hasInteracted) {
-          // Add 3 second delay after interaction
+          // Add shorter delay for better user experience
           setTimeout(() => {
             setShowInstallPrompt(true);
             localStorage.setItem('installPromptLastShown', now.toString());
-          }, 3000);
+            console.log('Showing PWA install prompt');
+          }, 2000); // Reduced from 3000ms to 2000ms
         } else {
-          // Check again in 1 second
-          setTimeout(checkInteraction, 1000);
+          // Check again in 500ms for faster response
+          setTimeout(checkInteraction, 500);
         }
       };
-      
+
       checkInteraction();
     };
 

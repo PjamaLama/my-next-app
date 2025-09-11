@@ -149,10 +149,8 @@ export default function RootLayout({
       <head>
         <meta name="facebook-domain-verification" content="ej7xnzg04hdwpuagfpyu10c32wmlgj" />
 
-        {/* Preload critical images for better LCP */}
-        <link rel="preload" href="/logo.png" as="image" type="image/png" />
-        <link rel="preload" href="/icon-192x192.png" as="image" type="image/png" />
-        <link rel="preload" href="/favicon.ico" as="image" />
+        {/* Preload only favicon as it's used immediately in browser tab */}
+        <link rel="preload" href="/favicon.ico" as="image" type="image/x-icon" />
 
         {/* Preload fonts for better performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -219,52 +217,10 @@ export default function RootLayout({
           ></iframe>
         </noscript>
 
-        {/* TikTok Pixel SDK - Load after user interaction for better performance */}
+        {/* TikTok Pixel SDK - Let the SDK handle initialization automatically */}
         <Script
           src="https://analytics.tiktok.com/i18n/pixel/sdk.js?sdkid=D2VDTKRC77U649U8UH9G"
           strategy="lazyOnload"
-        />
-        <Script
-          id="tiktok-pixel-init"
-          strategy="lazyOnload"
-          dangerouslySetInnerHTML={{
-            __html: `
-              // TikTok Pixel Initialization with enhanced duplicate prevention
-              (function() {
-                // Check if already initialized to prevent duplicates
-                if (window.tiktokPixelInitialized) {
-                  console.log('TikTok pixel already initialized, skipping duplicate initialization');
-                  return;
-                }
-
-                // Wait for ttq to be available
-                var checkTTQ = function() {
-                  if (typeof window.ttq !== 'undefined') {
-                    try {
-                      // Only initialize if not already loaded by SDK
-                      if (!window.ttq._loadedPixels || !window.ttq._loadedPixels.includes('D2VDTKRC77U649U8UH9G')) {
-                        window.ttq.load('D2VDTKRC77U649U8UH9G');
-                        window.ttq.page();
-                        window.tiktokPixelInitialized = true;
-                        console.log('TikTok pixel initialized successfully');
-                      } else {
-                        console.log('TikTok pixel already loaded by SDK');
-                        window.tiktokPixelInitialized = true;
-                      }
-                    } catch (error) {
-                      console.warn('TikTok pixel initialization error:', error);
-                    }
-                  } else {
-                    // Retry after a short delay if ttq is not ready yet
-                    setTimeout(checkTTQ, 100);
-                  }
-                };
-
-                // Start checking for ttq availability
-                checkTTQ();
-              })();
-            `,
-          }}
         />
 
         <noscript>
