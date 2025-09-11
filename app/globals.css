@@ -1,8 +1,39 @@
 @import "tailwindcss";
 
-/* Smooth scrolling for anchor links */
+/* Performance optimizations for Core Web Vitals */
 html {
   scroll-behavior: smooth;
+}
+
+/* Prevent layout shifts by reserving space for images */
+img {
+  /* Prevent layout shifts */
+  aspect-ratio: attr(width) / attr(height);
+  /* Optimize image loading */
+  loading: lazy;
+  /* Ensure images don't cause layout shifts */
+  max-width: 100%;
+  height: auto;
+}
+
+/* Prevent layout shifts for dynamically loaded content */
+.dynamic-content {
+  /* Reserve minimum height to prevent layout shifts */
+  min-height: 100px;
+}
+
+/* Optimize animations for better performance */
+* {
+  /* Use GPU acceleration for transforms */
+  transform: translateZ(0);
+  /* Optimize box-shadow performance */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Optimize font loading */
+@font-face {
+  font-display: swap;
 }
 
 :root {

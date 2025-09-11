@@ -8,6 +8,34 @@ import TrackingStatusPanel from './components/TrackingStatusPanel';
 
 // Genkit telemetry is initialized client-side inside ClientRoot
 
+// Static structured data for SEO - defined at module level for better performance
+const getStructuredData = (siteUrl: string) => ({
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Sheety AI",
+  "description": "AI-powered voice-to-spreadsheet reporting tool that converts speech to structured data in Google Sheets effortlessly",
+  "url": siteUrl,
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web Browser",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "featureList": [
+    "Voice-to-spreadsheet automation",
+    "Natural language processing",
+    "Google Sheets integration",
+    "AI-powered data entry",
+    "Real-time updates"
+  ],
+  "screenshot": `${siteUrl}/icon-512x512.png`,
+  "author": {
+    "@type": "Organization",
+    "name": "Sheety AI Team"
+  }
+});
+
 const geistSans = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -113,44 +141,27 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Structured data for SEO - Generate once to ensure consistency
+  // Static structured data for SEO - defined once at module level for better performance
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Sheety AI",
-    "description": "AI-powered voice-to-spreadsheet reporting tool that converts speech to structured data in Google Sheets effortlessly",
-    "url": siteUrl,
-    "applicationCategory": "BusinessApplication",
-    "operatingSystem": "Web Browser",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "featureList": [
-      "Voice-to-spreadsheet automation",
-      "Natural language processing",
-      "Google Sheets integration",
-      "AI-powered data entry",
-      "Real-time updates"
-    ],
-    "screenshot": `${siteUrl}/icon-512x512.png`,
-    "author": {
-      "@type": "Organization",
-      "name": "Sheety AI Team"
-    }
-  };
 
   return (
     <html lang="en" className="dark">
       <head>
         <meta name="facebook-domain-verification" content="ej7xnzg04hdwpuagfpyu10c32wmlgj" />
+
+        {/* Preload critical images for better LCP */}
+        <link rel="preload" href="/logo.png" as="image" type="image/png" />
+        <link rel="preload" href="/icon-192x192.png" as="image" type="image/png" />
+        <link rel="preload" href="/favicon.ico" as="image" />
+
+        {/* Preload fonts for better performance */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <Script
           id="structured-data"
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(structuredData),
+            __html: JSON.stringify(getStructuredData(siteUrl)),
           }}
         />
 
@@ -179,10 +190,10 @@ export default function RootLayout({
           })(window,document,'script','dataLayer','${process.env.NEXT_PUBLIC_GTM_ID || 'GTM-XXXXXXX'}');`}
         </Script>
 
-        {/* Microsoft Clarity */}
+        {/* Microsoft Clarity - Defer loading for better performance */}
         <Script
           id="microsoft-clarity"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `
               try {
@@ -208,14 +219,14 @@ export default function RootLayout({
           ></iframe>
         </noscript>
 
-        {/* TikTok Pixel SDK */}
+        {/* TikTok Pixel SDK - Load after user interaction for better performance */}
         <Script
           src="https://analytics.tiktok.com/i18n/pixel/sdk.js?sdkid=D2VDTKRC77U649U8UH9G"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
         <Script
           id="tiktok-pixel-init"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `
               // TikTok Pixel Initialization with enhanced duplicate prevention

@@ -1,11 +1,23 @@
 "use client";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, Suspense, lazy } from "react";
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
 import { useTutorial } from "./providers/TutorialProvider";
-import ChatInterface from "./components/ChatInterface";
-import LandingPage from "./components/LandingPage";
 import { DemoInputManager } from "../lib/demoInputManager";
+
+// Lazy load heavy components for better performance
+const ChatInterface = lazy(() => import("./components/ChatInterface"));
+const LandingPage = lazy(() => import("./components/LandingPage"));
+
+// Loading component for Suspense fallback
+const LoadingFallback = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white px-4">
+    <div className="flex items-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 text-white/90 mb-4">
+      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600"></div>
+      <span className="text-base font-medium">Loading...</span>
+    </div>
+  </div>
+);
 
 export default function Home() {
   const { user, loading, signInWithGoogle } = useFirebase();
@@ -160,24 +172,17 @@ export default function Home() {
 
   // Only show loading on initial app load, not during chat switching
   if (loading && !user) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white px-4">
-        <div className="flex items-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 text-white/90 mb-4">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600"></div>
-          <span className="text-base font-medium">Loading SheetyAI...</span>
-        </div>
-        <div className="text-center text-white/60 text-sm max-w-sm">
-          <p>Setting up your AI-powered spreadsheet assistant</p>
-          <p className="mt-2">This may take a moment on slower connections</p>
-        </div>
-      </div>
-    );
+    return <LoadingFallback />;
   }
 
   if (!user) {
     // Add error boundary for mobile loading issues
     try {
-      return <LandingPage onSignIn={handleSignIn} user={user} />;
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <LandingPage onSignIn={handleSignIn} user={user} />
+        </Suspense>
+      );
     } catch (error) {
       console.error('LandingPage failed to render:', error);
       return (
@@ -207,7 +212,9 @@ export default function Home() {
   // Always show chat interface for logged-in users - spreadsheets load in background
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-      <ChatInterface onShowTutorial={showTutorial} />
+      <Suspense fallback={<LoadingFallback />}>
+        <ChatInterface onShowTutorial={showTutorial} />
+      </Suspense>
 
       {/* Demo Onboarding Modal */}
       {showDemoOnboarding && demoInputData && (

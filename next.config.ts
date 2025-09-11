@@ -4,7 +4,7 @@ const isWindows = process.platform === 'win32';
 const isCI = Boolean(process.env.CI) || Boolean(process.env.VERCEL);
 
 const nextConfig: NextConfig = {
-  // Image optimization settings
+  // Image optimization settings for better LCP
   images: {
     remotePatterns: [
       {
@@ -18,22 +18,32 @@ const nextConfig: NextConfig = {
     formats: ['image/webp', 'image/avif'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    // Enable image optimization
+    unoptimized: false,
+    // Improve loading performance
+    minimumCacheTTL: 31536000, // 1 year
   },
   // Performance optimizations
   experimental: {
-    optimizePackageImports: ['framer-motion', 'lucide-react'],
+    optimizePackageImports: ['framer-motion', 'lucide-react', 'firebase', '@firebase'],
     optimizeCss: true,
     scrollRestoration: true,
-  },
-  // Turbopack configuration (replacing deprecated experimental.turbo)
-  turbopack: {
-    rules: {
-      '*.svg': {
-        loaders: ['@svgr/webpack'],
-        as: '*.js',
+    // Improve Core Web Vitals
+    webVitalsAttribution: ['CLS', 'LCP'],
+    // Enable faster builds
+    turbo: {
+      rules: {
+        '*.svg': {
+          loaders: ['@svgr/webpack'],
+          as: '*.js',
+        },
       },
     },
   },
+  // Output optimization for better caching
+  output: 'standalone',
+  // Enable SWC minification for smaller bundles
+  swcMinify: true,
   // Disable tracing to fix EPERM errors
   generateEtags: false,
   trailingSlash: true,
