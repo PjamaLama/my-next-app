@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useFirebase } from '@/app/providers/FirebaseProvider';
+import { useTrackingPanel } from '@/app/providers/TrackingPanelProvider';
 import AdminMetricsDashboard from '../components/AdminMetricsDashboard';
 import AdminUserManagement from '../components/AdminUserManagement';
 
@@ -9,6 +10,7 @@ import AdminUserManagement from '../components/AdminUserManagement';
 
 export default function AdminPage() {
   const { user } = useFirebase();
+  const { isVisible: trackingPanelVisible, setIsVisible: setTrackingPanelVisible } = useTrackingPanel();
   const [error, setError] = useState<string | null>(null);
 
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
@@ -90,6 +92,57 @@ export default function AdminPage() {
           <section>
             <AdminFeedbackPanel />
           </section>
+
+          {/* Development Tools - Only show in development */}
+          {process.env.NODE_ENV === 'development' && (
+            <section>
+              <AdminDevelopmentTools />
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminDevelopmentTools() {
+  const { isVisible: trackingPanelVisible, setIsVisible: setTrackingPanelVisible } = useTrackingPanel();
+
+  return (
+    <div className="glass rounded-xl p-5 border border-white/10 mt-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div className="text-white/80 text-sm font-semibold">Development Tools</div>
+        <div className="text-xs text-white/60 bg-yellow-600/20 px-2 py-1 rounded">
+          Development Only
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {/* Tracking Status Panel Toggle */}
+        <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/10">
+          <div className="flex flex-col gap-1">
+            <div className="text-sm font-medium text-white">Tracking Status Panel</div>
+            <div className="text-xs text-white/60">
+              Toggle visibility of the tracking status panel in the bottom-right corner
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`text-xs ${trackingPanelVisible ? 'text-green-400' : 'text-red-400'}`}>
+              {trackingPanelVisible ? 'Visible' : 'Hidden'}
+            </span>
+            <button
+              onClick={() => setTrackingPanelVisible(!trackingPanelVisible)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                trackingPanelVisible ? 'bg-green-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  trackingPanelVisible ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
         </div>
       </div>
     </div>

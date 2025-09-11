@@ -43,8 +43,8 @@ export default function PayPalSubscription({
         await loadPayPalSDK();
       }
 
-      // Create plan if needed
-      const planIdToUse = planId || await createPlanIfNeeded();
+      // Get or create plan
+      const planIdToUse = planId || await getOrCreatePlan();
 
       // Render PayPal button
       renderPayPalButton(planIdToUse);
@@ -84,6 +84,14 @@ export default function PayPalSubscription({
         return;
       }
 
+      // Check if script is already being loaded
+      const existingScript = document.querySelector('script[src*="paypal.com/sdk/js"]');
+      if (existingScript) {
+        existingScript.addEventListener('load', () => resolve());
+        existingScript.addEventListener('error', () => reject(new Error('Failed to load PayPal SDK')));
+        return;
+      }
+
       // Use sandbox in development if sandbox credentials are available
       const hasSandboxCredentials = process.env.NEXT_PUBLIC_PAYPAL_SANDBOX_CLIENT_ID;
       const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
@@ -99,61 +107,94 @@ export default function PayPalSubscription({
       script.onload = () => resolve();
       script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
 
-      // Use head instead of body to avoid hydration issues
-      document.head.appendChild(script);
+      try {
+        // Safely append to head to avoid hydration issues
+        if (document.head) {
+          document.head.appendChild(script);
+        } else {
+          // Fallback to body if head is not available
+          document.body.appendChild(script);
+        }
+      } catch (error) {
+        reject(new Error(`Failed to append PayPal script: ${error}`));
+      }
     });
   };
 
-  const createPlanIfNeeded = async (): Promise<string> => {
-    const response = await fetch('/api/paypal/create-subscription-plan', {
-      method: 'POST',
+  const getOrCreatePlan = async (): Promise<string> => {
+    const response = await fetch('/api/paypal/manage-plan', {
+      method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create subscription plan');
+      throw new Error(data.error || 'Failed to get subscription plan');
     }
 
-    console.log('✅ Subscription plan created:', data.plan.id);
+    console.log('✅ Subscription plan ready:', data.plan.id);
     return data.plan.id;
   };
 
   const renderPayPalButton = (planIdToUse: string) => {
-    if (!window.paypal) return;
+    if (!window.paypal) {
+      console.warn('PayPal SDK not loaded, skipping button render');
+      return;
+    }
 
     // Wait for the DOM element to be available
     const waitForContainer = () => {
       const container = document.getElementById('paypal-button-container');
       if (container) {
-        // Clear any existing content in the container
-        container.innerHTML = '';
-
-        window.paypal.Buttons({
-          createSubscription: (data: any, actions: any) =>
-            actions.subscription.create({ plan_id: planIdToUse }),
-
-          onApprove: (data: any) => {
-            console.log('PayPal subscription approved:', data);
-            const successUrl = `${window.location.origin}/paypal-success?type=subscription&subscription_id=${data.subscriptionID}`;
-            window.location.href = successUrl;
-            if (onSuccess) onSuccess(data.subscriptionID);
-          },
-
-          onError: (err: any) => {
-            console.error('PayPal subscription error:', err);
-            if (onError) onError(err);
-          },
-
-          onCancel: (data: any) => {
-            console.log('PayPal subscription cancelled:', data);
-            if (onCancel) onCancel();
+        try {
+          // Clear any existing content in the container safely
+          while (container.firstChild) {
+            container.removeChild(container.firstChild);
           }
-        }).render('#paypal-button-container');
+
+          window.paypal.Buttons({
+            createSubscription: (data: any, actions: any) =>
+              actions.subscription.create({ plan_id: planIdToUse }),
+
+            onApprove: (data: any) => {
+              console.log('PayPal subscription approved:', data);
+              const successUrl = `${window.location.origin}/paypal-success?type=subscription&subscription_id=${data.subscriptionID}`;
+              window.location.href = successUrl;
+              if (onSuccess) onSuccess(data.subscriptionID);
+            },
+
+            onError: (err: any) => {
+              console.error('PayPal subscription error:', err);
+              if (onError) onError(err);
+            },
+
+            onCancel: (data: any) => {
+              console.log('PayPal subscription cancelled:', data);
+              if (onCancel) onCancel();
+            }
+          }).render('#paypal-button-container');
+        } catch (error) {
+          console.error('Failed to render PayPal button:', error);
+          if (onError) onError(error);
+        }
       } else {
-        // If container not found, wait a bit and try again
-        setTimeout(waitForContainer, 100);
+        // If container not found, wait a bit and try again (max 10 attempts)
+        let attempts = 0;
+        const maxAttempts = 10;
+        const retryInterval = setInterval(() => {
+          attempts++;
+          const retryContainer = document.getElementById('paypal-button-container');
+          if (retryContainer || attempts >= maxAttempts) {
+            clearInterval(retryInterval);
+            if (retryContainer) {
+              waitForContainer();
+            } else {
+              console.error('PayPal button container not found after maximum attempts');
+              if (onError) onError(new Error('PayPal button container not available'));
+            }
+          }
+        }, 100);
       }
     };
 

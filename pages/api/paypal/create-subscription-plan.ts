@@ -52,6 +52,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // WARNING: This endpoint creates duplicate plans. Use /api/paypal/manage-plan instead
+    console.warn('⚠️ WARNING: create-subscription-plan endpoint is deprecated and may create duplicate plans. Use /api/paypal/manage-plan instead.');
     // Get PayPal configuration
     const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
     const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;

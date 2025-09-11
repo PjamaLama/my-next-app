@@ -62,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     let newUsersMonth = 0;
     let activeUsers = 0;
 
-    usersSnap.forEach((doc) => {
+    usersSnap.forEach((doc: any) => {
       const data = doc.data();
       const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt || 0);
 
@@ -82,7 +82,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     let openFeedback = 0;
     let totalVotes = 0;
 
-    feedbackSnap.forEach((doc) => {
+    feedbackSnap.forEach((doc: any) => {
       const data = doc.data();
       if (data.status === 'open') openFeedback++;
       totalVotes += data.votesCount || 0;

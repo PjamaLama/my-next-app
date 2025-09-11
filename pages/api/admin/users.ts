@@ -59,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
     const usersSnap = await query.limit(limitNum + 1).offset(offsetNum).get();
 
-    const users = usersSnap.docs.slice(0, limitNum).map((doc) => {
+    const users = usersSnap.docs.slice(0, limitNum).map((doc: any) => {
       const data = doc.data();
       return {
         uid: doc.id,

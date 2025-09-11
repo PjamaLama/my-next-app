@@ -8,6 +8,8 @@ import { ServiceAccountProvider } from './providers/ServiceAccountProvider';
 import { ChatProvider } from './providers/ChatProvider';
 import { TutorialProvider } from './providers/TutorialProvider';
 import { UpgradeModalProvider } from './providers/UpgradeModalProvider';
+import { TrackingPanelProvider } from './providers/TrackingPanelProvider';
+import TrackingStatusPanelWrapper from './components/TrackingStatusPanelWrapper';
 import SidePanel from './components/SidePanel';
 import FeedbackButton from './components/FeedbackButton';
 import FeedbackNudge from './components/FeedbackNudge';
@@ -37,6 +39,7 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
             <ChatProvider>
               <TutorialProvider>
                 <UpgradeModalProvider>
+                  <TrackingPanelProvider>
                   {/* Analytics tracking - handles page views and initialization */}
                   <AnalyticsTracker />
 
@@ -52,6 +55,9 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
                     <FeedbackButton />
                     <PWAInstaller />
                   </div>
+                  {/* Development tracking panel - only shows in development mode */}
+                  {process.env.NODE_ENV === 'development' && <TrackingStatusPanelWrapper />}
+                  </TrackingPanelProvider>
                 </UpgradeModalProvider>
               </TutorialProvider>
             </ChatProvider>

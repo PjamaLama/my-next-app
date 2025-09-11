@@ -4,7 +4,6 @@ import Script from "next/script";
 import "./globals.css";
 import ClientRoot from './ClientRoot';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import TrackingStatusPanel from './components/TrackingStatusPanel';
 
 // Genkit telemetry is initialized client-side inside ClientRoot
 
@@ -240,7 +239,6 @@ export default function RootLayout({
         <ErrorBoundary>
           <ClientRoot>{children}</ClientRoot>
         </ErrorBoundary>
-        {process.env.NODE_ENV === 'development' && <TrackingStatusPanel />}
       </body>
     </html>
   );
