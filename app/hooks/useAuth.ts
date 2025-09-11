@@ -40,7 +40,8 @@ export const useAuth = (): UseAuthReturn => {
         isSafari,
         isStandalonePWA,
         isMobile,
-        willUseRedirect: (isIOS && isSafari) || isStandalonePWA
+        willUseRedirect: (isIOS && isSafari) || isStandalonePWA,
+        hasRedirectPending: sessionStorage.getItem('authRedirectPending')
       });
     }
   }, []);
@@ -48,9 +49,15 @@ export const useAuth = (): UseAuthReturn => {
   useEffect(() => {
     if (!auth) return;
 
-    // Handle redirect result on app initialization
+    // Handle redirect result on app initialization with mobile-specific timing
     const handleRedirectResult = async () => {
       try {
+        // Add a small delay for mobile devices to ensure redirect result is available
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
         const result = await getRedirectResult(auth);
         if (result) {
           console.log('📊 Redirect authentication successful');
@@ -61,7 +68,10 @@ export const useAuth = (): UseAuthReturn => {
         console.error('Redirect result error:', error);
         // Clear pending state even on error
         try { sessionStorage.removeItem('authRedirectPending'); } catch {}
-        setAuthError('Authentication failed. Please try again.');
+        // Don't set error immediately on mobile - let auth state change handle it
+        if (!/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+          setAuthError('Authentication failed. Please try again.');
+        }
       }
     };
 
@@ -94,42 +104,59 @@ export const useAuth = (): UseAuthReturn => {
     return () => unsubscribe();
   }, [auth]);
 
-  // Simplified mobile detection - just check if it's mobile or PWA
+  // Improved mobile detection - more accurate for authentication method selection
   const isMobileOrPWA = () => {
     if (typeof window === 'undefined') return false;
     
     // Check for PWA standalone mode
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
     
-    // Check for mobile devices
-    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    // More comprehensive mobile detection
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isMobile = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|webos/i.test(userAgent);
     
-    return isStandalone || isMobile;
+    // Check for iOS Safari specifically (which has popup issues)
+    const isIOSSafari = /iphone|ipad|ipod/i.test(userAgent) && /safari/i.test(userAgent) && !/chrome|crios|fxios/i.test(userAgent);
+    
+    // Use redirect for PWA, iOS Safari, or if explicitly mobile
+    return isStandalone || isIOSSafari || isMobile;
   };
 
-  // Simplified sign-in logic
+  // Enhanced sign-in logic with better mobile support
   const startGoogleSignIn = useCallback(async (provider: GoogleAuthProvider) => {
     if (!auth) throw new Error('Firebase not initialized');
 
     const shouldUseRedirect = isMobileOrPWA();
+    const userAgent = navigator.userAgent;
     
     console.log('🔐 Auth method:', shouldUseRedirect ? 'redirect' : 'popup');
+    console.log('🔐 User agent:', userAgent.substring(0, 100) + '...');
 
     if (!shouldUseRedirect) {
       // Desktop: Try popup first, fallback to redirect
       try {
         await signInWithPopup(auth, provider);
         return;
-      } catch (error) {
-        console.log('🔐 Popup failed, using redirect fallback');
+      } catch (error: any) {
+        console.log('🔐 Popup failed, using redirect fallback:', error.code);
+        // Don't throw here, continue to redirect
       }
     }
 
     // Mobile/PWA or popup fallback: Always use redirect
     try {
+      // Store pending state for mobile debugging
+      try { 
+        sessionStorage.setItem('authRedirectPending', 'true'); 
+      } catch {}
+      
       await signInWithRedirect(auth, provider);
-    } catch (error) {
-      console.error('�� Redirect failed:', error);
+    } catch (error: any) {
+      console.error('🔐 Redirect failed:', error);
+      // Clear pending state on error
+      try { 
+        sessionStorage.removeItem('authRedirectPending'); 
+      } catch {}
       throw error;
     }
   }, [auth]);

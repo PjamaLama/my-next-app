@@ -30,8 +30,13 @@ if (typeof window !== 'undefined') {
     } else {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
-      // Ensure durable session and avoid popup blockers/COOP issues
-      setPersistence(auth, browserLocalPersistence).catch(() => {});
+      
+      // Enhanced persistence configuration for mobile compatibility
+      setPersistence(auth, browserLocalPersistence).catch((error) => {
+        console.warn('Failed to set auth persistence:', error);
+        // Continue without persistence if it fails
+      });
+      
       db = getFirestore(app);
     }
   } catch (error) {
