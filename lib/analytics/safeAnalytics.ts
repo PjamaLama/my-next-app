@@ -118,7 +118,7 @@ export const trackEvent = (
     }
 
     // TikTok Pixel - Map common events to TikTok standard events
-    // Note: TikTok pixel is initialized in layout.tsx, avoid duplicate initialization here
+    // Note: TikTok pixel is now loaded through Google Tag Manager to prevent duplicates
     if (window.ttq && typeof window.ttq.track === 'function') {
       try {
         // Map conversion events to TikTok standard events

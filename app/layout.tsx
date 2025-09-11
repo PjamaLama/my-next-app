@@ -216,21 +216,7 @@ export default function RootLayout({
           ></iframe>
         </noscript>
 
-        {/* TikTok Pixel SDK - Let the SDK handle initialization automatically */}
-        <Script
-          src="https://analytics.tiktok.com/i18n/pixel/sdk.js?sdkid=D2VDTKRC77U649U8UH9G"
-          strategy="lazyOnload"
-        />
-
-        <noscript>
-          <img
-            height="1"
-            width="1"
-            style={{ display: 'none' }}
-            src="https://analytics.tiktok.com/i18n/pixel/pxl/?tid=D2VDTKRC77U649U8UH9G&ev=PageView&noscript=1"
-            alt=""
-          />
-        </noscript>
+        {/* TikTok Pixel - Now managed through Google Tag Manager to prevent duplicate loading */}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
