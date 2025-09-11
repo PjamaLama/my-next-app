@@ -14,18 +14,19 @@ function PayPalSuccessContent() {
   const [message, setMessage] = useState('Processing your payment...');
 
   useEffect(() => {
-    // Track Google Ads conversion using existing gtag function
+    // Track Google Ads conversion using dataLayer for GTM
     const trackGoogleAdsConversion = () => {
-      if (typeof window !== 'undefined' && window.gtag) {
-        window.gtag('event', 'conversion', {
-          'send_to': 'AW-17507562116/fDpoCP3expMbEITloJxB',
-          'value': 19.97,
-          'currency': 'USD',
-          'transaction_id': Date.now().toString()
+      if (typeof window !== 'undefined') {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'purchase',
+          value: 19.97,
+          currency: 'USD',
+          transaction_id: Date.now().toString()
         });
-        console.log('Google Ads conversion tracked via gtag');
+        console.log('Google Ads conversion tracked via GTM dataLayer');
       } else {
-        console.warn('Google Ads conversion tracking failed - gtag not available');
+        console.warn('Google Ads conversion tracking failed - window not available');
       }
     };
 

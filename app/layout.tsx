@@ -170,49 +170,14 @@ export default function RootLayout({
           }}
         />
 
-        {/* Google Ads tracking */}
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=AW-17507562116"
-          strategy="afterInteractive"
-        />
-        <Script
-          id="google-ads"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', 'AW-17507562116');
-              } catch(e) {
-                console.warn('Google Ads tracking failed to load:', e);
-              }
-            `,
-          }}
-        />
-
-        {/* Google Analytics */}
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-4PSKB5BJY1"
-          strategy="afterInteractive"
-        />
-        <Script
-          id="google-analytics"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', 'G-4PSKB5BJY1');
-              } catch(e) {
-                console.warn('Google Analytics failed to load:', e);
-              }
-            `,
-          }}
-        />
+        {/* Google Tag Manager - Handles Google Ads and Google Analytics */}
+        <Script id="gtm-script" strategy="afterInteractive">
+          {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+            new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+            'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+          })(window,document,'script','dataLayer','${process.env.NEXT_PUBLIC_GTM_ID || 'GTM-XXXXXXX'}');`}
+        </Script>
 
         {/* Microsoft Clarity */}
         <Script
@@ -232,6 +197,16 @@ export default function RootLayout({
             `,
           }}
         />
+
+        {/* Google Tag Manager noscript fallback */}
+        <noscript>
+          <iframe
+            src={`https://www.googletagmanager.com/ns.html?id=${process.env.NEXT_PUBLIC_GTM_ID || 'GTM-XXXXXXX'}`}
+            height="0"
+            width="0"
+            style={{ display: 'none', visibility: 'hidden' }}
+          ></iframe>
+        </noscript>
 
         {/* TikTok Pixel SDK */}
         <Script

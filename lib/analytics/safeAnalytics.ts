@@ -78,9 +78,11 @@ export const trackEvent = (
   if (!shouldEnableAnalytics()) return;
 
   try {
-    // Google Analytics 4
-    if (window.gtag) {
-      window.gtag('event', eventName, {
+    // Google Tag Manager - Send events through dataLayer
+    if (typeof window !== 'undefined') {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: eventName,
         ...parameters,
         custom_map: { dimension1: 'user_type' }
       });
@@ -183,11 +185,48 @@ export const trackConversion = (
   value?: number,
   currency: string = 'USD'
 ) => {
-  trackEvent('conversion', {
+  // Map conversion types to specific GTM event names
+  let eventName = 'conversion';
+  let eventData: Record<string, any> = {
     conversion_type: conversionType,
     value,
     currency,
-  });
+  };
+
+  // Use specific event names for better GTM triggering
+  switch (conversionType) {
+    case 'account_created':
+      eventName = 'sign_up';
+      eventData = {
+        value: value || 0,
+        currency: currency || 'USD'
+      };
+      break;
+    case 'first_message_sent':
+      eventName = 'first_message';
+      eventData = {
+        value: value || 0,
+        currency: currency || 'USD'
+      };
+      break;
+    case 'pro_upgrade':
+      eventName = 'purchase';
+      eventData = {
+        value: value || 19.97,
+        currency: currency || 'USD',
+        transaction_id: Date.now().toString()
+      };
+      break;
+    case 'first_sheet_connected':
+      eventName = 'sheet_connected';
+      eventData = {
+        value: value || 0,
+        currency: currency || 'USD'
+      };
+      break;
+  }
+
+  trackEvent(eventName, eventData);
 };
 
 /**
