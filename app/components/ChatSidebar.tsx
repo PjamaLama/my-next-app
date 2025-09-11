@@ -503,8 +503,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             )}
           </div>
 
-          {/* Message Counter for Free Users */}
-          {userType === 'free' && (
+          {/* Message Counter for Free Users - Hidden on mobile */}
+          {userType === 'free' && !isMobile && (
             <div className="mt-2 mx-3">
               <MessageCounter key={`counter-${dailyUsage}-${counterKey}`} />
             </div>
@@ -682,8 +682,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           )}
         </div>
 
-          {/* Message Counter for Free Users */}
-          {userType === 'free' && (
+          {/* Message Counter for Free Users - Hidden on mobile */}
+          {userType === 'free' && !isMobile && (
             <div className="mt-2 mx-3">
               <MessageCounter key={`counter-${dailyUsage}-${counterKey}`} />
             </div>
