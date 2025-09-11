@@ -30,20 +30,18 @@ const nextConfig: NextConfig = {
     scrollRestoration: true,
     // Improve Core Web Vitals
     webVitalsAttribution: ['CLS', 'LCP'],
-    // Enable faster builds
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
-      },
-    },
   },
   // Output optimization for better caching
   output: 'standalone',
-  // Enable SWC minification for smaller bundles
-  swcMinify: true,
+  // Turbopack configuration for faster builds (replaces experimental.turbo)
+  turbopack: {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
+      },
+    },
+  },
   // Disable tracing to fix EPERM errors
   generateEtags: false,
   trailingSlash: true,

@@ -583,10 +583,13 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
   }, [processDemoFileForUpload]);
 
   const handleSignIn = async () => {
+    console.log('🚀 Landing page sign-in initiated');
     setMessage('');
     setShowFreeConversionPrompt(false);
+
     try {
       await onSignIn();
+      console.log('🚀 Landing page sign-in successful');
       setMessage('Welcome! You are now signed in. Ready to convert your first data!');
 
       // Track Lead event after successful sign-in
@@ -605,8 +608,11 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
       trackLeadEvent();
     } catch (error) {
-      console.error('Sign-in failed:', error);
-      setMessage('Sign-in failed. Please try again.');
+      console.error('🚀 Landing page sign-in failed:', error);
+      // More specific error handling for mobile vs desktop
+      const errorMessage = error instanceof Error ? error.message : 'Sign-in failed. Please try again.';
+      console.error('🚀 Sign-in error message:', errorMessage);
+      setMessage(errorMessage);
     }
   };
 
@@ -922,15 +928,32 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               <p className="text-xl text-white/70">Welcome back! You are signed in and ready to use SheetyAI.</p>
             ) : (
               <div className="text-center">
-                {/* Success Message - moved here since main CTA is now at top */}
+                {/* Success/Error Message - moved here since main CTA is now at top */}
                 {message && (
                   <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className="mt-6 inline-block bg-emerald-500/20 border border-emerald-400/30 rounded-xl px-6 py-4 backdrop-blur-sm max-w-md"
+                    className={`mt-6 inline-block rounded-xl px-6 py-4 backdrop-blur-sm max-w-md ${
+                      message.includes('failed') || message.includes('error') || message.includes('Error')
+                        ? 'bg-red-500/20 border border-red-400/30'
+                        : 'bg-emerald-500/20 border border-emerald-400/30'
+                    }`}
                   >
-                    <p className="text-emerald-300 font-semibold text-sm mb-2">{message}</p>
-                    <p className="text-emerald-200 text-xs">💡 Tip: Set up WhatsApp integration after signup to convert data via chat!</p>
+                    <p className={`font-semibold text-sm mb-2 ${
+                      message.includes('failed') || message.includes('error') || message.includes('Error')
+                        ? 'text-red-300'
+                        : 'text-emerald-300'
+                    }`}>
+                      {message}
+                    </p>
+                    {message.includes('Welcome') && (
+                      <p className="text-emerald-200 text-xs">💡 Tip: Set up WhatsApp integration after signup to convert data via chat!</p>
+                    )}
+                    {(message.includes('failed') || message.includes('error')) && (
+                      <p className="text-red-200 text-xs mt-2">
+                        🔧 If issues persist, try refreshing the page or using a different browser.
+                      </p>
+                    )}
                   </motion.div>
                 )}
               </div>

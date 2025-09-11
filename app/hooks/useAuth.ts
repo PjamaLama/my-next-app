@@ -94,63 +94,99 @@ export const useAuth = (): UseAuthReturn => {
     return () => unsubscribe();
   }, [auth]);
 
-  // Common Google sign-in with popup first (desktop), redirect fallback (mobile/PWA/Safari)
+  // Common Google sign-in with unified approach for consistency
   const startGoogleSignIn = useCallback(async (provider: GoogleAuthProvider) => {
     if (!auth) {
       throw new Error('Firebase not initialized');
     }
 
-    // Detect environments where popups are unreliable
-    const isPopupUnreliable = (() => {
+    // Enhanced mobile detection for better consistency
+    const isMobileOrProblematic = (() => {
       if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
       const ua = navigator.userAgent || '';
       const isIOS = /iP(ad|hone|od)/i.test(ua);
       const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+      const isAndroid = /Android/i.test(ua);
+      const isMobile = /Mobi|Android/i.test(ua);
       const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-      // Only treat iOS Safari and standalone PWAs as popup unreliable
-      // Modern Android browsers handle popups well
-      return (isIOS && isSafari) || isStandalonePWA;
+      const isChromeIOS = /CriOS/i.test(ua); // Chrome on iOS
+      const isFirefoxIOS = /FxiOS/i.test(ua); // Firefox on iOS
+
+      // Use redirect for iOS Safari, standalone PWAs, and some Android browsers
+      return (isIOS && isSafari) || isStandalonePWA || (isAndroid && isMobile) || isChromeIOS || isFirefoxIOS;
     })();
 
-    if (!isPopupUnreliable) {
+    console.log('🔐 Auth method selection:', {
+      isMobileOrProblematic,
+      userAgent: navigator.userAgent?.substring(0, 100) + '...',
+      willUsePopup: !isMobileOrProblematic
+    });
+
+    // For consistency, use popup first on desktop, but with better fallback handling
+    if (!isMobileOrProblematic) {
       try {
+        console.log('🔐 Attempting popup authentication...');
         await signInWithPopup(auth, provider);
+        console.log('🔐 Popup authentication successful');
         // Clear any pending redirect state
         try { sessionStorage.removeItem('authRedirectPending'); } catch {}
         return;
       } catch (popupError: any) {
-        console.log('Popup failed, falling back to redirect:', popupError.message);
-        // Fallback to redirect for any popup failures
+        console.log('🔐 Popup failed, falling back to redirect:', popupError.message);
+        console.log('🔐 Popup error details:', popupError);
+        // Don't return here, fall through to redirect
       }
     }
 
-    // Set redirect pending state
-    try { sessionStorage.setItem('authRedirectPending', '1'); } catch (e) {
-      console.warn('Failed to set sessionStorage:', e);
+    // Always use redirect for mobile or if popup fails
+    console.log('🔐 Using redirect authentication...');
+    try {
+      // Set redirect pending state
+      sessionStorage.setItem('authRedirectPending', '1');
+      await signInWithRedirect(auth, provider);
+    } catch (redirectError: any) {
+      console.error('🔐 Redirect authentication failed:', redirectError);
+      // Clear pending state on redirect error
+      try { sessionStorage.removeItem('authRedirectPending'); } catch {}
+      throw redirectError;
     }
-    await signInWithRedirect(auth, provider);
   }, [auth]);
 
   const signInWithGoogle = useCallback(async () => {
     if (!auth) {
+      console.error('🔐 Firebase auth not initialized');
       setAuthError('Firebase not initialized. Please refresh the page.');
       return;
     }
 
     try {
+      console.log('🔐 Starting Google sign-in process...');
       setAuthError(null);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({
         prompt: 'select_account'
       });
+
+      // Add scopes for better integration
+      provider.addScope('profile');
+      provider.addScope('email');
+
       await startGoogleSignIn(provider);
+      console.log('🔐 Google sign-in process completed successfully');
     } catch (error: any) {
-      console.error('Firebase auth error:', error);
+      console.error('🔐 Firebase auth error:', error);
+      console.error('🔐 Error details:', {
+        code: error?.code,
+        message: error?.message,
+        stack: error?.stack
+      });
+
       const code = error?.code as string | undefined;
 
       // Track authentication errors
       trackUserInteraction('authentication', 'error', code || 'unknown');
 
+      // Enhanced error messages for mobile debugging
       if (code === 'auth/unauthorized-domain') {
         setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
       } else if (code === 'auth/operation-not-supported-in-this-environment') {
@@ -164,8 +200,14 @@ export const useAuth = (): UseAuthReturn => {
         setAuthError('Network error during authentication. Please check your internet connection and try again.');
       } else if (code === 'auth/too-many-requests') {
         setAuthError('Too many authentication attempts. Please wait a moment and try again.');
+      } else if (code === 'auth/cancelled-popup-request') {
+        setAuthError('Sign-in was cancelled. Please try again.');
+      } else if (code === 'auth/web-storage-unsupported') {
+        setAuthError('Web storage is not supported in this browser. Please enable cookies and local storage.');
       } else {
-        setAuthError(error?.message || 'Authentication failed. Please try again.');
+        const errorMessage = error?.message || 'Authentication failed. Please try again.';
+        console.error('🔐 Setting auth error:', errorMessage);
+        setAuthError(errorMessage);
       }
     }
   }, [auth, startGoogleSignIn]);
@@ -174,20 +216,38 @@ export const useAuth = (): UseAuthReturn => {
 
   const continueWithGoogle = useCallback(async (loginHint?: string) => {
     if (!auth) {
+      console.error('🔐 Firebase auth not initialized for continue');
       setAuthError('Firebase not initialized. Please refresh the page.');
       return;
     }
 
     try {
+      console.log('🔐 Starting Google continue sign-in process...');
       setAuthError(null);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      if (loginHint) provider.setCustomParameters({ login_hint: loginHint });
+      if (loginHint) {
+        provider.setCustomParameters({ login_hint: loginHint });
+        console.log('🔐 Using login hint:', loginHint);
+      }
+
+      // Add scopes for better integration
+      provider.addScope('profile');
+      provider.addScope('email');
+
       await startGoogleSignIn(provider);
+      console.log('🔐 Google continue sign-in process completed successfully');
     } catch (error: any) {
-      console.error('Firebase continue auth error:', error);
+      console.error('🔐 Firebase continue auth error:', error);
+      console.error('🔐 Continue error details:', {
+        code: error?.code,
+        message: error?.message,
+        stack: error?.stack
+      });
+
       const code = error?.code as string | undefined;
 
+      // Enhanced error messages for mobile debugging
       if (code === 'auth/unauthorized-domain') {
         setAuthError("This domain is not authorized for authentication. Please add this domain to your Firebase console's authorized domains list.");
       } else if (code === 'auth/operation-not-supported-in-this-environment') {
@@ -201,8 +261,14 @@ export const useAuth = (): UseAuthReturn => {
         setAuthError('Network error during authentication. Please check your internet connection and try again.');
       } else if (code === 'auth/too-many-requests') {
         setAuthError('Too many authentication attempts. Please wait a moment and try again.');
+      } else if (code === 'auth/cancelled-popup-request') {
+        setAuthError('Sign-in was cancelled. Please try again.');
+      } else if (code === 'auth/web-storage-unsupported') {
+        setAuthError('Web storage is not supported in this browser. Please enable cookies and local storage.');
       } else {
-        setAuthError(error?.message || 'Authentication failed. Please try again.');
+        const errorMessage = error?.message || 'Authentication failed. Please try again.';
+        console.error('🔐 Setting continue auth error:', errorMessage);
+        setAuthError(errorMessage);
       }
     }
   }, [auth, startGoogleSignIn]);
