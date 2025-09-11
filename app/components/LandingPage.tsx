@@ -672,12 +672,14 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             <div className="mb-8 px-4 sm:px-0">
               <motion.button
                 onClick={handleSignIn}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 px-8 rounded-full transition-all duration-200 shadow-xl flex items-center justify-center mx-auto border-2 border-emerald-400/50 text-base relative group focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full sm:w-auto max-w-xs sm:max-w-none min-h-[52px] touch-manipulation"
+                whileHover={{ scale: 1.05, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-black py-5 px-10 rounded-xl transition-all duration-300 shadow-2xl hover:shadow-emerald-500/50 flex items-center justify-center gap-3 mx-auto border-4 border-emerald-400/70 hover:border-emerald-300 text-lg relative group focus:outline-none focus:ring-4 focus:ring-emerald-300/50 w-full sm:w-auto max-w-xs sm:max-w-none min-h-[60px] touch-manipulation transform hover:-translate-y-1 active:translate-y-0"
                 aria-label="Convert data now with 3 free conversions"
               >
-                <span className="relative z-10">🚀 Convert Data Now – 3 Free/Day</span>
+                <span className="text-2xl">🚀</span>
+                <span className="relative z-10 font-extrabold tracking-wide">SIGN UP & CONVERT DATA</span>
+                <span className="text-sm font-bold bg-white/20 px-2 py-1 rounded-full">FREE</span>
               </motion.button>
 
               {/* Free/Pro info - Simplified */}
@@ -1315,12 +1317,16 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                   </div>
 
                   <div className="space-y-3">
-                    <button
+                    <motion.button
                       onClick={handleSignIn}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-emerald-500/25"
+                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-black py-4 px-8 rounded-xl transition-all duration-300 shadow-xl hover:shadow-emerald-500/50 flex items-center justify-center gap-3 border-4 border-emerald-400/70 hover:border-emerald-300 text-lg transform hover:-translate-y-1 active:translate-y-0 focus:outline-none focus:ring-4 focus:ring-emerald-300/50 min-h-[56px] touch-manipulation"
                     >
-                      🚀 Sign Up & Get 3 Free Conversions
-                    </button>
+                      <span className="text-xl">🚀</span>
+                      <span className="font-extrabold tracking-wide">SIGN UP & GET FREE</span>
+                      <span className="text-sm font-bold bg-white/20 px-2 py-1 rounded-full">3/DAY</span>
+                    </motion.button>
 
                     <button
                       onClick={() => setShowFreeConversionPrompt(false)}
@@ -1448,12 +1454,14 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                       <div className="space-y-3">
                         <motion.button
                           onClick={handleSignIn}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          className="w-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 px-8 rounded-full transition-all duration-200 shadow-xl flex items-center justify-center mx-auto border-2 border-emerald-400/50 text-base relative group focus:outline-none focus:ring-2 focus:ring-emerald-300 min-h-[52px] touch-manipulation"
+                          whileHover={{ scale: 1.05, y: -2 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="w-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-black py-5 px-10 rounded-xl transition-all duration-300 shadow-2xl hover:shadow-emerald-500/50 flex items-center justify-center gap-3 mx-auto border-4 border-emerald-400/70 hover:border-emerald-300 text-lg relative group focus:outline-none focus:ring-4 focus:ring-emerald-300/50 min-h-[60px] touch-manipulation transform hover:-translate-y-1 active:translate-y-0"
                           aria-label="Convert data now with 3 free conversions"
                         >
-                          <span className="relative z-10">🚀 Convert Data Now – 3 Free/Day</span>
+                          <span className="text-2xl">🚀</span>
+                          <span className="relative z-10 font-extrabold tracking-wide">SIGN UP & CONVERT DATA</span>
+                          <span className="text-sm font-bold bg-white/20 px-2 py-1 rounded-full">FREE</span>
                         </motion.button>
                         <div className="bg-emerald-500/10 border border-emerald-400/20 rounded-lg p-3">
                           <p className="text-xs text-emerald-200 text-center leading-relaxed">
