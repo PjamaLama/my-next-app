@@ -33,8 +33,8 @@ export default function SpaceBackground() {
     // Initialize stars
     const initStars = () => {
       const stars: Star[] = [];
-      const numStars = Math.min(100, Math.floor((canvas.width * canvas.height) / 10000)); // Adaptive star count
-      
+      const numStars = Math.min(100, Math.floor((canvas.width * canvas.height) / 10000));
+
       for (let i = 0; i < numStars; i++) {
         stars.push({
           x: Math.random() * canvas.width,
@@ -47,12 +47,10 @@ export default function SpaceBackground() {
       starsRef.current = stars;
     };
 
-    initStars();
-
     // Animation loop
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
+
       // Create subtle gradient background
       const gradient = ctx.createRadialGradient(
         canvas.width / 2, canvas.height / 2, 0,
@@ -61,7 +59,7 @@ export default function SpaceBackground() {
       gradient.addColorStop(0, 'rgba(10, 10, 30, 0.3)');
       gradient.addColorStop(0.5, 'rgba(5, 5, 20, 0.2)');
       gradient.addColorStop(1, 'rgba(0, 0, 10, 0.1)');
-      
+
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -69,7 +67,7 @@ export default function SpaceBackground() {
       starsRef.current.forEach((star, index) => {
         // Move stars slowly
         star.y += star.speed;
-        
+
         // Reset star position when it goes off screen
         if (star.y > canvas.height) {
           star.y = -10;
@@ -80,7 +78,7 @@ export default function SpaceBackground() {
         ctx.save();
         ctx.globalAlpha = star.opacity;
         ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
-        
+
         // Create star glow effect
         const glowGradient = ctx.createRadialGradient(
           star.x, star.y, 0,
@@ -89,18 +87,18 @@ export default function SpaceBackground() {
         glowGradient.addColorStop(0, `rgba(255, 255, 255, ${star.opacity})`);
         glowGradient.addColorStop(0.5, `rgba(255, 255, 255, ${star.opacity * 0.5})`);
         glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        
+
         ctx.fillStyle = glowGradient;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size * 3, 0, Math.PI * 2);
         ctx.fill();
-        
+
         // Draw star core
         ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
-        
+
         ctx.restore();
       });
 

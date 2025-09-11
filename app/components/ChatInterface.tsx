@@ -48,6 +48,39 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+  // Loading messages - mostly useful status updates and pro tips, with occasional funny sprinkles
+  const loadingMessages = [
+    // Actual processing status updates
+    "🔄 Analyzing your request and connecting to Google Sheets...",
+    "📊 Reading sheet structure and column headers...",
+    "🔍 Scanning for existing data patterns and relationships...",
+    "🧠 Processing your message with AI intelligence...",
+    "⚡ Optimizing data extraction and formatting...",
+    "📝 Preparing sheet updates and validation checks...",
+    "🔗 Establishing secure connection to your spreadsheet...",
+    "📋 Validating data types and ensuring accuracy...",
+    "✨ Applying AI insights to your data...",
+    "💾 Saving changes and syncing with Google Sheets...",
+
+    // Pro tips for better results
+    "💡 Pro tip: Convert your sheet data to a table in Google Sheets for better AI processing",
+    "💡 Tip: Highlight your data, right-click and select 'Convert to table' for optimal results",
+    "💡 Pro tip: Delete empty columns and rows before uploading for cleaner processing",
+    "💡 Tip: Check out the template example sheet for the perfect data format",
+    "💡 Pro tip: Use clear, descriptive column headers for best AI understanding",
+    "💡 Tip: Sort your data by date or priority before uploading for better insights",
+    "💡 Pro tip: Remove merged cells and formatting for more accurate data extraction",
+    "💡 Tip: Keep your data in the first sheet tab for fastest processing",
+    "💡 Pro tip: Use consistent date formats across your entire sheet",
+    "💡 Tip: Add data validation rules in Google Sheets to prevent errors",
+
+    // Just a few sprinkled funny moments (much less frequent)
+    "Taking a break, lol kidding",
+    "I bet you're pretty impressed with me right now, it's okay to admit it 🤯",
+    "Flirting with Debbie from accounting, think i got a shot 😜"
+  ];
 
   // Session-specific states - reset when session changes
   const [isSending, setIsSending] = useState(false);
@@ -68,6 +101,20 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     setInputValue(''); // Clear input when switching sessions
     setUploadedFiles([]); // Clear uploaded files when switching sessions
   }, [currentSessionId]);
+
+  // Cycle through loading messages while AI is thinking
+  useEffect(() => {
+    if (!isSending) {
+      setLoadingMessageIndex(0); // Reset to first message when not sending
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setLoadingMessageIndex(prev => (prev + 1) % loadingMessages.length);
+    }, 3000); // Change message every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [isSending, loadingMessages.length]);
   
   // Handle transcript changes from voice recorder
   const handleTranscriptChange = useCallback((transcript: string) => {
@@ -859,13 +906,14 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             />
           ))
         )}
-        {isSending && ( // Use the 'isSending' state for AI thinking indicator
+        {isSending && ( // Dynamic loading indicator with funny messages and tips
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-lg px-4 py-3 bg-white/10 text-white border border-white/20">
-              <div className="flex items-center space-x-1">
-                <span className="dot-flashing"></span>
-                <span className="dot-flashing"></span>
-                <span className="dot-flashing"></span>
+              <div className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                <span className="text-sm opacity-90">
+                  {loadingMessages[loadingMessageIndex]}
+                </span>
               </div>
             </div>
           </div>

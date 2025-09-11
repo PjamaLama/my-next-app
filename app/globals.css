@@ -46,6 +46,44 @@ button, input, select, textarea, a {
   min-width: 44px;
 }
 
+/* Reduce animations on mobile devices for better performance */
+@media (max-width: 768px) {
+  *, *::before, *::after {
+    animation-duration: 0.2s !important;
+    animation-delay: -0.1s !important;
+    transition-duration: 0.2s !important;
+    transition-delay: 0s !important;
+  }
+
+  /* Disable heavy animations on slow devices */
+  .animate-shimmer-landing,
+  .animate-shimmer-subtle,
+  .animate-golden-matrix,
+  .animate-golden-stream,
+  .animate-golden-particles,
+  .animate-golden-wave {
+    animation: none !important;
+  }
+
+  /* Simplify backdrop blur on mobile */
+  .backdrop-blur-sm {
+    backdrop-filter: blur(4px);
+  }
+
+  .backdrop-blur-md {
+    backdrop-filter: blur(6px);
+  }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Enhanced mobile button styles */
 button {
   /* Better touch feedback with scale animation */

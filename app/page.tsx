@@ -161,17 +161,45 @@ export default function Home() {
   // Only show loading on initial app load, not during chat switching
   if (loading && !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5 text-white/90">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600"></div>
-          <span className="text-sm">Loading...</span>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white px-4">
+        <div className="flex items-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 text-white/90 mb-4">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600"></div>
+          <span className="text-base font-medium">Loading SheetyAI...</span>
+        </div>
+        <div className="text-center text-white/60 text-sm max-w-sm">
+          <p>Setting up your AI-powered spreadsheet assistant</p>
+          <p className="mt-2">This may take a moment on slower connections</p>
         </div>
       </div>
     );
   }
 
   if (!user) {
-    return <LandingPage onSignIn={handleSignIn} user={user} />;
+    // Add error boundary for mobile loading issues
+    try {
+      return <LandingPage onSignIn={handleSignIn} user={user} />;
+    } catch (error) {
+      console.error('LandingPage failed to render:', error);
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white px-4">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-400/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">⚠️</span>
+            </div>
+            <h2 className="text-xl font-bold mb-2">Loading Error</h2>
+            <p className="text-white/70 text-sm mb-4">
+              We're having trouble loading the page. This might be due to a slow connection.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-full transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
   }
 
   // Don't block chat interface on spreadsheet loading - load in background

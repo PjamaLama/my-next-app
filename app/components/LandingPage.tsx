@@ -3,7 +3,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Database, Feather, Zap, BarChart, PieChart, Table, Loader2, FileText, Mic, Upload, Send, Paperclip, Square } from 'lucide-react';
 import { User } from 'firebase/auth';
-import SpaceBackground from './SpaceBackground';
 import { trackCombinedViewContent, trackLead, createUserData } from '../../lib/metaConversionsAPI';
 import { trackTikTokViewContent } from '../../lib/tiktokPixel';
 import { DemoInputManager } from '../../lib/demoInputManager';
@@ -12,12 +11,60 @@ import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForU
 import { handleHashNavigation, setupHashNavigation, setupScrollBasedHashUpdate } from '../../lib/utils/smoothScroll';
 import SiteLinks, { GoogleAdsSiteLinks } from './SiteLinks';
 
+// Performance monitoring hook
+const usePerformanceMonitor = () => {
+  const [isSlowDevice, setIsSlowDevice] = useState(false);
+  const [loadTime, setLoadTime] = useState<number | null>(null);
+
+  useEffect(() => {
+    const startTime = performance.now();
+
+    // Detect slow devices
+    const detectSlowDevice = () => {
+      if (typeof window === 'undefined') return;
+
+      const connection = (navigator as any).connection;
+      const deviceMemory = (navigator as any).deviceMemory;
+      const isSlowConnection = connection && (
+        connection.effectiveType === 'slow-2g' ||
+        connection.effectiveType === '2g' ||
+        connection.saveData === true
+      );
+      const isLowMemory = deviceMemory && deviceMemory < 4;
+
+      if (isSlowConnection || isLowMemory) {
+        setIsSlowDevice(true);
+      }
+    };
+
+    detectSlowDevice();
+
+    // Monitor load time
+    const checkLoadTime = () => {
+      const currentTime = performance.now();
+      const timeElapsed = currentTime - startTime;
+
+      if (timeElapsed > 3000) { // 3 seconds
+        setLoadTime(timeElapsed);
+        setIsSlowDevice(true);
+      }
+    };
+
+    const timeout = setTimeout(checkLoadTime, 3000);
+
+    return () => clearTimeout(timeout);
+  }, []);
+
+  return { isSlowDevice, loadTime };
+};
+
 interface LandingPageProps {
   onSignIn: () => Promise<void>;
   user: User | null;
 }
 
 export default function LandingPage({ onSignIn, user }: LandingPageProps) {
+  const { isSlowDevice, loadTime } = usePerformanceMonitor();
   const [message, setMessage] = useState('');
   const [showFreeConversionPrompt, setShowFreeConversionPrompt] = useState(false);
 
@@ -102,6 +149,8 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
 
     trackViewContent();
   }, []);
+
+  // Performance monitoring works in background - no UI needed
 
   // Set up smooth scrolling for site links
   useEffect(() => {
@@ -584,14 +633,15 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
         Skip to main content
       </a>
 
-      <SpaceBackground />
-      
-      <div className="w-full py-2 px-6 sm:px-8 relative z-10">
+      {/* Simple background - no animations */}
+      <div className="fixed inset-0 bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] -z-10"></div>
+
+      <div className="w-full py-2 px-4 sm:px-6 lg:px-8 relative z-10">
         <motion.header
           initial={{ y: -100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.3 }}
-          className="flex justify-between items-center mb-4 px-4 sm:px-0"
+          className="flex justify-between items-center mb-4 px-2 sm:px-4 lg:px-0"
         >
           <div className="flex items-center gap-3">
             <img 
@@ -602,38 +652,42 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             />
             <h1 className="text-3xl font-bold tracking-tighter bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">SheetyAI</h1>
           </div>
-            <motion.button
-              onClick={onSignIn}
-              whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.5)' }}
-              whileTap={{ scale: 0.95 }}
-              className="bg-transparent border border-white/30 hover:border-white/60 text-white font-semibold py-2 px-5 rounded-full transition-all duration-300 backdrop-blur-sm hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-opacity-50"
-              aria-label="Sign in with Google to access Sheety AI"
-            >
-              Sign In
-            </motion.button>
         </motion.header>
 
-        <main id="main-content" className="text-center pt-0">
+        <main id="main-content" className="text-center pt-0 px-2 sm:px-4 lg:px-0">
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.1 }}
             className="mb-4"
           >
-            <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-4 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-extrabold mb-4 bg-gradient-to-b from-white to-gray-300 bg-clip-text text-transparent tracking-tighter leading-tight px-4 sm:px-0">
               Turn Any Data into Smart Spreadsheets – Via Chat or WhatsApp
             </h2>
-            <p className="text-base sm:text-lg md:text-xl text-white/80 max-w-3xl mx-auto leading-relaxed px-4 sm:px-0 mb-6">
+            <p className="text-sm sm:text-base md:text-lg lg:text-xl text-white/80 max-w-3xl mx-auto leading-relaxed px-4 sm:px-0 mb-6">
               Transform text, voice, files, or images into spreadsheet formulas instantly. Chat naturally or use WhatsApp to convert your data – get 3 free conversions per day, or go Pro for unlimited access.
             </p>
 
-            {/* Free/Pro Emphasis */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8 px-4 sm:px-0">
-              <div className="bg-emerald-500/20 border border-emerald-400/30 rounded-full px-6 py-3 backdrop-blur-sm">
-                <span className="text-emerald-300 font-bold text-lg">🎁 3 Free Conversions Per Day</span>
-              </div>
-              <div className="bg-purple-500/20 border border-purple-400/30 rounded-full px-6 py-3 backdrop-blur-sm">
-                <span className="text-purple-300 font-bold text-lg">⭐ Go Pro for Unlimited</span>
+            {/* Main CTA Button - Always Visible */}
+            <div className="mb-8 px-4 sm:px-0">
+              <motion.button
+                onClick={handleSignIn}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 px-8 rounded-full transition-all duration-200 shadow-xl flex items-center justify-center mx-auto border-2 border-emerald-400/50 text-base relative group focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full sm:w-auto max-w-xs sm:max-w-none min-h-[52px] touch-manipulation"
+                aria-label="Convert data now with 3 free conversions"
+              >
+                <span className="relative z-10">🚀 Convert Data Now – 3 Free/Day</span>
+              </motion.button>
+
+              {/* Free/Pro info - Simplified */}
+              <div className="flex items-center justify-center gap-2 mt-4">
+                <div className="text-xs text-emerald-300 font-medium bg-emerald-500/20 px-3 py-1 rounded-full">
+                  🎁 3 Free/Day
+                </div>
+                <div className="text-xs text-purple-300 font-medium bg-purple-500/20 px-3 py-1 rounded-full">
+                  ⭐ Pro: Unlimited
+                </div>
               </div>
             </div>
 
@@ -643,53 +697,53 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ duration: 0.3, delay: 0.15 }}
-              className="max-w-5xl mx-auto mb-12 px-4 sm:px-0"
+              className="max-w-5xl mx-auto mb-12 px-1 sm:px-4 lg:px-0"
             >
-              <div className="bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-4 shadow-2xl shadow-black/50 animate-pulse-slow relative overflow-hidden">
-                {/* Shimmer effect overlay */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-shimmer-landing pointer-events-none rounded-2xl"></div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-bold text-white">Try It Now</h3>
-                  <div className="text-xs text-white/70 bg-emerald-500/20 px-2 py-1 rounded-full">
+              <div className="bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-3 sm:p-4 shadow-2xl shadow-black/50">
+                {/* Simple static background - no animations */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none rounded-2xl"></div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <h3 className="text-sm sm:text-base lg:text-lg font-bold text-white">Try It Now</h3>
+                  <div className="text-xs text-white/70 bg-emerald-500/20 px-2 py-1 rounded-full self-start sm:self-auto">
                     🎁 3 Free Demos
                   </div>
                 </div>
 
                 {/* Quick Reply Buttons */}
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="flex flex-wrap gap-2 mb-3 sm:mb-4 justify-center sm:justify-start">
                   <button
                     onClick={() => setDemoInput("Sales data:\nJohn - $500 laptop\nJane - $750 phone\nBob - $300 tablet")}
                     disabled={isDemoProcessing}
-                    className="px-3 py-2 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-full border border-blue-500/30 hover:border-blue-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-2 py-1.5 sm:px-3 sm:py-2 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-full border border-blue-500/30 hover:border-blue-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-0 flex-shrink-0 touch-manipulation"
                   >
                     💰 Sales
                   </button>
                   <button
                     onClick={() => setDemoInput("Project tasks:\nDesign website - High\nImplement auth - Medium\nWrite docs - Low")}
                     disabled={isDemoProcessing}
-                    className="px-3 py-2 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-full border border-purple-500/30 hover:border-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-2 py-1.5 sm:px-3 sm:py-2 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-full border border-purple-500/30 hover:border-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-0 flex-shrink-0 touch-manipulation"
                   >
                     📋 Tasks
                   </button>
                   <button
                     onClick={() => setDemoInput("Expenses:\nCoffee shop - $45\nTaxi ride - $25\nOffice supplies - $90")}
                     disabled={isDemoProcessing}
-                    className="px-3 py-2 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-full border border-emerald-500/30 hover:border-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-2 py-1.5 sm:px-3 sm:py-2 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-full border border-emerald-500/30 hover:border-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-0 flex-shrink-0 touch-manipulation"
                   >
                     💸 Expenses
                   </button>
                 </div>
 
                 {/* WhatsApp-style Chat Input */}
-                <div className="bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-4 shadow-2xl shadow-black/50">
+                <div className="bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-3 sm:p-4 shadow-2xl shadow-black/50">
                   {/* File preview if uploaded */}
                   {uploadedFiles.length > 0 && (
                     <div className="mb-3 p-2 bg-white/10 rounded-lg flex items-center gap-2">
                       <Paperclip className="w-4 h-4 text-emerald-400" />
-                      <span className="text-sm text-white/80">{uploadedFiles[0].name}</span>
+                      <span className="text-sm text-white/80 truncate">{uploadedFiles[0].name}</span>
                       <button
                         onClick={() => setUploadedFiles([])}
-                        className="ml-auto text-white/60 hover:text-white"
+                        className="ml-auto text-white/60 hover:text-white touch-manipulation"
                       >
                         ✕
                       </button>
@@ -697,9 +751,9 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                   )}
 
                   {/* Input area */}
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-end gap-2 sm:gap-3">
                     {/* Attachment buttons */}
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 sm:gap-1.5">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -712,7 +766,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                       <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isDemoProcessing}
-                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
+                        className="w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all flex items-center justify-center disabled:opacity-50 touch-manipulation"
                       >
                         <Paperclip className="w-4 h-4" />
                       </button>
@@ -720,18 +774,18 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                       <VoiceRecorder
                         onTranscriptChange={handleTranscriptChange}
                         disabled={isDemoProcessing}
-                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
+                        className="w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all flex items-center justify-center disabled:opacity-50 touch-manipulation"
                       />
                     </div>
 
                     {/* Text input */}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <textarea
                         value={demoInput}
                         onChange={(e) => setDemoInput(e.target.value)}
                         placeholder="Type your data or try a quick reply above..."
-                        className="w-full bg-transparent text-white placeholder-white/50 focus:outline-none resize-none text-sm py-3 px-2"
-                        rows={3}
+                        className="w-full bg-transparent text-white placeholder-white/50 focus:outline-none resize-none text-sm py-2.5 sm:py-3 px-2 sm:px-2 leading-relaxed"
+                        rows={2}
                         disabled={isDemoProcessing}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
@@ -813,7 +867,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         }
                       }}
                       disabled={isDemoProcessing || (!demoInput.trim() && uploadedFiles.length === 0)}
-                      className={`w-10 h-10 rounded-full transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-lg hover:shadow-xl ${
+                      className={`w-11 h-11 sm:w-10 sm:h-10 rounded-full transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-lg hover:shadow-xl touch-manipulation ${
                         isDemoProcessing
                           ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
                           : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
@@ -838,13 +892,13 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                 </div>
 
                 {demoError && (
-                  <div className="mt-3 text-red-400 text-xs text-center bg-red-500/10 border border-red-500/20 rounded-lg p-2">
+                  <div className="mt-3 text-red-400 text-xs text-center bg-red-500/10 border border-red-500/20 rounded-lg p-2 mx-2 sm:mx-0">
                     {demoError}
                     {demoError.includes('demo requests') && (
                       <div className="mt-2">
                         <button
                           onClick={handleSignIn}
-                          className="text-emerald-400 hover:text-emerald-300 underline text-xs"
+                          className="text-emerald-400 hover:text-emerald-300 underline text-xs touch-manipulation"
                         >
                           Sign up for unlimited access →
                         </button>
@@ -866,26 +920,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               <p className="text-xl text-white/70">Welcome back! You are signed in and ready to use SheetyAI.</p>
             ) : (
               <div className="text-center">
-                {/* Main CTA Button */}
-                <motion.button
-                  onClick={handleSignIn}
-                  whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
-                  whileTap={{ scale: 0.95 }}
-                  className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group focus:outline-none focus:ring-4 focus:ring-emerald-300 focus:ring-opacity-50"
-                  aria-label="Convert data now with 3 free conversions"
-                >
-                  {/* Shimmer effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-
-                  <span className="relative z-10">🚀 Convert Data Now – 3 Free/Day</span>
-                </motion.button>
-
-                {/* Hidden description for screen readers */}
-                <div id="cta-description" className="sr-only">
-                  Start free signup to convert any data type into spreadsheets – get 3 free conversions per day
-                </div>
-
-                {/* Success Message */}
+                {/* Success Message - moved here since main CTA is now at top */}
                 {message && (
                   <motion.div
                     initial={{ y: 20, opacity: 0 }}
@@ -1245,26 +1280,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
             </motion.div>
           </motion.div>
             
-            {/* Second CTA Button for scrollers */}
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              whileInView={{ y: 0, opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 1.8 }}
-              className="mt-16 text-center"
-            >
-              <motion.button
-                onClick={handleSignIn}
-                whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)" }}
-                whileTap={{ scale: 0.95 }}
-                className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 sm:py-6 px-8 sm:px-12 rounded-full transition-all duration-300 shadow-2xl shadow-emerald-500/50 flex items-center justify-center mx-auto backdrop-blur-sm border-2 border-emerald-400/50 text-lg sm:text-xl relative overflow-hidden group"
-              >
-                {/* Shimmer effect */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-
-                <span className="relative z-10">🚀 Convert Data Now – 3 Free/Day</span>
-              </motion.button>
-            </motion.div>
+            {/* CTA button moved to prime mobile position above */}
 
         </main>
 
@@ -1275,13 +1291,15 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
               onClick={() => setShowFreeConversionPrompt(false)}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
                 className="bg-gray-900 rounded-2xl max-w-md w-full mx-4 relative border border-white/10 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -1323,6 +1341,7 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
           )}
         </AnimatePresence>
 
+
         {/* Demo Results Modal */}
         <AnimatePresence>
           {showDemoResults && demoResults && (
@@ -1330,13 +1349,15 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
               onClick={closeDemoResults}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
                 className="bg-gray-900 rounded-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto relative border border-white/10 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -1425,12 +1446,15 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
                         Login with Google and connect your Sheets account to unlock unlimited AI processing and real-time data conversion.
                       </p>
                       <div className="space-y-3">
-                        <button
+                        <motion.button
                           onClick={handleSignIn}
-                          className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 shadow-xl hover:shadow-emerald-500/50 border-2 border-emerald-400/50 text-base"
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="w-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-bold py-4 px-8 rounded-full transition-all duration-200 shadow-xl flex items-center justify-center mx-auto border-2 border-emerald-400/50 text-base relative group focus:outline-none focus:ring-2 focus:ring-emerald-300 min-h-[52px] touch-manipulation"
+                          aria-label="Convert data now with 3 free conversions"
                         >
-                          🔐 Login & Connect Google Sheets
-                        </button>
+                          <span className="relative z-10">🚀 Convert Data Now – 3 Free/Day</span>
+                        </motion.button>
                         <div className="bg-emerald-500/10 border border-emerald-400/20 rounded-lg p-3">
                           <p className="text-xs text-emerald-200 text-center leading-relaxed">
                             ✨ Unlimited AI processing • 📊 Auto-save to Sheets • 🎤 Voice commands • 📁 File uploads

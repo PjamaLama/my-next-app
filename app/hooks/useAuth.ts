@@ -140,7 +140,9 @@ export const useAuth = (): UseAuthReturn => {
     try {
       setAuthError(null);
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
       await startGoogleSignIn(provider);
     } catch (error: any) {
       console.error('Firebase auth error:', error);

@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminDb } from '../../lib/firebaseAdmin';
-import { getFirestore } from 'firebase-admin/firestore';
 
 const COLLECTION_NAME = 'admin_settings';
 const DOCUMENT_ID = 'whatsapp_banner';
@@ -12,7 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const db = getFirestore();
+    const db = getAdminDb();
 
     // Get current banner settings
     const docRef = db.collection(COLLECTION_NAME).doc(DOCUMENT_ID);
