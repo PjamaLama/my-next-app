@@ -4,6 +4,7 @@ import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
 import { useTutorial } from "./providers/TutorialProvider";
 import { DemoInputManager } from "../lib/demoInputManager";
+import NavBar from "./NavBar";
 
 // Lazy load heavy components for better performance
 const ChatInterface = lazy(() => import("./components/ChatInterface"));
@@ -212,9 +213,12 @@ export default function Home() {
   // Always show chat interface for logged-in users - spreadsheets load in background
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white overflow-hidden mobile-chat-container fixed inset-0">
-      <Suspense fallback={<LoadingFallback />}>
-        <ChatInterface onShowTutorial={showTutorial} />
-      </Suspense>
+      <NavBar />
+      <div className="flex-1 min-h-0">
+        <Suspense fallback={<LoadingFallback />}>
+          <ChatInterface onShowTutorial={showTutorial} />
+        </Suspense>
+      </div>
 
       {/* Demo Onboarding Modal */}
       {showDemoOnboarding && demoInputData && (
