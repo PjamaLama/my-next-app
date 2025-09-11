@@ -83,8 +83,8 @@ const SidePanel: React.FC = () => {
         aria-label="Side panel"
       >
       <div className="flex flex-col h-full">
-                 {/* Header */}
-         <div className={`${peek ? 'px-2 py-2' : 'px-3 py-3'} border-b border-white/10 flex items-center justify-between`}>
+                 {/* Header - Hidden on mobile since we have hamburger in NavBar */}
+         <div className={`${peek ? 'px-2 py-2' : 'px-3 py-3'} border-b border-white/10 flex items-center justify-between ${isMobile ? 'hidden' : ''}`}>
            <div className="flex items-center gap-2 min-w-0">
              {!peek && (
                <div className="flex items-center gap-2">
