@@ -173,17 +173,17 @@ select {
 }
 
 @media (max-width: 640px) {
-  /* Prevent any scrolling on mobile chat interface */
+  /* Allow normal scrolling on mobile while keeping height constraints */
   body {
-    overflow: hidden !important;
     height: 100vh !important;
     height: 100dvh !important; /* Dynamic viewport height */
+    /* Remove overflow: hidden to allow sticky NavBar */
   }
 
   html {
-    overflow: hidden !important;
     height: 100vh !important;
     height: 100dvh !important; /* Dynamic viewport height */
+    /* Remove overflow: hidden to allow sticky NavBar */
   }
 
   input, textarea, select {
@@ -220,8 +220,8 @@ select {
   .mobile-chat-container {
     height: 100vh;
     height: 100dvh; /* Use dynamic viewport height */
-    overflow: hidden;
     position: relative;
+    /* Remove overflow: hidden to allow NavBar sticky positioning */
   }
 
   .mobile-chat-messages {

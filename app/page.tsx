@@ -212,7 +212,7 @@ export default function Home() {
 
   // Always show chat interface for logged-in users - spreadsheets load in background
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white overflow-hidden mobile-chat-container fixed inset-0">
+    <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white mobile-chat-container fixed inset-0">
       <NavBar />
       <div className="flex-1 min-h-0">
         <Suspense fallback={<LoadingFallback />}>
