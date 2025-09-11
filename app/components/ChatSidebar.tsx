@@ -491,8 +491,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </button>
         </div>
         </div>
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto py-2 px-2">
             {/* Chats list under Chats header */}
             {visibleSessions.length === 0 ? (
               <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
@@ -505,13 +505,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
           {/* Message Counter for Free Users - Hidden on mobile */}
           {userType === 'free' && !isMobile && (
-            <div className="mt-2 mx-3">
+            <div className="mt-2 mx-2">
               <MessageCounter key={`counter-${dailyUsage}-${counterKey}`} />
             </div>
           )}
 
           {/* Spreadsheets manager header (list stays below) */}
-          <div className="mt-2 mx-3 rounded-lg border border-white/10 bg-white/5 overflow-hidden">
+          <div className="mt-2 mx-2 rounded-lg border border-white/10 bg-white/5 overflow-hidden">
             {/* Header */}
             <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-b border-white/10">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -532,7 +532,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             </div>
             {/* Helper and adder moved to modal */}
             {/* List */}
-            <div className="px-2 py-2 space-y-1 border-t border-white/10">
+            <div className="px-2 py-2 space-y-1 border-t border-white/10 max-h-48 overflow-y-auto">
               {spreadsheetsLoading && (
                 <div className="text-xs text-white/60 px-2">Loading spreadsheets…</div>
               )}
@@ -621,8 +621,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </button>
         </div>
       </div>
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex-1 overflow-y-auto px-0 py-2">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-2 py-2">
           {/* Chats list under Chats header */}
           {visibleSessions.length === 0 ? (
             <div className="h-full flex items-center justify-center text-white/60 text-sm">No chats yet</div>
@@ -632,10 +632,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             </ul>
           )}
 
-		  {/* Simplified clarification UI for user-friendly retries. */}
+          {/* Simplified clarification UI for user-friendly retries. */}
 		  {/* Clarification inline banner */}
           {hasClarify && (
-            <div className="mx-3 mt-3 p-3 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-100 text-sm">
+            <div className="mx-2 mt-3 p-3 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-100 text-sm">
 				  <div>{(() => {
 					  try {
 						  const activeSheet = Array.isArray(selectedSheetNames) && selectedSheetNames.length > 0 ? selectedSheetNames[0] : undefined;
@@ -658,7 +658,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
           {/* Tool error slot: simple client-side render hint for consumers of this component */}
           {false && (
-            <div className="mt-3 mx-3">
+            <div className="mt-3 mx-2">
               {(() => {
                 const response: any = null; // replace with prop or context when wiring live tool results
                 const toolResult: any = null;
@@ -684,13 +684,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
           {/* Message Counter for Free Users - Hidden on mobile */}
           {userType === 'free' && !isMobile && (
-            <div className="mt-2 mx-3">
+            <div className="mt-2 mx-2">
               <MessageCounter key={`counter-${dailyUsage}-${counterKey}`} />
             </div>
           )}
 
           {/* Spreadsheets manager header (list stays below) */}
-        <div className="mt-2 mx-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
+        <div className="mt-2 mx-2 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
           {/* Manager header */}
           <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-b border-white/10">
             <div className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -713,7 +713,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
         </div>
 
         {/* Connected spreadsheets list */}
-        <div className="px-2 py-2 space-y-1 border-t border-white/10">
+        <div className="px-2 py-2 space-y-1 border-t border-white/10 max-h-48 overflow-y-auto">
           {spreadsheetsLoading && (
             <div className="text-xs text-white/60 px-2">Loading spreadsheets…</div>
           )}
