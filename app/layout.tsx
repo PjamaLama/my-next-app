@@ -198,7 +198,7 @@ export default function RootLayout({
                   c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
                   t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
                   y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-                })(window, document, "clarity", "script", "t6kpt5r8l4");
+                })(window, document, "clarity", "script", "${process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID || 't6kpt5r8l4'}");
               } catch(e) {
                 console.warn('Microsoft Clarity failed to load:', e);
               }
