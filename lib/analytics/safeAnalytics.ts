@@ -265,7 +265,7 @@ export const trackError = (
  */
 export const getAnalyticsStatus = () => {
   return {
-    googleAnalytics: !!window.gtag, // GA script loaded directly
+    googleAnalytics: !!(window.gtag || window.dataLayer), // GA script loaded directly or via GTM
     microsoftClarity: !!window.clarity, // Clarity script loaded directly
     tikTokPixel: !!window.ttq, // TikTok pixel loaded directly
     enabled: shouldEnableAnalytics(),

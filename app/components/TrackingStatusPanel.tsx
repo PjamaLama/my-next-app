@@ -33,11 +33,12 @@ export default function TrackingStatusPanel() {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Check tracking systems status
+  // Note: Google Analytics detection now supports both direct gtag and GTM (dataLayer)
   useEffect(() => {
     const checkStatus = () => {
       setTrackingStatus({
         tikTokPixel: !!(typeof window !== 'undefined' && window.ttq),
-        googleAnalytics: !!(typeof window !== 'undefined' && window.gtag),
+        googleAnalytics: !!(typeof window !== 'undefined' && (window.gtag || window.dataLayer)),
         metaPixel: !!(typeof window !== 'undefined' && window.fbq),
         microsoftClarity: !!(typeof window !== 'undefined' && window.clarity),
       });
