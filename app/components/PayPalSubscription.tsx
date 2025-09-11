@@ -5,6 +5,8 @@ import { Loader2 } from 'lucide-react';
 import { trackAddPaymentInfo, createUserData } from '../../lib/metaConversionsAPI';
 import { useFirebase } from '../providers/FirebaseProvider';
 
+import { useRef } from 'react';
+
 interface PayPalSubscriptionProps {
   planId?: string;
   clientId: string;
@@ -32,6 +34,8 @@ export default function PayPalSubscription({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     initializePayPal();
   }, []);
@@ -43,11 +47,11 @@ export default function PayPalSubscription({
         await loadPayPalSDK();
       }
 
-      // Get or create plan
-      const planIdToUse = planId || await getOrCreatePlan();
+      // Create plan if needed
+      const planIdToUse = planId || await createPlanIfNeeded();
 
       // Render PayPal button
-      renderPayPalButton(planIdToUse);
+      await renderPayPalButton(planIdToUse);
 
       // Track AddPaymentInfo when PayPal button is ready
       const trackPaymentInfo = async () => {
@@ -84,14 +88,6 @@ export default function PayPalSubscription({
         return;
       }
 
-      // Check if script is already being loaded
-      const existingScript = document.querySelector('script[src*="paypal.com/sdk/js"]');
-      if (existingScript) {
-        existingScript.addEventListener('load', () => resolve());
-        existingScript.addEventListener('error', () => reject(new Error('Failed to load PayPal SDK')));
-        return;
-      }
-
       // Use sandbox in development if sandbox credentials are available
       const hasSandboxCredentials = process.env.NEXT_PUBLIC_PAYPAL_SANDBOX_CLIENT_ID;
       const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
@@ -107,98 +103,55 @@ export default function PayPalSubscription({
       script.onload = () => resolve();
       script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
 
-      try {
-        // Safely append to head to avoid hydration issues
-        if (document.head) {
-          document.head.appendChild(script);
-        } else {
-          // Fallback to body if head is not available
-          document.body.appendChild(script);
-        }
-      } catch (error) {
-        reject(new Error(`Failed to append PayPal script: ${error}`));
-      }
+      // Use head instead of body to avoid hydration issues
+      document.head.appendChild(script);
     });
   };
 
-  const getOrCreatePlan = async (): Promise<string> => {
-    const response = await fetch('/api/paypal/manage-plan', {
-      method: 'GET',
+  const createPlanIfNeeded = async (): Promise<string> => {
+    const response = await fetch('/api/paypal/create-subscription-plan', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to get subscription plan');
+      throw new Error(data.error || 'Failed to create subscription plan');
     }
 
-    console.log('✅ Subscription plan ready:', data.plan.id);
+    console.log('✅ Subscription plan created:', data.plan.id);
     return data.plan.id;
   };
 
-  const renderPayPalButton = (planIdToUse: string) => {
-    if (!window.paypal) {
-      console.warn('PayPal SDK not loaded, skipping button render');
-      return;
-    }
+  const renderPayPalButton = async (planIdToUse: string) => {
+    if (!window.paypal || !containerRef.current) return;
 
-    // Wait for the DOM element to be available
-    const waitForContainer = () => {
-      const container = document.getElementById('paypal-button-container');
-      if (container) {
-        try {
-          // Clear any existing content in the container safely
-          while (container.firstChild) {
-            container.removeChild(container.firstChild);
-          }
+    containerRef.current.innerHTML = '';
 
-          window.paypal.Buttons({
-            createSubscription: (data: any, actions: any) =>
-              actions.subscription.create({ plan_id: planIdToUse }),
+    const buttons = window.paypal.Buttons({
+      createSubscription: (data: any, actions: any) =>
+        actions.subscription.create({ plan_id: planIdToUse }),
 
-            onApprove: (data: any) => {
-              console.log('PayPal subscription approved:', data);
-              const successUrl = `${window.location.origin}/paypal-success?type=subscription&subscription_id=${data.subscriptionID}`;
-              window.location.href = successUrl;
-              if (onSuccess) onSuccess(data.subscriptionID);
-            },
+      onApprove: (data: any) => {
+        console.log('PayPal subscription approved:', data);
+        const successUrl = `${window.location.origin}/paypal-success?type=subscription&subscription_id=${data.subscriptionID}`;
+        window.location.href = successUrl;
+        if (onSuccess) onSuccess(data.subscriptionID);
+      },
 
-            onError: (err: any) => {
-              console.error('PayPal subscription error:', err);
-              if (onError) onError(err);
-            },
+      onError: (err: any) => {
+        console.error('PayPal subscription error:', err);
+        if (onError) onError(err);
+      },
 
-            onCancel: (data: any) => {
-              console.log('PayPal subscription cancelled:', data);
-              if (onCancel) onCancel();
-            }
-          }).render('#paypal-button-container');
-        } catch (error) {
-          console.error('Failed to render PayPal button:', error);
-          if (onError) onError(error);
-        }
-      } else {
-        // If container not found, wait a bit and try again (max 10 attempts)
-        let attempts = 0;
-        const maxAttempts = 10;
-        const retryInterval = setInterval(() => {
-          attempts++;
-          const retryContainer = document.getElementById('paypal-button-container');
-          if (retryContainer || attempts >= maxAttempts) {
-            clearInterval(retryInterval);
-            if (retryContainer) {
-              waitForContainer();
-            } else {
-              console.error('PayPal button container not found after maximum attempts');
-              if (onError) onError(new Error('PayPal button container not available'));
-            }
-          }
-        }, 100);
+      onCancel: (data: any) => {
+        console.log('PayPal subscription cancelled:', data);
+        if (onCancel) onCancel();
       }
-    };
+    });
 
-    waitForContainer();
+    await buttons.render(containerRef.current);
   };
 
   if (error) {
@@ -218,11 +171,14 @@ export default function PayPalSubscription({
           Monthly subscription: <span className="text-white font-semibold">${amount}</span>
         </div>
 
-        <div id="paypal-button-container" className="flex justify-center">
+        <div className="relative min-h-[50px]">
+          <div ref={containerRef} className="flex justify-center" />
           {isLoading && (
-            <div className="flex items-center gap-2 text-blue-400 text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading PayPal...
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center gap-2 text-blue-400 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading PayPal...
+              </div>
             </div>
           )}
         </div>

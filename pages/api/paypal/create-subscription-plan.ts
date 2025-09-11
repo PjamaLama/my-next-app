@@ -52,8 +52,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // WARNING: This endpoint creates duplicate plans. Use /api/paypal/manage-plan instead
-    console.warn('⚠️ WARNING: create-subscription-plan endpoint is deprecated and may create duplicate plans. Use /api/paypal/manage-plan instead.');
     // Get PayPal configuration
     const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
     const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
@@ -96,6 +94,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const accessToken = tokenData.access_token;
+
+    // Try to use existing plan if PAYPAL_PLAN_ID is set
+    const planId = process.env.PAYPAL_PLAN_ID;
+    if (planId) {
+      const planResponse = await fetch(`${paypalUrl}/v1/billing/plans/${planId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (planResponse.ok) {
+        const plan = await planResponse.json() as PayPalPlan;
+
+        // Extract price safely
+        let price = '19.97';
+        if (plan.billing_cycles && plan.billing_cycles.length > 0) {
+          const regularCycle = plan.billing_cycles.find(cycle => cycle.tenure_type === 'REGULAR') || plan.billing_cycles[0];
+          if (regularCycle && regularCycle.pricing_scheme && regularCycle.pricing_scheme.fixed_price) {
+            price = regularCycle.pricing_scheme.fixed_price.value;
+          }
+        }
+
+        // Return plan details without product since it's not needed
+        res.status(200).json({
+          success: true,
+          plan: {
+            id: plan.id,
+            name: plan.name || 'SheetyAI Pro Monthly',
+            price: price
+          }
+        });
+        console.log('✅ Retrieved existing PayPal plan:', plan.id);
+        return;
+      } else {
+        const errorData = await planResponse.json();
+        console.error(`Failed to retrieve existing plan ${planId}: ${planResponse.status}`, errorData);
+        // Fall through to create new plan
+      }
+    }
 
     // Step 1: Create Product
     const productData = {

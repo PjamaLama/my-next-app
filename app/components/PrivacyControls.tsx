@@ -77,25 +77,11 @@ export default function PrivacyControls() {
         const a = document.createElement('a');
         a.href = url;
         a.download = `user-data-${user.uid}-${new Date().toISOString().split('T')[0]}.json`;
-
-        try {
-          // Safely append and remove the element
-          document.body.appendChild(a);
-          a.click();
-
-          // Clean up with error handling
-          if (a.parentNode === document.body) {
-            document.body.removeChild(a);
-          }
-        } catch (error) {
-          console.warn('Failed to download file:', error);
-          // Fallback: try opening in new tab
-          window.open(url, '_blank');
-        } finally {
-          // Always revoke the URL
-          window.URL.revokeObjectURL(url);
-        }
-
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
         setMessage({ type: 'success', text: 'Data exported successfully!' });
       } else {
         throw new Error('Failed to export data');
