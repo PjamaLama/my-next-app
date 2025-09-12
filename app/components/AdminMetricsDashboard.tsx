@@ -12,6 +12,10 @@ interface MetricsData {
   feedbackCount: number;
   openFeedback: number;
   totalVotes: number;
+  sheetsCreated: number;
+  avgSessionDuration: number;
+  conversionRate: number;
+  popularFeatures: Array<{ feature: string; usage: number }>;
 }
 
 export default function AdminMetricsDashboard() {
@@ -180,53 +184,154 @@ export default function AdminMetricsDashboard() {
         />
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Business Impact Metrics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          title="Sheets Created"
+          value={metrics.sheetsCreated}
+          subtitle="Total Google Sheets generated"
+          icon="📊"
+          color="purple"
+        />
+        <MetricCard
+          title="Conversion Rate"
+          value={`${metrics.conversionRate}%`}
+          subtitle="Free to Pro users"
+          icon="💰"
+          color="green"
+        />
+        <MetricCard
+          title="Avg Session"
+          value={`${metrics.avgSessionDuration}m`}
+          subtitle="User engagement time"
+          icon="⏱️"
+          color="blue"
+        />
+      </div>
+
+      {/* Advanced Analytics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* User Growth & Revenue */}
         <div className="glass rounded-xl p-6 border border-white/10">
-          <h3 className="text-lg font-semibold text-white mb-3">User Growth</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-white/60">Daily growth rate</span>
-              <span className="text-white">
-                {metrics.totalUsers > 0 ? `${((metrics.newUsersToday / metrics.totalUsers) * 100).toFixed(1)}%` : '0%'}
-              </span>
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <span className="text-green-400">📈</span>
+            Revenue Metrics
+          </h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-white/60 text-sm">Conversion Rate</span>
+              <span className="text-green-400 font-semibold">{metrics.conversionRate}%</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-white/60">Weekly growth rate</span>
-              <span className="text-white">
-                {metrics.totalUsers > 0 ? `${((metrics.newUsersWeek / metrics.totalUsers) * 100).toFixed(1)}%` : '0%'}
-              </span>
+            <div className="flex justify-between items-center">
+              <span className="text-white/60 text-sm">Est. Monthly Revenue</span>
+              <span className="text-white font-semibold">${(metrics.totalUsers * metrics.conversionRate * 0.1).toFixed(0)}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-white/60">Monthly growth rate</span>
-              <span className="text-white">
-                {metrics.totalUsers > 0 ? `${((metrics.newUsersMonth / metrics.totalUsers) * 100).toFixed(1)}%` : '0%'}
-              </span>
+            <div className="flex justify-between items-center">
+              <span className="text-white/60 text-sm">Pro Users</span>
+              <span className="text-purple-400 font-semibold">{Math.round(metrics.totalUsers * metrics.conversionRate / 100)}</span>
             </div>
           </div>
         </div>
 
+        {/* Feature Usage */}
         <div className="glass rounded-xl p-6 border border-white/10">
-          <h3 className="text-lg font-semibold text-white mb-3">Engagement</h3>
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <span className="text-blue-400">🚀</span>
+            Popular Features
+          </h3>
           <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-white/60">Avg votes per feedback</span>
-              <span className="text-white">
-                {metrics.feedbackCount > 0 ? (metrics.totalVotes / metrics.feedbackCount).toFixed(1) : '0'}
+            {metrics.popularFeatures.slice(0, 4).map((feature, index) => (
+              <div key={feature.feature} className="flex justify-between items-center">
+                <span className="text-white/70 text-sm">{feature.feature}</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-12 h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-400 to-purple-400 rounded-full transition-all duration-500"
+                      style={{ width: `${(feature.usage / Math.max(...metrics.popularFeatures.map(f => f.usage))) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-white text-xs font-medium w-8 text-right">{feature.usage}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* System Health */}
+        <div className="glass rounded-xl p-6 border border-white/10">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <span className="text-orange-400">⚡</span>
+            System Health
+          </h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-white/60 text-sm">Avg Session Time</span>
+              <span className={`font-semibold ${metrics.avgSessionDuration > 5 ? 'text-green-400' : 'text-orange-400'}`}>
+                {metrics.avgSessionDuration}m
               </span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-white/60">Open feedback rate</span>
-              <span className="text-white">
-                {metrics.feedbackCount > 0 ? `${((metrics.openFeedback / metrics.feedbackCount) * 100).toFixed(0)}%` : '0%'}
+            <div className="flex justify-between items-center">
+              <span className="text-white/60 text-sm">Sheets/User</span>
+              <span className="text-blue-400 font-semibold">
+                {(metrics.totalUsers > 0 ? metrics.sheetsCreated / metrics.totalUsers : 0).toFixed(1)}
               </span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-white/60">User activity rate</span>
-              <span className="text-white">
-                {metrics.totalUsers > 0 ? `${((metrics.activeUsers / metrics.totalUsers) * 100).toFixed(0)}%` : '0%'}
+            <div className="flex justify-between items-center">
+              <span className="text-white/60 text-sm">Feedback Response</span>
+              <span className={`font-semibold ${metrics.openFeedback < 5 ? 'text-green-400' : 'text-red-400'}`}>
+                {metrics.feedbackCount > 0 ? `${((1 - metrics.openFeedback / metrics.feedbackCount) * 100).toFixed(0)}%` : '100%'}
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Items */}
+      <div className="glass rounded-xl p-6 border border-white/10">
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <span className="text-yellow-400">🎯</span>
+          Key Insights & Actions
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            {metrics.newUsersToday > 5 && (
+              <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <span className="text-green-400">📈</span>
+                <div>
+                  <div className="text-white text-sm font-medium">High traffic day!</div>
+                  <div className="text-white/60 text-xs">{metrics.newUsersToday} new users today</div>
+                </div>
+              </div>
+            )}
+            {metrics.conversionRate < 5 && (
+              <div className="flex items-center gap-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                <span className="text-orange-400">💰</span>
+                <div>
+                  <div className="text-white text-sm font-medium">Low conversion rate</div>
+                  <div className="text-white/60 text-xs">Consider pricing or feature improvements</div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            {metrics.openFeedback > 10 && (
+              <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <span className="text-red-400">⚠️</span>
+                <div>
+                  <div className="text-white text-sm font-medium">High open feedback</div>
+                  <div className="text-white/60 text-xs">{metrics.openFeedback} items need attention</div>
+                </div>
+              </div>
+            )}
+            {metrics.avgSessionDuration < 3 && (
+              <div className="flex items-center gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <span className="text-blue-400">🎯</span>
+                <div>
+                  <div className="text-white text-sm font-medium">Low engagement</div>
+                  <div className="text-white/60 text-xs">Users spending only {metrics.avgSessionDuration} minutes</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

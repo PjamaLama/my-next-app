@@ -84,6 +84,11 @@ export default function FeedbackNudge() {
   const { user } = useFirebase();
   const [open, setOpen] = useState(false);
 
+  // Hide on admin pages
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   useEffect(() => {
     if (!user) return; // do not show nudge on landing (logged-out)
     

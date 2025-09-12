@@ -65,6 +65,11 @@ const SidePanel: React.FC = () => {
     return null;
   }
 
+  // Hide sidebar on admin pages
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   const visible = isMobile ? mobileOpen : true;
 
   return (

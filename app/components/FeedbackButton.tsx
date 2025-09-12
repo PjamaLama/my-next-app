@@ -124,6 +124,11 @@ export default function FeedbackButton() {
   };
 
 
+  // Hide on admin pages
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <>
       {/* Mobile floating trigger removed; mobile users can open from the sidebar footer or via the nudge */}

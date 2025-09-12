@@ -13,5 +13,10 @@ export default function TrackingStatusPanelWrapper() {
     return null;
   }
 
+  // Hide on admin pages
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   return <TrackingStatusPanel />;
 }

@@ -27,6 +27,11 @@ export default function ChatbotHelper() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Hide on admin pages
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   // Initial welcome message
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -119,6 +124,32 @@ export default function ChatbotHelper() {
   };
 
   const handleSuggestionClick = (suggestion: string) => {
+    // Handle special feedback prompt suggestions
+    if (suggestion === '🐛 Report a bug or issue') {
+      const responseMessage: Message = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: '🐛 **Report a Bug**\n\nI\'d love to help you report this bug! Please describe:\n\n• What were you trying to do?\n• What happened instead?\n• Any error messages you saw?\n• What device/browser are you using?\n\nJust tell me the details and I\'ll help you submit it properly! 💪',
+        timestamp: new Date(),
+        suggestions: ['❌ Never mind', '🎯 Show me how to use this feature instead']
+      };
+      setMessages(prev => [...prev, responseMessage]);
+      return;
+    }
+
+    if (suggestion === '💡 Suggest a new feature') {
+      const responseMessage: Message = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: '💡 **Suggest a Feature**\n\nAwesome! I love hearing new feature ideas! 🎉\n\nPlease tell me:\n\n• What feature would you like to see?\n• How would it help you?\n• Any specific details about how it should work?\n\nShare your idea and I\'ll help you submit it as a feature request! 🚀',
+        timestamp: new Date(),
+        suggestions: ['❌ Never mind', '🐛 Report a bug instead']
+      };
+      setMessages(prev => [...prev, responseMessage]);
+      return;
+    }
+
+    // Handle other suggestions normally
     sendMessage(suggestion);
   };
 
