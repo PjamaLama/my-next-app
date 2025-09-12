@@ -22,6 +22,7 @@ export interface ChatMessage {
       operations: Record<string, any>;
       requiresConfirmation: boolean;
       isDryRun: boolean;
+      updateRow?: number;
     };
   }>;
   insights?: string[];
@@ -56,6 +57,7 @@ interface ChatContextType {
       operations?: Record<string, any>;
       requiresConfirmation?: boolean;
       isDryRun?: boolean;
+      updateRow?: number;
     }
   }>) => Promise<void>;
   
