@@ -1,8 +1,12 @@
 // lib/analytics/simpleAnalytics.ts
 
+import { normalizeNumber } from '../utils/normalizeNumber';
+
 export function parseNumber(value: unknown): number | null {
-  const numeric = parseFloat(String(value ?? '').replace(/[^0-9.-]/g, ''));
-  return Number.isNaN(numeric) ? null : numeric;
+  if (value == null) return null;
+  // Use the comprehensive normalizeNumber function for consistency
+  const normalized = normalizeNumber(String(value));
+  return normalized.value;
 }
 
 export type AggregateMetric = { col: string; op: 'sum' | 'avg' | 'count' };

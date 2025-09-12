@@ -1,39 +1,37 @@
-// Minimal replacement for removed chat utilities
+// Consolidated utilities using comprehensive number parsing
+
+import { normalizeNumber } from './normalizeNumber';
 
 export function bestHeaderIndex(headers: string[], target: string): number {
   if (!Array.isArray(headers) || !target) return -1;
-  
+
   // Exact match first
   const exact = headers.findIndex(h => h === target);
   if (exact >= 0) return exact;
-  
+
   // Case-insensitive match
   const lowerTarget = target.toLowerCase();
   const caseInsensitive = headers.findIndex(h => h.toLowerCase() === lowerTarget);
   if (caseInsensitive >= 0) return caseInsensitive;
-  
+
   // Partial match
-  const partial = headers.findIndex(h => 
-    h.toLowerCase().includes(lowerTarget) || 
+  const partial = headers.findIndex(h =>
+    h.toLowerCase().includes(lowerTarget) ||
     lowerTarget.includes(h.toLowerCase())
   );
   if (partial >= 0) return partial;
-  
+
   return -1;
 }
 
+// Wrapper around the more comprehensive normalizeNumber function
 export function parseNumber(value: string | number | null | undefined): number | null {
   if (value == null) return null;
   if (typeof value === 'number') return isNaN(value) ? null : value;
-  
-  const str = String(value).trim();
-  if (str === '') return null;
-  
-  // Remove common currency symbols and commas
-  const cleaned = str.replace(/[$,\s]/g, '');
-  const parsed = parseFloat(cleaned);
-  
-  return isNaN(parsed) ? null : parsed;
+
+  // Use the comprehensive normalizeNumber function
+  const normalized = normalizeNumber(String(value));
+  return normalized.value;
 }
 
 export function structureForDisplay(table: string[][]): { headers: string[]; rows: string[][] } {

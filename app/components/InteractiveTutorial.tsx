@@ -118,6 +118,21 @@ export default function InteractiveTutorial({ isVisible, onClose }: InteractiveT
       description: 'Grant secure access to your Google Sheets',
       content: (
         <div className="space-y-4">
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="text-white font-semibold text-sm mb-3">📹 Tutorial Video</div>
+            <div className="aspect-video w-full rounded-lg overflow-hidden border border-gray-600">
+              <iframe
+                width="100%"
+                height="100%"
+                src="https://www.youtube.com/embed/Lcf1KNNq_oc?start=17&end=68"
+                title="Service Account Setup Tutorial"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="rounded-lg"
+              ></iframe>
+            </div>
+          </div>
         <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
           <div className="text-white font-semibold text-sm mb-2">1. Copy the service account email below</div>
           <div className="relative">
