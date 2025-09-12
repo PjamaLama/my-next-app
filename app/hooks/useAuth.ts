@@ -36,14 +36,16 @@ export const useAuth = (): UseAuthReturn => {
     const isMobile = /Mobi|Android/i.test(ua);
     const isChrome = /Chrome/i.test(ua) && !isSafari;
 
-    // Industry standard logic:
-    // - Mobile devices: Use redirect (more reliable)
+    // Enhanced industry standard logic:
     // - PWA standalone: Use redirect (popups don't work)
     // - iOS Safari: Use redirect (blocks popups)
+    // - Mobile (non-Chrome): Use redirect (safer)
+    // - Mobile Chrome: Try popup first (can work well)
     // - Desktop Chrome: Use popup (best UX)
-    // - Other desktop: Use redirect (safer fallback)
+    // - Other browsers: Use redirect (safer fallback)
 
-    const shouldUseRedirect = isStandalonePWA || isIOS || isMobile || !isChrome;
+    const isMobileChrome = isMobile && isChrome;
+    const shouldUseRedirect = isStandalonePWA || isIOS || (isMobile && !isMobileChrome) || (!isMobile && !isChrome);
 
     console.log('🔍 Auth strategy detection:', {
       userAgent: ua.substring(0, 100) + '...',
@@ -52,13 +54,14 @@ export const useAuth = (): UseAuthReturn => {
       isStandalonePWA,
       isMobile,
       isChrome,
+      isMobileChrome,
       recommendedAuth: shouldUseRedirect ? 'redirect' : 'popup',
       reason: shouldUseRedirect
         ? (isStandalonePWA ? 'PWA standalone'
-           : isIOS ? 'iOS device'
-           : isMobile ? 'Mobile device'
+           : isIOS ? 'iOS Safari'
+           : (isMobile && !isMobileChrome) ? 'Mobile (non-Chrome)'
            : 'Non-Chrome browser')
-        : 'Desktop Chrome',
+        : isMobileChrome ? 'Mobile Chrome (popup-capable)' : 'Desktop Chrome',
       hasRedirectPending: sessionStorage.getItem('authRedirectPending')
     });
 
@@ -73,22 +76,47 @@ export const useAuth = (): UseAuthReturn => {
   useEffect(() => {
     if (!auth) return;
 
-    // Handle redirect result on app initialization (industry standard)
+    // Enhanced redirect result handling with better error management
     const handleRedirectResult = async () => {
       try {
+        console.log('🔄 Checking for redirect result...');
         const result = await getRedirectResult(auth);
+
         if (result) {
-          console.log('📊 Redirect authentication successful');
+          console.log('📊 Redirect authentication successful:', {
+            user: result.user?.email,
+            provider: result.providerId
+          });
+
           // Clear any pending redirect state
-          try { sessionStorage.removeItem('authRedirectPending'); } catch {}
+          try {
+            sessionStorage.removeItem('authRedirectPending');
+            // Store successful auth timestamp for debugging
+            localStorage.setItem('lastAuthSuccess', Date.now().toString());
+          } catch (storageError) {
+            console.warn('Storage cleanup failed:', storageError);
+          }
+        } else {
+          console.log('🔄 No redirect result found (normal for direct app loads)');
         }
       } catch (error: any) {
-        console.error('Redirect result error:', error);
+        console.error('🔄 Redirect result error:', {
+          code: error.code,
+          message: error.message,
+          details: error
+        });
+
         // Clear pending state even on error
-        try { sessionStorage.removeItem('authRedirectPending'); } catch {}
-        // Only set error for redirect scenarios
+        try {
+          sessionStorage.removeItem('authRedirectPending');
+        } catch (storageError) {
+          console.warn('Storage cleanup failed:', storageError);
+        }
+
+        // Only set error for redirect scenarios and specific error types
         const strategy = detectAuthStrategy();
-        if (strategy.useRedirect) {
+        if (strategy.useRedirect && error.code !== 'auth/null-user') {
+          // auth/null-user is normal when no redirect occurred
           setAuthError('Authentication failed. Please try again.');
         }
       }

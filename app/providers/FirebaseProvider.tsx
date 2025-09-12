@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, User, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { getAuth, User, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { useAuth } from '../hooks/useAuth';
 import { useUserProfile } from '../hooks/useUserProfile';
@@ -31,10 +31,34 @@ if (typeof window !== 'undefined') {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       
-      // Enhanced persistence configuration for mobile compatibility
-      setPersistence(auth, browserLocalPersistence).catch((error) => {
-        console.warn('Failed to set auth persistence:', error);
-        // Continue without persistence if it fails
+      // Intelligent persistence configuration for mobile compatibility
+      const isMobile = () => {
+        if (typeof window === 'undefined') return false;
+        const ua = navigator.userAgent || '';
+        return /Mobi|Android/i.test(ua) || /iP(ad|hone|od)/i.test(ua);
+      };
+
+      const isStandalonePWA = () => {
+        if (typeof window === 'undefined') return false;
+        return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+      };
+
+      // Use session persistence for mobile/PWA (more reliable for redirects)
+      // Use local persistence for desktop (better for long-term sessions)
+      const useSessionPersistence = isMobile() || isStandalonePWA();
+      const persistence = useSessionPersistence ? browserSessionPersistence : browserLocalPersistence;
+
+      console.log('🔥 Firebase persistence strategy:', {
+        isMobile: isMobile(),
+        isStandalonePWA: isStandalonePWA(),
+        useSessionPersistence,
+        persistenceType: useSessionPersistence ? 'session' : 'local'
+      });
+
+      setPersistence(auth, persistence).catch((error) => {
+        console.warn('🔥 Failed to set auth persistence, falling back to in-memory:', error);
+        // If storage is completely blocked (e.g., private browsing), auth still works but state won't persist
+        // This is better than breaking the entire authentication flow
       });
       
       db = getFirestore(app);
