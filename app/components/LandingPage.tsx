@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Database, Feather, Zap, BarChart, PieChart, Table, Loader2, FileText, Mic, Upload, Send, Paperclip, Square } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { trackCombinedViewContent, trackLead, createUserData } from '../../lib/metaConversionsAPI';
-import { trackTikTokViewContent } from '../../lib/tiktokPixel';
 import { DemoInputManager } from '../../lib/demoInputManager';
 import VoiceRecorder from './VoiceRecorder';
 import { arrayBufferToBase64, extractImageText, extractPDFText, validateFileForUpload, type UploadedFile } from '../../lib/utils/chatFileUtils';
@@ -143,8 +142,16 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
         testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
 
-      // Also track to TikTok pixel
-      trackTikTokViewContent('sheetyai_pro_monthly');
+      // Also track to TikTok pixel via GTM
+      if (typeof window !== 'undefined') {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'tiktok_view_content',
+          content_name: 'SheetyAI Pro Monthly Subscription',
+          content_type: 'product',
+          content_id: 'sheetyai_pro_monthly'
+        });
+      }
     };
 
     trackViewContent();

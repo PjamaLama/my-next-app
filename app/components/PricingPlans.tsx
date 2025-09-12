@@ -5,7 +5,6 @@ import { Check, X, Zap, Crown, MessageSquare, Users, TrendingUp } from 'lucide-r
 import { useFirebase } from '../providers/FirebaseProvider';
 import { useUpgradeModal } from '../providers/UpgradeModalProvider';
 import { trackCombinedViewContent, trackInitiateCheckout, createUserData } from '../../lib/metaConversionsAPI';
-import { trackTikTokViewContent, trackTikTokInitiateCheckout } from '../../lib/tiktokPixel';
 
 interface PricingPlansProps {
   compact?: boolean;
@@ -33,8 +32,16 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
         testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
 
-      // Also track to TikTok pixel
-      trackTikTokViewContent('sheetyai_pro_monthly');
+      // Also track to TikTok pixel via GTM
+      if (typeof window !== 'undefined') {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'tiktok_view_content',
+          content_name: 'SheetyAI Pro Monthly Subscription',
+          content_type: 'product',
+          content_id: 'sheetyai_pro_monthly'
+        });
+      }
     };
 
     trackViewContent();
@@ -92,8 +99,19 @@ export default function PricingPlans({ compact = false, showTitle = true }: Pric
         testEventCode: process.env.NODE_ENV === 'development' ? 'TEST65930' : undefined
       });
 
-      // Also track to TikTok pixel
-      trackTikTokInitiateCheckout('sheetyai_pro_monthly');
+      // Also track to TikTok pixel via GTM
+      if (typeof window !== 'undefined') {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'tiktok_initiate_checkout',
+          content_name: 'SheetyAI Pro Monthly Subscription',
+          content_type: 'product',
+          content_id: 'sheetyai_pro_monthly',
+          value: 19.97,
+          currency: 'USD',
+          quantity: 1
+        });
+      }
 
       openModal(planName);
     }

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { trackTikTokViewContent, trackTikTokInitiateCheckout, trackTikTokPurchase } from '../../lib/tiktokPixel';
 import { trackEvent, trackConversion, trackUserInteraction, trackFeatureUsage } from '../../lib/analytics/safeAnalytics';
 
 declare global {
@@ -79,8 +78,17 @@ export default function TrackingStatusPanel() {
   const testAllPageViewEvents = () => {
     // Test each tracking system
     if (trackingStatus.tikTokPixel) {
-      trackTikTokViewContent('sheetyai_pro_monthly');
-      addEventLog('📊 TikTok: ViewContent tracked');
+      // Track TikTok via GTM dataLayer
+      if (typeof window !== 'undefined') {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'tiktok_view_content',
+          content_name: 'SheetyAI Pro Monthly Subscription',
+          content_type: 'product',
+          content_id: 'sheetyai_pro_monthly'
+        });
+      }
+      addEventLog('📊 TikTok: ViewContent tracked via GTM');
     }
 
     if (trackingStatus.googleAnalytics) {
@@ -204,7 +212,22 @@ export default function TrackingStatusPanel() {
                 </button>
 
                 <button
-                  onClick={() => testTikTokEvent('ViewContent', () => trackTikTokViewContent('sheetyai_pro_monthly'))}
+                  onClick={() => {
+                    try {
+                      if (typeof window !== 'undefined') {
+                        window.dataLayer = window.dataLayer || [];
+                        window.dataLayer.push({
+                          event: 'tiktok_view_content',
+                          content_name: 'SheetyAI Pro Monthly Subscription',
+                          content_type: 'product',
+                          content_id: 'sheetyai_pro_monthly'
+                        });
+                      }
+                      addEventLog('✅ TikTok: ViewContent via GTM');
+                    } catch (error) {
+                      addEventLog('❌ TikTok Error: GTM tracking failed');
+                    }
+                  }}
                   className="text-xs bg-pink-600 hover:bg-pink-700 px-3 py-2 rounded transition-colors"
                 >
                   TikTok Test

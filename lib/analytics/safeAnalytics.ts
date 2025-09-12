@@ -117,38 +117,64 @@ export const trackEvent = (
       window.clarity('event', eventName, parameters);
     }
 
-    // TikTok Pixel - Map common events to TikTok standard events
-    // Note: TikTok pixel is now loaded through Google Tag Manager to prevent duplicates
-    if (window.ttq && typeof window.ttq.track === 'function') {
+    // TikTok Pixel via GTM - Send events through dataLayer
+    // Note: TikTok pixel is now managed through Google Tag Manager to prevent duplicates
+    if (typeof window !== 'undefined') {
       try {
-        // Map conversion events to TikTok standard events
+        // Map conversion events to TikTok standard events via dataLayer
         if (eventName === 'conversion') {
           const conversionType = parameters?.conversion_type;
           switch (conversionType) {
             case 'account_created':
-              window.ttq.track('Lead', {
+              window.dataLayer = window.dataLayer || [];
+              window.dataLayer.push({
+                event: 'tiktok_lead',
                 content_name: 'Account Creation',
                 content_type: 'lead',
                 ...parameters
               });
               break;
             case 'first_message_sent':
-              window.ttq.track('Contact', {
+              window.dataLayer = window.dataLayer || [];
+              window.dataLayer.push({
+                event: 'tiktok_contact',
                 content_name: 'First Message Sent',
                 content_type: 'engagement',
                 ...parameters
               });
               break;
+            case 'pro_upgrade':
+              window.dataLayer = window.dataLayer || [];
+              window.dataLayer.push({
+                event: 'tiktok_purchase',
+                value: parameters?.value || 19.97,
+                currency: parameters?.currency || 'USD',
+                content_name: 'SheetyAI Pro Subscription',
+                content_type: 'product',
+                content_id: 'sheetyai_pro_monthly',
+                ...parameters
+              });
+              break;
             default:
-              window.ttq.track('CompletePayment', parameters);
+              // For other conversions, use generic TikTok event
+              window.dataLayer = window.dataLayer || [];
+              window.dataLayer.push({
+                event: 'tiktok_conversion',
+                conversion_type: conversionType,
+                ...parameters
+              });
               break;
           }
         } else {
-          // For other custom events, use generic tracking
-          window.ttq.track(eventName, parameters);
+          // For other custom events, send through dataLayer for potential TikTok tracking
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({
+            event: `tiktok_${eventName}`,
+            ...parameters
+          });
         }
       } catch (error) {
-        console.warn('TikTok pixel tracking failed:', error);
+        console.warn('TikTok dataLayer tracking failed:', error);
       }
     }
 
@@ -291,7 +317,7 @@ export const getAnalyticsStatus = () => {
   return {
     googleAnalytics: !!(window.gtag || window.dataLayer), // GA script loaded directly or via GTM
     microsoftClarity: !!window.clarity, // Clarity script loaded directly
-    tikTokPixel: !!window.ttq, // TikTok pixel loaded directly
+    tikTokPixel: !!window.dataLayer, // TikTok pixel managed through GTM
     enabled: shouldEnableAnalytics(),
     environment: process.env.NEXT_PUBLIC_ENVIRONMENT || 'production',
   };

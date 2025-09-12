@@ -6,7 +6,6 @@ import { X, Check, Crown, Sparkles, CheckCircle, ArrowRight } from 'lucide-react
 import { useFirebase } from '../providers/FirebaseProvider';
 import PayPalSubscription from './PayPalSubscription';
 import { trackViewContent, trackInitiateCheckout, trackAddToCart } from '../../lib/metaPixel';
-import { trackTikTokViewContent, trackTikTokInitiateCheckout, trackTikTokAddToCart } from '../../lib/tiktokPixel';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -69,7 +68,16 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
   useEffect(() => {
     if (isOpen) {
       trackViewContent('sheetyai_pro_monthly');
-      trackTikTokViewContent('sheetyai_pro_monthly');
+      // Track to TikTok pixel via GTM
+      if (typeof window !== 'undefined') {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'tiktok_view_content',
+          content_name: 'SheetyAI Pro Monthly Subscription',
+          content_type: 'product',
+          content_id: 'sheetyai_pro_monthly'
+        });
+      }
     }
   }, [isOpen]);
 
@@ -242,7 +250,19 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
                   <button
                     onClick={() => {
                       trackInitiateCheckout('sheetyai_pro_monthly');
-                      trackTikTokInitiateCheckout('sheetyai_pro_monthly');
+                      // Track to TikTok pixel via GTM
+                      if (typeof window !== 'undefined') {
+                        window.dataLayer = window.dataLayer || [];
+                        window.dataLayer.push({
+                          event: 'tiktok_initiate_checkout',
+                          content_name: 'SheetyAI Pro Monthly Subscription',
+                          content_type: 'product',
+                          content_id: 'sheetyai_pro_monthly',
+                          value: 19.97,
+                          currency: 'USD',
+                          quantity: 1
+                        });
+                      }
                       setHasStartedPayment(true);
                     }}
                     className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-yellow-500/25 animate-pulse"
