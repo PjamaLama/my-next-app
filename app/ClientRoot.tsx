@@ -13,6 +13,7 @@ import TrackingStatusPanelWrapper from './components/TrackingStatusPanelWrapper'
 import SidePanel from './components/SidePanel';
 import FeedbackButton from './components/FeedbackButton';
 import FeedbackNudge from './components/FeedbackNudge';
+import ChatbotHelper from './components/ChatbotHelper';
 import { ClientGatedLayout } from './providers/ClientGatedLayout';
 import PWAInstaller from './components/PWAInstaller';
 import InteractiveTutorial from './components/InteractiveTutorial';
@@ -53,6 +54,7 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
                     </ClientGatedLayout>
                     <FeedbackNudge />
                     <FeedbackButton />
+                    <ChatbotHelper />
                     <PWAInstaller />
                   </div>
                   {/* Development tracking panel - only shows in development mode */}
