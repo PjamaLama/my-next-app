@@ -124,12 +124,21 @@ async function searchSimilar(query: string) {
   const db = getAdminDb();
   const key = buildSimilarityKey(query);
   const snap = await db.collection('feedback').where('similarityKey', '==', key).get();
-  const list = snap.docs.map((d: DocumentData) => ({ id: d.id, ...(d.data() as any) }));
+
+  interface FeedbackItem {
+    id: string;
+    title: string;
+    description?: string;
+    _score: number;
+    [key: string]: any;
+  }
+
+  const list: FeedbackItem[] = snap.docs.map((d: DocumentData) => ({ id: d.id, ...(d.data() as any) }));
   // Rank by score
   return list
-    .map((item) => ({ ...item, _score: scoreSimilarity(query, `${item.title} ${item.description || ''}`) }))
-    .filter((x) => x._score >= 0.3)
-    .sort((a, b) => b._score - a._score)
+    .map((item: FeedbackItem) => ({ ...item, _score: scoreSimilarity(query, `${item.title} ${item.description || ''}`) }))
+    .filter((x: FeedbackItem) => x._score >= 0.3)
+    .sort((a: FeedbackItem, b: FeedbackItem) => b._score - a._score)
     .slice(0, 10);
 }
 
@@ -208,6 +217,92 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       await db.collection('feedback').doc(id).set(updates, { merge: true });
       const snap = await db.collection('feedback').doc(id).get();
       return res.status(200).json({ success: true, data: { id, ...(snap.data() as any) } });
+    }
+
+    if (method === 'DELETE') {
+      // Admin-only delete
+      const bearer = req.headers.authorization || '';
+      const idToken = bearer.startsWith('Bearer ') ? bearer.slice(7) : undefined;
+      if (!idToken) return res.status(401).json({ success: false, error: 'Unauthorized' });
+      const auth = getAuth();
+      const decoded = await auth.verifyIdToken(idToken);
+      if (!isAllowedAdmin(decoded)) return res.status(403).json({ success: false, error: 'Forbidden' });
+
+      const { id } = req.query || {};
+      if (!id || typeof id !== 'string') return res.status(400).json({ success: false, error: 'id is required' });
+
+      const db = getAdminDb();
+
+      // Get the feedback document to check for attachments and duplicates
+      const docRef = db.collection('feedback').doc(id);
+      const docSnap = await docRef.get();
+
+      if (!docSnap.exists) {
+        return res.status(404).json({ success: false, error: 'Feedback not found' });
+      }
+
+      const feedbackData = docSnap.data() as FeedbackDoc;
+
+      // Delete attachments from storage if they exist
+      if (feedbackData.attachments && feedbackData.attachments.length > 0) {
+        try {
+          const storage = getStorage();
+          const bucketName = resolveBucketName();
+          const bucket = bucketName ? storage.bucket(bucketName) : storage.bucket();
+
+          for (const attachment of feedbackData.attachments) {
+            if (attachment.url) {
+              // Extract object path from URL
+              const urlParts = attachment.url.split('/feedback/');
+              if (urlParts.length === 2) {
+                const objectPath = `feedback/${urlParts[1]}`;
+                try {
+                  await bucket.file(objectPath).delete();
+                } catch (storageError) {
+                  console.warn('Failed to delete attachment:', objectPath, storageError);
+                }
+              }
+            }
+          }
+        } catch (storageError) {
+          console.warn('Error deleting attachments from storage:', storageError);
+        }
+      }
+
+      // Handle duplicate relationships
+      if (feedbackData.duplicateOf) {
+        // Remove this feedback from the parent's duplicates array
+        try {
+          await db.collection('feedback').doc(feedbackData.duplicateOf).update({
+            duplicates: FieldValue.arrayRemove(id),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        } catch (error) {
+          console.warn('Failed to update parent duplicate reference:', error);
+        }
+      }
+
+      // If this feedback has duplicates, update them
+      if (feedbackData.duplicates && feedbackData.duplicates.length > 0) {
+        const batch = db.batch();
+        feedbackData.duplicates.forEach((duplicateId) => {
+          const duplicateRef = db.collection('feedback').doc(duplicateId);
+          batch.update(duplicateRef, {
+            duplicateOf: null,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        });
+        try {
+          await batch.commit();
+        } catch (error) {
+          console.warn('Failed to update duplicate references:', error);
+        }
+      }
+
+      // Delete the feedback document
+      await docRef.delete();
+
+      return res.status(200).json({ success: true, data: { id } });
     }
 
     return res.status(405).json({ success: false, error: 'Method not allowed' });

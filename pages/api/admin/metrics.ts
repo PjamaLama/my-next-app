@@ -22,6 +22,11 @@ type MetricsResponse = {
     activeUsers: number;
     feedbackCount: number;
     openFeedback: number;
+    totalVotes: number;
+    sheetsCreated: number;
+    avgSessionDuration: number;
+    conversionRate: number;
+    popularFeatures: Array<{ feature: string; usage: number }>;
   };
   error?: string;
 };

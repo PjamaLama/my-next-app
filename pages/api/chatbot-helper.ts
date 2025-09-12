@@ -10,7 +10,7 @@ export const config = {
 interface ChatbotResponse {
   message: string;
   suggestions?: string[];
-  action?: 'feedback' | 'tutorial' | 'help';
+  action?: 'feedback' | 'tutorial' | 'help' | 'clarify';
   feedbackData?: {
     title: string;
     description: string;
@@ -77,43 +77,145 @@ FEEDBACK SYSTEM:
 - Duplicate detection prevents spam
 `;
 
-// Helper function to detect feedback intent
-function detectFeedbackIntent(message: string): { isFeedback: boolean; type?: 'bug' | 'feature' | 'other'; title?: string } {
-  const lowerMessage = message.toLowerCase();
+// Enhanced feedback detection and validation
+function analyzeFeedback(message: string): {
+  isFeedback: boolean;
+  type?: 'bug' | 'feature' | 'other';
+  title?: string;
+  summary?: string;
+  needsClarification?: boolean;
+  clarificationQuestion?: string;
+  confidence?: 'high' | 'medium' | 'low';
+} {
+  const lowerMessage = message.toLowerCase().trim();
 
-  // Bug reports
-  if (lowerMessage.includes('bug') || lowerMessage.includes('error') || lowerMessage.includes('broken') ||
-      lowerMessage.includes('not working') || lowerMessage.includes('crash') || lowerMessage.includes('issue') ||
-      lowerMessage.includes('problem') || lowerMessage.includes('fix')) {
+  // Skip very short messages or generic greetings
+  if (message.trim().length < 10) {
     return {
-      isFeedback: true,
-      type: 'bug',
-      title: message.length > 50 ? message.substring(0, 47) + '...' : message
+      isFeedback: false,
+      needsClarification: true,
+      clarificationQuestion: "That seems like a very short message! Could you tell me more about what you'd like to share? For example, are you reporting a bug, suggesting a feature, or sharing general feedback?"
     };
   }
 
-  // Feature requests
-  if (lowerMessage.includes('feature') || lowerMessage.includes('add') || lowerMessage.includes('would like') ||
-      lowerMessage.includes('suggest') || lowerMessage.includes('request') || lowerMessage.includes('enhancement') ||
-      lowerMessage.includes('improve') || lowerMessage.includes('new')) {
+  // Skip generic questions that aren't feedback
+  const nonFeedbackPatterns = [
+    /^what/i, /^how/i, /^can you/i, /^tell me/i, /^show me/i,
+    /^help/i, /^explain/i, /tutorial/i, /guide/i, /\?$/,
+    /please/i, /thank/i, /thanks/i, /hi/i, /hello/i
+  ];
+
+  const isLikelyQuestion = nonFeedbackPatterns.some(pattern => pattern.test(lowerMessage));
+  if (isLikelyQuestion && !lowerMessage.includes('feedback') && !lowerMessage.includes('bug') && !lowerMessage.includes('feature')) {
     return {
-      isFeedback: true,
-      type: 'feature',
-      title: message.length > 50 ? message.substring(0, 47) + '...' : message
+      isFeedback: false,
+      needsClarification: true,
+      clarificationQuestion: "That sounds like a question about how to use Sheety AI! I'd love to help you with that. Or are you actually wanting to share feedback about the platform?"
     };
   }
 
-  // General feedback
-  if (lowerMessage.includes('feedback') || lowerMessage.includes('opinion') || lowerMessage.includes('thought') ||
-      lowerMessage.includes('experience') || lowerMessage.includes('review')) {
-    return {
-      isFeedback: true,
-      type: 'other',
-      title: message.length > 50 ? message.substring(0, 47) + '...' : message
-    };
+  // Bug reports - high confidence
+  const bugKeywords = ['bug', 'error', 'broken', 'not working', 'crash', 'crashes', 'issue', 'problem', 'fix', 'glitch', 'wrong', 'incorrect'];
+  const hasBugKeywords = bugKeywords.some(keyword => lowerMessage.includes(keyword));
+
+  // Feature requests - high confidence
+  const featureKeywords = ['feature', 'add', 'would like', 'suggest', 'request', 'enhancement', 'improve', 'new', 'missing', 'need'];
+  const hasFeatureKeywords = featureKeywords.some(keyword => lowerMessage.includes(keyword));
+
+  // General feedback - medium confidence
+  const feedbackKeywords = ['feedback', 'opinion', 'thought', 'experience', 'review', 'love', 'hate', 'awesome', 'terrible'];
+  const hasFeedbackKeywords = feedbackKeywords.some(keyword => lowerMessage.includes(keyword));
+
+  // Determine type and confidence
+  let type: 'bug' | 'feature' | 'other';
+  let confidence: 'high' | 'medium' | 'low' = 'low';
+
+  if (hasBugKeywords) {
+    type = 'bug';
+    confidence = 'high';
+  } else if (hasFeatureKeywords) {
+    type = 'feature';
+    confidence = 'high';
+  } else if (hasFeedbackKeywords) {
+    type = 'other';
+    confidence = 'medium';
+  } else {
+    // Try to infer from context
+    if (lowerMessage.includes('slow') || lowerMessage.includes('lag') || lowerMessage.includes('performance')) {
+      type = 'bug';
+      confidence = 'medium';
+    } else if (lowerMessage.includes('integration') || lowerMessage.includes('support') || lowerMessage.includes('format')) {
+      type = 'feature';
+      confidence = 'medium';
+    } else {
+      type = 'other';
+      confidence = 'low';
+    }
   }
 
-  return { isFeedback: false };
+  // Generate a smart title
+  const title = generateSmartTitle(message, type);
+
+  // Generate summary for user confirmation
+  const summary = generateFeedbackSummary(message, type);
+
+  // Check if we need clarification
+  const needsClarification = confidence === 'low' || message.trim().length < 20;
+
+  return {
+    isFeedback: true,
+    type,
+    title,
+    summary,
+    needsClarification,
+    clarificationQuestion: needsClarification ?
+      `I want to make sure I understand your feedback correctly! ${confidence === 'low' ? 'Could you clarify if this is about a bug, a feature request, or general feedback?' : 'Could you give me a bit more detail so I can submit this properly?'}` :
+      undefined,
+    confidence
+  };
+}
+
+function generateSmartTitle(message: string, type: 'bug' | 'feature' | 'other'): string {
+  // Extract key phrases for titles
+  const words = message.split(' ').filter(word => word.length > 2);
+
+  if (type === 'bug') {
+    // Look for error-related phrases
+    const bugPhrases = ['not working', 'broken', 'error', 'crash', 'issue', 'problem'];
+    const found = bugPhrases.find(phrase => message.toLowerCase().includes(phrase));
+    if (found) return `Bug: ${found.charAt(0).toUpperCase() + found.slice(1)}`;
+  }
+
+  if (type === 'feature') {
+    // Look for request-related phrases
+    const featurePhrases = ['add support', 'would like', 'need', 'missing'];
+    const found = featurePhrases.find(phrase => message.toLowerCase().includes(phrase));
+    if (found) return `Feature Request: ${found.charAt(0).toUpperCase() + found.slice(1)}`;
+  }
+
+  // Fallback: Use first meaningful words
+  const meaningfulWords = words.slice(0, 6).join(' ');
+  return meaningfulWords.length > 50 ? meaningfulWords.substring(0, 47) + '...' : meaningfulWords;
+}
+
+function generateFeedbackSummary(message: string, type: 'bug' | 'feature' | 'other'): string {
+  // Create a concise summary highlighting the key points
+  const sentences = message.split(/[.!?]+/).filter(s => s.trim().length > 0);
+
+  if (sentences.length === 1) {
+    return message.trim();
+  }
+
+  // Take the first sentence and maybe a key part of the second
+  let summary = sentences[0].trim();
+  if (sentences.length > 1 && summary.length < 50) {
+    const secondPart = sentences[1].trim();
+    if (secondPart.length > 0) {
+      summary += '. ' + secondPart;
+    }
+  }
+
+  return summary.length > 100 ? summary.substring(0, 97) + '...' : summary;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -141,54 +243,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Check if this is feedback-related
-    const feedbackIntent = detectFeedbackIntent(message);
+    const feedbackAnalysis = analyzeFeedback(message);
 
-    if (feedbackIntent.isFeedback) {
-      // Handle feedback submission with fun, structured response
-      const prompt = `
-You are an awesome Sheety AI assistant! The user wants to submit feedback. 🎉
+    if (feedbackAnalysis.isFeedback) {
+      // If we need clarification, ask for it first
+      if (feedbackAnalysis.needsClarification) {
+        return res.status(200).json({
+          message: `🤔 ${feedbackAnalysis.clarificationQuestion}\n\nI want to make sure your feedback gets submitted to the right category so our team can handle it perfectly! 💪`,
+          suggestions: [
+            '🐛 It\'s a bug report',
+            '💡 It\'s a feature request',
+            '💬 It\'s general feedback',
+            '📝 Let me rephrase it'
+          ],
+          action: 'clarify'
+        } as ChatbotResponse);
+      }
 
-User's message: "${message}"
-This appears to be a ${feedbackIntent.type} report.
+      // Generate a smart response showing what will be submitted
+      const typeEmoji = {
+        bug: '🐛',
+        feature: '💡',
+        other: '💬'
+      }[feedbackAnalysis.type!];
 
-🎯 YOUR MISSION: Help them submit feedback in the most friendly way possible!
+      const typeLabel = {
+        bug: 'Bug Report',
+        feature: 'Feature Request',
+        other: 'General Feedback'
+      }[feedbackAnalysis.type!];
 
-📝 RESPONSE STYLE:
-- Start with enthusiasm and emojis! 🎊
-- Explain you'll help create a proper feedback submission
-- Show them exactly what you'll submit
-- Make them feel heard and appreciated
-- End with the submission offer
-
-💡 EXAMPLE RESPONSE:
-"Hey there! 👋 I totally get what you're saying about ${feedbackIntent.type === 'bug' ? 'that bug' : feedbackIntent.type === 'feature' ? 'that awesome feature idea' : 'your feedback'}!
-
-I can help you submit this properly so our team sees it right away. Here's what I'll create:
-
-📝 **Title:** ${feedbackIntent.title}
-🎯 **Type:** ${feedbackIntent.type}
-💬 **Description:** ${message}
-
-Ready to submit this feedback? I'll handle everything! 🚀"
-
-Keep it friendly, structured, and encouraging! Make them excited about helping improve Sheety AI! ✨
-      `;
-
-      const result = await model.generateContent(prompt);
-      const aiResponse = result.response.text();
+      const confidenceNote = feedbackAnalysis.confidence === 'high' ?
+        ' (I\'m confident about this categorization!)' :
+        feedbackAnalysis.confidence === 'medium' ?
+        ' (This seems like the right category based on your message)' :
+        ' (Please review and let me know if this is correct)';
 
       return res.status(200).json({
-        message: aiResponse,
+        message: `🎯 Perfect! I analyzed your feedback and here's what I understood:\n\n${typeEmoji} **Type:** ${typeLabel}${confidenceNote}\n📝 **Title:** ${feedbackAnalysis.title}\n💬 **Summary:** ${feedbackAnalysis.summary}\n\nThis will help our team understand exactly what you're experiencing! ✨\n\nReady to submit this feedback? Our team reviews everything and gets back to users when possible. 🚀`,
         suggestions: [
           '🚀 Yes, submit this feedback!',
-          '✨ Tell me more about this issue',
-          '🎯 Show me how to use related features'
+          '✏️ Edit the title or details',
+          '🎯 Change the category',
+          '📝 Let me rephrase it'
         ],
         action: 'feedback',
         feedbackData: {
-          title: feedbackIntent.title,
+          title: feedbackAnalysis.title!,
           description: message,
-          type: feedbackIntent.type
+          type: feedbackAnalysis.type!,
+          summary: feedbackAnalysis.summary
         }
       } as ChatbotResponse);
     }

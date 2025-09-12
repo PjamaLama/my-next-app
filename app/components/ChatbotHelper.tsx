@@ -9,11 +9,12 @@ interface Message {
   content: string;
   timestamp: Date;
   suggestions?: string[];
-  action?: 'feedback' | 'tutorial' | 'help';
+  action?: 'feedback' | 'tutorial' | 'help' | 'clarify';
   feedbackData?: {
     title: string;
     description: string;
     type: 'bug' | 'feature' | 'other';
+    summary?: string;
   };
 }
 
@@ -38,7 +39,8 @@ export default function ChatbotHelper() {
           '🎯 What amazing things can Sheety AI do?',
           '📎 How do I upload and analyze files?',
           '📊 How do I connect my Google Sheets?',
-          '💬 I want to share feedback or ideas!'
+          '🐛 Report a bug or issue',
+          '💡 Suggest a new feature'
         ]
       };
       setMessages([welcomeMessage]);
@@ -245,7 +247,27 @@ export default function ChatbotHelper() {
 
                     {/* Feedback Action */}
                     {message.action === 'feedback' && message.feedbackData && (
-                      <div className="mt-3">
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-white/70 bg-white/10 rounded-lg p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            {message.feedbackData.type === 'bug' && <span>🐛</span>}
+                            {message.feedbackData.type === 'feature' && <span>💡</span>}
+                            {message.feedbackData.type === 'other' && <span>💬</span>}
+                            <span className="font-medium">
+                              {message.feedbackData.type === 'bug' && 'Bug Report'}
+                              {message.feedbackData.type === 'feature' && 'Feature Request'}
+                              {message.feedbackData.type === 'other' && 'General Feedback'}
+                            </span>
+                          </div>
+                          <div className="text-xs opacity-80">
+                            <strong>Title:</strong> {message.feedbackData.title}
+                          </div>
+                          {message.feedbackData.summary && (
+                            <div className="text-xs opacity-80 mt-1">
+                              <strong>Summary:</strong> {message.feedbackData.summary}
+                            </div>
+                          )}
+                        </div>
                         <button
                           onClick={() => handleFeedbackSubmit(message.feedbackData)}
                           disabled={isSubmittingFeedback}
@@ -263,6 +285,16 @@ export default function ChatbotHelper() {
                             </>
                           )}
                         </button>
+                      </div>
+                    )}
+
+                    {/* Clarification Action */}
+                    {message.action === 'clarify' && (
+                      <div className="mt-3">
+                        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                          🤔 This message needs clarification before I can submit it as feedback.
+                          Please choose one of the options above or provide more details!
+                        </div>
                       </div>
                     )}
                   </div>

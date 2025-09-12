@@ -58,8 +58,26 @@ export default function FeedbackList({
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
       if (a.createdAt && b.createdAt) {
-        const aDate = a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-        const bDate = b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+        let aDate: Date;
+        let bDate: Date;
+
+        // Handle different date formats
+        if (typeof a.createdAt === 'object' && 'toDate' in a.createdAt) {
+          aDate = a.createdAt.toDate();
+        } else if (a.createdAt instanceof Date) {
+          aDate = a.createdAt;
+        } else {
+          aDate = new Date(a.createdAt as string);
+        }
+
+        if (typeof b.createdAt === 'object' && 'toDate' in b.createdAt) {
+          bDate = b.createdAt.toDate();
+        } else if (b.createdAt instanceof Date) {
+          bDate = b.createdAt;
+        } else {
+          bDate = new Date(b.createdAt as string);
+        }
+
         return bDate.getTime() - aDate.getTime();
       }
       return 0;
