@@ -1,25 +1,21 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
-import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import React, { useMemo } from 'react';
 
 interface FeedbackItem {
   id: string;
   title: string;
   description?: string;
-  votesCount?: number;
-  userVote?: 1 | -1 | 0;
   createdBy?: {
     uid?: string;
     displayName?: string;
     email?: string;
   };
-  createdAt?: any; // Can be Firestore timestamp or Date
+  createdAt?: Date | { toDate: () => Date } | string | null;
 }
 
 interface SimpleFeedbackListProps {
   items: FeedbackItem[];
-  onVote: (id: string, value: 1 | -1) => Promise<void>;
   className?: string;
 }
 
@@ -56,46 +52,20 @@ const formatDate = (date: any): string => {
 
 export default function FeedbackList({
   items,
-  onVote,
   className = ""
 }: SimpleFeedbackListProps) {
-  const [votingStates, setVotingStates] = useState<Record<string, boolean>>({});
-
-  // Sort items by vote count (highest first) and then by creation date (newest first)
+  // Sort items by creation date (newest first)
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
-      const aVotes = a.votesCount || 0;
-      const bVotes = b.votesCount || 0;
-
-      // First sort by vote count (highest first)
-      if (aVotes !== bVotes) {
-        return bVotes - aVotes;
-      }
-
-      // If vote counts are equal, sort by creation date (newest first)
       if (a.createdAt && b.createdAt) {
         const aDate = a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
         const bDate = b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
         return bDate.getTime() - aDate.getTime();
       }
-
       return 0;
     });
   }, [items]);
 
-  const handleVote = async (id: string, value: 1 | -1) => {
-    if (votingStates[id]) return;
-
-    setVotingStates(prev => ({ ...prev, [id]: true }));
-
-    try {
-      await onVote(id, value);
-    } catch (error) {
-      console.error('Vote failed:', error);
-    } finally {
-      setVotingStates(prev => ({ ...prev, [id]: false }));
-    }
-  };
 
   if (sortedItems.length === 0) {
     return (
@@ -113,7 +83,7 @@ export default function FeedbackList({
     <div className={`space-y-3 ${className}`}>
       {/* List header */}
       <div className="text-center text-sm text-white/60 mb-4">
-        {sortedItems.length} feedback item{sortedItems.length !== 1 ? 's' : ''} • Sorted by votes
+        {sortedItems.length} feedback item{sortedItems.length !== 1 ? 's' : ''} • Sorted by date
       </div>
 
       {/* Feedback items list */}
@@ -151,7 +121,7 @@ export default function FeedbackList({
               {item.description || 'No description provided'}
             </p>
 
-            {/* Footer with metadata and voting */}
+            {/* Footer with metadata */}
             <div className="flex items-center justify-between">
               {/* Metadata */}
               <div className="flex flex-col gap-1 text-xs text-white/50">
@@ -165,57 +135,6 @@ export default function FeedbackList({
                     ? formatDate(item.createdAt)
                     : 'Recently'}
                 </span>
-              </div>
-
-              {/* Votes and voting buttons */}
-              <div className="flex items-center gap-3">
-                {/* Vote count */}
-                <div className="text-sm font-semibold text-white">
-                  {(item.votesCount || 0).toLocaleString()} votes
-                </div>
-
-                {/* Vote status */}
-                {item.userVote === 1 && (
-                  <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-600/20 text-emerald-400">
-                    <ThumbsUp className="w-3 h-3" fill="currentColor" />
-                    <span className="text-xs">Voted Up</span>
-                  </div>
-                )}
-                {item.userVote === -1 && (
-                  <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-rose-600/20 text-rose-400">
-                    <ThumbsDown className="w-3 h-3" fill="currentColor" />
-                    <span className="text-xs">Voted Down</span>
-                  </div>
-                )}
-
-                {/* Voting buttons */}
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleVote(item.id, -1)}
-                    disabled={votingStates[item.id]}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${
-                      item.userVote === -1
-                        ? 'bg-rose-600/40 text-rose-300 border border-rose-500/50'
-                        : 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 hover:text-rose-300'
-                    }`}
-                    title="Vote down"
-                  >
-                    <ThumbsDown className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    onClick={() => handleVote(item.id, 1)}
-                    disabled={votingStates[item.id]}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${
-                      item.userVote === 1
-                        ? 'bg-emerald-600/40 text-emerald-300 border border-emerald-500/50'
-                        : 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300'
-                    }`}
-                    title="Vote up"
-                  >
-                    <ThumbsUp className="w-3.5 h-3.5" />
-                  </button>
-                </div>
               </div>
             </div>
           </div>

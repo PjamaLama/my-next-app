@@ -22,7 +22,6 @@ type MetricsResponse = {
     activeUsers: number;
     feedbackCount: number;
     openFeedback: number;
-    totalVotes: number;
   };
   error?: string;
 };
@@ -80,12 +79,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const feedbackCount = feedbackSnap.size;
 
     let openFeedback = 0;
-    let totalVotes = 0;
 
     feedbackSnap.forEach((doc: any) => {
       const data = doc.data();
       if (data.status === 'open') openFeedback++;
-      totalVotes += data.votesCount || 0;
     });
 
     return res.status(200).json({
@@ -97,8 +94,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         newUsersMonth,
         activeUsers,
         feedbackCount,
-        openFeedback,
-        totalVotes
+        openFeedback
       }
     });
 

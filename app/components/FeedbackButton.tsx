@@ -4,33 +4,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useFirebase } from '../providers/FirebaseProvider';
 import { Plus } from 'lucide-react';
 import { compressImageFile } from '@/lib/imageCompression';
-import FeedbackList from './FeedbackList';
 
 type FeedbackType = 'bug' | 'feature' | 'other';
 
-interface FeedbackItem {
-  id: string;
-  title: string;
-  description?: string;
-  votesCount?: number;
-  userVote?: 1 | -1 | 0;
-  createdBy?: {
-    uid?: string;
-    displayName?: string;
-    email?: string;
-  };
-  createdAt?: any; // Can be Firestore timestamp or Date
-}
 
 type Attachment = { url: string; mimeType: string; name?: string };
 
 const PERSIST_KEY = 'feedbackModalState_v1';
-const TAB_PERSIST_KEY = 'feedbackActiveTab_v1';
 const COOLDOWN_MS = 800;
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'submit' | 'browse'>('submit');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<FeedbackType>('feature');
@@ -44,12 +28,6 @@ export default function FeedbackButton() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  // Feedback browsing state
-  const [allItems, setAllItems] = useState<FeedbackItem[]>([]);
-  const [allLoading, setAllLoading] = useState(false);
-  const [voting, setVoting] = useState<Record<string, boolean>>({});
-  const [voteAnim, setVoteAnim] = useState<Record<string, 'up' | 'down' | null>>({});
-  const [browseQuery, setBrowseQuery] = useState('');
 
   // Persist state across reloads
   useEffect(() => {
@@ -70,20 +48,6 @@ export default function FeedbackButton() {
     } catch {}
   }, [title, description, type, attachments]);
 
-  // Persist active tab
-  useEffect(() => {
-    try {
-      const savedTab = localStorage.getItem(TAB_PERSIST_KEY);
-      if (savedTab === 'submit' || savedTab === 'browse') {
-        setActiveTab(savedTab);
-      }
-    } catch {}
-  }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem(TAB_PERSIST_KEY, activeTab);
-    } catch {}
-  }, [activeTab]);
 
 
 
@@ -94,39 +58,7 @@ export default function FeedbackButton() {
     return () => window.removeEventListener('open-feedback', handler as EventListener);
   }, []);
 
-  // Keyboard shortcuts for tab switching
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!open) return;
 
-      // Ctrl/Cmd + 1 for Submit tab
-      if ((e.ctrlKey || e.metaKey) && e.key === '1') {
-        e.preventDefault();
-        setActiveTab('submit');
-      }
-      // Ctrl/Cmd + 2 for Browse tab
-      if ((e.ctrlKey || e.metaKey) && e.key === '2') {
-        e.preventDefault();
-        setActiveTab('browse');
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
-
-  // Load all feedback when modal opens (for browse tab)
-  useEffect(() => {
-    if (!open) return;
-    setAllLoading(true);
-    const params = new URLSearchParams({ sort: 'top' });
-    if (user?.uid) params.set('userId', user.uid);
-    fetch(`/api/feedback?${params.toString()}`)
-      .then((r) => r.json())
-      .then((json) => setAllItems(Array.isArray(json?.data) ? json.data : []))
-      .catch(() => setAllItems([]))
-      .finally(() => setAllLoading(false));
-  }, [open, user?.uid]);
 
   // Upload compressed image and store URL
   const handleFile = async (file: File) => {
@@ -191,69 +123,6 @@ export default function FeedbackButton() {
     }
   };
 
-  const vote = async (id: string, value: 1 | -1) => {
-    if (!user) {
-      alert('Please sign in to vote.');
-      return;
-    }
-    if (voting[id]) return;
-
-    setVoting((m) => ({ ...m, [id]: true }));
-
-    const originalAllItems = allItems;
-
-    // Optimistic UI update
-    const optimisticUpdater = (i: FeedbackItem) => {
-      if (i.id !== id) return i;
-      const prevVote = i.userVote ?? 0;
-      let newVote: 1 | -1 | 0;
-      let delta: number;
-
-      if (prevVote === value) { // un-voting
-        newVote = 0;
-        delta = -value;
-      } else { // new vote or switching vote
-        newVote = value;
-        delta = newVote - prevVote;
-      }
-      
-      return { ...i, votesCount: (i.votesCount || 0) + delta, userVote: newVote };
-    };
-
-    setAllItems(prev => prev.map(optimisticUpdater));
-    setVoteAnim((m) => ({ ...m, [id]: value === 1 ? 'up' : 'down' }));
-    setTimeout(() => setVoteAnim((m) => ({ ...m, [id]: null })), 600);
-
-    try {
-      const res = await fetch('/api/feedback', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, userId: user.uid, value }),
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to vote');
-      }
-
-      const json = await res.json();
-      const serverState = json?.data;
-
-      // Sync with server state
-      const serverUpdater = (i: FeedbackItem) => {
-        if (i.id !== id) return i;
-        return { ...i, votesCount: serverState.votesCount, userVote: serverState.userVote };
-      };
-
-      setAllItems(prev => prev.map(serverUpdater));
-
-    } catch (_) {
-      // Revert on error
-      setAllItems(originalAllItems);
-      alert('Failed to vote. Please try again.');
-    } finally {
-      setVoting((m) => ({ ...m, [id]: false }));
-    }
-  };
 
   return (
     <>
@@ -283,49 +152,14 @@ export default function FeedbackButton() {
               </div>
             </div>
 
-            {/* Tab Toggles */}
-            <div className="flex items-center justify-center px-6 pb-4 flex-shrink-0">
-              <div className="flex items-center bg-zinc-800/50 rounded-xl p-1 border border-white/10">
-                <button
-                  onClick={() => setActiveTab('submit')}
-                  className={`px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-                    activeTab === 'submit'
-                      ? 'bg-emerald-600 text-white shadow-lg'
-                      : 'text-white/70 hover:text-white hover:bg-white/5'
-                  }`}
-                  title="Ctrl/Cmd + 1"
-                >
-                  <Plus className="w-4 h-4" />
-                  Submit
-                  <span className="text-xs opacity-60 ml-1">⌘1</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('browse')}
-                  className={`px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-                    activeTab === 'browse'
-                      ? 'bg-emerald-600 text-white shadow-lg'
-                      : 'text-white/70 hover:text-white hover:bg-white/5'
-                  }`}
-                  title="Ctrl/Cmd + 2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                  </svg>
-                  Browse
-                  <span className="text-xs opacity-60 ml-1">⌘2</span>
-                </button>
-              </div>
-            </div>
 
-            {/* Main Content - Tabbed Layout */}
+            {/* Main Content */}
             <div className="flex-1 overflow-y-auto px-6 pb-6">
-              {/* Submit Tab */}
-              {activeTab === 'submit' && (
-                <div className="space-y-4">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-white mb-1">Submit Feedback</h3>
-                    <p className="text-sm text-white/60">Share your ideas, report bugs, or give us general feedback</p>
-                  </div>
+              <div className="space-y-4">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-white mb-1">Submit Feedback</h3>
+                  <p className="text-sm text-white/60">Share your ideas, report bugs, or give us general feedback</p>
+                </div>
 
                 {/* Form Fields */}
                 <div className="space-y-4">
@@ -524,51 +358,6 @@ export default function FeedbackButton() {
                   </div>
                   </div>
                 </div>
-              )}
-
-              {/* Browse Tab */}
-              {activeTab === 'browse' && (
-                <div className="space-y-4">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-white mb-1">Browse & Vote</h3>
-                    <p className="text-sm text-white/60">Review and vote on feedback from the community</p>
-                  </div>
-
-                  {/* Browse Controls */}
-                  <div className="flex items-center gap-3">
-                    <div className="relative flex-1">
-                      <input
-                        value={browseQuery}
-                        onChange={(e) => setBrowseQuery(e.target.value)}
-                        placeholder="Search feedback..."
-                        className="w-full pl-4 pr-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all duration-200"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Feedback List */}
-                  <div className="max-h-[calc(100vh-300px)] overflow-y-auto">
-                    {allLoading ? (
-                      <div className="flex items-center justify-center py-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500"></div>
-                        <span className="ml-2 text-white/60">Loading...</span>
-                      </div>
-                    ) : (
-                      <FeedbackList
-                        items={allItems.filter((i) => {
-                          // Apply search filter only
-                          const q = browseQuery.trim().toLowerCase();
-                          if (!q) return true;
-                          const text = `${i.title} ${i.description || ''}`.toLowerCase();
-                          return text.includes(q);
-                        })}
-                        onVote={vote}
-                        className="max-w-full"
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

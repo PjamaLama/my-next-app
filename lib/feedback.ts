@@ -13,7 +13,6 @@ export interface FeedbackDoc {
   similarityKey?: string;
   duplicateOf?: string | null;
   duplicates?: string[];
-  votesCount: number;
   createdBy?: { uid?: string | null; displayName?: string | null; email?: string | null };
   createdAt?: FirebaseFirestore.Timestamp | Date | null;
   updatedAt?: FirebaseFirestore.Timestamp | Date | null;
@@ -27,11 +26,6 @@ export interface FeedbackDoc {
   }>;
 }
 
-export interface VoteRecord {
-  userId: string;
-  value: 1 | -1;
-  createdAt: FirebaseFirestore.FieldValue | Date;
-}
 
 export function normalizeText(text: string): string {
   return (text || '')

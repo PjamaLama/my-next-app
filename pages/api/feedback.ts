@@ -33,38 +33,24 @@ function resolveBucketName(): string | undefined {
   );
 }
 
-async function listFeedback(sort: string | string[] | undefined, userId?: string) {
+async function listFeedback(sort: string | string[] | undefined) {
   const db = getAdminDb();
   let query = db.collection('feedback') as FirebaseFirestore.Query;
   try {
     if (sort === 'new') {
       query = query.orderBy('createdAt', 'desc');
     } else {
-      query = query.orderBy('votesCount', 'desc');
+      query = query.orderBy('createdAt', 'desc'); // Default to newest first
     }
   } catch (_) {
     // fallback if index/field missing
   }
   const snap = await query.get();
   const serializeTs = (ts: any) => (ts && typeof ts.toDate === 'function' ? ts.toDate().toISOString() : ts ?? null);
-  if (!userId) {
-    return snap.docs.map((d) => {
-      const data = d.data() as any;
-      return { id: d.id, ...data, createdAt: serializeTs(data.createdAt), updatedAt: serializeTs(data.updatedAt) };
-    });
-  }
-  const results = await Promise.all(
-    snap.docs.map(async (d) => {
-      const data = d.data() as any;
-      let userVote: 1 | -1 | 0 = 0;
-      try {
-        const v = await d.ref.collection('votes').doc(userId).get();
-        if (v.exists) userVote = (v.data()?.value ?? 0) as 1 | -1 | 0;
-      } catch {}
-      return { id: d.id, ...data, userVote, createdAt: serializeTs(data.createdAt), updatedAt: serializeTs(data.updatedAt) };
-    })
-  );
-  return results;
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return { id: d.id, ...data, createdAt: serializeTs(data.createdAt), updatedAt: serializeTs(data.updatedAt) };
+  });
 }
 
 async function createFeedback({ title, description, type, user, ip, attachments = [] }:
@@ -114,7 +100,6 @@ async function createFeedback({ title, description, type, user, ip, attachments 
     similarityKey: key,
     duplicateOf,
     duplicates: [],
-    votesCount: 0,
     createdBy: user,
     createdAt: FieldValue.serverTimestamp() as unknown as Date,
     updatedAt: FieldValue.serverTimestamp() as unknown as Date,
@@ -134,49 +119,12 @@ async function createFeedback({ title, description, type, user, ip, attachments 
   return { id: ref.id, ...payload };
 }
 
-async function voteFeedback({ id, userId, value }: { id: string; userId: string; value: 1 | -1 }) {
-  const db = getAdminDb();
-  const docRef = db.collection('feedback').doc(id);
-  const voteRef = docRef.collection('votes').doc(userId);
-  const existing = await voteRef.get();
-  let delta: number = value;
-  let finalUserVote: 1 | -1 | 0 = value;
-  if (existing.exists) {
-    const prev = existing.data()?.value as 1 | -1;
-    if (prev === value) {
-      // toggle off
-      delta = -value;
-      await voteRef.delete();
-      finalUserVote = 0;
-    } else {
-      // switch vote
-      delta = value - prev;
-      await voteRef.set({ value, createdAt: FieldValue.serverTimestamp() });
-      finalUserVote = value;
-    }
-  } else {
-    await voteRef.set({ value, createdAt: FieldValue.serverTimestamp() });
-    finalUserVote = value;
-  }
-  await docRef.update({ votesCount: FieldValue.increment(delta), updatedAt: FieldValue.serverTimestamp() });
-  const snap = await docRef.get();
-  return { id: snap.id, ...snap.data(), userVote: finalUserVote };
-}
 
-async function searchSimilar(query: string, userId?: string) {
+async function searchSimilar(query: string) {
   const db = getAdminDb();
   const key = buildSimilarityKey(query);
   const snap = await db.collection('feedback').where('similarityKey', '==', key).get();
-  const list = await Promise.all(snap.docs.map(async (d: DocumentData) => {
-    const base = { id: d.id, ...(d.data() as any) } as any;
-    if (userId) {
-      try {
-        const v = await d.ref.collection('votes').doc(userId).get();
-        base.userVote = v.exists ? (v.data()?.value ?? 0) : 0;
-      } catch {}
-    }
-    return base;
-  }));
+  const list = snap.docs.map((d: DocumentData) => ({ id: d.id, ...(d.data() as any) }));
   // Rank by score
   return list
     .map((item) => ({ ...item, _score: scoreSimilarity(query, `${item.title} ${item.description || ''}`) }))
@@ -215,17 +163,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     }
     // Action-specific endpoints first
     if (method === 'GET' && req.query.action === 'search' && typeof req.query.q === 'string') {
-      const results = await searchSimilar(normalizeText(req.query.q), typeof req.query.userId === 'string' ? req.query.userId : undefined);
+      const results = await searchSimilar(normalizeText(req.query.q));
       return res.status(200).json({ success: true, data: results });
     }
     if (method === 'POST' && req.query.action === 'search') {
       const { query, userId } = req.body || {};
-      const results = await searchSimilar(normalizeText(query || ''), typeof userId === 'string' ? userId : undefined);
+      const results = await searchSimilar(normalizeText(query || ''));
       return res.status(200).json({ success: true, data: results });
     }
 
     if (method === 'GET') {
-      const data = await listFeedback(req.query.sort, typeof req.query.userId === 'string' ? req.query.userId : undefined);
+      const data = await listFeedback(req.query.sort);
       return res.status(200).json({ success: true, data });
     }
     if (method === 'POST') {
@@ -239,14 +187,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       } catch (e) {
         return res.status(429).json({ success: false, error: e instanceof Error ? e.message : 'Rate limited' });
       }
-    }
-    if (method === 'PUT') {
-      const { id, userId, value } = req.body || {};
-      if (!id || !userId || (value !== 1 && value !== -1)) {
-        return res.status(400).json({ success: false, error: 'id, userId and value (1|-1) are required' });
-      }
-      const updated = await voteFeedback({ id, userId, value });
-      return res.status(200).json({ success: true, data: updated });
     }
     if (method === 'PATCH') {
       // Admin-only updates: status/tags

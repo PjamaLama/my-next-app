@@ -233,7 +233,6 @@ function AdminFeedbackPanel() {
                   {item.description ? <div className="text-xs text-white/60 line-clamp-2 mt-0.5">{item.description}</div> : null}
                   <div className="text-xs text-white/50 mt-1">
                     <span className="px-1.5 py-0.5 rounded bg-white/10 mr-1">{item.type}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-white/10 mr-1">{item.votesCount || 0} votes</span>
                     {item.createdBy?.email ? <span className="px-1.5 py-0.5 rounded bg-white/10 mr-1">{item.createdBy.email}</span> : null}
                     {item.createdAt ? <span className="px-1.5 py-0.5 rounded bg-white/10">{new Date(item.createdAt).toLocaleString()}</span> : null}
                   </div>
