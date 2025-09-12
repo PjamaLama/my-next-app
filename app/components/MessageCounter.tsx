@@ -1,4 +1,5 @@
 "use client";
+// Golden outline v5.0 - Force complete recompile
 
 import React from 'react';
 import { MessageSquare, AlertTriangle, Crown } from 'lucide-react';
@@ -34,6 +35,7 @@ export default function MessageCounter() {
   }
 
   // Enhanced design with better upgrade messaging
+  console.log('🔍 MessageCounter: Rendering limit reached section with golden button');
   if (isLimitReached) {
     return (
       <div className="bg-gradient-to-r from-red-900/20 to-orange-900/20 border border-red-500/30 rounded-lg p-4 mb-3">
@@ -59,7 +61,7 @@ export default function MessageCounter() {
                 console.log('🔄 MessageCounter: Opening upgrade modal from daily limit reached');
                 openModal('Pro');
               }}
-              className="bg-yellow-500 hover:bg-yellow-400 text-white px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2 transition-all duration-200 w-full justify-center border-2 border-yellow-400 shadow-lg hover:shadow-xl"
+              className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-white px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2 transition-all duration-200 w-full justify-center border-2 border-yellow-300 shadow-xl hover:shadow-2xl ring-2 ring-yellow-400/30 hover:ring-yellow-300/50"
             >
               <Crown className="w-4 h-4" fill="currentColor" />
               Upgrade to Pro - Unlimited Messages
