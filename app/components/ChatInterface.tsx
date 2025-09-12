@@ -189,56 +189,161 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       const { preview } = event.detail;
       if (!preview) return;
 
+      const tableKey = preview.uid || `${preview.messageId}-${preview.tableIndex}`;
       try {
-        setProcessingTables(prev => new Set(prev).add('approve'));
+        setProcessingTables(prev => new Set(prev).add(tableKey));
         const headers = Array.isArray(preview.headers) ? preview.headers : [];
         const rows = Array.isArray(preview.rows) ? preview.rows : [];
         if (!defaultSpreadsheetId || (!preview.sheetName && (!selectedSheetNames || selectedSheetNames.length === 0))) {
           throw new Error('No spreadsheet or sheet selected. Please select a sheet or ensure the table has a target sheet.');
         }
-        const rowObjects = rows.map((row: any[]) => {
-          const obj: Record<string, unknown> = {};
-          headers.forEach((header: string, index: number) => {
-            obj[header] = String(row[index] || '');
+
+        console.log('🔍 Approving table:', {
+          preview,
+          hasMeta: !!preview.meta,
+          meta: preview.meta,
+          operations: preview.meta?.operations,
+          updateRow: preview.meta?.updateRow,
+          rowsLength: preview.rows?.length
+        });  // Debug log
+
+        let successMessage = '';
+        const targetSheetName = preview.sheetName || selectedSheetNames[0];
+        const operations = preview.meta?.operations || {};
+
+        // Determine operation type based on meta.operations and simple heuristics
+        const isUpdateOperation = (operations.update || 0) > 0 && preview.meta?.updateRow != null;
+        const isAddOperation = (operations.add || 0) > 0;
+        const hasFormula = Array.isArray(preview.rows) && preview.rows.some((r: any[]) => r.some((c: any) => typeof c === 'string' && String(c).trim().startsWith('=')));
+        const isTotalsLike = (preview.title && String(preview.title).toLowerCase().includes('total')) || (Array.isArray(preview.rows) && preview.rows.some((r: any[]) => String(r?.[0] ?? '').toLowerCase() === 'total'));
+
+        const preferUpdate = isUpdateOperation && (hasFormula || isTotalsLike);
+        const preferAdd = isAddOperation && !hasFormula && !isTotalsLike;
+
+        if ((preferUpdate || (isUpdateOperation && !isAddOperation)) && preview.rows?.length === 1) {  // Update operation for single row
+          console.log(`✅ Routing to update API for row ${preview.meta.updateRow} (update operation)`);
+          const response = await fetch('/api/update-sheet-row', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              spreadsheetId: defaultSpreadsheetId,
+              sheetName: targetSheetName,
+              rowIndex: preview.meta.updateRow,
+              values: preview.rows[0]
+            })
           });
-          return obj;
-        });
-        const response = await fetch('/api/ingest-rows', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            spreadsheetId: defaultSpreadsheetId,
-            sheetName: preview.sheetName || selectedSheetNames[0],
-            rows: rowObjects,
-            dryRun: false
-          })
-        });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to apply changes');
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.details || 'Failed to update row');
+          }
+          const result = await response.json();
+          successMessage = `✅ Row ${preview.meta.updateRow} updated successfully in "${targetSheetName}".`;
+        } else if (preferAdd || isAddOperation) {  // Add operation
+          console.log('🔍 Routing to append API (add operation)');
+          const rowObjects = rows.map((row: any[]) => {
+            const obj: Record<string, unknown> = {};
+            headers.forEach((header: string, index: number) => {
+              obj[header] = String(row[index] || '');
+            });
+            return obj;
+          });
+          const response = await fetch('/api/ingest-rows', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              spreadsheetId: defaultSpreadsheetId,
+              sheetName: targetSheetName,
+              rows: rowObjects,
+              dryRun: false
+            })
+          });
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to apply changes');
+          }
+          const result = await response.json();
+          successMessage = `✅ Changes applied successfully! ${result.inserts || 0} rows added to "${targetSheetName}".`;
+        } else {
+          // Fallback logic for tables without clear operations metadata
+          if (preview.meta?.updateRow && preview.rows?.length === 1) {
+            console.log(`✅ Routing to update API for row ${preview.meta.updateRow} (fallback logic)`);
+            const response = await fetch('/api/update-sheet-row', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                spreadsheetId: defaultSpreadsheetId,
+                sheetName: targetSheetName,
+                rowIndex: preview.meta.updateRow,
+                values: preview.rows[0]
+              })
+            });
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.details || 'Failed to update row');
+            }
+            const result = await response.json();
+            successMessage = `✅ Row ${preview.meta.updateRow} updated successfully in "${targetSheetName}".`;
+          } else {
+            console.log('🔍 Routing to append API (fallback logic)');
+            const rowObjects = rows.map((row: any[]) => {
+              const obj: Record<string, unknown> = {};
+              headers.forEach((header: string, index: number) => {
+                obj[header] = String(row[index] || '');
+              });
+              return obj;
+            });
+            const response = await fetch('/api/ingest-rows', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                spreadsheetId: defaultSpreadsheetId,
+                sheetName: targetSheetName,
+                rows: rowObjects,
+                dryRun: false
+              })
+            });
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to apply changes');
+            }
+            const result = await response.json();
+            successMessage = `✅ Changes applied successfully! ${result.inserts || 0} rows added to "${targetSheetName}".`;
+          }
         }
-        const result = await response.json();
-        if (preview.messageId != null && typeof preview.tableIndex === 'number') {
+
+        // Add success message to chat
+        await addMessage({
+          role: 'assistant',
+          content: successMessage,
+        });
+
+        // Remove the approved table from the message (prefer uid when available)
+        if (preview.messageId != null) {
           setChatMessages(prev => prev.map(message => {
             if (message.id !== preview.messageId || !message.tables) return message;
-            const filteredTables = message.tables.filter((_, i) => i !== preview.tableIndex);
+            const filteredTables = message.tables.filter((t: any, i: number) => {
+              if (preview.uid && (t as any).uid) {
+                return (t as any).uid !== preview.uid;
+              }
+              return i !== preview.tableIndex;
+            });
             return { ...message, tables: filteredTables } as any;
           }));
           try {
             const target = chatMessages.find(m => m.id === preview.messageId);
             if (target && Array.isArray(target.tables)) {
-              const filteredTables = target.tables.filter((_, i) => i !== preview.tableIndex);
+              const filteredTables = target.tables.filter((t: any, i: number) => {
+                if (preview.uid && (t as any).uid) {
+                  return (t as any).uid !== preview.uid;
+                }
+                return i !== preview.tableIndex;
+              });
               await updateMessageTables(target.id, filteredTables as any);
             }
           } catch (e) {
             console.error('Failed to persist approval table removal:', e);
           }
         }
-        const targetSheetName = preview.sheetName || selectedSheetNames[0];
-        await addMessage({
-          role: 'assistant',
-          content: `✅ Changes applied successfully! ${result.inserts || 0} rows added to sheet "${targetSheetName}" in the spreadsheet.`,
-        });
       } catch (error) {
         console.error('Failed to approve update:', error);
         await addMessage({
@@ -248,7 +353,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       } finally {
         setProcessingTables(prev => {
           const newSet = new Set(prev);
-          newSet.delete('approve');
+          newSet.delete(tableKey);
           return newSet;
         });
       }
@@ -257,18 +362,29 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     const handleRejectUpdate = async (event: CustomEvent) => {
       const { preview } = event.detail;
       if (!preview) return;
+      const rejectTableKey = `reject-${(preview.uid || `${preview.messageId}-${preview.tableIndex}`)}`;
       try {
-        setProcessingTables(prev => new Set(prev).add('reject'));
-        if (preview.messageId != null && typeof preview.tableIndex === 'number') {
+        setProcessingTables(prev => new Set(prev).add(rejectTableKey));
+        if (preview.messageId != null) {
           setChatMessages(prev => prev.map(message => {
             if (message.id !== preview.messageId || !message.tables) return message;
-            const filteredTables = message.tables.filter((_, i) => i !== preview.tableIndex);
+            const filteredTables = message.tables.filter((t: any, i: number) => {
+              if (preview.uid && (t as any).uid) {
+                return (t as any).uid !== preview.uid;
+              }
+              return i !== preview.tableIndex;
+            });
             return { ...message, tables: filteredTables } as any;
           }));
           try {
             const target = chatMessages.find(m => m.id === preview.messageId);
             if (target && Array.isArray(target.tables)) {
-              const filteredTables = target.tables.filter((_, i) => i !== preview.tableIndex);
+              const filteredTables = target.tables.filter((t: any, i: number) => {
+                if (preview.uid && (t as any).uid) {
+                  return (t as any).uid !== preview.uid;
+                }
+                return i !== preview.tableIndex;
+              });
               await updateMessageTables(target.id, filteredTables as any);
             }
           } catch (e) {
@@ -284,7 +400,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       } finally {
         setProcessingTables(prev => {
           const newSet = new Set(prev);
-          newSet.delete('reject');
+          newSet.delete(rejectTableKey);
           return newSet;
         });
       }
@@ -724,9 +840,10 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           ));
         }
         
-        const preservedTables = aiResponse.tables ? aiResponse.tables.map((table: any) => {
+        const preservedTables = aiResponse.tables ? aiResponse.tables.map((table: any, index: number) => {
           const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
           return {
+            uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${index}`,
             title: table.title || '',
             headers: Array.isArray(table.headers) ? table.headers : [],
             rows: rows,
@@ -736,7 +853,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               sheetName: table.meta.sheetName || '',
               operations: table.meta.operations || {},
               requiresConfirmation: Boolean(table.meta.requiresConfirmation),
-              isDryRun: Boolean(table.meta.isDryRun)
+              isDryRun: Boolean(table.meta.isDryRun),
+              updateRow: table.meta.updateRow
             } : {}
           }
         }) : [];

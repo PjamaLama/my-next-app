@@ -149,7 +149,8 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
         {message.tables && message.tables.length > 0 && (
           <div className="mt-3 space-y-4">
             {message.tables.map((table, index) => {
-              const tableId = `${message.id}-${index}`;
+              const stableUid = (table as any).uid as string | undefined;
+              const tableId = stableUid || `${message.id}-${index}`;
               const isExpanded = expandedTables.has(tableId);
               // Handle both string (from Firestore) and array (in-memory) formats
               const rows = Array.isArray(table.rows) ? table.rows : 
@@ -274,6 +275,14 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
                             </button>
                             <button
                               onClick={() => {
+                                console.log('🚀 Dispatching approve event:', {
+                                  tableIndex: index,
+                                  title: table.title,
+                                  hasMeta: !!table.meta,
+                                  meta: table.meta,
+                                  updateRow: table.meta?.updateRow
+                                });
+
                                 const event = new CustomEvent('chat:approve-update', {
                                   detail: {
                                     preview: {
@@ -284,16 +293,18 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
                                       tableIndex: index,
                                       title: table.title,
                                       sheetName: table.meta?.sheetName || undefined,
+                                      meta: table.meta, // ✅ Include full meta object
+                                      uid: stableUid,
                                     }
                                   }
                                 });
                                 window.dispatchEvent(event);
                               }}
-                              disabled={processingTables.has('approve') || (!table.meta?.sheetName && !selectedSheetNames?.[0])}
+                              disabled={processingTables.has(tableId) || (!table.meta?.sheetName && !selectedSheetNames?.[0])}
                               className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
                               title={(!table.meta?.sheetName && !selectedSheetNames?.[0]) ? 'Select a sheet first to approve this table' : 'Approve and submit this data to the sheet'}
                             >
-                              {processingTables.has('approve') ? 'Applying...' : 'Approve'}
+                              {processingTables.has(tableId) ? 'Applying...' : 'Approve'}
                             </button>
                             <button
                               onClick={() => {
@@ -307,15 +318,16 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
                                       tableIndex: index,
                                       title: table.title,
                                       sheetName: table.meta?.sheetName || undefined,
+                                      uid: stableUid,
                                     }
                                   }
                                 });
                                 window.dispatchEvent(event);
                               }}
-                              disabled={processingTables.has('reject')}
+                              disabled={processingTables.has(`reject-${tableId}`)}
                               className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
                             >
-                              {processingTables.has('reject') ? 'Removing...' : 'Reject'}
+                              {processingTables.has(`reject-${tableId}`) ? 'Removing...' : 'Reject'}
                             </button>
                           </div>
                         </>

@@ -59,9 +59,9 @@ export default function MessageCounter() {
                 console.log('🔄 MessageCounter: Opening upgrade modal from daily limit reached');
                 openModal('Pro');
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors w-full justify-center"
+              className="bg-yellow-500 hover:bg-yellow-400 text-white px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2 transition-all duration-200 w-full justify-center border-2 border-yellow-400 shadow-lg hover:shadow-xl"
             >
-              <Crown className="w-4 h-4" />
+              <Crown className="w-4 h-4" fill="currentColor" />
               Upgrade to Pro - Unlimited Messages
             </button>
           </div>
