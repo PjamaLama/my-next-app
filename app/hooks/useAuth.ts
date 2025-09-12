@@ -25,31 +25,55 @@ export const useAuth = (): UseAuthReturn => {
   // Get auth instance
   const auth = getFirebaseAuth();
 
-  // Debug logging for mobile authentication
-  useEffect(() => {
-    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
-      const ua = navigator.userAgent || '';
-      const isIOS = /iP(ad|hone|od)/i.test(ua);
-      const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-      const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-      const isMobile = /Mobi|Android/i.test(ua);
+  // Intelligent device detection for optimal authentication strategy
+  const detectAuthStrategy = useCallback(() => {
+    if (typeof window === 'undefined') return { useRedirect: false, reason: 'server-side' };
 
-      console.log('🔍 Auth environment detection:', {
-        userAgent: ua.substring(0, 100) + '...',
-        isIOS,
-        isSafari,
-        isStandalonePWA,
-        isMobile,
-        willUsePopup: !isStandalonePWA, // Prefer popup for all except PWA
-        hasRedirectPending: sessionStorage.getItem('authRedirectPending')
-      });
-    }
+    const ua = navigator.userAgent || '';
+    const isIOS = /iP(ad|hone|od)/i.test(ua);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+    const isStandalonePWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    const isMobile = /Mobi|Android/i.test(ua);
+    const isChrome = /Chrome/i.test(ua) && !isSafari;
+
+    // Industry standard logic:
+    // - Mobile devices: Use redirect (more reliable)
+    // - PWA standalone: Use redirect (popups don't work)
+    // - iOS Safari: Use redirect (blocks popups)
+    // - Desktop Chrome: Use popup (best UX)
+    // - Other desktop: Use redirect (safer fallback)
+
+    const shouldUseRedirect = isStandalonePWA || isIOS || isMobile || !isChrome;
+
+    console.log('🔍 Auth strategy detection:', {
+      userAgent: ua.substring(0, 100) + '...',
+      isIOS,
+      isSafari,
+      isStandalonePWA,
+      isMobile,
+      isChrome,
+      recommendedAuth: shouldUseRedirect ? 'redirect' : 'popup',
+      reason: shouldUseRedirect
+        ? (isStandalonePWA ? 'PWA standalone'
+           : isIOS ? 'iOS device'
+           : isMobile ? 'Mobile device'
+           : 'Non-Chrome browser')
+        : 'Desktop Chrome',
+      hasRedirectPending: sessionStorage.getItem('authRedirectPending')
+    });
+
+    return { useRedirect: shouldUseRedirect, reason: shouldUseRedirect ? 'device/browser compatibility' : 'optimal UX' };
   }, []);
+
+  // Debug logging for authentication environment
+  useEffect(() => {
+    detectAuthStrategy();
+  }, [detectAuthStrategy]);
 
   useEffect(() => {
     if (!auth) return;
 
-    // Handle redirect result on app initialization (for PWA fallback)
+    // Handle redirect result on app initialization (industry standard)
     const handleRedirectResult = async () => {
       try {
         const result = await getRedirectResult(auth);
@@ -62,8 +86,9 @@ export const useAuth = (): UseAuthReturn => {
         console.error('Redirect result error:', error);
         // Clear pending state even on error
         try { sessionStorage.removeItem('authRedirectPending'); } catch {}
-        // Only set error for non-popup scenarios
-        if (shouldUseRedirect()) {
+        // Only set error for redirect scenarios
+        const strategy = detectAuthStrategy();
+        if (strategy.useRedirect) {
           setAuthError('Authentication failed. Please try again.');
         }
       }
@@ -98,29 +123,37 @@ export const useAuth = (): UseAuthReturn => {
     return () => unsubscribe();
   }, [auth]);
 
-  // Simplified mobile detection - prefer popup for all modern browsers
-  const shouldUseRedirect = () => {
-    if (typeof window === 'undefined') return false;
-    
-    // Only use redirect for PWA standalone mode (which truly can't handle popups)
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    
-    // Modern mobile browsers handle popups well, so prefer popup for better UX
-    return isStandalone;
-  };
-
-  // Enhanced sign-in logic - prefer popup for all devices except PWA
+  // Industry standard authentication logic with device-specific strategy
   const startGoogleSignIn = useCallback(async (provider: GoogleAuthProvider) => {
     if (!auth) throw new Error('Firebase not initialized');
 
-    const useRedirect = shouldUseRedirect();
+    const strategy = detectAuthStrategy();
     const userAgent = navigator.userAgent;
-    
-    console.log('🔐 Auth method:', useRedirect ? 'redirect' : 'popup');
+
+    console.log('🔐 Auth method:', strategy.useRedirect ? 'redirect' : 'popup');
+    console.log('🔐 Strategy reason:', strategy.reason);
     console.log('🔐 User agent:', userAgent.substring(0, 100) + '...');
 
-    if (!useRedirect) {
-      // Use popup for all modern browsers (including mobile)
+    if (strategy.useRedirect) {
+      // Use redirect for mobile/PWA/other scenarios (industry standard)
+      try {
+        console.log('🔐 Using redirect authentication...');
+        // Store pending state for debugging
+        try {
+          sessionStorage.setItem('authRedirectPending', 'true');
+        } catch {}
+        await signInWithRedirect(auth, provider);
+        console.log('🔐 Redirect authentication initiated');
+      } catch (error: any) {
+        console.error('🔐 Redirect failed:', error);
+        // Clear pending state on error
+        try {
+          sessionStorage.removeItem('authRedirectPending');
+        } catch {}
+        throw error;
+      }
+    } else {
+      // Use popup for desktop Chrome (industry standard with fallback)
       try {
         console.log('🔐 Attempting popup authentication...');
         await signInWithPopup(auth, provider);
@@ -128,28 +161,32 @@ export const useAuth = (): UseAuthReturn => {
         return;
       } catch (error: any) {
         console.log('🔐 Popup failed, trying redirect fallback:', error.code);
-        // If popup fails, try redirect as fallback
+        // Industry standard: fallback to redirect if popup fails
+        if (error.code === 'auth/popup-blocked' ||
+            error.code === 'auth/popup-closed-by-user' ||
+            error.code === 'auth/cancelled-popup-request') {
+          try {
+            console.log('🔐 Falling back to redirect authentication...');
+            // Store pending state for debugging
+            try {
+              sessionStorage.setItem('authRedirectPending', 'true');
+            } catch {}
+            await signInWithRedirect(auth, provider);
+            console.log('🔐 Redirect fallback initiated');
+          } catch (redirectError: any) {
+            console.error('🔐 Redirect fallback failed:', redirectError);
+            // Clear pending state on error
+            try {
+              sessionStorage.removeItem('authRedirectPending');
+            } catch {}
+            throw redirectError;
+          }
+        } else {
+          throw error;
+        }
       }
     }
-
-    // PWA or popup fallback: Use redirect
-    try {
-      console.log('🔐 Using redirect authentication...');
-      // Store pending state for debugging
-      try { 
-        sessionStorage.setItem('authRedirectPending', 'true'); 
-      } catch {}
-      
-      await signInWithRedirect(auth, provider);
-    } catch (error: any) {
-      console.error('🔐 Redirect failed:', error);
-      // Clear pending state on error
-      try { 
-        sessionStorage.removeItem('authRedirectPending'); 
-      } catch {}
-      throw error;
-    }
-  }, [auth]);
+  }, [auth, detectAuthStrategy]);
 
   const signInWithGoogle = useCallback(async () => {
     if (!auth) {
@@ -162,15 +199,34 @@ export const useAuth = (): UseAuthReturn => {
       console.log('🔐 Starting Google sign-in process...');
       setAuthError(null);
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({
-        prompt: 'select_account'
-      });
+
+      // Industry standard: Use appropriate prompt based on user state
+      // Check if user has signed in before (from localStorage)
+      let hasSignedInBefore = false;
+      try {
+        hasSignedInBefore = localStorage.getItem('hasSignedInBefore') === 'true';
+      } catch {}
+
+      if (hasSignedInBefore) {
+        // Returning user: no prompt (seamless experience)
+        console.log('🔐 Returning user - using seamless auth');
+      } else {
+        // First-time user: show account chooser
+        provider.setCustomParameters({ prompt: 'select_account' });
+        console.log('🔐 First-time user - showing account chooser');
+      }
 
       // Add scopes for better integration
       provider.addScope('profile');
       provider.addScope('email');
 
       await startGoogleSignIn(provider);
+
+      // Mark as signed in for future seamless auth
+      try {
+        localStorage.setItem('hasSignedInBefore', 'true');
+      } catch {}
+
       console.log('🔐 Google sign-in process completed successfully');
     } catch (error: any) {
       console.error('🔐 Firebase auth error:', error);
@@ -224,10 +280,18 @@ export const useAuth = (): UseAuthReturn => {
       console.log('🔐 Starting Google continue sign-in process...');
       setAuthError(null);
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+
+      // Industry standard: For "continue as" flows, be seamless but allow account switching
       if (loginHint) {
-        provider.setCustomParameters({ login_hint: loginHint });
-        console.log('🔐 Using login hint:', loginHint);
+        provider.setCustomParameters({
+          login_hint: loginHint,
+          prompt: 'consent' // Allow seamless continue but can switch accounts
+        });
+        console.log('🔐 Using login hint for seamless continue:', loginHint);
+      } else {
+        // Fallback: minimal prompt for continue flow
+        provider.setCustomParameters({ prompt: 'consent' });
+        console.log('🔐 Continue flow with consent prompt');
       }
 
       // Add scopes for better integration
@@ -277,6 +341,11 @@ export const useAuth = (): UseAuthReturn => {
 
     try {
       await auth.signOut();
+      // Clear signed-in state for fresh account chooser on next sign-in
+      try {
+        localStorage.removeItem('hasSignedInBefore');
+      } catch {}
+      console.log('🔐 User signed out, cleared sign-in state');
     } catch (error) {
       console.error("Error signing out:", error);
     }
