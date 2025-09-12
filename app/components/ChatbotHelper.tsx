@@ -32,13 +32,13 @@ export default function ChatbotHelper() {
       const welcomeMessage: Message = {
         id: 'welcome',
         role: 'assistant',
-        content: "👋 Hi! I'm your Sheety AI assistant. I know everything about the platform and can help you with:\n\n• How to use features\n• Troubleshooting issues\n• Submitting feedback or bug reports\n• Understanding capabilities\n\nWhat would you like to know?",
+        content: "🎉 Hey there! I'm your friendly Sheety AI assistant! 🤖\n\nI know EVERYTHING about this amazing platform and I'm here to help you succeed! Here's what I can do:\n\n🎯 **Guide you through features**\n📊 **Help with Google Sheets setup**\n📎 **Show you how to upload files**\n🐛 **Help report bugs or request features**\n💡 **Give you pro tips and tricks**\n\nWhat would you like to explore today? 🚀",
         timestamp: new Date(),
         suggestions: [
-          '💡 What can Sheety AI do?',
-          '📎 How do I upload files?',
-          '📊 How do I connect Google Sheets?',
-          '💬 I want to submit feedback'
+          '🎯 What amazing things can Sheety AI do?',
+          '📎 How do I upload and analyze files?',
+          '📊 How do I connect my Google Sheets?',
+          '💬 I want to share feedback or ideas!'
         ]
       };
       setMessages([welcomeMessage]);
@@ -138,9 +138,9 @@ export default function ChatbotHelper() {
         const successMessage: Message = {
           id: `success-${Date.now()}`,
           role: 'assistant',
-          content: '✅ Your feedback has been submitted successfully! Thank you for helping us improve Sheety AI.',
+          content: '🎉 Boom! Your feedback has been submitted successfully! 🚀\n\nThank you SO much for helping us make Sheety AI even better! Your input means the world to us. 🌟\n\nOur team will review it right away and get back to you if needed. Keep the awesome ideas coming! 💡',
           timestamp: new Date(),
-          suggestions: ['💡 Ask me something else', '📖 Show me how to use a feature']
+          suggestions: ['🎯 Tell me about another feature', '📖 Show me a tutorial', '🚀 What else can Sheety AI do?']
         };
         setMessages(prev => [...prev, successMessage]);
       } else {
@@ -150,8 +150,9 @@ export default function ChatbotHelper() {
       const errorMessage: Message = {
         id: `feedback-error-${Date.now()}`,
         role: 'assistant',
-        content: '❌ Sorry, there was an error submitting your feedback. Please try using the feedback button in the sidebar instead.',
-        timestamp: new Date()
+        content: '😅 Oops! Something went wrong while submitting your feedback. No worries though!\n\nTry using the feedback button in the sidebar - it\'s just as awesome and will definitely get your thoughts to our team! 💪\n\nThanks for wanting to help improve Sheety AI! 🙏',
+        timestamp: new Date(),
+        suggestions: ['📖 Show me how to use the sidebar feedback', '🎯 Tell me about other features', '💬 Let\'s try something else!']
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -171,10 +172,10 @@ export default function ChatbotHelper() {
       {/* Floating Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group"
+        className="fixed top-16 right-4 z-50 md:bottom-6 md:right-6 w-10 h-10 md:w-14 md:h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group"
         aria-label="Open AI Assistant"
       >
-        <Bot className="w-6 h-6 group-hover:scale-110 transition-transform duration-200" />
+        <Bot className="w-4 h-4 md:w-6 md:h-6 group-hover:scale-110 transition-transform duration-200" />
       </button>
 
       {/* Chat Modal */}

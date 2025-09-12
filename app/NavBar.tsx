@@ -40,90 +40,52 @@ const NavBar: React.FC = () => {
 
   return (
     <nav className="sticky top-0 z-50 bg-gray-900 border-b border-gray-800 shadow-sm overflow-x-hidden sm:hidden -webkit-sticky mobile-nav-sticky">
-      <div className="container mx-auto flex justify-between items-center px-4 py-3 max-w-full">
-        {/* Logo and Title */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <Link href="/" className="flex items-center gap-3 group select-none min-w-0">
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 flex-shrink-0">
-              <Image src="/logo.png" alt="Logo" width={28} height={28} className="invert" />
+      <div className="container mx-auto flex justify-between items-center px-4 py-2 max-w-full">
+        {/* Logo and Title - Compact for mobile */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <Link href="/" className="flex items-center gap-2 group select-none min-w-0">
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5 flex-shrink-0">
+              <Image src="/logo.png" alt="Logo" width={24} height={24} className="invert" />
             </div>
             <div className="flex flex-col justify-center min-w-0">
-              <span className="text-lg font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 drop-shadow-sm truncate block leading-tight">
+              <span className="text-base font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 truncate block leading-tight">
                 Sheety AI
               </span>
-              <span className="text-xs font-medium text-white/70 leading-tight">
-                Your Automated Report Assistant
-              </span>
             </div>
-            <span className="absolute left-0 -bottom-1 w-full h-1 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 group-hover:scale-x-100 transition-all duration-300 origin-left" />
           </Link>
         </div>
 
-        {/* Right area */}
-        <div className="flex items-center gap-3">
-          {/* Prominent Continue-as CTA for returning, logged-out users */}
+        {/* Right area - Simplified for mobile */}
+        <div className="flex items-center gap-1">
+          {/* Compact Continue-as CTA for returning users */}
           {!user && lastGoogle?.email && (
             <button
               onClick={() => continueWithGoogle?.(lastGoogle.email)}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] min-h-[44px]"
+              className="inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-gray-900 hover:bg-white/90 active:scale-[0.98] text-xs min-h-[32px]"
               title={`Continue as ${lastGoogle.name || lastGoogle.email}`}
             >
               {lastGoogle.photo ? (
                 <img
                   src={lastGoogle.photo}
                   alt={lastGoogle.name || lastGoogle.email || 'User'}
-                  className="w-5 h-5 rounded-full border border-black/10"
+                  className="w-4 h-4 rounded-full border border-black/10"
                 />
               ) : (
-                <svg className="w-4 h-4 text-gray-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-7 3.134-7 7h2a5 5 0 0 1 10 0h2c0-3.866-3.134-7-7-7z"/></svg>
+                <svg className="w-3 h-3 text-gray-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-7 3.134-7 7h2a5 5 0 0 1 10 0h2c0-3.866-3.134-7-7-7z"/></svg>
               )}
-              <span className="truncate max-w-[120px] text-sm">Continue as {lastGoogle.name || lastGoogle.email}</span>
+              <span className="truncate max-w-[80px] text-xs">Continue</span>
             </button>
           )}
 
-          {NAV_LINKS.map(link => (
-            link.name === 'Feedback' ? (
-              <button
-                key={link.name}
-                onClick={() => window.dispatchEvent(new CustomEvent('open-feedback'))}
-                className="relative text-base font-medium text-white/90 hover:text-yellow-300 transition-colors duration-200 px-3 py-2 min-h-[44px] flex items-center"
-              >
-                <span className="relative z-10">{link.name}</span>
-                <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 hover:opacity-100 scale-x-0 hover:scale-x-100 transition-all duration-300 origin-left" />
-              </button>
-            ) : (
-              <Link
-                key={link.name}
-                href={link.href}
-                className="relative text-base font-medium text-white/90 hover:text-yellow-300 transition-colors duration-200 px-3 py-2 min-h-[44px] flex items-center"
-              >
-                <span className="relative z-10">{link.name}</span>
-                <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded opacity-0 group-hover:opacity-100 scale-x-0 hover:scale-x-100 transition-all duration-300 origin-left" />
-              </Link>
-            )
-          ))}
-          {/* Upgrade Button - Only show for free users */}
-          {user && userType === 'free' && (
-            <button
-              onClick={() => openModal('Pro')}
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 h-11 px-3 sm:px-4 rounded-lg bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 border border-yellow-500/20 text-yellow-300 hover:text-yellow-200 hover:border-yellow-400/30 hover:from-yellow-500/20 hover:to-yellow-600/20 transition-all duration-200 min-h-[44px] text-sm font-medium"
-              title="Upgrade to Pro"
-              aria-label="Upgrade to Pro"
-            >
-              <Crown className="w-4 h-4" fill="currentColor" />
-              <span className="hidden sm:inline">Go Pro</span>
-            </button>
-          )}
-
-          {/* Mobile hamburger to open sidebar */}
+          {/* Mobile hamburger to open sidebar - moved to end */}
           <button
             type="button"
             aria-label="Open menu"
             title="Open menu"
-            className="inline-flex items-center justify-center h-11 w-11 rounded-lg border border-white/10 text-white/80 hover:text-white hover:border-white/40 active:scale-95 min-h-[44px] min-w-[44px]"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-white/10 text-white/80 hover:text-white hover:border-white/40 active:scale-95 min-h-[32px] min-w-[32px]"
             onClick={() => window.dispatchEvent(new CustomEvent('open-sidebar'))}
           >
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </button>

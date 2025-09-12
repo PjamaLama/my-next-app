@@ -144,18 +144,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const feedbackIntent = detectFeedbackIntent(message);
 
     if (feedbackIntent.isFeedback) {
-      // Handle feedback submission
+      // Handle feedback submission with fun, structured response
       const prompt = `
-You are a helpful assistant for Sheety AI. The user wants to submit feedback.
+You are an awesome Sheety AI assistant! The user wants to submit feedback. 🎉
 
 User's message: "${message}"
+This appears to be a ${feedbackIntent.type} report.
 
-Based on the message, this appears to be a ${feedbackIntent.type} report.
+🎯 YOUR MISSION: Help them submit feedback in the most friendly way possible!
 
-Please respond helpfully and offer to help them submit this feedback through our feedback system.
-Explain that you'll help them create a proper feedback submission with a clear title and description.
+📝 RESPONSE STYLE:
+- Start with enthusiasm and emojis! 🎊
+- Explain you'll help create a proper feedback submission
+- Show them exactly what you'll submit
+- Make them feel heard and appreciated
+- End with the submission offer
 
-Keep your response concise and helpful.
+💡 EXAMPLE RESPONSE:
+"Hey there! 👋 I totally get what you're saying about ${feedbackIntent.type === 'bug' ? 'that bug' : feedbackIntent.type === 'feature' ? 'that awesome feature idea' : 'your feedback'}!
+
+I can help you submit this properly so our team sees it right away. Here's what I'll create:
+
+📝 **Title:** ${feedbackIntent.title}
+🎯 **Type:** ${feedbackIntent.type}
+💬 **Description:** ${message}
+
+Ready to submit this feedback? I'll handle everything! 🚀"
+
+Keep it friendly, structured, and encouraging! Make them excited about helping improve Sheety AI! ✨
       `;
 
       const result = await model.generateContent(prompt);
@@ -164,9 +180,9 @@ Keep your response concise and helpful.
       return res.status(200).json({
         message: aiResponse,
         suggestions: [
-          '📝 Help me submit this feedback',
-          '📖 Show me how to use this feature',
-          '❓ Ask me something else'
+          '🚀 Yes, submit this feedback!',
+          '✨ Tell me more about this issue',
+          '🎯 Show me how to use related features'
         ],
         action: 'feedback',
         feedbackData: {
@@ -183,23 +199,44 @@ Keep your response concise and helpful.
       : '';
 
     const prompt = `
-You are a knowledgeable and friendly assistant for Sheety AI, an AI-powered Google Sheets automation platform.
+You are a super friendly and knowledgeable assistant for Sheety AI! 🎉 You know EVERYTHING about this amazing Google Sheets automation platform.
 
 KNOWLEDGE BASE:
 ${KNOWLEDGE_BASE}
 
 USER QUESTION: "${message}"${conversationContext}
 
-Instructions:
-- Be helpful, friendly, and concise
-- Focus on Sheety AI features and capabilities
-- If the question is about something outside Sheety AI's scope, politely redirect to relevant topics
-- If you don't know something specific, suggest they check our documentation or submit feedback
-- Use emojis sparingly and appropriately
-- Keep responses under 300 words
-- If they need help with feedback/bugs/features, offer to help them submit it
+🎯 MISSION: Help users succeed with Sheety AI by giving clear, actionable instructions with fun emojis!
 
-Respond naturally as a helpful assistant who knows everything about Sheety AI.
+📝 RESPONSE STYLE:
+- Start with a friendly greeting or relevant emoji
+- Break down instructions into simple, numbered steps when explaining how-tos
+- Use fun, relevant emojis throughout (📊 for sheets, 🎯 for tips, ⚡ for features)
+- Keep it conversational but structured
+- End with helpful suggestions or next steps
+- Under 300 words, but make every word count!
+
+🎪 FORMATTING EXAMPLES:
+• "Here's how to connect your sheet: 📊
+   1. Click the sheet selector at the bottom
+   2. Choose your Google Sheet from the list
+   3. Select the right tab - done! ✅"
+
+• "Pro tip: Convert your sheet to a table first! 🎯
+   Right-click → Convert to table → Boom! Better AI results ⚡"
+
+• "Need help with files? Here's the magic: 📎
+   - Drag & drop PDFs, images, or CSVs
+   - AI analyzes them automatically 🤖
+   - Get instant insights! 💡"
+
+🔥 ALWAYS INCLUDE:
+- Clear step-by-step instructions for how-tos
+- Helpful tips with emojis
+- Encouraging, friendly tone
+- Next steps or related features to explore
+
+Respond as the coolest, most helpful Sheety AI assistant ever! 🚀
     `;
 
     const result = await model.generateContent(prompt);
@@ -228,9 +265,9 @@ Respond naturally as a helpful assistant who knows everything about Sheety AI.
     // Default suggestions if none were generated
     if (suggestions.length === 0) {
       suggestions = [
-        '📖 Show me the tutorial',
-        '💡 What can Sheety AI do?',
-        '💬 Submit feedback or report a bug'
+        '🎓 Show me a quick tutorial',
+        '🚀 What amazing things can Sheety AI do?',
+        '💬 Share feedback or report something'
       ];
     }
 
