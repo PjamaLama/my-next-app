@@ -50,16 +50,6 @@ class GeminiFileProcessor implements UnifiedFileProcessor {
       if (!extractedText || extractedText.trim().length === 0) {
         console.log(`⏭️ [UNIFIED PROCESSOR] No extractable text from ${file.name}`);
 
-        // Special handling for PDFs: provide helpful guidance instead of complex processing
-        if (file.mimeType === 'application/pdf') {
-          console.log(`📄 [UNIFIED PROCESSOR] PDF has no extractable text - appears to be image-based: ${file.name}`);
-          return {
-            success: false,
-            error: 'This PDF appears to contain images/scanned content rather than extractable text.',
-            suggestion: 'Please convert this PDF to individual images (screenshots) and upload them instead. This will allow AI vision processing to extract the data.',
-            canRetryWithImages: true
-          };
-        }
 
         return {
           success: false,
@@ -194,24 +184,39 @@ ${sheetContext}
 
 Content: ${extractedText}`;
 
-    // More flexible image prompt
+    // Specialized image prompt for catalogs and product listings
     if (fileType.startsWith('image/')) {
-      return `You are an expert at analyzing images and extracting structured information. Look at this image carefully and extract any meaningful data you can find.
+      return `You are analyzing a PRODUCT CATALOG or INVENTORY LISTING that has been scanned/converted to an image. Your MISSION is to extract EVERY SINGLE PRODUCT, ITEM, or ENTRY individually - no exceptions.
 
-Focus on:
-• Text content and labels
-• Numbers and measurements
-• Names and identifiers
-• Dates and times
-• Financial information
-• Contact details
-• Any structured or tabular data
-• Charts, graphs, or visual data
-• Forms, receipts, invoices, documents
-• Screenshots, interfaces, or displays
+EXTRACTION PROTOCOL:
+1. SCAN the entire image systematically
+2. IDENTIFY all product listings, rows, or entries
+3. CREATE a SEPARATE JSON object for EACH individual product/item
+4. COUNT the products you find and ensure your array has exactly that many objects
 
-Be creative but accurate - if you see something that could be structured data, extract it.
-Return the data as a JSON array of objects with appropriate keys and values.
+PRODUCT IDENTIFICATION:
+• Look for repeated patterns (product rows, catalog entries, inventory items)
+• Each row/line in a table = one product object
+• Each distinct product entry = one product object
+• If products are shown in a grid/catalog layout = extract each visible product
+
+MANDATORY EXTRACTION (per product):
+• Product name/title/description
+• Product code, SKU, ID, or reference number
+• Price, cost, or pricing information
+• Any specifications, dimensions, or details
+• Category, type, or classification
+• Stock/quantity information (if visible)
+• Any other distinguishing attributes
+
+ABSOLUTE REQUIREMENTS:
+• NEVER combine multiple products into one object
+• NEVER summarize or group products
+• EXTRACT EVERY VISIBLE PRODUCT INDIVIDUALLY
+• If you see 10 products, return exactly 10 objects
+• If you see 50 products, return exactly 50 objects
+
+OUTPUT: Pure JSON array. Each object = one product.
 
 ${basePrompt}`;
     }
@@ -477,6 +482,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // Handle empty structured data gracefully
             const structuredData = result.structuredData || [];
 
+            // Debug logging for catalog extraction
+            if (fileContent.mimeType.startsWith('image/')) {
+              console.log(`📊 [CATALOG DEBUG] ${fileContent.name}: extracted ${Array.isArray(structuredData) ? structuredData.length : 'N/A'} items`);
+              if (Array.isArray(structuredData) && structuredData.length > 0) {
+                console.log(`📊 [CATALOG SAMPLE] First 3 items:`, structuredData.slice(0, 3));
+              }
+            }
+
             // If we got empty structured data but have text content, create basic metadata
             if (Array.isArray(structuredData) && structuredData.length === 0 && result.textLength > 0) {
               // Create a basic fallback object with extracted information
@@ -664,7 +677,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Prepare the final payload for the N8N webhook with simplified data
     const webhookData = {
-      message: message || '',
+      message: message || (structuredExtracts.length > 0 ? 'Please extract and display the data from the uploaded files in a structured table format.' : ''),
       // Remove raw text completely - only send structured data
       selectedSheets: context?.sheetNames || [],
       sheetInfo: sheetInfo, // Send headers + one sample row per sheet to provide context without duplication
@@ -930,7 +943,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       isArray: Array.isArray(result),
       length: Array.isArray(result) ? result.length : 'N/A',
       type: typeof result,
-      keys: !Array.isArray(result) ? Object.keys(result) : 'N/A'
+      keys: !Array.isArray(result) ? Object.keys(result) : 'N/A',
+      hasTables: !Array.isArray(result) && result.tables ? 'YES' : 'NO',
+      tablesCount: !Array.isArray(result) && result.tables ? result.tables.length : 0,
+      reasoning: !Array.isArray(result) ? result.reasoning?.substring(0, 100) : 'N/A'
     });
 
     // N8N may return an array of results; we typically want the first one.
@@ -943,25 +959,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasInsights: !!n8nData.insights,
     });
 
+    // Fallback: Create tables from structured extracts if N8N didn't generate them
+    let tables = n8nData.tables || [];
+
+    if ((!tables || tables.length === 0) && structuredExtracts.length > 0) {
+      console.log('🔄 [FALLBACK] N8N didn\'t generate tables, creating from structured extracts');
+
+      // Create tables from successful file extractions
+      tables = structuredExtracts
+        .filter(extract => extract.hasRealData && Array.isArray(extract.structuredData) && extract.structuredData.length > 0)
+        .map(extract => {
+          const data = extract.structuredData;
+          if (!Array.isArray(data) || data.length === 0) return null;
+
+          // Get headers from the first item
+          const firstItem = data[0];
+          const headers = Object.keys(firstItem);
+
+          // Convert objects to rows
+          const rows = data.map(item => headers.map(header => item[header] || ''));
+
+          return {
+            title: `Data from ${extract.fileName}`,
+            headers: headers,
+            rows: rows,
+            rowCount: rows.length,
+            summary: `Extracted ${rows.length} records from ${extract.fileName}`,
+            meta: {
+              sheetName: '',
+              operations: { add: rows.length, update: 0 },
+              requiresConfirmation: true,
+              isDryRun: false
+            }
+          };
+        })
+        .filter(Boolean); // Remove null entries
+    }
+
     // Transform the N8N response to the format expected by the frontend
     const transformedResult = {
-      intent: n8nData.isExtraction ? 'extraction' : 'update_data',
-      reasoning: n8nData.reasoning || 'AI processing completed.',
-      tables: n8nData.tables ? n8nData.tables.map((table: any) => ({
+      intent: n8nData.isExtraction || tables.length > 0 ? 'extraction' : 'update_data',
+      reasoning: n8nData.reasoning || (tables.length > 0 ? 'Successfully extracted data from uploaded files.' : 'AI processing completed.'),
+      tables: tables.map((table: any) => ({
         ...table,
         rowCount: Array.isArray(table.rows) ? table.rows.length : 0,
         // Ensure all required properties are present
-        title: table.title || 'Proposed Updates',
+        title: table.title || 'Extracted Data',
         headers: Array.isArray(table.headers) ? table.headers : [],
         rows: Array.isArray(table.rows) ? table.rows : [],
         summary: table.summary || '',
         meta: {
           sheetName: table.meta?.sheetName || '',
-          operations: table.meta?.operations || { add: 0, update: 0 },
-          requiresConfirmation: Boolean(table.meta?.requiresConfirmation),
-          isDryRun: Boolean(table.meta?.isDryRun)
+          operations: table.meta?.operations || { add: table.rows?.length || 0, update: 0 },
+          requiresConfirmation: Boolean(table.meta?.requiresConfirmation ?? true),
+          isDryRun: Boolean(table.meta?.isDryRun ?? false)
         }
-      })) : [],
+      })),
       clarifyQuestion: n8nData.clarifyQuestion || null,
       insights: Array.isArray(n8nData.insights) ? n8nData.insights : [],
     };

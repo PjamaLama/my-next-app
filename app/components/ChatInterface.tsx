@@ -97,10 +97,76 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
+  const [pdfProcessingStatus, setPdfProcessingStatus] = useState<{[key: string]: string}>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const firebaseFileUrlsRef = useRef<any[]>([]);
+
+  // PDF-to-Image conversion utility
+  const convertPdfToImages = useCallback(async (file: UploadedFile): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      if (!file.fileData) {
+        reject(new Error('No file data available'));
+        return;
+      }
+
+      try {
+        // Import PDF.js dynamically
+        import('pdfjs-dist').then(async (pdfjsLib) => {
+          // Set worker source
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+          // Convert base64 to Uint8Array
+          if (!file.fileData) {
+            throw new Error('PDF file data is missing');
+          }
+          const pdfData = Uint8Array.from(atob(file.fileData), c => c.charCodeAt(0));
+
+          // Load PDF document
+          const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+          loadingTask.promise.then(async (pdf) => {
+            const images: string[] = [];
+
+            // Process first page only (for simplicity and speed)
+            const page = await pdf.getPage(1);
+
+            // Set higher scale for better OCR quality (catalogs need high detail)
+            const scale = 3.0; // Increased from 2.0 for better text recognition
+            const viewport = page.getViewport({ scale });
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (!context) {
+              reject(new Error('Could not get canvas context'));
+              return;
+            }
+
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            // Render PDF page to canvas
+            const renderContext = {
+              canvasContext: context,
+              viewport: viewport,
+              canvas: canvas
+            };
+
+            await page.render(renderContext).promise;
+
+            // Convert canvas to base64
+            const imageData = canvas.toDataURL('image/jpeg', 0.95);
+            images.push(imageData);
+
+            resolve(images);
+          }).catch(reject);
+        }).catch(reject);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }, []);
 
   // Reset session-specific states when session changes
   useEffect(() => {
@@ -110,6 +176,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     setIsCancelled(false); // Reset cancellation flag
     setInputValue(''); // Clear input when switching sessions
     setUploadedFiles([]); // Clear uploaded files when switching sessions
+
+    // Clear file input to allow fresh file selection when switching sessions
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [currentSessionId]);
 
   // Cycle through loading messages while AI is thinking
@@ -483,7 +554,54 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         }
       } else if (file.type === 'application/pdf') {
         try {
-          // Prepare PDF for backend processing
+          // Convert PDF to images immediately for better processing
+          setPdfProcessingStatus(prev => ({ ...prev, [file.name]: 'Converting PDF to images...' }));
+
+          const arrayBuffer = await file.arrayBuffer();
+          const base64Data = arrayBufferToBase64(arrayBuffer);
+
+          // Create a temporary file object for PDF conversion
+          const tempPdfFile: UploadedFile = {
+            ...uploadedFile,
+            fileData: base64Data
+          };
+
+            const imageDataArray = await convertPdfToImages(tempPdfFile);
+
+          if (imageDataArray.length > 0) {
+            // For now, use the first page image for processing (can be extended to multiple pages later)
+            // TODO: Process all pages and combine results
+            const imageBase64 = imageDataArray[0].replace(/^data:image\/jpeg;base64,/, '');
+
+            uploadedFile.extractedData = {
+              type: 'image',
+              format: 'pdf_converted',
+              fileName: file.name,
+              originalFileName: file.name,
+              fileSize: file.size,
+              mimeType: 'image/jpeg', // Converted to image
+              extractedText: '', // Don't pre-extract text - let AI handle it
+              textLength: 0,
+              hasTextContent: false,
+              needsBackendProcessing: true, // Let backend AI process the image
+              pageCount: 1,
+              isScannedDocument: true,
+              note: 'PDF converted to image - ready for AI processing',
+              convertedFrom: 'pdf'
+            };
+            uploadedFile.fileData = imageBase64;
+            uploadedFile.mimeType = 'image/jpeg';
+            uploadedFile.name = `${file.name.replace('.pdf', '')}_page1.jpg`;
+
+            setPdfProcessingStatus(prev => ({ ...prev, [file.name]: 'Conversion complete' }));
+          } else {
+            throw new Error('PDF conversion produced no images');
+          }
+        } catch (conversionError) {
+          console.error(`❌ [PDF] Failed to convert PDF: ${file.name}`, conversionError);
+          setPdfProcessingStatus(prev => ({ ...prev, [file.name]: 'Conversion failed' }));
+
+          // Fall back to original PDF processing
           const arrayBuffer = await file.arrayBuffer();
           const base64Data = arrayBufferToBase64(arrayBuffer);
           uploadedFile.extractedData = {
@@ -492,25 +610,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             fileName: file.name,
             fileSize: file.size,
             mimeType: file.type,
-            extractedText: `PDF document: ${file.name} - Ready for backend processing`,
-            textLength: 0,
-            hasTextContent: false,
-            needsBackendProcessing: true,
-            pageCount: 0,
-            isScannedDocument: false,
-            note: 'PDF ready for backend pdf-parse processing'
-          };
-          uploadedFile.fileData = base64Data;
-          // PDF successfully prepared for backend processing
-        } catch (conversionError) {
-          console.error(`❌ [PDF] Failed to convert PDF to base64: ${file.name}`, conversionError);
-          uploadedFile.extractedData = {
-            type: 'document',
-            format: 'pdf',
-            fileName: file.name,
-            fileSize: file.size,
-            mimeType: file.type,
-            extractedText: `PDF document: ${file.name} - Base64 conversion failed`,
+            extractedText: '',
             textLength: 0,
             hasTextContent: false,
             needsBackendProcessing: true,
@@ -518,9 +618,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             isScannedDocument: true,
             conversionError: conversionError instanceof Error ? conversionError.message : 'Unknown error'
           };
+          uploadedFile.fileData = base64Data;
         }
       } else if (file.type.startsWith('image/')) {
-        const extractedText = await extractImageText(file);
         const arrayBuffer = await file.arrayBuffer();
         const base64Data = arrayBufferToBase64(arrayBuffer);
         uploadedFile.extractedData = {
@@ -529,11 +629,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           fileName: file.name,
           fileSize: file.size,
           mimeType: file.type,
-          extractedText: extractedText,
-          textLength: extractedText.length,
+          extractedText: '', // Don't pre-extract text - let AI handle it
+          textLength: 0,
           hasTextContent: false,
-          needsBackendProcessing: true,
-          note: 'Image ready for Gemini Vision analysis'
+          needsBackendProcessing: true, // Let backend AI process the image
+          note: 'Image ready for Gemini Vision processing'
         };
         uploadedFile.fileData = base64Data;
       } else if (file.type.includes('spreadsheet')) {
@@ -704,46 +804,45 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       }, 100);
     }
 
-    const message = inputValue.trim() || 'Extract data from uploaded files and add to selected sheets';
+    const message = inputValue.trim() || (uploadedFiles.length > 0 ? 'Process uploaded files' : 'Extract data from uploaded files and add to selected sheets');
     setIsSending(true);
     setIsProcessingFiles(true);
 
-    // Upload files to Firebase Storage first
+    // Process and upload files to Firebase Storage
     firebaseFileUrlsRef.current = [];
     if (uploadedFiles.length > 0) {
       try {
         const storage = getStorage();
+
         for (const file of uploadedFiles) {
-          // Create a unique filename with timestamp
+          if (!file.fileData) continue;
+
           const timestamp = Date.now();
           const fileName = `${timestamp}_${file.name}`;
           const storageRef = ref(storage, `temp-uploads/${fileName}`);
-          
-          // Convert base64 to blob for upload
-          if (file.fileData) {
-            const base64Response = await fetch(`data:${file.mimeType};base64,${file.fileData}`);
-            const blob = await base64Response.blob();
-            
-            // Upload to Firebase Storage
-            await uploadBytes(storageRef, blob);
-            
-            // Get download URL
-            const downloadURL = await getDownloadURL(storageRef);
-            
-            firebaseFileUrlsRef.current.push({
-              name: file.name,
-              mimeType: file.mimeType,
-              size: file.size,
-              downloadURL: downloadURL,
-              storagePath: `temp-uploads/${fileName}` // Store the original storage path for cleanup
-            });
-          }
+
+          const base64Response = await fetch(`data:${file.mimeType};base64,${file.fileData}`);
+          const blob = await base64Response.blob();
+
+          // Upload to Firebase Storage
+          await uploadBytes(storageRef, blob);
+
+          // Get download URL
+          const downloadURL = await getDownloadURL(storageRef);
+
+          firebaseFileUrlsRef.current.push({
+            name: file.name,
+            mimeType: file.mimeType,
+            size: file.size,
+            downloadURL: downloadURL,
+            storagePath: `temp-uploads/${fileName}`
+          });
         }
       } catch (error) {
-        console.error('Failed to upload files to Firebase:', error);
+        console.error('Failed to process/upload files:', error);
         await addMessage({
           role: 'assistant',
-          content: 'Failed to upload files. Please try again.',
+          content: 'Failed to process files. Please try again.',
         });
         setIsSending(false);
         setIsProcessingFiles(false);
@@ -765,37 +864,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       return fileData;
     });
 
-    // Check for file processing errors before proceeding
-    const hasFileProcessingErrors = structuredExtracts.some(file =>
-      file.extractedData?.geminiStructuredData?.some((item: any) =>
-        item.type === 'processing_error' || (item.error && item.canRetryWithImages)
-      )
-    );
-
-    if (hasFileProcessingErrors) {
-      console.log('⚠️ [FRONTEND] File processing errors detected, showing user guidance');
-
-      // Find the error details
-      const errorFile = structuredExtracts.find(file =>
-        file.extractedData?.geminiStructuredData?.some((item: any) =>
-          item.type === 'processing_error' || (item.error && item.canRetryWithImages)
-        )
-      );
-
-      const errorItem = errorFile?.extractedData?.geminiStructuredData?.find((item: any) =>
-        item.type === 'processing_error' || (item.error && item.canRetryWithImages)
-      );
-
-      // Clear uploaded files and show error message
-      setUploadedFiles([]);
-
-      await addMessage({
-        role: 'assistant',
-        content: `⚠️ **File Processing Issue**\n\n${errorItem?.error || 'There was an issue processing your file.'}\n\n${errorItem?.suggestion || 'Please try uploading a different file format.'}`,
-      });
-
-      return; // Don't proceed with AI call
-    }
 
     // 🚀 ENHANCED LOGGING: Log what's being sent to the backend
     console.log('🚀 [FRONTEND] Sending files to backend for AI processing:', {
@@ -860,6 +928,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
       // Clear input only after message is successfully added
       setInputValue('');
+
+      // Clear file input to allow re-uploading same files
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
 
       // Files are now grouped with the user message - no separate processing message needed
 
@@ -1114,24 +1187,24 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       </div>
 
       {error && (
-        <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
+        <div className="mx-3 mb-2 p-2 bg-red-500/10 border border-red-400/30 rounded-lg text-red-200 text-sm">
           <span>{error}</span>
         </div>
       )}
 
       {/* Removed session loading states - loads instantly */}
 
-      <div className="border-t border-white/10 p-4 sm:p-6 pt-3 sm:pt-6 flex-shrink-0 mobile-chat-input">
-        {/* Mobile-optimized sheet selector */}
-        <div className="mb-3 sm:mb-4">
+      <div className="border-t border-white/10 p-2 sm:p-3 pt-2 sm:pt-3 flex-shrink-0 mobile-chat-input">
+        {/* Compact sheet selector */}
+        <div className="mb-2 sm:mb-3">
           <SheetChipSelector />
         </div>
         
         {/* Removed session loading indicator - loads instantly */}
         
         {uploadedFiles.length > 0 && (
-          <div className="mb-4 space-y-2">
-            <div className="text-xs text-white/60 mb-3 flex items-center gap-2 px-1">
+          <div className="mb-2 space-y-1">
+            <div className="text-xs text-white/60 mb-2 flex items-center gap-2 px-1">
               <span>📎 Files ready to send ({uploadedFiles.length})</span>
               {isProcessingFiles && (
                 <div className="flex items-center gap-1">
@@ -1140,41 +1213,46 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                 </div>
               )}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {uploadedFiles.map((file) => (
-                <div key={file.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl text-white/80 file-transition-in" data-file-id={file.id}>
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {file.status === 'processing' ? (
-                      <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin text-amber-400" />
-                    ) : file.status === 'completed' ? (
-                      <div className="w-5 h-5 flex-shrink-0 rounded-full bg-emerald-500 flex items-center justify-center">
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    ) : file.status === 'error' ? (
-                      <div className="w-5 h-5 flex-shrink-0 rounded-full bg-red-500 flex items-center justify-center">
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </div>
-                    ) : (
-                      <FileIcon className="w-5 h-5 flex-shrink-0 text-emerald-400" />
-                    )}
+                <div key={file.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded-lg text-white/80 file-transition-in" data-file-id={file.id}>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {pdfProcessingStatus[file.name] ? (
+                    <div className="flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 flex-shrink-0 animate-spin text-blue-400" />
+                      <span className="text-xs text-blue-400">Converting...</span>
+                    </div>
+                  ) : file.status === 'processing' ? (
+                    <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin text-amber-400" />
+                  ) : file.status === 'completed' ? (
+                    <div className="w-4 h-4 flex-shrink-0 rounded-full bg-emerald-500 flex items-center justify-center">
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  ) : file.status === 'error' ? (
+                    <div className="w-4 h-4 flex-shrink-0 rounded-full bg-red-500 flex items-center justify-center">
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+                  ) : (
+                    <FileIcon className="w-4 h-4 flex-shrink-0 text-emerald-400" />
+                  )}
                     <span className="text-sm truncate font-medium">{file.name}</span>
                     {file.status === 'processing' && (
-                      <span className="text-xs text-amber-400 ml-2">Processing...</span>
+                      <span className="text-xs text-amber-400 ml-1">Processing...</span>
                     )}
                     {file.status === 'error' && (
-                      <span className="text-xs text-red-400 ml-2">Error</span>
+                      <span className="text-xs text-red-400 ml-1">Error</span>
                     )}
                   </div>
                   <button
                     onClick={() => removeFile(file.id)}
-                    className="p-2 hover:bg-white/10 rounded-lg active:scale-95 min-h-[44px] min-w-[44px] flex items-center justify-center ml-2 transition-colors"
+                    className="p-1 hover:bg-white/10 rounded-md active:scale-95 flex items-center justify-center ml-1 transition-colors"
                     disabled={file.status === 'processing'}
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               ))}
@@ -1184,7 +1262,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
 
 
-        <form ref={formRef} onSubmit={handleSubmit} className="space-y-3">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -1195,110 +1273,109 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             disabled={isSending}
           />
 
-          {/* Main input field */}
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder={
-              userType === 'free' && isLimitReached
-                ? "Daily limit reached. Upgrade to Pro for unlimited messages!"
-                : "Ask about your data, request analysis, or get insights..."
-            }
-            className="w-full px-4 py-3 min-h-[52px] bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed text-base"
-            data-tutorial="chat-input"
-            disabled={isSending || (userType === 'free' && isLimitReached)}
-          />
+          {/* Compact input field */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={
+                userType === 'free' && isLimitReached
+                  ? "Daily limit reached. Upgrade to Pro for unlimited messages!"
+                  : "Ask about your data, request analysis, or get insights..."
+              }
+              className="flex-1 px-3 py-2 min-h-[44px] bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed text-base"
+              data-tutorial="chat-input"
+              disabled={isSending || (userType === 'free' && isLimitReached)}
+            />
 
-          {/* Compact WhatsApp-style button layout */}
-          <div className="flex items-center justify-end gap-1.5">
-            {/* Attachment buttons group - compact */}
+            {/* Compact button layout */}
             <div className="flex items-center gap-1">
               <VoiceRecorder
                 onTranscriptChange={handleTranscriptChange}
                 disabled={isSending || (userType === 'free' && isLimitReached)}
-                className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
+                className="w-8 h-8 rounded-lg transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 border border-white/20"
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-9 h-9 rounded-full transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 shadow-md hover:shadow-lg backdrop-blur-sm border border-white/20"
+                className="w-8 h-8 rounded-lg transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 border border-white/20"
                 disabled={isSending || (userType === 'free' && isLimitReached)}
                 data-tutorial="file-upload"
               >
-                <Paperclip className="w-4 h-4" />
+                <Paperclip className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Compact send button */}
+              <button
+                type="button"
+                onClick={
+                  userType === 'free' && isLimitReached
+                    ? () => openModal()
+                    : isSending
+                      ? () => {
+                          if (isStopping) return; // Prevent rapid clicking
+                          console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
+                          setIsStopping(true);
+                          setIsCancelled(true); // Set cancellation flag to prevent response processing
+                          cancelChatGeneration();
+                          // Re-enable stop button after a brief delay
+                          setTimeout(() => setIsStopping(false), 500);
+                        }
+                      : () => handleSubmit(new Event('submit') as any)
+                }
+                disabled={
+                  isSending
+                    ? isStopping
+                    : (userType === 'free' && isLimitReached)
+                      ? true
+                      : (!inputValue.trim() && uploadedFiles.length === 0) ||
+                        uploadedFiles.some(file => file.status === 'processing') ||
+                        (selectedSheetNames.length > 0 &&
+                         !selectedSheetNames.every(sheetName => sheetDataCache[sheetName]) &&
+                         !(sheetDataLoadStartTime && (Date.now() - sheetDataLoadStartTime) > 30000))
+                }
+                aria-label={
+                  userType === 'free' && isLimitReached
+                    ? "Upgrade to Pro for unlimited messages"
+                    : isSending
+                      ? "Stop chat generation"
+                      : uploadedFiles.some(file => file.status === 'processing')
+                        ? "Files are still processing..."
+                        : "Send message"
+                }
+                className={`w-9 h-9 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 border ${
+                  isSending
+                    ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
+                    : uploadedFiles.some(file => file.status === 'processing')
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white focus:ring-amber-500'
+                      : userType === 'free' && isLimitReached
+                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+                        : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+                } ${
+                  (userType === 'free' && isLimitReached) ||
+                  (!inputValue.trim() && uploadedFiles.length === 0) ||
+                  uploadedFiles.some(file => file.status === 'processing')
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:scale-105 cursor-pointer active:scale-95'
+                }`}
+              >
+                {isSending ? (
+                  <Square className="h-3.5 w-3.5" />
+                ) : uploadedFiles.some(file => file.status === 'processing') ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
               </button>
             </div>
-
-            {/* Send button - prominent floating action button */}
-            <button
-              type="button"
-              onClick={
-                userType === 'free' && isLimitReached
-                  ? () => openModal()
-                  : isSending
-                    ? () => {
-                        if (isStopping) return; // Prevent rapid clicking
-                        console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
-                        setIsStopping(true);
-                        setIsCancelled(true); // Set cancellation flag to prevent response processing
-                        cancelChatGeneration();
-                        // Re-enable stop button after a brief delay
-                        setTimeout(() => setIsStopping(false), 500);
-                      }
-                    : () => handleSubmit(new Event('submit') as any)
-              }
-              disabled={
-                isSending
-                  ? isStopping
-                  : (userType === 'free' && isLimitReached)
-                    ? true
-                    : (!inputValue.trim() && uploadedFiles.length === 0) ||
-                      uploadedFiles.some(file => file.status === 'processing') ||
-                      (selectedSheetNames.length > 0 &&
-                       !selectedSheetNames.every(sheetName => sheetDataCache[sheetName]) &&
-                       !(sheetDataLoadStartTime && (Date.now() - sheetDataLoadStartTime) > 30000))
-              }
-              aria-label={
-                userType === 'free' && isLimitReached
-                  ? "Upgrade to Pro for unlimited messages"
-                  : isSending
-                    ? "Stop chat generation"
-                    : uploadedFiles.some(file => file.status === 'processing')
-                      ? "Files are still processing..."
-                      : "Send message"
-              }
-              className={`w-11 h-11 rounded-full transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-lg hover:shadow-xl ml-1 ${
-                isSending
-                  ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
-                  : uploadedFiles.some(file => file.status === 'processing')
-                    ? 'bg-amber-500 hover:bg-amber-600 text-white focus:ring-amber-500'
-                    : userType === 'free' && isLimitReached
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
-                      : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
-              } ${
-                (userType === 'free' && isLimitReached) ||
-                (!inputValue.trim() && uploadedFiles.length === 0) ||
-                uploadedFiles.some(file => file.status === 'processing')
-                  ? 'opacity-50 cursor-not-allowed'
-                  : 'hover:scale-105 cursor-pointer active:scale-95'
-              }`}
-            >
-              {isSending ? (
-                <Square className="h-4 w-4" />
-              ) : uploadedFiles.some(file => file.status === 'processing') ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
           </div>
         </form>
 
-        {/* Prominent upgrade hint for free users - hidden on mobile, visible on desktop */}
+        {/* Compact upgrade hint for free users - hidden on mobile, visible on desktop */}
         {userType === 'free' && !isLimitReached && (
-          <div className="mt-3 text-center hidden md:block">
-            <div className="inline-flex items-center gap-2 sm:gap-3 text-sm sm:text-base text-yellow-300 bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-xl px-4 py-2.5 cursor-pointer hover:from-yellow-500/30 hover:to-yellow-600/30 hover:border-yellow-400/40 transition-all duration-200 shadow-lg hover:shadow-yellow-500/20"
+          <div className="mt-2 text-center hidden md:block">
+            <div className="inline-flex items-center gap-2 text-sm text-yellow-300 bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-lg px-3 py-1.5 cursor-pointer hover:from-yellow-500/30 hover:to-yellow-600/30 hover:border-yellow-400/40 transition-all duration-200"
                  onClick={() => openModal('Pro')}
                  role="button"
                  tabIndex={0}
@@ -1308,9 +1385,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                      openModal('Pro');
                    }
                  }}>
-              <Crown className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" />
-              <span className="font-medium">Go Pro for Unlimited Messages & Premium Features</span>
-              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <Crown className="w-4 h-4" fill="currentColor" />
+              <span className="font-medium text-sm">Go Pro for Unlimited Messages</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
             </div>
