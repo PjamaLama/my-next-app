@@ -13,6 +13,7 @@ interface UserData {
   lastActivity: string | null;
   userType: string;
   upgradedAt: string | null;
+  isBetaUser: boolean;
 }
 
 export default function AdminUserManagement() {
@@ -24,6 +25,8 @@ export default function AdminUserManagement() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+  const [betaEmail, setBetaEmail] = useState('');
+  const [settingBetaUser, setSettingBetaUser] = useState(false);
 
   const loadUsers = async (searchTerm: string = '', append: boolean = false) => {
     if (!user) return;
@@ -94,6 +97,76 @@ export default function AdminUserManagement() {
     });
   };
 
+  const toggleBetaUser = async (uid: string, currentStatus: boolean) => {
+    if (!user) return;
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/toggle-beta-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ uid, isBetaUser: !currentStatus })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle beta user status');
+      }
+
+      // Update local state
+      setUsers(prev => prev.map(u =>
+        u.uid === uid ? { ...u, isBetaUser: !currentStatus } : u
+      ));
+
+      // Update selected user if it's the same user
+      if (selectedUser?.uid === uid) {
+        setSelectedUser(prev => prev ? { ...prev, isBetaUser: !currentStatus } : null);
+      }
+    } catch (error) {
+      console.error('Error toggling beta user status:', error);
+      alert('Failed to toggle beta user status. Please try again.');
+    }
+  };
+
+  const setBetaUserByEmail = async (email: string, isBetaUser: boolean = true) => {
+    if (!user || !email.trim()) return;
+
+    setSettingBetaUser(true);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/set-beta-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ email: email.trim(), isBetaUser })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to set beta user status');
+      }
+
+      const result = await response.json();
+      alert(`Successfully ${isBetaUser ? 'enabled' : 'disabled'} beta user status for ${result.data.email}`);
+
+      // Refresh the user list if the user is currently visible
+      if (search && email.toLowerCase().includes(search.toLowerCase())) {
+        loadUsers(search);
+      }
+
+      setBetaEmail('');
+    } catch (error: any) {
+      console.error('Error setting beta user status:', error);
+      alert(`Failed to set beta user status: ${error.message}`);
+    } finally {
+      setSettingBetaUser(false);
+    }
+  };
+
   const UserRow = ({ userData }: { userData: UserData }) => (
     <div
       className="flex items-center justify-between p-4 border border-white/10 rounded-xl hover:bg-white/5 cursor-pointer transition-colors"
@@ -113,17 +186,41 @@ export default function AdminUserManagement() {
         </div>
       </div>
       <div className="flex items-center gap-4 text-sm">
-        <div className="text-right">
-          <div className={`px-2 py-1 rounded text-xs ${
-            userData.userType === 'pro' ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-500/20 text-gray-300'
-          }`}>
-            {userData.userType}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <div className={`px-2 py-1 rounded text-xs ${
+              userData.userType === 'pro' ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-500/20 text-gray-300'
+            }`}>
+              {userData.userType}
+            </div>
+            {userData.isBetaUser && (
+              <div className="px-2 py-1 rounded text-xs bg-blue-500/20 text-blue-300">
+                Beta
+              </div>
+            )}
           </div>
           <div className="text-white/50">
             Joined {formatDate(userData.createdAt)}
           </div>
         </div>
-        <div className="text-white/40">→</div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleBetaUser(userData.uid, userData.isBetaUser);
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              userData.isBetaUser ? 'bg-blue-600' : 'bg-gray-600'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                userData.isBetaUser ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+          <div className="text-white/40">→</div>
+        </div>
       </div>
     </div>
   );
@@ -163,6 +260,31 @@ export default function AdminUserManagement() {
           className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
         >
           Search
+        </button>
+      </div>
+
+      {/* Set Beta User by Email */}
+      <div className="flex gap-2">
+        <input
+          type="email"
+          value={betaEmail}
+          onChange={(e) => setBetaEmail(e.target.value)}
+          placeholder="Enter user email to make beta user..."
+          className="flex-1 px-4 py-2 bg-white/10 border border-white/10 rounded-lg text-white placeholder-white/50"
+        />
+        <button
+          onClick={() => setBetaUserByEmail(betaEmail, true)}
+          disabled={settingBetaUser || !betaEmail.trim()}
+          className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg"
+        >
+          {settingBetaUser ? 'Setting...' : 'Make Beta'}
+        </button>
+        <button
+          onClick={() => setBetaUserByEmail(betaEmail, false)}
+          disabled={settingBetaUser || !betaEmail.trim()}
+          className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg"
+        >
+          Remove Beta
         </button>
       </div>
 
@@ -240,6 +362,29 @@ export default function AdminUserManagement() {
                   }`}>
                     {selectedUser.userType}
                   </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-white/60">Beta User:</span>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      selectedUser.isBetaUser ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-500/20 text-gray-300'
+                    }`}>
+                      {selectedUser.isBetaUser ? 'Yes (Unlimited Messages)' : 'No'}
+                    </span>
+                    <button
+                      onClick={() => toggleBetaUser(selectedUser.uid, selectedUser.isBetaUser)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        selectedUser.isBetaUser ? 'bg-blue-600' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          selectedUser.isBetaUser ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex justify-between">

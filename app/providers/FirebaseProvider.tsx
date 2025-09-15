@@ -86,6 +86,7 @@ interface IFirebaseContext {
   waId: string | null;
   message_count: number;
   userType: 'free' | 'pro';
+  isBetaUser: boolean;
   continueWithGoogle?: (loginHint?: string) => Promise<void>;
 }
 
@@ -101,6 +102,7 @@ const FirebaseContext = createContext<IFirebaseContext>({
   waId: null,
   message_count: 0,
   userType: 'free',
+  isBetaUser: false,
   continueWithGoogle: async () => {}
 });
 
@@ -141,6 +143,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       waId: userProfile.waId,
       message_count: userProfile.message_count,
       userType: userProfile.userType,
+      isBetaUser: userProfile.isBetaUser,
       continueWithGoogle: auth.continueWithGoogle
     }}>
       {children}

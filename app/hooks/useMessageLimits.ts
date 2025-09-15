@@ -17,15 +17,15 @@ export interface MessageLimitsState {
 }
 
 export const useMessageLimits = () => {
-  const { user, userType } = useFirebase();
+  const { user, userType, isBetaUser } = useFirebase();
   const { message_count } = useUserProfile(user);
 
   // Computed state based on Firebase data from useUserProfile
   // Daily resets are handled server-side by Firebase scheduled function
   const state = useMemo((): MessageLimitsState => {
-    const isLimitReached = message_count >= DAILY_LIMIT && userType === 'free';
-    const isNearLimit = message_count >= DAILY_LIMIT * 0.8 && userType === 'free';
-    const canSendMessage = userType === 'pro' || !isLimitReached;
+    const isLimitReached = message_count >= DAILY_LIMIT && userType === 'free' && !isBetaUser;
+    const isNearLimit = message_count >= DAILY_LIMIT * 0.8 && userType === 'free' && !isBetaUser;
+    const canSendMessage = userType === 'pro' || isBetaUser || !isLimitReached;
 
     return {
       dailyUsage: message_count,
@@ -34,11 +34,11 @@ export const useMessageLimits = () => {
       isNearLimit,
       canSendMessage,
     };
-  }, [message_count, userType]);
+  }, [message_count, userType, isBetaUser]);
 
   // Increment usage when a message is sent
   const incrementUsage = useCallback(async () => {
-    if (!user || userType === 'pro') return true; // Pro users have unlimited messages
+    if (!user || userType === 'pro' || isBetaUser) return true; // Pro and beta users have unlimited messages
 
     try {
       const db = getDb();
@@ -90,7 +90,7 @@ export const useMessageLimits = () => {
       // On error, allow the message to avoid blocking users unnecessarily
       return true;
     }
-  }, [user, userType]);
+  }, [user, userType, isBetaUser]);
 
   // Reset usage (for testing or manual reset)
   const resetUsage = useCallback(async () => {

@@ -12,6 +12,7 @@ interface UseUserProfileReturn {
   waId: string | null;
   message_count: number;
   userType: 'free' | 'pro';
+  isBetaUser: boolean;
   subscription: {
     status: string;
     cancelledAt?: Date;
@@ -28,6 +29,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
   const [waId, setWaId] = useState<string | null>(null);
   const [message_count, setMessage_count] = useState(0);
   const [userType, setUserType] = useState<'free' | 'pro'>('free');
+  const [isBetaUser, setIsBetaUser] = useState<boolean>(false);
   const [subscription, setSubscription] = useState<{
     status: string;
     cancelledAt?: Date;
@@ -77,6 +79,8 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
             last_reset: serverTimestamp(),
             wa_id: null,
             userType: 'free', // Moved here from profile
+            email: user.email || null, // Add email to main document for admin search
+            displayName: user.displayName || null, // Add displayName too for completeness
           };
           await setDoc(userDocRef, userData);
 
@@ -88,6 +92,24 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
           }).catch(err => {
             console.warn("Could not update last login time:", err);
           });
+
+          // Check if email/displayName need to be migrated to main document for admin search
+          const userDocSnap = await getDoc(userDocRef);
+          const userDocData = userDocSnap.data();
+          if (!userDocData?.email || !userDocData?.displayName) {
+            const migrationData: any = {};
+            if (!userDocData?.email && user.email) {
+              migrationData.email = user.email;
+            }
+            if (!userDocData?.displayName && user.displayName) {
+              migrationData.displayName = user.displayName;
+            }
+            if (Object.keys(migrationData).length > 0) {
+              await updateDoc(userDocRef, migrationData).catch(err => {
+                console.warn("Could not migrate email/displayName to main document:", err);
+              });
+            }
+          }
         }
       } catch (e) {
         console.error("Error ensuring user document:", e);
@@ -140,7 +162,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
       }
     });
 
-    // Listener for the main user document to get wa_id, message_count, and userType
+    // Listener for the main user document to get wa_id, message_count, userType, and isBetaUser
     const unsubUserDoc = onSnapshot(userDocRef, async (docSnap: any) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -150,10 +172,12 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
         // Read userType directly from main document (it should already reflect subscription status)
         // The upgrade API and subscription management should keep this in sync
         setUserType(data.userType || 'free');
+        setIsBetaUser(data.isBetaUser || false);
       } else {
         setWaId(null);
         setMessage_count(0);
         setUserType('free');
+        setIsBetaUser(false);
       }
     });
 
@@ -184,6 +208,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
     waId,
     message_count,
     userType,
+    isBetaUser,
     subscription
   };
 };

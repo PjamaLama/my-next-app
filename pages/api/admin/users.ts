@@ -70,7 +70,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         createdAt: data.createdAt?.toDate?.() || data.createdAt || null,
         lastActivity: data.lastActivity?.toDate?.() || data.lastActivity || null,
         userType: data.userType || 'free',
-        upgradedAt: data.upgradedAt?.toDate?.() || data.upgradedAt || null
+        upgradedAt: data.upgradedAt?.toDate?.() || data.upgradedAt || null,
+        isBetaUser: data.isBetaUser || false
       };
     });
 
