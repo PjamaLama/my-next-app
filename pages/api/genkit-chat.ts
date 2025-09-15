@@ -49,6 +49,29 @@ class GeminiFileProcessor implements UnifiedFileProcessor {
       
       if (!extractedText || extractedText.trim().length === 0) {
         console.log(`⏭️ [UNIFIED PROCESSOR] No extractable text from ${file.name}`);
+
+        // Special handling for PDFs: if text extraction fails, try vision processing
+        if (file.mimeType === 'application/pdf' && file.firebaseUrl) {
+          console.log(`🖼️ [UNIFIED PROCESSOR] PDF has no extractable text, trying automatic image conversion for ${file.name}`);
+          try {
+            const visionData = await this.processPDFWithVision(file, sheetContext);
+            return {
+              success: true,
+              structuredData: visionData,
+              extractedText: 'PDF processed via automatic image conversion and vision analysis',
+              textLength: 0,
+              usedVisionFallback: true
+            };
+          } catch (visionError) {
+            console.error(`❌ [VISION FALLBACK] Failed for PDF ${file.name}:`, visionError);
+            return {
+              success: false,
+              error: 'PDF processing failed both text extraction and vision analysis. The PDF may be corrupted or in an unsupported format.',
+              suggestion: 'Try converting the PDF to images and uploading them individually, or use a different PDF format.'
+            };
+          }
+        }
+
         return {
           success: false,
           error: 'No extractable text content'
@@ -205,6 +228,128 @@ ${basePrompt}`;
     }
 
     return basePrompt;
+  }
+
+
+  async processPDFWithVision(file: any, sheetContext: string): Promise<any> {
+    try {
+      console.log(`📄 [PDF VISION] Starting automatic PDF-to-image processing for ${file.name}`);
+
+      if (!file.firebaseUrl) {
+        throw new Error('No Firebase URL available for PDF processing');
+      }
+
+      // Download PDF from Firebase
+      const pdfResponse = await fetch(file.firebaseUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to download PDF: ${pdfResponse.statusText}`);
+      }
+
+      const pdfBuffer = await pdfResponse.arrayBuffer();
+      const pdfUint8Array = new Uint8Array(pdfBuffer);
+
+      // Save PDF to temporary file for conversion
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      const crypto = await import('crypto');
+
+      const tempDir = os.tmpdir();
+      const tempFileName = `pdf_${crypto.randomBytes(8).toString('hex')}.pdf`;
+      const tempFilePath = path.join(tempDir, tempFileName);
+
+      // Write PDF buffer to temporary file
+      fs.writeFileSync(tempFilePath, pdfUint8Array);
+
+      try {
+        // Convert PDF pages to images using pdf2pic
+        const pdf2pic = (await import('pdf2pic')).default;
+        const convert = pdf2pic.fromPath(tempFilePath, {
+          density: 200,           // Higher DPI for better OCR
+          saveFilename: "page",
+          savePath: tempDir,      // Use same temp directory
+          format: "png",
+          width: 2000,            // Reasonable width for processing
+          height: 2000
+        });
+
+        // Convert first page (most catalogs have content on first page)
+        const result = await convert(1); // Convert page 1
+        if (!result) {
+          throw new Error('Failed to convert PDF page to image');
+        }
+
+        // pdf2pic saves to file, read it back as base64
+        const imagePath = result.path;
+        if (!imagePath || !fs.existsSync(imagePath)) {
+          throw new Error('PDF conversion completed but image file not found');
+        }
+
+        const imageBuffer = fs.readFileSync(imagePath);
+        const imageBase64 = imageBuffer.toString('base64');
+
+        console.log(`🖼️ [PDF VISION] Successfully converted PDF page to image for ${file.name}`);
+
+        // Clean up the generated image file
+        try {
+          fs.unlinkSync(imagePath);
+        } catch (cleanupError) {
+          console.warn(`⚠️ [PDF VISION] Failed to cleanup generated image: ${imagePath}`, cleanupError);
+        }
+
+      // Create vision prompt for catalog/document processing
+      const visionPrompt = `You are analyzing a document catalog or product listing. Extract all visible products, items, or data entries from this image.
+
+${sheetContext ? `Context about the target spreadsheet: ${sheetContext}` : ''}
+
+Please extract:
+1. **Product/Item names** and descriptions
+2. **Prices, costs, or amounts**
+3. **Quantities or inventory information**
+4. **Categories or types**
+5. **Any other structured data** (specifications, dimensions, etc.)
+
+Format your response as a JSON array of structured objects. Each object should represent one product/item with appropriate field names.
+
+Be thorough and extract as much product information as possible from the visual content.`;
+
+        // Process the image with Gemini Vision
+        const visionResult = await this.model.generateContent([
+          visionPrompt,
+          {
+            inlineData: {
+              mimeType: 'image/png',
+              data: imageBase64
+            }
+          }
+        ]);
+
+        const responseText = visionResult.response.text();
+
+        console.log('🚀 [PDF VISION] Gemini Vision response for PDF:', {
+          fileName: file.name,
+          responseLength: responseText.length,
+          hasJson: responseText.includes('{') && responseText.includes('}'),
+          timestamp: new Date().toISOString()
+        });
+
+        return this.parseAIResponse(responseText);
+
+      } finally {
+        // Clean up temporary file
+        try {
+          if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+          }
+        } catch (cleanupError) {
+          console.warn(`⚠️ [PDF VISION] Failed to cleanup temp file: ${tempFilePath}`, cleanupError);
+        }
+      }
+
+    } catch (error) {
+      console.error(`❌ [PDF VISION] Failed to process PDF with vision: ${file.name}`, error);
+      throw error;
+    }
   }
 
   async sendToGemini(file: any, prompt: string, extractedText: string): Promise<any> {
