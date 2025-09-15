@@ -14,6 +14,7 @@ interface SheetContextType {
   allSheetNames: string[];
   sheetDataCache: Record<string, string[][]>;
   sheetsPrefetched: boolean;
+  isSheetDataLoading: boolean;
   setSheetDataCache: React.Dispatch<React.SetStateAction<Record<string, string[][]>>>;
   sheetStructureCache: Record<string, { isStructured: boolean; confidence: number; issues: string[]; detectedHeaderRowIndex?: number; blocks?: Array<{ headerRowIndex: number; startRowIndex: number; endRowIndex: number; score: number }> }>;
   unstructuredOverrides: Record<string, boolean>;
@@ -39,6 +40,7 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [allSheetNames, setAllSheetNames] = useState<string[]>([]);
   const [sheetDataCache, setSheetDataCache] = useState<Record<string, string[][]>>({});
   const [sheetsPrefetched, setSheetsPrefetched] = useState<boolean>(false);
+  const [isSheetDataLoading, setIsSheetDataLoading] = useState<boolean>(false);
   const [sheetStructureCache, setSheetStructureCache] = useState<Record<string, { isStructured: boolean; confidence: number; issues: string[]; detectedHeaderRowIndex?: number; blocks?: Array<{ headerRowIndex: number; startRowIndex: number; endRowIndex: number; score: number }> }>>({});
   const [unstructuredOverrides, setUnstructuredOverrides] = useState<Record<string, boolean>>({});
   const [chosenBlockBySheet, setChosenBlockBySheet] = useState<Record<string, number | null>>({});
@@ -118,10 +120,12 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const fetchSheetData = async () => {
       if (!defaultSpreadsheetId || !selectedSheetNames.length) {
         console.log('🔍 [SHEET] Skipping sheet data fetch:', { defaultSpreadsheetId, selectedSheetNames });
+        setIsSheetDataLoading(false);
         return;
       }
 
       console.log('🔍 [SHEET] Fetching sheet data for:', selectedSheetNames);
+      setIsSheetDataLoading(true);
 
       try {
         // Fetch data for each selected sheet
@@ -169,6 +173,10 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } catch (e) {
         console.warn('Failed to fetch sheet data:', e);
+      } finally {
+        if (!cancelled) {
+          setIsSheetDataLoading(false);
+        }
       }
     };
 
@@ -222,11 +230,11 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         allSheetNames,
         sheetDataCache,
         sheetsPrefetched,
+        isSheetDataLoading,
         setSheetDataCache,
         sheetStructureCache,
         unstructuredOverrides,
-        setUnstructuredOverride
-        ,
+        setUnstructuredOverride,
         chosenBlockBySheet,
         setChosenBlockForSheet
       }}

@@ -33,7 +33,7 @@ interface ChatInterfaceProps {
 
 export default function ChatInterface({ className = '', onShowTutorial }: ChatInterfaceProps) {
   const { chatMessages, addMessage, error, ensureSession, setChatMessages, updateMessageTables, currentSessionId, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
-  const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache } = useSheet();
+  const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache, isSheetDataLoading } = useSheet();
   const { user, waId, userType } = useFirebase();
   const { meta: adminMeta } = useAdminMeta();
   const { canSendMessage, incrementUsage, isLimitReached, dailyUsage, limit } = useMessageLimits();
@@ -633,6 +633,17 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       await addMessage({
         role: 'assistant',
         content: `⏳ Please wait, I'm still processing ${processingFiles.length} file${processingFiles.length > 1 ? 's' : ''}. This usually takes just a few seconds...`
+      });
+      return;
+    }
+
+    // Check if sheet data is still loading
+    if (selectedSheetNames.length > 0 && isSheetDataLoading) {
+      console.log('⏳ [ChatInterface] Waiting for sheet data to load:', selectedSheetNames);
+      // Show user feedback that sheet data is loading
+      await addMessage({
+        role: 'assistant',
+        content: `⏳ Please wait, I'm loading data from your selected sheets. This usually takes just a few seconds...`
       });
       return;
     }
@@ -1249,7 +1260,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                   : (userType === 'free' && isLimitReached)
                     ? true
                     : (!inputValue.trim() && uploadedFiles.length === 0) ||
-                      uploadedFiles.some(file => file.status === 'processing')
+                      uploadedFiles.some(file => file.status === 'processing') ||
+                      (selectedSheetNames.length > 0 && isSheetDataLoading)
               }
               aria-label={
                 userType === 'free' && isLimitReached
