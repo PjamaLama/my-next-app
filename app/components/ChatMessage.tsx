@@ -131,7 +131,66 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
         }`}
       >
         <div className="text-sm">
-          {(!message.tables || message.tables.length === 0) && message.content}
+          {/* Display attached files (WhatsApp-style grouping) */}
+          {message.files && message.files.length > 0 && (
+            <div className="mb-3 space-y-2">
+              {message.files.map((file) => (
+                <div key={file.id} className="flex items-center gap-3 p-2 bg-white/10 rounded-lg border border-white/20">
+                  {file.mimeType.startsWith('image/') ? (
+                    <div className="relative">
+                      {file.fileData ? (
+                        <img
+                          src={`data:${file.mimeType};base64,${file.fileData}`}
+                          alt={file.name}
+                          className="w-12 h-12 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                      )}
+                      <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${
+                        file.status === 'completed' ? 'bg-emerald-500' :
+                        file.status === 'processing' ? 'bg-amber-500' :
+                        file.status === 'error' ? 'bg-red-500' : 'bg-gray-500'
+                      }`}></div>
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-white/90 truncate">{file.name}</div>
+                    <div className="text-xs text-white/60">
+                      {file.status === 'processing' && 'Processing...'}
+                      {file.status === 'completed' && `${(file.size / 1024).toFixed(1)} KB`}
+                      {file.status === 'error' && `Error: ${file.error || 'Failed to process'}`}
+                      {file.status === 'uploading' && 'Uploading...'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Display message content if it exists */}
+          {message.content && (!message.tables || message.tables.length === 0) && (
+            <div className={message.files && message.files.length > 0 ? 'mt-2' : ''}>
+              {message.content}
+            </div>
+          )}
+
+          {/* Display message content when there are tables */}
+          {message.content && message.tables && message.tables.length > 0 && (
+            <div className={message.files && message.files.length > 0 ? 'mt-2' : ''}>
+              {message.content}
+            </div>
+          )}
         </div>
         {message.insights && message.insights.length > 0 && (
           <div className="mt-3">

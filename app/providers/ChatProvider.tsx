@@ -26,6 +26,17 @@ export interface ChatMessage {
     };
   }>;
   insights?: string[];
+  // Enhanced fields for file attachments (WhatsApp-style grouping)
+  files?: Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+    status: 'uploading' | 'processing' | 'completed' | 'error';
+    extractedData?: any;
+    fileData?: string; // base64 data for display
+    error?: string;
+  }>;
 }
 
 // Session interface for chat sessions
@@ -276,6 +287,8 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
               (() => { try { return JSON.parse(table.rows); } catch { return []; } })() :
               []
           })) : data.tables,
+          // Parse files from Firestore back to array format
+          files: Array.isArray(data.files) ? data.files : [],
           timestamp: data.timestamp?.toDate(), // Convert Firestore Timestamp to Date
         } as ChatMessage;
       });
@@ -361,6 +374,17 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
           }
         })) : [],
         insights: Array.isArray(message.insights) ? message.insights.map(i => String(i)) : [],
+        // Include files in the sanitized message for WhatsApp-style grouping
+        files: Array.isArray(message.files) ? message.files.map(file => ({
+          id: String(file.id || ''),
+          name: String(file.name || ''),
+          mimeType: String(file.mimeType || ''),
+          size: Number(file.size || 0),
+          status: String(file.status || 'uploading'),
+          extractedData: file.extractedData,
+          fileData: file.fileData,
+          error: file.error
+        })) : [],
         timestamp: new Date(),
       };
 

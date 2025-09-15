@@ -95,7 +95,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   // Session-specific states - reset when session changes
   const [isSending, setIsSending] = useState(false);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
-  const [filesBeingSent, setFilesBeingSent] = useState<UploadedFile[]>([]);
   const [isStopping, setIsStopping] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -107,7 +106,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   useEffect(() => {
     setIsSending(false);
     setIsProcessingFiles(false);
-    setFilesBeingSent([]);
     setIsStopping(false);
     setIsCancelled(false); // Reset cancellation flag
     setInputValue(''); // Clear input when switching sessions
@@ -790,7 +788,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
       // Clear uploaded files and show error message
       setUploadedFiles([]);
-      setFilesBeingSent([]);
 
       await addMessage({
         role: 'assistant',
@@ -829,11 +826,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       }
     });
 
-    // Move files to "being sent" state for visual transition
-    if (uploadedFiles.length > 0) {
-      setFilesBeingSent([...uploadedFiles]);
-      setUploadedFiles([]);
-    }
+    // Files are now attached to the user message directly
 
     const controller = new AbortController();
     setAbortController(controller); // Set the abort controller in the ChatProvider
@@ -841,10 +834,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     try {
       await ensureSession();
 
-      // Add user message first
+      // Add user message with attached files (WhatsApp-style grouping)
       await addMessage({
         role: 'user',
         content: message,
+        files: uploadedFiles.length > 0 ? [...uploadedFiles] : undefined,
       });
 
       // Track first message sent conversion
@@ -867,14 +861,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       // Clear input only after message is successfully added
       setInputValue('');
 
-      // Show processing message for files if there are files
-      if (structuredExtracts.length > 0) {
-        console.log('🔄 [FRONTEND] Adding processing message for files:', structuredExtracts.length);
-        await addMessage({
-          role: 'assistant',
-          content: `🔄 Processing ${structuredExtracts.length} file${structuredExtracts.length > 1 ? 's' : ''}... Please wait while I analyze the content.`,
-        });
-      }
+      // Files are now grouped with the user message - no separate processing message needed
 
              const requestBody = {
          message,
@@ -923,13 +910,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           return;
         }
 
-        // Remove the processing message if it exists
-        if (structuredExtracts.length > 0) {
-          console.log('✅ [FRONTEND] Removing processing message after successful AI response');
-          setChatMessages(prev => prev.filter(msg =>
-            !msg.content.includes('🔄 Processing') || msg.role !== 'assistant'
-          ));
-        }
+        // No processing message to remove - files are grouped with user message
         
         const preservedTables = aiResponse.tables ? aiResponse.tables.map((table: any, index: number) => {
           const rows = Array.isArray(table.rows) ? table.rows : (table.rows ? [table.rows] : []);
@@ -956,8 +937,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           tables: preservedTables,
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
         });
-
-                 setFilesBeingSent([]); // Clear the "being sent" files
          
         // Clean up Firebase files after successful processing
         if (firebaseFileUrlsRef.current.length > 0) {
@@ -1000,12 +979,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         });
       }
     } catch (err: any) {
-      // Remove the processing message if it exists
-      if (structuredExtracts.length > 0) {
-        setChatMessages(prev => prev.filter(msg => 
-          !msg.content.includes('🔄 Processing') || msg.role !== 'assistant'
-        ));
-      }
+      // No processing message to remove - files are grouped with user message
       
       if (err.name === 'AbortError' || isCancelled) {
         console.log('Chat generation aborted by user.');
@@ -1029,11 +1003,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       setAbortController(null); // Clear the abort controller
       setIsCancelled(false); // Reset cancellation flag
 
-      // Restore files to upload area if there was an error or cancellation
-      if (filesBeingSent.length > 0) {
-        setUploadedFiles(prev => [...prev, ...filesBeingSent]);
-        setFilesBeingSent([]);
-      }
+      // Files are now attached to the message, no need to restore from separate state
 
       // Clean up Firebase files if there was an error or cancellation
       if (firebaseFileUrlsRef.current.length > 0) {
@@ -1139,32 +1109,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           </div>
         )}
         
-        {/* Files being sent visual transition */}
-        {filesBeingSent.length > 0 && (
-          <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-lg px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white file-pulse shadow-lg">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="relative">
-                  <Paperclip className="w-4 h-4" />
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full animate-ping"></div>
-                </div>
-                <span className="text-sm font-medium">Processing files...</span>
-                <Loader2 className="w-4 h-4 animate-spin" />
-              </div>
-              <div className="space-y-2">
-                {filesBeingSent.map((file) => (
-                  <div key={file.id} className="flex items-center gap-2 text-xs bg-white/10 rounded px-2 py-1">
-                    <FileIcon className="w-3 h-3" />
-                    <span className="truncate">{file.name}</span>
-                    <div className="ml-auto">
-                      <div className="w-2 h-2 bg-emerald-300 rounded-full animate-pulse"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
         
         <div ref={messagesEndRef} />
       </div>
