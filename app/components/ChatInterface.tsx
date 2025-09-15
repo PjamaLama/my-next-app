@@ -34,6 +34,16 @@ interface ChatInterfaceProps {
 export default function ChatInterface({ className = '', onShowTutorial }: ChatInterfaceProps) {
   const { chatMessages, addMessage, error, ensureSession, setChatMessages, updateMessageTables, currentSessionId, clearErrorAndCreateSession, setAbortController, cancelChatGeneration } = useChat();
   const { defaultSpreadsheetId, selectedSheetNames, sheetDataCache, isSheetDataLoading } = useSheet();
+  const [sheetDataLoadStartTime, setSheetDataLoadStartTime] = useState<number | null>(null);
+
+  // Track sheet data loading state changes
+  useEffect(() => {
+    if (isSheetDataLoading && selectedSheetNames.length > 0) {
+      setSheetDataLoadStartTime(Date.now());
+    } else {
+      setSheetDataLoadStartTime(null);
+    }
+  }, [isSheetDataLoading, selectedSheetNames.length]);
   const { user, waId, userType } = useFirebase();
   const { meta: adminMeta } = useAdminMeta();
   const { canSendMessage, incrementUsage, isLimitReached, dailyUsage, limit } = useMessageLimits();
@@ -637,15 +647,38 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       return;
     }
 
-    // Check if sheet data is still loading
-    if (selectedSheetNames.length > 0 && isSheetDataLoading) {
-      console.log('⏳ [ChatInterface] Waiting for sheet data to load:', selectedSheetNames);
+    // Check if we have required sheet data for selected sheets
+    const hasRequiredSheetData = selectedSheetNames.every(sheetName => sheetDataCache[sheetName]);
+    const hasTimedOut = sheetDataLoadStartTime && (Date.now() - sheetDataLoadStartTime) > 30000; // 30 second timeout
+
+    if (selectedSheetNames.length > 0 && !hasRequiredSheetData && !hasTimedOut) {
+      console.log('⏳ [ChatInterface] Waiting for sheet data to load:', {
+        selectedSheets: selectedSheetNames,
+        availableData: Object.keys(sheetDataCache),
+        isLoading: isSheetDataLoading,
+        loadTime: sheetDataLoadStartTime ? Date.now() - sheetDataLoadStartTime : 0
+      });
+
       // Show user feedback that sheet data is loading
       await addMessage({
         role: 'assistant',
         content: `⏳ Please wait, I'm loading data from your selected sheets. This usually takes just a few seconds...`
       });
       return;
+    }
+
+    // If we've timed out waiting for sheet data, allow submission with a warning
+    if (selectedSheetNames.length > 0 && !hasRequiredSheetData && hasTimedOut) {
+      console.log('⚠️ [ChatInterface] Sheet data load timed out, proceeding without data:', {
+        selectedSheets: selectedSheetNames,
+        loadTime: sheetDataLoadStartTime ? Date.now() - sheetDataLoadStartTime : 0
+      });
+
+      // Show warning but allow submission
+      await addMessage({
+        role: 'assistant',
+        content: `⚠️ I wasn't able to load your sheet data in time, but I'll proceed with your request anyway. Some features may not work correctly.`
+      });
     }
 
     // Prevent duplicate submissions
@@ -1261,7 +1294,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                     ? true
                     : (!inputValue.trim() && uploadedFiles.length === 0) ||
                       uploadedFiles.some(file => file.status === 'processing') ||
-                      (selectedSheetNames.length > 0 && isSheetDataLoading)
+                      (selectedSheetNames.length > 0 &&
+                       !selectedSheetNames.every(sheetName => sheetDataCache[sheetName]) &&
+                       !(sheetDataLoadStartTime && (Date.now() - sheetDataLoadStartTime) > 30000))
               }
               aria-label={
                 userType === 'free' && isLimitReached
