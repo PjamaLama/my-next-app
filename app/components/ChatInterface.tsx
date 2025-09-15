@@ -97,6 +97,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [filesBeingSent, setFilesBeingSent] = useState<UploadedFile[]>([]);
   const [isStopping, setIsStopping] = useState(false);
+  const [isCancelled, setIsCancelled] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,6 +109,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     setIsProcessingFiles(false);
     setFilesBeingSent([]);
     setIsStopping(false);
+    setIsCancelled(false); // Reset cancellation flag
     setInputValue(''); // Clear input when switching sessions
     setUploadedFiles([]); // Clear uploaded files when switching sessions
   }, [currentSessionId]);
@@ -765,6 +767,39 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       return fileData;
     });
 
+    // Check for file processing errors before proceeding
+    const hasFileProcessingErrors = structuredExtracts.some(file =>
+      file.extractedData?.geminiStructuredData?.some((item: any) =>
+        item.type === 'processing_error' || (item.error && item.canRetryWithImages)
+      )
+    );
+
+    if (hasFileProcessingErrors) {
+      console.log('⚠️ [FRONTEND] File processing errors detected, showing user guidance');
+
+      // Find the error details
+      const errorFile = structuredExtracts.find(file =>
+        file.extractedData?.geminiStructuredData?.some((item: any) =>
+          item.type === 'processing_error' || (item.error && item.canRetryWithImages)
+        )
+      );
+
+      const errorItem = errorFile?.extractedData?.geminiStructuredData?.find((item: any) =>
+        item.type === 'processing_error' || (item.error && item.canRetryWithImages)
+      );
+
+      // Clear uploaded files and show error message
+      setUploadedFiles([]);
+      setFilesBeingSent([]);
+
+      await addMessage({
+        role: 'assistant',
+        content: `⚠️ **File Processing Issue**\n\n${errorItem?.error || 'There was an issue processing your file.'}\n\n${errorItem?.suggestion || 'Please try uploading a different file format.'}`,
+      });
+
+      return; // Don't proceed with AI call
+    }
+
     // 🚀 ENHANCED LOGGING: Log what's being sent to the backend
     console.log('🚀 [FRONTEND] Sending files to backend for AI processing:', {
       message: message,
@@ -874,12 +909,24 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       });
 
       if (response.ok) {
+        // Check if the request was cancelled before processing the response
+        if (controller.signal.aborted || isCancelled) {
+          console.log('🚫 [FRONTEND] Request was cancelled, ignoring response');
+          return; // Don't process the response if cancelled
+        }
+
         const aiResponse = await response.json();
-        
+
+        // Double-check cancellation after JSON parsing (in case it took time)
+        if (isCancelled) {
+          console.log('🚫 [FRONTEND] Request was cancelled during JSON parsing, ignoring response');
+          return;
+        }
+
         // Remove the processing message if it exists
         if (structuredExtracts.length > 0) {
           console.log('✅ [FRONTEND] Removing processing message after successful AI response');
-          setChatMessages(prev => prev.filter(msg => 
+          setChatMessages(prev => prev.filter(msg =>
             !msg.content.includes('🔄 Processing') || msg.role !== 'assistant'
           ));
         }
@@ -960,12 +1007,15 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         ));
       }
       
-      if (err.name === 'AbortError') {
+      if (err.name === 'AbortError' || isCancelled) {
         console.log('Chat generation aborted by user.');
-        await addMessage({
-          role: 'assistant',
-          content: 'Chat generation stopped.',
-        });
+        // Only add the "stopped" message if we haven't already processed a response
+        if (!isCancelled) {
+          await addMessage({
+            role: 'assistant',
+            content: 'Chat generation stopped.',
+          });
+        }
       } else {
         console.error('Failed to send message:', err);
         await addMessage({
@@ -973,43 +1023,51 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           content: 'Sorry, I encountered an error. Please try again.',
         });
       }
-             // Restore files to upload area if there was an error
-       if (filesBeingSent.length > 0) {
-         setUploadedFiles(prev => [...prev, ...filesBeingSent]);
-         setFilesBeingSent([]);
-       }
-       
-               // Clean up Firebase files if there was an error
-        if (firebaseFileUrlsRef.current.length > 0) {
-          try {
-            const storage = getStorage();
-            for (const fileInfo of firebaseFileUrlsRef.current) {
-              if (fileInfo.storagePath) {
-                const storageRef = ref(storage, fileInfo.storagePath);
-                await deleteObject(storageRef);
-                console.log(`Cleaned up Firebase file after error: ${fileInfo.storagePath}`);
-              } else {
-                // Fallback to old method if storagePath is not available
-                const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-                if (fileName && fileName.includes('temp-uploads%2F')) {
-                  // Extract just the filename part after temp-uploads%2F
-                  const actualFileName = fileName.split('temp-uploads%2F')[1];
-                  if (actualFileName) {
-                    const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
-                    await deleteObject(storageRef);
-                    console.log(`Cleaned up Firebase file after error (fallback): temp-uploads/${actualFileName}`);
-                  }
-                }
-              }
-            }
-          } catch (cleanupError) {
-            console.error('Failed to cleanup Firebase files after error:', cleanupError);
-          }
-        }
     } finally {
       setIsSending(false);
       setIsProcessingFiles(false);
       setAbortController(null); // Clear the abort controller
+      setIsCancelled(false); // Reset cancellation flag
+
+      // Restore files to upload area if there was an error or cancellation
+      if (filesBeingSent.length > 0) {
+        setUploadedFiles(prev => [...prev, ...filesBeingSent]);
+        setFilesBeingSent([]);
+      }
+
+      // Clean up Firebase files if there was an error or cancellation
+      if (firebaseFileUrlsRef.current.length > 0) {
+        try {
+          const storage = getStorage();
+          for (const fileInfo of firebaseFileUrlsRef.current) {
+            if (fileInfo.storagePath) {
+              const storageRef = ref(storage, fileInfo.storagePath);
+              deleteObject(storageRef).then(() => {
+                console.log(`Cleaned up Firebase file after cancellation/error: ${fileInfo.storagePath}`);
+              }).catch((cleanupError) => {
+                console.error('Failed to cleanup Firebase file after cancellation/error:', cleanupError);
+              });
+            } else {
+              // Fallback to old method if storagePath is not available
+              const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+              if (fileName && fileName.includes('temp-uploads%2F')) {
+                // Extract just the filename part after temp-uploads%2F
+                const actualFileName = fileName.split('temp-uploads%2F')[1];
+                if (actualFileName) {
+                  const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
+                  deleteObject(storageRef).then(() => {
+                    console.log(`Cleaned up Firebase file after cancellation/error (fallback): temp-uploads/${actualFileName}`);
+                  }).catch((cleanupError) => {
+                    console.error('Failed to cleanup Firebase file after cancellation/error (fallback):', cleanupError);
+                  });
+                }
+              }
+            }
+          }
+        } catch (cleanupError) {
+          console.error('Failed to cleanup Firebase files after cancellation/error:', cleanupError);
+        }
+      }
 
       // Fallback: ensure input is cleared even if message addition failed
       if (inputValue.trim() && inputValue.trim() === message) {
@@ -1239,49 +1297,8 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                         if (isStopping) return; // Prevent rapid clicking
                         console.log('🛑 [ChatInterface] Stop button clicked - cancelling chat generation');
                         setIsStopping(true);
+                        setIsCancelled(true); // Set cancellation flag to prevent response processing
                         cancelChatGeneration();
-                        // Immediately reset sending states for better UX
-                        setIsSending(false);
-                        setIsProcessingFiles(false);
-                        // Restore files to upload area if they were being sent
-                        if (filesBeingSent.length > 0) {
-                          setUploadedFiles(prev => [...prev, ...filesBeingSent]);
-                          setFilesBeingSent([]);
-                        }
-
-                        // Clean up Firebase files if stop was clicked
-                        if (firebaseFileUrlsRef.current && firebaseFileUrlsRef.current.length > 0) {
-                          try {
-                            const storage = getStorage();
-                            for (const fileInfo of firebaseFileUrlsRef.current) {
-                              if (fileInfo.storagePath) {
-                                const storageRef = ref(storage, fileInfo.storagePath);
-                                deleteObject(storageRef).then(() => {
-                                  console.log(`Cleaned up Firebase file after stop: ${fileInfo.storagePath}`);
-                                }).catch((cleanupError) => {
-                                  console.error('Failed to cleanup Firebase file after stop:', cleanupError);
-                                });
-                              } else {
-                                // Fallback to old method if storagePath is not available
-                                const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-                                if (fileName && fileName.includes('temp-uploads%2F')) {
-                                  // Extract just the filename part after temp-uploads%2F
-                                  const actualFileName = fileName.split('temp-uploads%2F')[1];
-                                  if (actualFileName) {
-                                    const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
-                                    deleteObject(storageRef).then(() => {
-                                      console.log(`Cleaned up Firebase file after stop (fallback): temp-uploads/${actualFileName}`);
-                                    }).catch((cleanupError) => {
-                                      console.error('Failed to cleanup Firebase file after stop (fallback):', cleanupError);
-                                    });
-                                  }
-                                }
-                              }
-                            }
-                          } catch (cleanupError) {
-                            console.error('Failed to cleanup Firebase files after stop:', cleanupError);
-                          }
-                        }
                         // Re-enable stop button after a brief delay
                         setTimeout(() => setIsStopping(false), 500);
                       }
