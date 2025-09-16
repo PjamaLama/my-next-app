@@ -67,7 +67,7 @@ const SheetChipSelector: React.FC = () => {
     if (defaultSpreadsheetId && (!hasInitialized || refreshTrigger > 0)) {
       setIsLoading(true);
       setError(null);
-      fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`)
+      fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}&forceRefresh=true`)
         .then(async res => {
           const json = await res.json().catch(() => ({}));
           if (!res.ok) {
@@ -125,7 +125,7 @@ const SheetChipSelector: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const res = await fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`);
+      const res = await fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}&forceRefresh=true`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const serverMsg = data?.error || data?.details || 'Failed to fetch sheet names';

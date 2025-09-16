@@ -1,4 +1,4 @@
-import { normalizeSpreadsheetId, getSheetMetadataCached } from '@/lib/googleSheets';
+import { normalizeSpreadsheetId, getSheetMetadataCached, clearCaches } from '../../lib/googleSheets';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -7,12 +7,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     (req.method === 'GET' ? req.query.spreadsheetId : (req.body?.spreadsheetId as string | undefined)) ||
     (req.query.spreadsheetId as string | undefined);
 
+  // Check for force refresh parameter
+  const forceRefreshParam = req.method === 'GET' ? req.query.forceRefresh : req.body?.forceRefresh;
+  const forceRefresh = forceRefreshParam === true || forceRefreshParam === 'true';
+
   if (!spreadsheetIdParam || typeof spreadsheetIdParam !== 'string') {
     return res.status(400).json({ error: 'Spreadsheet ID is required' });
   }
 
   try {
     const spreadsheetId = normalizeSpreadsheetId(spreadsheetIdParam);
+
+    // Clear cache if force refresh is requested
+    if (forceRefresh) {
+      clearCaches();
+    }
+
     const metadata = await getSheetMetadataCached(spreadsheetId);
 
     const sheetNames = metadata.sheets.map(s => s.properties?.title || '').filter(Boolean) || [];
