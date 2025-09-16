@@ -304,11 +304,11 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
                           </div>
                           <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
                             <div className="text-xs text-white/60 mr-auto">
-                              📊 Target: <span className="text-emerald-300 font-medium">
-                                {table.meta?.sheetName || selectedSheetNames?.[0] || 'No sheet selected'}
+                              📊 Target: <span className={`font-medium ${table.meta?.sheetName ? 'text-emerald-300' : 'text-yellow-400'}`}>
+                                {table.meta?.sheetName || 'No target sheet specified'}
                               </span>
-                              {!table.meta?.sheetName && !selectedSheetNames?.[0] && (
-                                <span className="text-yellow-400 ml-2">⚠️ Select a sheet first</span>
+                              {!table.meta?.sheetName && (
+                                <span className="text-yellow-400 ml-2">⚠️ This table needs a target sheet to be approved</span>
                               )}
                             </div>
                             <button
@@ -359,9 +359,9 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
                                 });
                                 window.dispatchEvent(event);
                               }}
-                              disabled={processingTables.has(tableId) || (!table.meta?.sheetName && !selectedSheetNames?.[0])}
+                              disabled={processingTables.has(tableId) || !table.meta?.sheetName}
                               className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
-                              title={(!table.meta?.sheetName && !selectedSheetNames?.[0]) ? 'Select a sheet first to approve this table' : 'Approve and submit this data to the sheet'}
+                              title={!table.meta?.sheetName ? 'This table needs a target sheet specified to be approved' : 'Approve and submit this data to the sheet'}
                             >
                               {processingTables.has(tableId) ? 'Applying...' : 'Approve'}
                             </button>

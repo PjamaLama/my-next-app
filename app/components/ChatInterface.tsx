@@ -275,8 +275,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         setProcessingTables(prev => new Set(prev).add(tableKey));
         const headers = Array.isArray(preview.headers) ? preview.headers : [];
         const rows = Array.isArray(preview.rows) ? preview.rows : [];
-        if (!defaultSpreadsheetId || (!preview.sheetName && (!selectedSheetNames || selectedSheetNames.length === 0))) {
-          throw new Error('No spreadsheet or sheet selected. Please select a sheet or ensure the table has a target sheet.');
+        if (!defaultSpreadsheetId) {
+          throw new Error('No spreadsheet selected. Please select a spreadsheet first using the sheet selector above.');
+        }
+        if (!preview.sheetName) {
+          throw new Error('This table does not specify a target sheet. Please ensure the table has a target sheet defined before approving.');
         }
 
         console.log('🔍 Approving table:', {
