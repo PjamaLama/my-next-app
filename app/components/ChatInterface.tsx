@@ -738,6 +738,15 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
     e.preventDefault();
     if ((!inputValue.trim() && uploadedFiles.length === 0) || isSending || isProcessingFiles) return;
 
+    // Prevent sending messages if no spreadsheet is selected
+    if (!defaultSpreadsheetId) {
+      await addMessage({
+        role: 'assistant',
+        content: `🤖 I need you to select a Google Sheet before we can start chatting. Please use the "Manage Spreadsheets" button to add or select a spreadsheet.`
+      });
+      return;
+    }
+
     // Check if any files are still processing
     const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
     if (processingFiles.length > 0) {

@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, Suspense, lazy } from "react";
 import { useFirebase } from "./providers/FirebaseProvider";
 import { useSheet } from "./providers/SheetProvider";
 import { useTutorial } from "./providers/TutorialProvider";
+import { useModal } from "./providers/ModalProvider";
 import { DemoInputManager } from "../lib/demoInputManager";
 import NavBar from "./NavBar";
 
@@ -23,6 +24,9 @@ const LoadingFallback = () => (
 export default function Home() {
   const { user, loading, signInWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, sheetsPrefetched, setDefaultSpreadsheetId } = useSheet();
+  const { openSpreadsheetManager } = useModal();
+  const [connectedSpreadsheets, setConnectedSpreadsheets] = useState<any[]>([]);
+  const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
   const { showTutorial, hideTutorial, isTutorialVisible } = useTutorial();
   const tutorialTriggered = useRef(false);
 
@@ -55,6 +59,47 @@ export default function Home() {
       setTimeout(() => showTutorial(), 1000);
     }
   }, []); // Empty dependency array - only run once on mount
+
+  // Track connected spreadsheets
+  useEffect(() => {
+    let unsub: undefined | (() => void);
+    (async () => {
+      if (!user) {
+        setConnectedSpreadsheets([]);
+        setSpreadsheetsLoading(false);
+        return;
+      }
+
+      setSpreadsheetsLoading(true);
+
+      const { collection, onSnapshot } = await import('firebase/firestore');
+      const { getDb } = await import('./providers/FirebaseProvider');
+      const db = getDb();
+      if (!db) return;
+
+      const optionsRef = collection(db, 'users', user.uid, 'options');
+
+      unsub = onSnapshot(optionsRef, (snap: any) => {
+        const items = snap.docs.map((d: any) => ({
+          id: d.id,
+          ...(d.data() as any)
+        }))
+          .filter((x: any) => typeof x.spreadsheetId === 'string')
+          .map((x: any) => ({
+            id: x.id,
+            spreadsheetId: x.spreadsheetId as string,
+            title: x.title as string | undefined
+          }));
+
+        setConnectedSpreadsheets(items);
+        setSpreadsheetsLoading(false);
+      });
+    })();
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [user]);
 
   // Check for demo input after user signs in
   useEffect(() => {
@@ -208,9 +253,72 @@ export default function Home() {
     }
   }
 
+  // Show onboarding screen if no spreadsheets are connected
+  if (!spreadsheetsLoading && connectedSpreadsheets.length === 0) {
+    return (
+      <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white fixed inset-0">
+        <NavBar />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full text-center space-y-8">
+            <div className="space-y-4">
+              <div className="w-20 h-20 bg-emerald-500/20 border border-emerald-400/30 rounded-full flex items-center justify-center mx-auto">
+                <span className="text-4xl">📊</span>
+              </div>
+              <h1 className="text-3xl font-bold text-white">Welcome to SheetyAI!</h1>
+              <p className="text-xl text-white/80 max-w-md mx-auto">
+                Connect your Google Sheets to start chatting with your data using AI.
+              </p>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="text-center space-y-3">
+                  <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-400/30 rounded-full flex items-center justify-center mx-auto">
+                    <span className="text-2xl">📁</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Connect Sheets</h3>
+                  <p className="text-white/70 text-sm">Link your existing Google Sheets or create new ones</p>
+                </div>
+
+                <div className="text-center space-y-3">
+                  <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-400/30 rounded-full flex items-center justify-center mx-auto">
+                    <span className="text-2xl">🤖</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Chat with AI</h3>
+                  <p className="text-white/70 text-sm">Ask questions and get insights from your data</p>
+                </div>
+
+                <div className="text-center space-y-3">
+                  <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-400/30 rounded-full flex items-center justify-center mx-auto">
+                    <span className="text-2xl">✨</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Auto Updates</h3>
+                  <p className="text-white/70 text-sm">Results save directly to your spreadsheets</p>
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button
+                  onClick={openSpreadsheetManager}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 shadow-lg hover:shadow-emerald-500/25"
+                >
+                  🚀 Connect Your First Spreadsheet
+                </button>
+              </div>
+            </div>
+
+            <div className="text-white/60 text-sm">
+              Need help? Check out our <button className="text-emerald-400 hover:text-emerald-300 underline">setup guide</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Don't block chat interface on spreadsheet loading - load in background
 
-  // Always show chat interface for logged-in users - spreadsheets load in background
+  // Always show chat interface for logged-in users with spreadsheets - spreadsheets load in background
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white mobile-chat-container fixed inset-0">
       <NavBar />
@@ -285,5 +393,3 @@ export default function Home() {
     </div>
   );
 }
-
-

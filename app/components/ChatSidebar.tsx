@@ -9,7 +9,7 @@ import { Plus, Trash2, MessageSquare, Table as TableIcon, ExternalLink, BookOpen
 import { useSheet } from "../providers/SheetProvider";
 import { useFirebase } from "../providers/FirebaseProvider";
 import { useDialog } from "../providers/DialogProvider";
-import SpreadsheetManagerModal from "./SpreadsheetManagerModal";
+import { useModal } from "../providers/ModalProvider";
 import EditRowModal from "./EditRowModal";
 import MessageCounter from "./MessageCounter";
 import { useMessageLimits } from "../hooks/useMessageLimits";
@@ -58,10 +58,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
   }, []);
   const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; spreadsheetId: string; title?: string }>>([]);
   const [spreadsheetsLoading, setSpreadsheetsLoading] = useState(false);
-  const [managerOpen, setManagerOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPreview, setModalPreview] = useState<any>(null);
   const [isApplying, setIsApplying] = useState(false);
+
+  const { openSpreadsheetManager, closeSpreadsheetManager } = useModal();
+
+  // Debug: Log when modal functions are called
+  const handleOpenSpreadsheetManager = () => {
+    console.log('🎯 ChatSidebar: Opening spreadsheet manager modal');
+    openSpreadsheetManager();
+  };
 
 
   // Service account UI moved into SpreadsheetManagerModal
@@ -88,6 +95,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     })();
     return () => { if (unsub) unsub(); };
   }, [user]);
+
+  // Listen for spreadsheet manager open events
+  useEffect(() => {
+    const handleEventOpenSpreadsheetManager = () => {
+      console.log('🎯 ChatSidebar: Opening spreadsheet manager from custom event');
+      openSpreadsheetManager();
+    };
+
+    window.addEventListener('open-spreadsheet-manager', handleEventOpenSpreadsheetManager);
+
+    return () => {
+      window.removeEventListener('open-spreadsheet-manager', handleEventOpenSpreadsheetManager);
+    };
+  }, [openSpreadsheetManager]);
 
   // Adding spreadsheet handled inside SpreadsheetManagerModal
   // Wired Edit for user modifications before commit; keeps flow elegant.
@@ -529,7 +550,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
               </div>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setManagerOpen(true)}
+                  onClick={handleOpenSpreadsheetManager}
                   className={`inline-flex items-center justify-center px-2 ${peek ? 'h-6' : 'h-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50`}
                   title="Manage spreadsheets"
                   aria-label="Manage spreadsheets"
@@ -593,7 +614,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           </div>
         </div>
       </div>
-      <SpreadsheetManagerModal open={managerOpen} onClose={() => setManagerOpen(false)} />
       </>
     );
   }
@@ -680,7 +700,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
                   return (
                     <div className="chat-error bg-red-500/10 border border-red-400/30 text-red-200 rounded-md p-3 text-sm">
                       <div>{errorMsg}</div>
-                      <button className="bg-blue-500 text-white px-3 py-1.5 mt-2 rounded" onClick={() => setManagerOpen(true)}>Clarify</button>
+                      <button className="bg-blue-500 text-white px-3 py-1.5 mt-2 rounded" onClick={handleOpenSpreadsheetManager}>Clarify</button>
                     </div>
                   );
                 }
@@ -708,7 +728,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setManagerOpen(true)}
+                onClick={handleOpenSpreadsheetManager}
                 className={`inline-flex items-center justify-center px-2 ${peek ? 'h-6' : 'h-7'} rounded-md border border-white/20 text-white/80 hover:text-white hover:border-white/50`}
                 title="Manage spreadsheets"
                 aria-label="Manage spreadsheets"
@@ -763,7 +783,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
           })}
         </div>
       </div>
-    <SpreadsheetManagerModal open={managerOpen} onClose={() => setManagerOpen(false)} />
       <EditRowModal isOpen={modalOpen} onClose={() => setModalOpen(false)} preview={modalPreview} onSubmit={handleModalSubmit} />
     </div>
   );

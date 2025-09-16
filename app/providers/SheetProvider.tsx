@@ -65,10 +65,11 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => unsubUserDoc();
   }, [user]);
 
+
   // Prefetch all sheet names and data once per selected spreadsheet (moved from page component)
   useEffect(() => {
     let cancelled = false;
-    const doPrefetch = async () => {
+    const doPrefetch = async (forceRefresh = false) => {
       if (!defaultSpreadsheetId) {
         setAllSheetNames([]);
         setSheetDataCache({});
@@ -77,16 +78,21 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSheetsPrefetched(false);
         return;
       }
-      // Reset caches when spreadsheet changes
-      setAllSheetNames([]);
-      setSheetDataCache({});
-      setSheetStructureCache({});
-      setChosenBlockBySheet({});
-      setSheetsPrefetched(false);
+      // Reset caches when spreadsheet changes or force refresh
+      if (!forceRefresh) {
+        setAllSheetNames([]);
+        setSheetDataCache({});
+        setSheetStructureCache({});
+        setChosenBlockBySheet({});
+        setSheetsPrefetched(false);
+      }
       try {
         const namesRes = await fetch('/api/get-sheet-names', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ spreadsheetId: defaultSpreadsheetId })
+          body: JSON.stringify({
+            spreadsheetId: defaultSpreadsheetId,
+            forceRefresh
+          })
         });
         const namesJson = await namesRes.json();
         const names: string[] = namesJson.sheetNames || namesJson.data || [];
@@ -110,8 +116,22 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.warn('Prefetch sheet names failed', e);
       }
     };
+
+    // Listen for force refresh events from SheetChipSelector
+    const handleForceRefresh = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.spreadsheetId === defaultSpreadsheetId) {
+        void doPrefetch(true);
+      }
+    };
+
+    window.addEventListener('force-refresh-sheet-names' as any, handleForceRefresh);
+
     void doPrefetch();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.removeEventListener('force-refresh-sheet-names' as any, handleForceRefresh);
+    };
   }, [defaultSpreadsheetId]);
 
   // Fetch sheet data when selected sheets change

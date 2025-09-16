@@ -79,6 +79,8 @@ const SpreadsheetManagerModal: React.FC<SpreadsheetManagerModalProps> = ({ open,
     }
   };
 
+  console.log('🎯 SpreadsheetManagerModal: Render called with open =', open);
+
   if (!open) return null;
 
   return (

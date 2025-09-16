@@ -9,6 +9,7 @@ import { ChatProvider } from './providers/ChatProvider';
 import { TutorialProvider } from './providers/TutorialProvider';
 import { UpgradeModalProvider } from './providers/UpgradeModalProvider';
 import { TrackingPanelProvider } from './providers/TrackingPanelProvider';
+import { ModalProvider } from './providers/ModalProvider';
 import TrackingStatusPanelWrapper from './components/TrackingStatusPanelWrapper';
 import SidePanel from './components/SidePanel';
 import FeedbackButton from './components/FeedbackButton';
@@ -40,7 +41,8 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
             <ChatProvider>
               <TutorialProvider>
                 <UpgradeModalProvider>
-                  <TrackingPanelProvider>
+                  <ModalProvider>
+                    <TrackingPanelProvider>
                   {/* Analytics tracking - handles page views and initialization */}
                   <AnalyticsTracker />
 
@@ -59,7 +61,8 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
                   </div>
                   {/* Development tracking panel - only shows in development mode */}
                   {process.env.NODE_ENV === 'development' && <TrackingStatusPanelWrapper />}
-                  </TrackingPanelProvider>
+                    </TrackingPanelProvider>
+                  </ModalProvider>
                 </UpgradeModalProvider>
               </TutorialProvider>
             </ChatProvider>

@@ -4,13 +4,24 @@ import { useSheet } from '../providers/SheetProvider';
 import { useDialog } from '../providers/DialogProvider';
 
 const SheetChipSelector: React.FC = () => {
-  const { defaultSpreadsheetId, selectedSheetNames, setSelectedSheetNames, sheetStructureCache, unstructuredOverrides } = useSheet();
+  const {
+    defaultSpreadsheetId,
+    selectedSheetNames,
+    setSelectedSheetNames,
+    sheetStructureCache,
+    unstructuredOverrides,
+    allSheetNames,
+    sheetsPrefetched,
+    isSheetDataLoading
+  } = useSheet();
   const { notify } = useDialog();
-  const [sheetNames, setSheetNames] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const selectedSheetNamesRef = useRef(selectedSheetNames);
   const setSelectedSheetNamesRef = useRef(setSelectedSheetNames);
+
+  // Use sheet names from SheetProvider instead of making own API calls
+  const sheetNames = allSheetNames;
+  const isLoading = isSheetDataLoading && !sheetsPrefetched;
+  const [error, setError] = useState<string | null>(null);
 
   // Update refs when values change
   useEffect(() => {
@@ -21,30 +32,20 @@ const SheetChipSelector: React.FC = () => {
     setSelectedSheetNamesRef.current = setSelectedSheetNames;
   }, [setSelectedSheetNames]);
 
-  // Only fetch sheet names when explicitly requested or when there's a new spreadsheet ID
-  const [hasInitialized, setHasInitialized] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
+  // Clear error when spreadsheet changes
   useEffect(() => {
-    // Reset initialization state when spreadsheet changes
-    if (defaultSpreadsheetId) {
-      setHasInitialized(false);
-      setSheetNames([]);
-      setError(null);
-    } else {
-      // Clear everything when no spreadsheet is selected
-      setHasInitialized(false);
-      setSheetNames([]);
-      setError(null);
-      setSelectedSheetNamesRef.current([]);
-    }
+    setError(null);
   }, [defaultSpreadsheetId]);
 
   // Listen for spreadsheet removal events and refresh accordingly
   useEffect(() => {
     const handleSpreadsheetRemoved = () => {
       if (defaultSpreadsheetId) {
-        setRefreshTrigger(prev => prev + 1);
+        // Trigger a refresh by calling the provider's prefetch logic
+        // This will be handled by the SheetProvider's useEffect
+        window.dispatchEvent(new CustomEvent('sheet-selector-refresh', {
+          detail: { action: 'refresh-needed' }
+        }));
       }
     };
 
@@ -63,113 +64,54 @@ const SheetChipSelector: React.FC = () => {
     };
   }, [defaultSpreadsheetId]);
 
+  // Handle sheet selection changes and cleanup
   useEffect(() => {
-    if (defaultSpreadsheetId && (!hasInitialized || refreshTrigger > 0)) {
-      setIsLoading(true);
-      setError(null);
-      fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}&forceRefresh=true`)
-        .then(async res => {
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            const serverMsg = json?.error || json?.details || 'Failed to fetch sheet names';
-            const hint = json?.hint ? ` — ${json.hint}` : '';
-            throw new Error(`${serverMsg}${hint}`);
-          }
-          return json;
-        })
-        .then(data => {
-          const names: string[] = Array.isArray(data.sheetNames) ? data.sheetNames : [];
-          setSheetNames(names);
-          // Drop stale selections that no longer exist
-          const current = selectedSheetNamesRef.current;
-          const pruned = current.filter((n: string) => names.includes(n));
-          if (pruned.length !== current.length) {
-            setSelectedSheetNamesRef.current(pruned);
-          }
-          // Only set default selection if no sheets are currently selected
-          if (names.length > 0 && pruned.length === 0) {
-            setSelectedSheetNamesRef.current([names[0]]);
-          }
-          setHasInitialized(true);
-        })
-        .catch(err => {
-          setError(err.message);
-          // Clear sheet names on error to ensure clean state
-          setSheetNames([]);
-          setSelectedSheetNamesRef.current([]);
-          console.error(err);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else if (!defaultSpreadsheetId && (hasInitialized || refreshTrigger > 0)) {
-      // Clear state when no spreadsheet is selected
-      setSheetNames([]);
-      setError(null);
-      setSelectedSheetNamesRef.current([]);
-      setHasInitialized(false);
-      setIsLoading(false);
-    }
-  }, [defaultSpreadsheetId, hasInitialized, refreshTrigger]); // Also depend on refreshTrigger
-
-  // Lightweight refresh to pull updated sheet list (e.g., after conversion)
-  const refreshSheetNames = async () => {
-    if (!defaultSpreadsheetId) {
-      // Clear state when no spreadsheet is selected
-      setSheetNames([]);
-      setError(null);
-      setSelectedSheetNamesRef.current([]);
-      setHasInitialized(false);
-      return;
-    }
-    try {
-      setIsLoading(true);
-      setError(null);
-      const res = await fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}&forceRefresh=true`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const serverMsg = data?.error || data?.details || 'Failed to fetch sheet names';
-        throw new Error(serverMsg);
-      }
-      const names: string[] = Array.isArray(data.sheetNames) ? data.sheetNames : [];
-      setSheetNames(names);
+    if (defaultSpreadsheetId && sheetNames.length > 0) {
       // Drop stale selections that no longer exist
       const current = selectedSheetNamesRef.current;
-      const pruned = current.filter((n: string) => names.includes(n));
+      const pruned = current.filter((n: string) => sheetNames.includes(n));
       if (pruned.length !== current.length) {
         setSelectedSheetNamesRef.current(pruned);
       }
       // Only set default selection if no sheets are currently selected
-      if (names.length > 0 && pruned.length === 0) {
-        setSelectedSheetNamesRef.current([names[0]]);
+      if (sheetNames.length > 0 && pruned.length === 0) {
+        setSelectedSheetNamesRef.current([sheetNames[0]]);
       }
-      setHasInitialized(true);
+    } else if (!defaultSpreadsheetId) {
+      // Clear selections when no spreadsheet is selected
+      setSelectedSheetNamesRef.current([]);
+    }
+  }, [defaultSpreadsheetId, sheetNames]);
+
+  // Lightweight refresh to pull updated sheet list (e.g., after conversion)
+  const refreshSheetNames = async () => {
+    if (!defaultSpreadsheetId) {
+      setError(null);
+      return;
+    }
+    try {
+      setError(null);
+      // Instead of making a direct API call, trigger the provider to refresh
+      // by dispatching a custom event that the provider can listen to
+      window.dispatchEvent(new CustomEvent('force-refresh-sheet-names', {
+        detail: { spreadsheetId: defaultSpreadsheetId }
+      }));
     } catch (e) {
       console.warn('Failed to refresh sheet names:', e);
       const errorMessage = e instanceof Error ? e.message : 'Failed to refresh sheet names';
       setError(errorMessage);
-      // Clear sheet names on error to ensure clean state
-      setSheetNames([]);
-      setSelectedSheetNamesRef.current([]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const toggleSheetSelection = (sheetName: string) => {
-    console.log('=== Toggle Sheet Selection ===');
-    console.log('Sheet name:', sheetName);
-    console.log('Current selectedSheetNames:', selectedSheetNames);
-    console.log('Is currently selected:', selectedSheetNames.includes(sheetName));
-    
     const newSelected = selectedSheetNames.includes(sheetName)
       ? selectedSheetNames.filter(name => name !== sheetName)
       : [...selectedSheetNames, sheetName];
-    
-    console.log('New selectedSheetNames:', newSelected);
+
     setSelectedSheetNames(newSelected);
   };
 
+  // Don't render if no spreadsheet is selected
   if (!defaultSpreadsheetId) {
     return null;
   }
@@ -308,11 +250,6 @@ const SheetChipSelector: React.FC = () => {
     );
   }
 
-  console.log('=== Render Debug ===');
-  console.log('sheetNames:', sheetNames);
-  console.log('selectedSheetNames:', selectedSheetNames);
-  console.log('isLoading:', isLoading);
-  console.log('error:', error);
 
   return (
     <div className="space-y-3" data-tutorial="sheet-selector">
