@@ -7,8 +7,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const webhookId = process.env.PAYPAL_WEBHOOK_ID;
-    const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
-    const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
+    // Auto-detect environment: production uses live, development uses sandbox
+    const isProduction = process.env.NODE_ENV === 'production';
 
     const clientId = isProduction
       ? process.env.PAYPAL_CLIENT_ID

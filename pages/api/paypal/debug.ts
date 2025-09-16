@@ -33,13 +33,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         <div class="status info">
             <strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}<br>
+            <strong>PayPal Mode:</strong> ${process.env.NODE_ENV === 'production' ? 'Live (Production)' : 'Sandbox (Development)'}<br>
             <strong>PayPal URL:</strong> ${process.env.NODE_ENV === 'production' ? 'https://api.paypal.com' : 'https://api.sandbox.paypal.com'}
         </div>
 
         <h2>📋 Environment Variables Status</h2>
         <div class="code">
-PAYPAL_CLIENT_ID: ${process.env.PAYPAL_CLIENT_ID ? '✅ Set (' + process.env.PAYPAL_CLIENT_ID.length + ' chars)' : '❌ Missing'}
-PAYPAL_SECRET_KEY: ${process.env.PAYPAL_SECRET_KEY ? '✅ Set (' + process.env.PAYPAL_SECRET_KEY.length + ' chars)' : '❌ Missing'}
+${process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox'} Credentials:<br>
+PAYPAL_CLIENT_ID: ${process.env.PAYPAL_CLIENT_ID ? '✅ Set (' + process.env.PAYPAL_CLIENT_ID.length + ' chars)' : '❌ Missing'}<br>
+PAYPAL_SECRET_KEY: ${process.env.PAYPAL_SECRET_KEY ? '✅ Set (' + process.env.PAYPAL_SECRET_KEY.length + ' chars)' : '❌ Missing'}<br>
+PAYPAL_SANDBOX_CLIENT_ID: ${process.env.PAYPAL_SANDBOX_CLIENT_ID ? '✅ Set (' + process.env.PAYPAL_SANDBOX_CLIENT_ID.length + ' chars)' : '❌ Missing (will fallback to production)'}<br>
+PAYPAL_SANDBOX_SECRET_KEY: ${process.env.PAYPAL_SANDBOX_SECRET_KEY ? '✅ Set (' + process.env.PAYPAL_SANDBOX_SECRET_KEY.length + ' chars)' : '❌ Missing (will fallback to production)'}<br>
+PAYPAL_WEBHOOK_ID: ${process.env.PAYPAL_WEBHOOK_ID ? '✅ Set (' + process.env.PAYPAL_WEBHOOK_ID.length + ' chars)' : '❌ Missing'}
         </div>
 
         <h2>🧪 Test PayPal Credentials</h2>
@@ -51,11 +56,21 @@ PAYPAL_SECRET_KEY: ${process.env.PAYPAL_SECRET_KEY ? '✅ Set (' + process.env.P
             <strong>If credentials are missing:</strong>
             <ol>
                 <li>Go to <a href="https://developer.paypal.com/" target="_blank">PayPal Developer Dashboard</a></li>
-                <li>Create/get your Client ID and Secret</li>
+                <li>Create/get your Client ID and Secret for both sandbox and production</li>
                 <li>Add them to your <code>.env.local</code> file:
                 <div class="code">
-PAYPAL_CLIENT_ID=your_client_id_here
-PAYPAL_SECRET_KEY=your_secret_key_here
+${process.env.NODE_ENV === 'production' ?
+  `# Production Credentials (Live Payments)
+PAYPAL_CLIENT_ID=your_production_client_id_here
+PAYPAL_SECRET_KEY=your_production_secret_key_here` :
+  `# Sandbox Credentials (Development/Testing)
+PAYPAL_SANDBOX_CLIENT_ID=your_sandbox_client_id_here
+PAYPAL_SANDBOX_SECRET_KEY=your_sandbox_secret_key_here
+
+# Production Credentials (for when you deploy)
+PAYPAL_CLIENT_ID=your_production_client_id_here
+PAYPAL_SECRET_KEY=your_production_secret_key_here`
+}
                 </div>
                 </li>
                 <li>Restart your development server</li>

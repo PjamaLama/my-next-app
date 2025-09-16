@@ -29,9 +29,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Missing required webhook headers' });
     }
 
-    // Get PayPal configuration
-    const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
-    const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
+    // Get PayPal configuration - auto-detect environment
+    const isProduction = process.env.NODE_ENV === 'production';
 
     const clientId = isProduction
       ? process.env.PAYPAL_CLIENT_ID

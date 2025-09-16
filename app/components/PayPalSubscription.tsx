@@ -88,9 +88,8 @@ export default function PayPalSubscription({
         return;
       }
 
-      // Use sandbox in development if sandbox credentials are available
-      const hasSandboxCredentials = process.env.NEXT_PUBLIC_PAYPAL_SANDBOX_CLIENT_ID;
-      const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
+      // Auto-detect environment: sandbox in development, live in production
+      const isProduction = process.env.NODE_ENV === 'production';
 
       const paypalUrl = isProduction ? 'https://www.paypal.com' : 'https://www.sandbox.paypal.com';
       const paypalClientId = isProduction

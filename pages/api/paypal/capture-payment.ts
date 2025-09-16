@@ -52,8 +52,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Capture PayPal payment using REST API
     // Check if we have sandbox credentials, otherwise use production
-    const hasSandboxCredentials = process.env.PAYPAL_SANDBOX_CLIENT_ID && process.env.PAYPAL_SANDBOX_SECRET_KEY;
-    const isProduction = process.env.NODE_ENV === 'production' || !hasSandboxCredentials;
+    // Auto-detect environment: production uses live, development uses sandbox
+    const isProduction = process.env.NODE_ENV === 'production';
 
     const paypalUrl = isProduction
       ? 'https://api.paypal.com'
