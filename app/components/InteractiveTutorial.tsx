@@ -68,9 +68,9 @@ export default function InteractiveTutorial({ isVisible, onClose }: InteractiveT
   const TUTORIAL_STEPS: TutorialStep[] = [
     {
       id: 'welcome',
-      title: 'Welcome to Report AI!',
+      title: 'Welcome to Sheety AI!',
       description: 'Your secure AI-powered spreadsheet assistant',
-      content: 'Report AI helps you connect your Google Sheets and chat with your data using natural language. Analyze, edit, and generate insights while keeping your data completely private.',
+      content: 'Sheety AI helps you connect your Google Sheets and chat with your data using natural language. Analyze, edit, and generate insights while keeping your data completely private.',
       icon: <Zap className="w-6 h-6" />
     },
     {
