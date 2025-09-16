@@ -30,6 +30,7 @@ const nextConfig: NextConfig = {
     scrollRestoration: true,
     // Improve Core Web Vitals
     webVitalsAttribution: ['CLS', 'LCP'],
+    forceSwcTransforms: true,
   },
   // Output optimization for better caching
   output: 'standalone',
