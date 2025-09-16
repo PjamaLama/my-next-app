@@ -104,10 +104,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         break;
 
       case 'PAYMENT.SALE.PENDING':
+        // Handle pending payment
+        await handlePaymentPending(db, resource);
+        break;
+
       case 'PAYMENT.SALE.DENIED':
+        // Handle denied payment
+        await handlePaymentDenied(db, resource);
+        break;
+
       case 'PAYMENT.SALE.REFUNDED':
-        // Handle other payment events
-        console.log(`Payment event ${eventType} for subscription ${resource?.billing_agreement_id}`);
+        // Handle refunded payment
+        await handlePaymentRefunded(db, resource);
+        break;
+
+      case 'PAYMENT.SALE.REVERSED':
+        // Handle reversed payment
+        await handlePaymentReversed(db, resource);
+        break;
+
+      case 'BILLING.SUBSCRIPTION.EXPIRED':
+        // Handle subscription expiration
+        await handleSubscriptionExpired(db, resource);
+        break;
+
+      case 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
+        // Handle subscription payment failure
+        await handleSubscriptionPaymentFailed(db, resource);
         break;
 
       default:
@@ -248,6 +271,157 @@ async function handleSubscriptionSuspended(db: any, resource: any) {
       'subscription.lastUpdated': new Date()
     });
     console.log(`✅ Suspended subscription for user ${userDoc.id}`);
+  }
+}
+
+async function handlePaymentPending(db: any, resource: any) {
+  const subscriptionId = resource.billing_agreement_id;
+  console.log(`Payment pending for subscription: ${subscriptionId}`);
+
+  if (!subscriptionId) return;
+
+  // Update subscription status to pending
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    await userDoc.ref.update({
+      'subscription.status': 'pending',
+      'subscription.lastPaymentStatus': 'pending',
+      'subscription.lastUpdated': new Date()
+    });
+    console.log(`✅ Updated payment status to pending for user ${userDoc.id}`);
+  }
+}
+
+async function handlePaymentDenied(db: any, resource: any) {
+  const subscriptionId = resource.billing_agreement_id;
+  console.log(`Payment denied for subscription: ${subscriptionId}`);
+
+  if (!subscriptionId) return;
+
+  // Update subscription status and potentially suspend
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data();
+
+    // If this is a recurring subscription payment that failed, suspend the subscription
+    if (userData?.subscription?.status === 'active') {
+      await userDoc.ref.update({
+        userType: 'free', // Temporarily suspend access
+        'subscription.status': 'payment_failed',
+        'subscription.lastPaymentStatus': 'denied',
+        'subscription.paymentFailureDate': new Date(),
+        'subscription.lastUpdated': new Date()
+      });
+      console.log(`✅ Suspended subscription due to payment denial for user ${userDoc.id}`);
+    }
+  }
+}
+
+async function handlePaymentRefunded(db: any, resource: any) {
+  const subscriptionId = resource.billing_agreement_id;
+  console.log(`Payment refunded for subscription: ${subscriptionId}`);
+
+  if (!subscriptionId) return;
+
+  // Update subscription status
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    await userDoc.ref.update({
+      userType: 'free', // Refund typically means cancel access
+      'subscription.status': 'refunded',
+      'subscription.refundDate': new Date(),
+      'subscription.lastUpdated': new Date()
+    });
+    console.log(`✅ Processed refund for user ${userDoc.id}`);
+  }
+}
+
+async function handlePaymentReversed(db: any, resource: any) {
+  const subscriptionId = resource.billing_agreement_id;
+  console.log(`Payment reversed for subscription: ${subscriptionId}`);
+
+  if (!subscriptionId) return;
+
+  // Update subscription status
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    await userDoc.ref.update({
+      userType: 'free', // Reverse typically means cancel access
+      'subscription.status': 'reversed',
+      'subscription.reverseDate': new Date(),
+      'subscription.lastUpdated': new Date()
+    });
+    console.log(`✅ Processed payment reversal for user ${userDoc.id}`);
+  }
+}
+
+async function handleSubscriptionExpired(db: any, resource: any) {
+  const subscriptionId = resource.id;
+  console.log(`Subscription expired: ${subscriptionId}`);
+
+  // Find user and update subscription status
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    await userDoc.ref.update({
+      userType: 'free', // Subscription expired
+      'subscription.status': 'expired',
+      'subscription.expiredAt': new Date(),
+      'subscription.lastUpdated': new Date()
+    });
+    console.log(`✅ Processed subscription expiration for user ${userDoc.id}`);
+  }
+}
+
+async function handleSubscriptionPaymentFailed(db: any, resource: any) {
+  const subscriptionId = resource.id;
+  console.log(`Subscription payment failed: ${subscriptionId}`);
+
+  // Find user and update subscription status
+  const usersRef = db.collection('users');
+  const querySnapshot = await usersRef.where('subscription.paypalSubscriptionId', '==', subscriptionId).get();
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Check if this is a recurring failure - if so, suspend
+    const failureCount = (userData?.subscription?.paymentFailureCount || 0) + 1;
+
+    if (failureCount >= 3) {
+      // Multiple failures - suspend subscription
+      await userDoc.ref.update({
+        userType: 'free',
+        'subscription.status': 'suspended',
+        'subscription.paymentFailureCount': failureCount,
+        'subscription.suspendedAt': new Date(),
+        'subscription.lastUpdated': new Date()
+      });
+      console.log(`✅ Suspended subscription after ${failureCount} payment failures for user ${userDoc.id}`);
+    } else {
+      // First failure - just update count
+      await userDoc.ref.update({
+        'subscription.status': 'payment_failed',
+        'subscription.paymentFailureCount': failureCount,
+        'subscription.lastPaymentFailure': new Date(),
+        'subscription.lastUpdated': new Date()
+      });
+      console.log(`✅ Recorded payment failure (${failureCount}/3) for user ${userDoc.id}`);
+    }
   }
 }
 

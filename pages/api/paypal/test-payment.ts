@@ -27,8 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       environment: isProduction ? 'PRODUCTION' : 'SANDBOX',
       hasClientId: !!clientId,
       hasClientSecret: !!clientSecret,
-      paypalUrl,
-      hasSandboxCredentials
+      paypalUrl
     });
 
     if (!clientId || !clientSecret) {

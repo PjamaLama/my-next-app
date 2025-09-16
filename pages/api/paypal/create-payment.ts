@@ -50,8 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasClientSecret: !!clientSecret,
       clientIdLength: clientId?.length,
       clientSecretLength: clientSecret?.length,
-      paypalUrl,
-      hasSandboxCredentials
+      paypalUrl
     });
 
     if (!clientId || !clientSecret) {
