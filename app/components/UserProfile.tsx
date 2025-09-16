@@ -9,7 +9,7 @@ import { LogOut, Crown, Settings } from 'lucide-react';
 import SubscriptionManager from './SubscriptionManager';
 
 const UserProfile = ({ peek }: { peek?: boolean }) => {
-  const { user, signOutUser, waId, userType } = useFirebase();
+  const { user, signOutUser, waId, userType, isBetaUser } = useFirebase();
   const { openModal } = useUpgradeModal();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
@@ -116,6 +116,35 @@ const UserProfile = ({ peek }: { peek?: boolean }) => {
               >
                 <Crown className="w-4 h-4" />
                 Upgrade to Pro
+              </button>
+            )}
+
+            {/* Development-only: Toggle user type for testing */}
+            {process.env.NODE_ENV === 'development' && (
+              <button
+                onClick={async () => {
+                  console.log('🔄 Dev: Toggling user type for testing');
+                  try {
+                    const token = await user?.getIdToken();
+                    const response = await fetch('/api/admin/toggle-user-type', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                      },
+                    });
+                    if (response.ok) {
+                      console.log('✅ User type toggled, page will refresh');
+                      window.location.reload();
+                    }
+                  } catch (error) {
+                    console.error('❌ Failed to toggle user type:', error);
+                  }
+                  setDropdownOpen(false);
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-orange-400 hover:bg-gray-700 flex items-center gap-2"
+              >
+                🔄 Toggle {userType === 'free' ? 'Pro' : 'Free'} (Dev)
               </button>
             )}
           </div>

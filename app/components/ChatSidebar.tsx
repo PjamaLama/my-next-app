@@ -33,7 +33,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     appendMessage,
     chatMessages
   } = useChat();
-  const { user, userType } = useFirebase();
+  const { user, userType, isBetaUser } = useFirebase();
   const { defaultSpreadsheetId, setDefaultSpreadsheetId, selectedSheetNames, setSheetDataCache } = useSheet();
   const { confirm, notify } = useDialog();
   const { dailyUsage, canSendMessage, incrementUsage, isLimitReached } = useMessageLimits();

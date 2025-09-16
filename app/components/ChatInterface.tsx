@@ -44,7 +44,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       setSheetDataLoadStartTime(null);
     }
   }, [isSheetDataLoading, selectedSheetNames.length]);
-  const { user, waId, userType } = useFirebase();
+  const { user, waId, userType, isBetaUser } = useFirebase();
   const { meta: adminMeta } = useAdminMeta();
   const { canSendMessage, incrementUsage, isLimitReached, dailyUsage, limit } = useMessageLimits();
   const { openModal } = useUpgradeModal();
