@@ -31,6 +31,12 @@ const SheetChipSelector: React.FC = () => {
       setHasInitialized(false);
       setSheetNames([]);
       setError(null);
+    } else {
+      // Clear everything when no spreadsheet is selected
+      setHasInitialized(false);
+      setSheetNames([]);
+      setError(null);
+      setSelectedSheetNamesRef.current([]);
     }
   }, [defaultSpreadsheetId]);
 
@@ -88,17 +94,34 @@ const SheetChipSelector: React.FC = () => {
         })
         .catch(err => {
           setError(err.message);
+          // Clear sheet names on error to ensure clean state
+          setSheetNames([]);
+          setSelectedSheetNamesRef.current([]);
           console.error(err);
         })
         .finally(() => {
           setIsLoading(false);
         });
+    } else if (!defaultSpreadsheetId && (hasInitialized || refreshTrigger > 0)) {
+      // Clear state when no spreadsheet is selected
+      setSheetNames([]);
+      setError(null);
+      setSelectedSheetNamesRef.current([]);
+      setHasInitialized(false);
+      setIsLoading(false);
     }
   }, [defaultSpreadsheetId, hasInitialized, refreshTrigger]); // Also depend on refreshTrigger
 
   // Lightweight refresh to pull updated sheet list (e.g., after conversion)
   const refreshSheetNames = async () => {
-    if (!defaultSpreadsheetId) return;
+    if (!defaultSpreadsheetId) {
+      // Clear state when no spreadsheet is selected
+      setSheetNames([]);
+      setError(null);
+      setSelectedSheetNamesRef.current([]);
+      setHasInitialized(false);
+      return;
+    }
     try {
       setIsLoading(true);
       setError(null);
@@ -108,12 +131,26 @@ const SheetChipSelector: React.FC = () => {
         const serverMsg = data?.error || data?.details || 'Failed to fetch sheet names';
         throw new Error(serverMsg);
       }
-      setSheetNames(data.sheetNames);
+      const names: string[] = Array.isArray(data.sheetNames) ? data.sheetNames : [];
+      setSheetNames(names);
+      // Drop stale selections that no longer exist
+      const current = selectedSheetNamesRef.current;
+      const pruned = current.filter((n: string) => names.includes(n));
+      if (pruned.length !== current.length) {
+        setSelectedSheetNamesRef.current(pruned);
+      }
+      // Only set default selection if no sheets are currently selected
+      if (names.length > 0 && pruned.length === 0) {
+        setSelectedSheetNamesRef.current([names[0]]);
+      }
       setHasInitialized(true);
     } catch (e) {
       console.warn('Failed to refresh sheet names:', e);
       const errorMessage = e instanceof Error ? e.message : 'Failed to refresh sheet names';
       setError(errorMessage);
+      // Clear sheet names on error to ensure clean state
+      setSheetNames([]);
+      setSelectedSheetNamesRef.current([]);
     } finally {
       setIsLoading(false);
     }
@@ -134,6 +171,11 @@ const SheetChipSelector: React.FC = () => {
   };
 
   if (!defaultSpreadsheetId) {
+    return null;
+  }
+
+  // Also hide if we have no sheets and no error (clean state)
+  if (sheetNames.length === 0 && !error && !isLoading) {
     return null;
   }
 

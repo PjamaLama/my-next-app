@@ -265,7 +265,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     if (!db) return;
 
     await deleteDoc(doc(db, 'users', user.uid, 'options', id));
-    if ((spreadsheetId && defaultSpreadsheetId === spreadsheetId) || (spreadsheets.length === 1 && defaultSpreadsheetId)) {
+    // Clear defaultSpreadsheetId if we're removing the current one, or if this is the last spreadsheet
+    if ((spreadsheetId && defaultSpreadsheetId === spreadsheetId) || (spreadsheets.length === 1)) {
       setDefaultSpreadsheetId("");
     }
 
