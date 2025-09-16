@@ -27,8 +27,35 @@ export default function ChatbotHelper() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Hide on admin pages
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      // Save current scroll position
+      const scrollY = window.scrollY;
+
+      // Prevent body scroll
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+
+      // Restore scroll position when modal closes
+      return () => {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [isOpen]);
+
+  // Hide on admin pages and landing page
+  if (typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/admin') ||
+    window.location.pathname === '/' ||
+    window.location.pathname === ''
+  )) {
     return null;
   }
 
@@ -213,7 +240,7 @@ export default function ChatbotHelper() {
 
       {/* Chat Modal */}
       {isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -221,7 +248,7 @@ export default function ChatbotHelper() {
           />
 
           {/* Modal */}
-          <div className="relative bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg h-[600px] flex flex-col overflow-hidden">
+          <div className="relative bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] sm:h-[600px] h-[85vh] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
               <div className="flex items-center gap-3">
@@ -243,7 +270,7 @@ export default function ChatbotHelper() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
               {messages.map((message) => (
                 <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {message.role === 'assistant' && (

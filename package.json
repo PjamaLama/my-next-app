@@ -42,10 +42,16 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-phone-number-input": "^3.4.12",
+    "react-router-dom": "^7.9.1",
     "tesseract.js": "^6.0.1",
     "web-vitals": "^5.1.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.28.4",
+    "@babel/plugin-transform-runtime": "^7.28.3",
+    "@babel/preset-env": "^7.28.3",
+    "@babel/preset-react": "^7.27.1",
+    "@babel/preset-typescript": "^7.27.1",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.8.0",

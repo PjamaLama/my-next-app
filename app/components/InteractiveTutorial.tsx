@@ -29,7 +29,7 @@ export default function InteractiveTutorial({ isVisible, onClose }: InteractiveT
 
   const handleTemplateClick = () => {
     // Open template in new tab
-    window.open('https://docs.google.com/spreadsheets/d/1PKJQFrlahs0Q4p3OOC8m6qNt8FKEDWn-a6ryGHwNeTs/edit?usp=sharing', '_blank');
+    window.open('https://docs.google.com/spreadsheets/d/1Hv8sEkw0vLuHcNPyrrQ_bkje2bjwQqdhlu3EfaQrLWc/edit?usp=sharing', '_blank');
   };
 
   const handleWhatsAppManage = () => {

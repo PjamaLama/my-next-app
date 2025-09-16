@@ -263,10 +263,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     const { getDb } = await import('../providers/FirebaseProvider');
     const db = getDb();
     if (!db) return;
-    
+
     await deleteDoc(doc(db, 'users', user.uid, 'options', id));
     if ((spreadsheetId && defaultSpreadsheetId === spreadsheetId) || (spreadsheets.length === 1 && defaultSpreadsheetId)) {
       setDefaultSpreadsheetId("");
+    }
+
+    // Notify SheetChipSelector to refresh its sheet list
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sheet-selector-refresh', {
+        detail: { action: 'spreadsheet-removed' }
+      }));
     }
   };
 

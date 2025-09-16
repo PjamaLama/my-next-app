@@ -23,6 +23,7 @@ const SheetChipSelector: React.FC = () => {
 
   // Only fetch sheet names when explicitly requested or when there's a new spreadsheet ID
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     // Reset initialization state when spreadsheet changes
@@ -33,8 +34,31 @@ const SheetChipSelector: React.FC = () => {
     }
   }, [defaultSpreadsheetId]);
 
+  // Listen for spreadsheet removal events and refresh accordingly
   useEffect(() => {
-    if (defaultSpreadsheetId && !hasInitialized) {
+    const handleSpreadsheetRemoved = () => {
+      if (defaultSpreadsheetId) {
+        setRefreshTrigger(prev => prev + 1);
+      }
+    };
+
+    // Listen for custom event when spreadsheet is removed
+    const eventListener = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.action === 'spreadsheet-removed') {
+        handleSpreadsheetRemoved();
+      }
+    };
+
+    window.addEventListener('sheet-selector-refresh' as any, eventListener);
+
+    return () => {
+      window.removeEventListener('sheet-selector-refresh' as any, eventListener);
+    };
+  }, [defaultSpreadsheetId]);
+
+  useEffect(() => {
+    if (defaultSpreadsheetId && (!hasInitialized || refreshTrigger > 0)) {
       setIsLoading(true);
       setError(null);
       fetch(`/api/get-sheet-names?spreadsheetId=${defaultSpreadsheetId}`)
@@ -70,7 +94,7 @@ const SheetChipSelector: React.FC = () => {
           setIsLoading(false);
         });
     }
-  }, [defaultSpreadsheetId, hasInitialized]); // Only depend on defaultSpreadsheetId and hasInitialized
+  }, [defaultSpreadsheetId, hasInitialized, refreshTrigger]); // Also depend on refreshTrigger
 
   // Lightweight refresh to pull updated sheet list (e.g., after conversion)
   const refreshSheetNames = async () => {

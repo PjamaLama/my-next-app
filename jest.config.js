@@ -4,14 +4,18 @@ module.exports = {
   roots: ['<rootDir>'],
   testMatch: ['**/__tests__/**/*.test.{ts,tsx}'],
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', {
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
       tsconfig: {
-        jsx: 'react-jsx'
+        jsx: 'react-jsx',
+        esModuleInterop: true,
+        allowSyntheticDefaultImports: true,
+        moduleResolution: 'node',
       }
     }],
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    '^next/(.*)$': '<rootDir>/node_modules/next/$1',
     '^node-fetch$': '<rootDir>/__mocks__/node-fetch.js',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],

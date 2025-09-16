@@ -15,7 +15,7 @@ const defaultRetryConfig: RetryConfig = {
 };
 
 // Request throttling to prevent overwhelming the API
-class RequestThrottler {
+export class RequestThrottler {
   private lastRequestTime = 0;
   private minInterval = 1500; // 1.5 seconds between requests
 
@@ -73,19 +73,19 @@ export async function retryWithBackoff<T>(
 }
 
 // Check if an error is retryable
-function isRetryableError(error: Error): boolean {
+export function isRetryableError(error: Error): boolean {
+  const message = error.message.toLowerCase();
   const retryablePatterns = [
-    /503 Service Unavailable/,
-    /429 Too Many Requests/,
-    /500 Internal Server Error/,
-    /502 Bad Gateway/,
-    /503 Service Unavailable/,
-    /504 Gateway Timeout/,
+    /503 service unavailable/,
+    /429 too many requests/,
+    /500 internal server error/,
+    /502 bad gateway/,
+    /504 gateway timeout/,
     /overloaded/,
     /try again later/,
     /rate limit/,
     /quota exceeded/,
-    /model is overloaded/, // Add this specific pattern
+    /model is overloaded/,
     /service unavailable/,
     /temporarily unavailable/
   ];
@@ -96,15 +96,17 @@ function isRetryableError(error: Error): boolean {
 
 // Enhanced error message for AI API failures
 export function getAIErrorMessage(error: Error): string {
-  if (error.message.includes('503') || error.message.includes('overloaded')) {
+  const message = error.message.toLowerCase();
+
+  if (message.includes('503') || message.includes('overloaded') || message.includes('service unavailable')) {
     return 'The AI service is currently busy. Please try again in a few moments.';
   }
-  
-  if (error.message.includes('429') || error.message.includes('rate limit')) {
+
+  if (message.includes('429') || message.includes('rate limit')) {
     return 'Too many requests to the AI service. Please wait a moment and try again.';
   }
-  
-  if (error.message.includes('quota exceeded')) {
+
+  if (message.includes('quota exceeded')) {
     return 'AI service quota exceeded. Please check your API key limits.';
   }
   
@@ -133,6 +135,10 @@ export async function executeAIWithModelFallback<T>(
   operations: Array<() => Promise<T>>,
   operationName: string = 'AI operation'
 ): Promise<T> {
+  if (!operations || operations.length === 0) {
+    throw new Error('No operations provided for model fallback');
+  }
+
   let lastError: Error | null = null;
   
   for (let i = 0; i < operations.length; i++) {
