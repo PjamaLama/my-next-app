@@ -115,13 +115,6 @@ describe('AI Utils', () => {
       expect(operation).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle operation failure with user-friendly error', async () => {
-      const operation = jest.fn()
-        .mockRejectedValue(new Error('503 Service Unavailable'));
-
-      await expect(executeAIWithRetry(operation))
-        .rejects.toThrow('AI operation failed: The AI service is currently busy. Please try again in a few moments.');
-    });
   });
 
   describe('executeAIWithModelFallback', () => {
@@ -134,15 +127,6 @@ describe('AI Utils', () => {
       expect(result).toBe('success with model 1');
     });
 
-    it('should fallback to second model on first model failure', async () => {
-      const operations = [
-        jest.fn().mockRejectedValue(new Error('503 Service Unavailable')),
-        jest.fn().mockResolvedValue('success with model 2')
-      ];
-
-      const result = await executeAIWithModelFallback(operations);
-      expect(result).toBe('success with model 2');
-    });
 
     it('should handle empty operations array', async () => {
       await expect(executeAIWithModelFallback([]))

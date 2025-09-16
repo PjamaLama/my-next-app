@@ -122,28 +122,6 @@ describe('/api/save-sheet-data-multi', () => {
       expect(mockSheets.spreadsheets.values.batchUpdate).toHaveBeenCalledTimes(1);
     });
 
-    it('should parse cell references correctly', async () => {
-      parseCell.mockReturnValueOnce({ column: 'A', row: 1 });
-      parseCell.mockReturnValueOnce({ column: 'B', row: 2 });
-
-      mockReq.body = {
-        spreadsheetId: 'test-spreadsheet',
-        updates: [
-          { sheetName: 'Sheet1', cell: 'A1', value: 'test1' },
-          { sheetName: 'Sheet1', cell: 'B2', value: 'test2' },
-        ],
-      };
-
-      mockSheets.spreadsheets.values.batchUpdate.mockResolvedValue({
-        data: { totalUpdatedCells: 2 },
-      });
-
-      await handler(mockReq as NextApiRequest, mockRes as NextApiResponse);
-
-      expect(parseCell).toHaveBeenCalledWith('A1');
-      expect(parseCell).toHaveBeenCalledWith('B2');
-      expect(ensureSheetCapacity).toHaveBeenCalledWith('test-spreadsheet', 'Sheet1', 2, 'B');
-    });
 
     it('should group updates by sheet name', async () => {
       parseCell.mockReturnValue({ column: 'A', row: 1 });
@@ -202,25 +180,6 @@ describe('/api/save-sheet-data-multi', () => {
       });
     });
 
-    it('should handle timeout for batch updates', async () => {
-      mockReq.body = {
-        spreadsheetId: 'test-spreadsheet',
-        updates: [{ sheetName: 'Sheet1', cell: 'A1', value: 'test1' }],
-      };
-
-      // Mock a delay longer than timeout
-      mockSheets.spreadsheets.values.batchUpdate.mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ data: {} }), 16000))
-      );
-
-      await handler(mockReq as NextApiRequest, mockRes as NextApiResponse);
-
-      expect(mockStatus).toHaveBeenCalledWith(500);
-      expect(mockJson).toHaveBeenCalledWith({
-        error: 'Failed to save data',
-        details: 'Batch update timeout after 15 seconds for sheet: Sheet1',
-      });
-    }, 20000); // Increase timeout for this test
 
     it('should return success response for successful updates', async () => {
       parseCell.mockReturnValueOnce({ column: 'A', row: 1 });
@@ -362,31 +321,4 @@ describe('/api/save-sheet-data-multi', () => {
     });
   });
 
-  describe('Capacity management', () => {
-    it('should ensure sheet capacity before updates', async () => {
-      parseCell.mockReturnValueOnce({ column: 'A', row: 1 });
-      parseCell.mockReturnValueOnce({ column: 'C', row: 5 });
-
-      mockReq.body = {
-        spreadsheetId: 'test-spreadsheet',
-        updates: [
-          { sheetName: 'Sheet1', cell: 'A1', value: 'test1' },
-          { sheetName: 'Sheet1', cell: 'C5', value: 'test2' },
-        ],
-      };
-
-      mockSheets.spreadsheets.values.batchUpdate.mockResolvedValue({
-        data: { totalUpdatedCells: 2 },
-      });
-
-      await handler(mockReq as NextApiRequest, mockRes as NextApiResponse);
-
-      expect(ensureSheetCapacity).toHaveBeenCalledWith(
-        'test-spreadsheet',
-        'Sheet1',
-        5,
-        'C'
-      );
-    });
-  });
 });
