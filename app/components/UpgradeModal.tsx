@@ -25,8 +25,16 @@ export default function UpgradeModal({ isOpen, onClose, onUpgrade, userType, sel
     isOpen,
     userType,
     selectedPlan,
-    hasStartedPayment
+    hasStartedPayment,
+    userEmail: user?.email
   });
+
+  // Additional debug: Check if user is already pro but modal still shows
+  React.useEffect(() => {
+    if (isOpen && userType === 'pro') {
+      console.warn('⚠️ UpgradeModal opened for Pro user! This should not happen.');
+    }
+  }, [isOpen, userType]);
 
   const handlePaymentSuccess = async (subscriptionId: string) => {
     console.log('PayPal subscription successful:', subscriptionId);

@@ -22,6 +22,21 @@ const LoadingFallback = () => (
 );
 
 export default function Home() {
+  // Force refresh user profile on page load if coming from subscription success
+  useEffect(() => {
+    // Check if we just came from a subscription success
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromSubscription = urlParams.get('subscription_success') === 'true';
+
+    if (fromSubscription) {
+      console.log('🔄 Detected subscription success redirect, forcing profile refresh...');
+      // Dispatch event to trigger profile refresh
+      window.dispatchEvent(new CustomEvent('subscription-updated'));
+      // Clean up URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []);
   const { user, loading, signInWithGoogle } = useFirebase();
   const { defaultSpreadsheetId, sheetsPrefetched, setDefaultSpreadsheetId } = useSheet();
   const { openSpreadsheetManager } = useModal();

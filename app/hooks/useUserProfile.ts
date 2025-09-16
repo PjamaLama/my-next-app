@@ -162,7 +162,7 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
       }
     });
 
-    // Listener for the main user document to get wa_id, message_count, userType, and isBetaUser
+    // Listener for the main user document to get wa_id, message_count, userType, subscription, and isBetaUser
     const unsubUserDoc = onSnapshot(userDocRef, async (docSnap: any) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -173,17 +173,80 @@ export const useUserProfile = (user: User | null): UseUserProfileReturn => {
         // The upgrade API and subscription management should keep this in sync
         setUserType(data.userType || 'free');
         setIsBetaUser(data.isBetaUser || false);
+
+        // Read subscription data from main document (where PayPal success handler stores it)
+        const subscriptionData = data.subscription;
+        setSubscription(subscriptionData ? {
+          status: subscriptionData.status || 'inactive',
+          cancelledAt: subscriptionData.cancelledAt?.toDate(),
+          endDate: subscriptionData.endDate?.toDate(),
+          plan: subscriptionData.plan || 'none'
+        } : null);
       } else {
         setWaId(null);
         setMessage_count(0);
         setUserType('free');
         setIsBetaUser(false);
+        setSubscription(null);
       }
     });
 
     return () => {
       unsubUserDoc();
       unsubProfileDoc();
+    };
+  }, [user, db]);
+
+  // Listen for subscription update events to force refresh
+  useEffect(() => {
+    if (!user || !db) return;
+
+    const handleSubscriptionUpdate = () => {
+      console.log('🔄 Subscription update event received, refreshing user profile...');
+      // Force refresh by re-triggering the listeners
+      const userDocRef = doc(db, "users", user.uid);
+      const profileRef = doc(db, "users", user.uid, "private", "profile");
+
+      // Immediate fetch to ensure latest data
+      Promise.all([
+        getDoc(userDocRef),
+        getDoc(profileRef)
+      ]).then(([userDoc, profileDoc]) => {
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setMessage_count(userData?.message_count || 0);
+          setWaId(userData?.wa_id || null);
+          setUserType(userData?.userType || 'free');
+          setIsBetaUser(userData?.isBetaUser || false);
+
+          // Read subscription data from main document (where PayPal success handler stores it)
+          const subscriptionData = userData?.subscription;
+          setSubscription(subscriptionData ? {
+            status: subscriptionData.status || 'inactive',
+            cancelledAt: subscriptionData.cancelledAt?.toDate(),
+            endDate: subscriptionData.endDate?.toDate(),
+            plan: subscriptionData.plan || 'none'
+          } : null);
+        }
+
+        if (profileDoc.exists()) {
+          const profileData = profileDoc.data();
+          if (profileData?.geminiApiKey) {
+            setGeminiApiKey(profileData.geminiApiKey);
+          }
+        }
+
+        console.log('✅ User profile refreshed after subscription update');
+      }).catch(error => {
+        console.error('❌ Failed to refresh user profile:', error);
+      });
+    };
+
+    // Listen for custom subscription update events
+    window.addEventListener('subscription-updated', handleSubscriptionUpdate);
+
+    return () => {
+      window.removeEventListener('subscription-updated', handleSubscriptionUpdate);
     };
   }, [user, db]);
 

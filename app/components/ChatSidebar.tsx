@@ -49,6 +49,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
     setCounterKey(prev => prev + 1);
   }, [dailyUsage]);
 
+  // Debug: Log userType changes to help troubleshoot subscription issues
+  React.useEffect(() => {
+    console.log('👤 ChatSidebar userType changed:', {
+      userType,
+      userEmail: user?.email,
+      shouldShowMessageCounter: userType === 'free' && !isMobile
+    });
+  }, [userType, user, isMobile]);
+
   // Track mobile state for sidebar closing
   React.useEffect(() => {
     const updateMobile = () => setIsMobile(window.innerWidth < 640);

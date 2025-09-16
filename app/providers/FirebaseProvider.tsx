@@ -130,6 +130,32 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     // The profile state will be cleared by the useUserProfile hook when user becomes null
   };
 
+  // Debug: Log userType changes to help troubleshoot subscription issues
+  React.useEffect(() => {
+    console.log('🔥 FirebaseProvider userType changed:', {
+      userType: userProfile.userType,
+      userEmail: auth.user?.email,
+      messageCount: userProfile.message_count
+    });
+  }, [userProfile.userType, auth.user?.email, userProfile.message_count]);
+
+  // Listen for subscription update events to force refresh
+  React.useEffect(() => {
+    if (!auth.user) return;
+
+    const handleSubscriptionUpdate = () => {
+      console.log('🔥 FirebaseProvider: Received subscription update event, forcing profile refresh...');
+      // The useUserProfile hook will handle the actual refresh via its own event listener
+      // This just ensures the FirebaseProvider is aware of the update
+    };
+
+    window.addEventListener('subscription-updated', handleSubscriptionUpdate);
+
+    return () => {
+      window.removeEventListener('subscription-updated', handleSubscriptionUpdate);
+    };
+  }, [auth.user]);
+
   return (
     <FirebaseContext.Provider value={{
       user: auth.user,

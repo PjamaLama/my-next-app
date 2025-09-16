@@ -88,9 +88,11 @@ function PayPalSuccessContent() {
             trackGoogleAdsConversion();
             await trackMetaPixelPurchase();
 
-            // Redirect to main page after showing success message
+            // Force refresh user profile data before redirect
             setTimeout(() => {
-              router.push('/');
+              // Dispatch custom event to force profile refresh
+              window.dispatchEvent(new CustomEvent('subscription-updated'));
+              router.push('/?subscription_success=true');
             }, 3000);
           } else {
             const error = await response.json();

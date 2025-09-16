@@ -12,6 +12,25 @@ export default function MessageCounter() {
   const { openModal } = useUpgradeModal();
   const { dailyUsage, limit, isLimitReached, isNearLimit, canSendMessage } = useMessageLimits();
 
+  // Debug: Log current state to help troubleshoot subscription issues
+  React.useEffect(() => {
+    console.log('📊 MessageCounter state:', {
+      userType,
+      dailyUsage,
+      limit,
+      isLimitReached,
+      isNearLimit,
+      canSendMessage,
+      userEmail: user?.email
+    });
+  }, [userType, dailyUsage, limit, isLimitReached, isNearLimit, canSendMessage, user]);
+
+  // Force refresh user profile for debugging
+  const forceRefreshProfile = () => {
+    console.log('🔄 MessageCounter: Forcing profile refresh...');
+    window.dispatchEvent(new CustomEvent('subscription-updated'));
+  };
+
   // Debug: Log re-renders
   React.useEffect(() => {
     console.log('📊 MessageCounter re-rendered with:', {
@@ -107,18 +126,31 @@ export default function MessageCounter() {
           </span>
         )}
 
-        {isNearLimit && (
-          <button
-            onClick={() => {
-              console.log('🔄 MessageCounter: Opening upgrade modal from near limit');
-              openModal('Pro');
-            }}
-            className="text-emerald-400 hover:text-emerald-300 text-xs font-medium flex items-center gap-1"
-          >
-            <Crown className="w-3 h-3" />
-            Upgrade
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {isNearLimit && (
+            <button
+              onClick={() => {
+                console.log('🔄 MessageCounter: Opening upgrade modal from near limit');
+                openModal('Pro');
+              }}
+              className="text-emerald-400 hover:text-emerald-300 text-xs font-medium flex items-center gap-1"
+            >
+              <Crown className="w-3 h-3" />
+              Upgrade
+            </button>
+          )}
+
+          {/* Debug: Temporary refresh button */}
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={forceRefreshProfile}
+              className="text-blue-400 hover:text-blue-300 text-xs font-medium"
+              title="Force refresh profile"
+            >
+              ↻
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -129,6 +129,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log(`✅ Successfully processed PayPal subscription ${subscription_id} for user ${userRecord.uid}`);
 
+    // Debug: Verify the update worked by reading back the data
+    const verifyUpdate = await userRef.get();
+    const verifyData = verifyUpdate.data();
+    console.log('🔍 Verification - User data after update:', {
+      userType: verifyData?.userType,
+      subscription: verifyData?.subscription,
+      upgradedAt: verifyData?.upgradedAt
+    });
+
     // Redirect to success page
     return res.redirect(302, `/paypal-success?type=subscription&subscription_id=${subscription_id}&status=success&user_id=${userRecord.uid}`);
 
