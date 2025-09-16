@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getGoogleSheetsClient } from '@/lib/googleSheets';
+import { getGoogleSheetsClient, getSheetMetadataCached, getColumnLetter } from '@/lib/googleSheets';
 import { escapeSheetName } from '@/lib/sheetUtils';
 
 type UpdateResult = {
@@ -23,8 +23,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const sheets = await getGoogleSheetsClient();
     const escapedName = escapeSheetName(sheetName);
 
-    // Fetch headers to align values
-    const headerResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${escapedName}!A1:Z1` });
+    // Get sheet metadata to determine actual column count
+    const metadata = await getSheetMetadataCached(spreadsheetId);
+    const sheet = metadata.sheets.find(s => s.properties?.title === sheetName);
+    const columnCount = sheet?.properties?.gridProperties?.columnCount || 26;
+
+    // Fetch headers using dynamic range
+    const headerRange = `${escapedName}!A1:${getColumnLetter(columnCount)}1`;
+    const headerResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: headerRange });
     const headers = ((headerResp.data.values?.[0] as string[]) || []).map(h => String(h));
 
     if (headers.length === 0) {
@@ -35,7 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const paddedValues = headers.map((_, i) => (values[i] != null ? String(values[i]) : ''));
 
     // Update the specific row
-    const range = `${escapedName}!A${rowIndex}:${String.fromCharCode(64 + headers.length)}${rowIndex}`;
+    const endColumn = getColumnLetter(headers.length);
+    const range = `${escapedName}!A${rowIndex}:${endColumn}${rowIndex}`;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range,

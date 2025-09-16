@@ -148,6 +148,32 @@ export const clearCaches = (): void => {
   log.info('Caches cleared');
 };
 
+// Utility function to convert column number to letter (1-based)
+export const getColumnLetter = (num: number): string => {
+  if (num <= 0) return 'A';
+  let result = '';
+  while (num > 0) {
+    num--;
+    result = String.fromCharCode(65 + (num % 26)) + result;
+    num = Math.floor(num / 26);
+  }
+  return result || 'A';
+};
+
+// Utility function to get full column range from A to specified column count
+export const getFullColumnRange = (columnCount: number, sheetName: string, startRow?: number, endRow?: number): string => {
+  const endColumn = getColumnLetter(columnCount);
+  const escapedSheetName = sheetName.replace(/'/g, "''");
+
+  if (startRow && endRow) {
+    return `'${escapedSheetName}'!A${startRow}:${endColumn}${endRow}`;
+  } else if (startRow) {
+    return `'${escapedSheetName}'!A${startRow}:${endColumn}`;
+  } else {
+    return `'${escapedSheetName}'!A:${endColumn}`;
+  }
+};
+
 // Helper function to properly format private key from environment variable
 const formatPrivateKey = (rawKey: string): string => {
   if (!rawKey) return '';
@@ -412,7 +438,21 @@ export const getSheetDataEfficiently = async (
       result = String.fromCharCode(65 + (num % 26)) + result;
       num = Math.floor(num / 26);
     }
-    return result;
+    return result || 'A'; // Handle edge case of num = 0
+  };
+
+  // Utility function to get full column range from A to specified column count
+  const getFullColumnRange = (columnCount: number, sheetName: string, startRow?: number, endRow?: number) => {
+    const endColumn = getColumnLetter(columnCount);
+    const escapedSheetName = sheetName.replace(/'/g, "''");
+
+    if (startRow && endRow) {
+      return `'${escapedSheetName}'!A${startRow}:${endColumn}${endRow}`;
+    } else if (startRow) {
+      return `'${escapedSheetName}'!A${startRow}:${endColumn}`;
+    } else {
+      return `'${escapedSheetName}'!A:${endColumn}`;
+    }
   };
 
   const endColumn = getColumnLetter(columnCount);

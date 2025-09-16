@@ -1,4 +1,5 @@
 import * as googleSheets from '@/lib/googleSheets';
+import { getSheetMetadataCached, getColumnLetter } from '@/lib/googleSheets';
 
 export type QueryInput =
   | { type: 'range'; sheetName?: string; range: string }
@@ -81,7 +82,12 @@ export class SheetDataSource extends DataSource {
 
     // Normal runtime: use Google Sheets API first, then fall back to tool endpoint
     try {
-      const rangeA1 = `${this.sheetName}!A1:Z1`;
+      // Get sheet metadata to determine actual column count
+      const metadata = await getSheetMetadataCached(this.spreadsheetId);
+      const sheet = metadata.sheets.find(s => s.properties?.title === this.sheetName);
+      const columnCount = sheet?.properties?.gridProperties?.columnCount || 26;
+
+      const rangeA1 = `${this.sheetName}!A1:${getColumnLetter(columnCount)}1`;
       const sheetData = await googleSheets.getRange(this.spreadsheetId, rangeA1);
       const raw = (sheetData?.values?.[0] || []) as any[];
       const headers = sanitize(raw);
@@ -171,11 +177,17 @@ export class SheetDataSource extends DataSource {
     };
 
     try {
-      const primaryRange = range || (this.contextRef?.isNonTabular ? 'A1:Z100' : `A2:Z${n + 1}`);
+      // Get sheet metadata to determine actual column count
+      const metadata = await getSheetMetadataCached(this.spreadsheetId);
+      const sheet = metadata.sheets.find(s => s.properties?.title === this.sheetName);
+      const columnCount = sheet?.properties?.gridProperties?.columnCount || 26;
+      const endColumn = getColumnLetter(columnCount);
+
+      const primaryRange = range || (this.contextRef?.isNonTabular ? `A1:${endColumn}100` : `A2:${endColumn}${n + 1}`);
       let rows = await fetchRange(primaryRange);
       if (!Array.isArray(rows) || rows.length === 0) {
         // Try a wider scan when first attempt yields nothing
-        rows = await fetchRange('A1:Z1000');
+        rows = await fetchRange(`A1:${endColumn}1000`);
       }
       if (this.contextRef?.isNonTabular) {
         return Array.isArray(rows) ? rows.slice(0, Math.min(100, rows.length)) : [];
@@ -214,7 +226,13 @@ export class SheetDataSource extends DataSource {
       return { headers, rows };
     }
     // Basic filter: fetch a wide range then filter client-side
-    const fetched = await this.query({ type: 'range', range: 'A1:Z2000' });
+    // Get sheet metadata to determine actual column count
+    const metadata = await getSheetMetadataCached(this.spreadsheetId);
+    const sheet = metadata.sheets.find(s => s.properties?.title === this.sheetName);
+    const columnCount = sheet?.properties?.gridProperties?.columnCount || 26;
+    const endColumn = getColumnLetter(columnCount);
+
+    const fetched = await this.query({ type: 'range', range: `A1:${endColumn}2000` });
     const { column, op, value } = input;
     const idx = fetched.headers.indexOf(column);
     if (idx < 0) return { headers: fetched.headers, rows: [] };

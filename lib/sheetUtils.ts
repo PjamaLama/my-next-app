@@ -1,4 +1,4 @@
-import { getGoogleSheetsClient } from './googleSheets';
+import { getGoogleSheetsClient, getSheetMetadataCached, getColumnLetter } from './googleSheets';
 
 // Helper function to escape sheet names for Google Sheets API
 export const escapeSheetName = (name: string): string => {
@@ -269,11 +269,17 @@ export const getInsertionRow = async (spreadsheetId: string, sheetName: string):
   try {
     const sheets = await getGoogleSheetsClient();
     const escapedName = escapeSheetName(sheetName);
-    
-    // Get the last row with data by checking a large range
+
+    // Get sheet metadata to determine actual column count
+    const metadata = await getSheetMetadataCached(spreadsheetId);
+    const sheet = metadata.sheets.find(s => s.properties?.title === sheetName);
+    const columnCount = sheet?.properties?.gridProperties?.columnCount || 26;
+
+    // Get the last row with data by checking all available columns
+    const range = `${escapedName}!A:${getColumnLetter(columnCount)}`;
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${escapedName}!A:Z`, // Check all columns for the last row with data
+      range,
       majorDimension: 'ROWS' // Use ROWS dimension for easier processing
     });
     

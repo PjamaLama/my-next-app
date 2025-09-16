@@ -1,8 +1,10 @@
-import { getInsertionRow } from '../../lib/sheetUtils';
+import { getInsertionRow } from '../../../lib/sheetUtils';
 
 // Mock the Google Sheets client
-jest.mock('../../lib/googleSheets', () => ({
-  getGoogleSheetsClient: jest.fn()
+jest.mock('../../../lib/googleSheets', () => ({
+  getGoogleSheetsClient: jest.fn(),
+  getSheetMetadataCached: jest.fn(),
+  getColumnLetter: jest.fn()
 }));
 
 describe('getInsertionRow', () => {
@@ -16,8 +18,20 @@ describe('getInsertionRow', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    const { getGoogleSheetsClient } = require('../../lib/googleSheets');
+    const { getGoogleSheetsClient, getSheetMetadataCached, getColumnLetter } = require('../../../lib/googleSheets');
     getGoogleSheetsClient.mockResolvedValue(mockSheets);
+    getSheetMetadataCached.mockResolvedValue({
+      sheets: [{
+        properties: {
+          title: 'TestSheet',
+          gridProperties: { columnCount: 26 }
+        }
+      }]
+    });
+    getColumnLetter.mockImplementation((num: number) => {
+      if (num === 26) return 'Z';
+      return 'A';
+    });
   });
 
   it('should find the last row with data and return next row', async () => {
@@ -43,6 +57,8 @@ describe('getInsertionRow', () => {
       range: 'TestSheet!A:Z',
       majorDimension: 'ROWS'
     });
+    expect(getSheetMetadataCached).toHaveBeenCalledWith('test-spreadsheet-id');
+    expect(getColumnLetter).toHaveBeenCalledWith(26);
   });
 
   it('should return row 2 when sheet only has headers', async () => {

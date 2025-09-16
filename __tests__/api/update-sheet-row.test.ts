@@ -1,12 +1,14 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import handler from '../../pages/api/update-sheet-row';
+import handler from '../../../pages/api/update-sheet-row';
 
 // Mock the dependencies
-jest.mock('../../lib/googleSheets', () => ({
+jest.mock('../../../lib/googleSheets', () => ({
   getGoogleSheetsClient: jest.fn(),
+  getSheetMetadataCached: jest.fn(),
+  getColumnLetter: jest.fn(),
 }));
 
-jest.mock('../../lib/sheetUtils', () => ({
+jest.mock('../../../lib/sheetUtils', () => ({
   escapeSheetName: jest.fn(),
 }));
 
@@ -18,8 +20,8 @@ const mockRes: Partial<NextApiResponse> = {
   json: mockJson,
 };
 
-const { getGoogleSheetsClient } = require('../../lib/googleSheets');
-const { escapeSheetName } = require('../../lib/sheetUtils');
+const { getGoogleSheetsClient, getSheetMetadataCached, getColumnLetter } = require('../../../lib/googleSheets');
+const { escapeSheetName } = require('../../../lib/sheetUtils');
 
 describe('/api/update-sheet-row', () => {
   let mockReq: Partial<NextApiRequest>;
@@ -39,6 +41,18 @@ describe('/api/update-sheet-row', () => {
 
     getGoogleSheetsClient.mockResolvedValue(mockSheets);
     escapeSheetName.mockImplementation((name: string) => name);
+    getSheetMetadataCached.mockResolvedValue({
+      sheets: [{
+        properties: {
+          title: 'Sheet1',
+          gridProperties: { columnCount: 26 }
+        }
+      }]
+    });
+    getColumnLetter.mockImplementation((num: number) => {
+      if (num === 26) return 'Z';
+      return 'A';
+    });
 
     mockReq = {
       method: 'POST',
@@ -146,6 +160,8 @@ describe('/api/update-sheet-row', () => {
         spreadsheetId: 'test-spreadsheet',
         range: 'Sheet1!A1:Z1'
       });
+      expect(getSheetMetadataCached).toHaveBeenCalledWith('test-spreadsheet');
+      expect(getColumnLetter).toHaveBeenCalledWith(26);
 
       expect(mockSheets.spreadsheets.values.update).toHaveBeenCalledWith({
         spreadsheetId: 'test-spreadsheet',
