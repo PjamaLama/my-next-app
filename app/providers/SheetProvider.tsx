@@ -117,20 +117,28 @@ export const SheetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
-    // Listen for force refresh events from SheetChipSelector
-    const handleForceRefresh = (e: Event) => {
+    // Listen for refresh events from SheetChipSelector and spreadsheet management
+    const handleRefresh = (e: Event) => {
       const customEvent = e as CustomEvent;
-      if (customEvent.detail?.spreadsheetId === defaultSpreadsheetId) {
+      console.log('🎯 SheetProvider: Received refresh event:', customEvent.detail);
+
+      // Handle both force-refresh-sheet-names and sheet-selector-refresh events
+      if (customEvent.detail?.spreadsheetId === defaultSpreadsheetId ||
+          customEvent.detail?.action === 'spreadsheet-removed' ||
+          customEvent.detail?.action === 'refresh-needed') {
+        console.log('🎯 SheetProvider: Triggering prefetch refresh');
         void doPrefetch(true);
       }
     };
 
-    window.addEventListener('force-refresh-sheet-names' as any, handleForceRefresh);
+    window.addEventListener('force-refresh-sheet-names' as any, handleRefresh);
+    window.addEventListener('sheet-selector-refresh' as any, handleRefresh);
 
     void doPrefetch();
     return () => {
       cancelled = true;
-      window.removeEventListener('force-refresh-sheet-names' as any, handleForceRefresh);
+      window.removeEventListener('force-refresh-sheet-names' as any, handleRefresh);
+      window.removeEventListener('sheet-selector-refresh' as any, handleRefresh);
     };
   }, [defaultSpreadsheetId]);
 

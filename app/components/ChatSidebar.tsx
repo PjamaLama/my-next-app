@@ -293,6 +293,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ embedded = false, peek = fals
 
     // Notify SheetChipSelector to refresh its sheet list
     if (typeof window !== 'undefined') {
+      console.log('🎯 ChatSidebar: Dispatching spreadsheet-removed event');
       window.dispatchEvent(new CustomEvent('sheet-selector-refresh', {
         detail: { action: 'spreadsheet-removed' }
       }));

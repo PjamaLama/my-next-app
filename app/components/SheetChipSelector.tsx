@@ -40,9 +40,11 @@ const SheetChipSelector: React.FC = () => {
   // Listen for spreadsheet removal events and refresh accordingly
   useEffect(() => {
     const handleSpreadsheetRemoved = () => {
+      console.log('🎯 SheetChipSelector: handleSpreadsheetRemoved called, defaultSpreadsheetId:', defaultSpreadsheetId);
       if (defaultSpreadsheetId) {
         // Trigger a refresh by calling the provider's prefetch logic
         // This will be handled by the SheetProvider's useEffect
+        console.log('🎯 SheetChipSelector: Dispatching refresh-needed event');
         window.dispatchEvent(new CustomEvent('sheet-selector-refresh', {
           detail: { action: 'refresh-needed' }
         }));
@@ -52,7 +54,9 @@ const SheetChipSelector: React.FC = () => {
     // Listen for custom event when spreadsheet is removed
     const eventListener = (e: Event) => {
       const customEvent = e as CustomEvent;
+      console.log('🎯 SheetChipSelector: Received event:', customEvent.detail);
       if (customEvent.detail?.action === 'spreadsheet-removed') {
+        console.log('🎯 SheetChipSelector: Processing spreadsheet-removed event');
         handleSpreadsheetRemoved();
       }
     };
