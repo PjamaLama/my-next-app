@@ -18,7 +18,7 @@ export interface ChatMessage {
     rowCount: number;
     summary: string;
     meta: {
-      sheetName: string;
+      sheetName?: string;
       operations: Record<string, any>;
       requiresConfirmation: boolean;
       isDryRun: boolean;
