@@ -335,9 +335,15 @@ export default function Home() {
 
   // Always show chat interface for logged-in users with spreadsheets - spreadsheets load in background
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white mobile-chat-container fixed inset-0">
+    <div className="h-screen flex flex-col bg-gradient-to-b from-[#0b0b0e] to-[#0a0a0d] text-white mobile-chat-container fixed inset-0"
+         style={{
+           paddingTop: 'env(safe-area-inset-top)',
+           paddingBottom: 'env(safe-area-inset-bottom)',
+           paddingLeft: 'env(safe-area-inset-left)',
+           paddingRight: 'env(safe-area-inset-right)'
+         }}>
       <NavBar />
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<LoadingFallback />}>
           <ChatInterface onShowTutorial={showTutorial} />
         </Suspense>

@@ -39,8 +39,12 @@ const NavBar: React.FC = () => {
   }, []);
 
   return (
-    <nav className="sticky top-0 z-50 bg-gray-900 border-b border-gray-800 shadow-sm overflow-x-hidden sm:hidden -webkit-sticky mobile-nav-sticky">
-      <div className="container mx-auto flex justify-between items-center px-4 py-2 max-w-full">
+    <nav className="sticky top-0 z-50 bg-gray-900 border-b border-gray-800 shadow-sm overflow-x-hidden sm:hidden -webkit-sticky mobile-nav-sticky"
+         style={{
+           paddingTop: 'env(safe-area-inset-top)',
+           top: 'env(safe-area-inset-top)'
+         }}>
+      <div className="container mx-auto flex justify-between items-center px-4 py-3 max-w-full">
         {/* Logo and Title - Compact for mobile */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <Link href="/" className="flex items-center gap-2 group select-none min-w-0">

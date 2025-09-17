@@ -253,13 +253,77 @@ export class SheetDataSource extends DataSource {
     return { headers: fetched.headers, rows: fetched.rows.filter(r => cmp(String(r?.[idx] ?? ''))) };
   }
 
-  async update(data: { sheetName?: string; updates: Array<{ cell: string; value: string }> }): Promise<{ success: boolean; updated?: number }> {
-    const res = await fetch(`${this.apiBase}/api/save-sheet-data-multi`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spreadsheetId: this.spreadsheetId, updates: (data.updates || []).map(u => ({ sheetName: data.sheetName || this.sheetName, ...u })) })
-    });
-    const json = await res.json();
-    return { success: Boolean(json?.success), updated: Number(json?.totalUpdated || 0) };
+  async update(data: {
+    sheetName?: string;
+    updates: Array<{
+      cell: string;
+      value: string;
+      valueInputOption?: 'RAW' | 'USER_ENTERED';
+      note?: string;
+    }>;
+    options?: {
+      atomic?: boolean;
+      validateFormulas?: boolean;
+      useAdvancedEngine?: boolean;
+    }
+  }): Promise<{ success: boolean; updated?: number }> {
+    const { sheetName, updates, options = {} } = data;
+
+    // Determine whether to use the new cell update engine or the existing batch endpoint
+    const shouldUseAdvancedEngine =
+      options.useAdvancedEngine ||
+      options.atomic ||
+      options.validateFormulas ||
+      updates.some(u => u.valueInputOption || u.note) ||
+      updates.some(u => u.value.startsWith('=')); // Formulas benefit from advanced engine
+
+    if (shouldUseAdvancedEngine) {
+      // Use the new advanced cell update engine
+      const res = await fetch(`${this.apiBase}/api/update-sheet-cells`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheetId: this.spreadsheetId,
+          updates: (updates || []).map(u => ({
+            sheetName: u.sheetName || sheetName || this.sheetName,
+            cell: u.cell,
+            value: u.value,
+            valueInputOption: u.valueInputOption,
+            note: u.note
+          })),
+          options: {
+            atomic: options.atomic,
+            validateFormulas: options.validateFormulas
+          }
+        })
+      });
+
+      const json = await res.json();
+      return {
+        success: Boolean(json?.success),
+        updated: Number(json?.updatedCells || 0)
+      };
+    } else {
+      // Use the existing batch update endpoint for backward compatibility
+      const res = await fetch(`${this.apiBase}/api/save-sheet-data-multi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheetId: this.spreadsheetId,
+          updates: (updates || []).map(u => ({
+            sheetName: u.sheetName || sheetName || this.sheetName,
+            cell: u.cell,
+            value: u.value
+          }))
+        })
+      });
+
+      const json = await res.json();
+      return {
+        success: Boolean(json?.success),
+        updated: Number(json?.totalUpdated || 0)
+      };
+    }
   }
 
   onError(error: unknown): { error: string; fallbackData: any } {

@@ -1142,9 +1142,19 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   // Removed blocking loading state - chat loads instantly
 
   return (
-    <div className={`flex flex-col h-full min-h-0 ${className} md:hidden:block`}>
+    <div className={`flex flex-col h-full min-h-0 ${className} md:hidden:block`}
+         style={{
+           paddingTop: 'env(safe-area-inset-top)',
+           paddingBottom: 'env(safe-area-inset-bottom)',
+           paddingLeft: 'env(safe-area-inset-left)',
+           paddingRight: 'env(safe-area-inset-right)'
+         }}>
       <WhatsAppLinkBanner />
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 min-h-0 mobile-chat-messages">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 min-h-0 mobile-chat-messages"
+           style={{
+             paddingTop: 'calc(1rem + env(safe-area-inset-top))',
+             paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))'
+           }}>
         {chatMessages.length === 0 ? (
           <div className="text-center text-white/60 py-8 sm:py-12 px-4">
             <div className="text-3xl mb-3">👋</div>
@@ -1206,7 +1216,10 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
 
       {/* Removed session loading states - loads instantly */}
 
-      <div className="border-t border-white/10 p-2 sm:p-3 pt-2 sm:pt-3 flex-shrink-0 mobile-chat-input">
+      <div className="border-t border-white/10 p-2 sm:p-3 pt-2 sm:pt-3 flex-shrink-0 mobile-chat-input"
+           style={{
+             paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))'
+           }}>
         {/* Compact sheet selector */}
         <div className="mb-2 sm:mb-3">
           <SheetChipSelector />
@@ -1296,26 +1309,26 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                   ? "Daily limit reached. Upgrade to Pro for unlimited messages!"
                   : "Ask about your data, request analysis, or get insights..."
               }
-              className="flex-1 px-3 py-2 min-h-[44px] bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed text-base"
+              className="flex-1 px-4 py-3 min-h-[48px] bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed text-base"
               data-tutorial="chat-input"
               disabled={isSending || (userType === 'free' && isLimitReached)}
             />
 
             {/* Compact button layout */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <VoiceRecorder
                 onTranscriptChange={handleTranscriptChange}
                 disabled={isSending || (userType === 'free' && isLimitReached)}
-                className="w-8 h-8 rounded-lg transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 border border-white/20"
+                className="w-10 h-10 rounded-lg transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 border border-white/20 min-w-[44px] min-h-[44px]"
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-8 h-8 rounded-lg transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 border border-white/20"
+                className="w-10 h-10 rounded-lg transition-all duration-150 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-95 border border-white/20 min-w-[44px] min-h-[44px]"
                 disabled={isSending || (userType === 'free' && isLimitReached)}
                 data-tutorial="file-upload"
               >
-                <Paperclip className="w-3.5 h-3.5" />
+                <Paperclip className="w-4 h-4" />
               </button>
 
               {/* Compact send button */}
@@ -1356,7 +1369,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                         ? "Files are still processing..."
                         : "Send message"
                 }
-                className={`w-9 h-9 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 border ${
+                className={`w-11 h-11 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 border min-w-[44px] min-h-[44px] ${
                   isSending
                     ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
                     : uploadedFiles.some(file => file.status === 'processing')

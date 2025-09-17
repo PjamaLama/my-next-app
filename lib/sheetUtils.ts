@@ -282,10 +282,10 @@ export const getInsertionRow = async (spreadsheetId: string, sheetName: string):
       range,
       majorDimension: 'ROWS' // Use ROWS dimension for easier processing
     });
-    
+
     const rows = response.data.values || [];
     let lastRowWithData = 0; // Start with header row (index 0)
-    
+
     // Find the last non-empty row
     for (let i = rows.length - 1; i >= 0; i--) {
       const row = rows[i];
@@ -294,11 +294,146 @@ export const getInsertionRow = async (spreadsheetId: string, sheetName: string):
         break;
       }
     }
-    
+
     // Return the next row after the last row with data (convert to 1-based)
     return lastRowWithData + 2;
   } catch (error) {
     console.warn('Failed to get last row, defaulting to row 2:', error);
     return 2; // Fallback to row 2 if there's an error
+  }
+};
+
+// Cell-specific utilities for targeted updates
+
+// Validate cell reference format (e.g., A1, B5, AA10)
+export const validateCellReference = (cell: string): boolean => {
+  return /^[A-Z]+[0-9]+$/.test(cell.toUpperCase());
+};
+
+// Convert cell reference to 0-based indices (A1 -> {row: 0, col: 0})
+export const cellToIndices = (cell: string): {row: number, col: number} => {
+  const upperCell = cell.toUpperCase();
+  const match = upperCell.match(/^([A-Z]+)([0-9]+)$/);
+  if (!match) {
+    throw new Error(`Invalid cell reference: ${cell}`);
+  }
+
+  const col = columnToIndex(match[1]);
+  const row = parseInt(match[2], 10) - 1; // Convert to 0-based
+  return { row, col };
+};
+
+// Convert 0-based indices to cell reference ({row: 0, col: 0} -> A1)
+export const indicesToCell = (row: number, col: number): string => {
+  const columnLetter = indexToColumn(col);
+  const rowNumber = row + 1; // Convert to 1-based
+  return `${columnLetter}${rowNumber}`;
+};
+
+// Detect if a value is a formula
+export const detectFormula = (value: string): boolean => {
+  return value.trim().startsWith('=');
+};
+
+// Parse formula to extract dependencies (basic implementation)
+export const extractFormulaDependencies = (formula: string): string[] => {
+  if (!detectFormula(formula)) return [];
+
+  // Extract cell references from formula (basic regex - can be enhanced)
+  const cellPattern = /\b[A-Z]+\d+\b/g;
+  const matches = formula.match(cellPattern) || [];
+
+  // Remove duplicates and return
+  return Array.from(new Set(matches));
+};
+
+// Validate formula syntax using Google Sheets API
+export const validateFormula = async (spreadsheetId: string, formula: string): Promise<{ valid: boolean; error?: string }> => {
+  try {
+    const sheets = await getGoogleSheetsClient();
+
+    // Create a temporary test range to validate the formula
+    const testRange = 'ZZZ1'; // Use an unlikely used cell
+
+    // Try to update with the formula to test it
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: testRange,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[formula]] },
+    });
+
+    // Clear the test cell
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: testRange,
+    });
+
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : 'Formula validation failed'
+    };
+  }
+};
+
+// Parse and normalize cell range (A1:B5, Sheet1!A1:B5)
+export const parseCellRange = (range: string): {
+  sheetName?: string;
+  startCell: string;
+  endCell?: string;
+  isSingleCell: boolean;
+} | null => {
+  const trimmed = range.trim();
+
+  // Check for sheet reference
+  const sheetMatch = trimmed.match(/^(.+)!(.+)$/);
+  let sheetName: string | undefined;
+  let cellPart: string;
+
+  if (sheetMatch) {
+    sheetName = sheetMatch[1].replace(/^'(.*)'$/, '$1'); // Remove quotes if present
+    cellPart = sheetMatch[2];
+  } else {
+    cellPart = trimmed;
+  }
+
+  // Parse cell range
+  const rangeMatch = cellPart.match(/^([A-Z]+\d+)(?::([A-Z]+\d+))?$/);
+  if (!rangeMatch) return null;
+
+  const startCell = rangeMatch[1];
+  const endCell = rangeMatch[2];
+
+  return {
+    sheetName,
+    startCell,
+    endCell,
+    isSingleCell: !endCell
+  };
+};
+
+// Check if a cell reference is within sheet bounds
+export const isCellWithinBounds = async (
+  spreadsheetId: string,
+  sheetName: string,
+  cell: string
+): Promise<boolean> => {
+  try {
+    const metadata = await getSheetMetadataCached(spreadsheetId);
+    const sheet = metadata.sheets.find(s => s.properties?.title === sheetName);
+
+    if (!sheet?.properties?.gridProperties) {
+      return false;
+    }
+
+    const { row, col } = cellToIndices(cell);
+    const rowCount = sheet.properties.gridProperties.rowCount || 1000;
+    const colCount = sheet.properties.gridProperties.columnCount || 26;
+
+    return row >= 0 && row < rowCount && col >= 0 && col < colCount;
+  } catch {
+    return false;
   }
 }; 
