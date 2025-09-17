@@ -97,76 +97,11 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
-  const [pdfProcessingStatus, setPdfProcessingStatus] = useState<{[key: string]: string}>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const firebaseFileUrlsRef = useRef<any[]>([]);
 
-  // PDF-to-Image conversion utility
-  const convertPdfToImages = useCallback(async (file: UploadedFile): Promise<string[]> => {
-    return new Promise((resolve, reject) => {
-      if (!file.fileData) {
-        reject(new Error('No file data available'));
-        return;
-      }
-
-      try {
-        // Import PDF.js dynamically
-        import('pdfjs-dist').then(async (pdfjsLib) => {
-          // Set worker source
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-          // Convert base64 to Uint8Array
-          if (!file.fileData) {
-            throw new Error('PDF file data is missing');
-          }
-          const pdfData = Uint8Array.from(atob(file.fileData), c => c.charCodeAt(0));
-
-          // Load PDF document
-          const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-          loadingTask.promise.then(async (pdf) => {
-            const images: string[] = [];
-
-            // Process first page only (for simplicity and speed)
-            const page = await pdf.getPage(1);
-
-            // Set higher scale for better OCR quality (catalogs need high detail)
-            const scale = 3.0; // Increased from 2.0 for better text recognition
-            const viewport = page.getViewport({ scale });
-
-            // Create canvas
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            if (!context) {
-              reject(new Error('Could not get canvas context'));
-              return;
-            }
-
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-
-            // Render PDF page to canvas
-            const renderContext = {
-              canvasContext: context,
-              viewport: viewport,
-              canvas: canvas
-            };
-
-            await page.render(renderContext).promise;
-
-            // Convert canvas to base64
-            const imageData = canvas.toDataURL('image/jpeg', 0.95);
-            images.push(imageData);
-
-            resolve(images);
-          }).catch(reject);
-        }).catch(reject);
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }, []);
 
   // Reset session-specific states when session changes
   useEffect(() => {
@@ -557,56 +492,9 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         }
       } else if (file.type === 'application/pdf') {
         try {
-          // Convert PDF to images immediately for better processing
-          setPdfProcessingStatus(prev => ({ ...prev, [file.name]: 'Converting PDF to images...' }));
-
           const arrayBuffer = await file.arrayBuffer();
           const base64Data = arrayBufferToBase64(arrayBuffer);
 
-          // Create a temporary file object for PDF conversion
-          const tempPdfFile: UploadedFile = {
-            ...uploadedFile,
-            fileData: base64Data
-          };
-
-            const imageDataArray = await convertPdfToImages(tempPdfFile);
-
-          if (imageDataArray.length > 0) {
-            // For now, use the first page image for processing (can be extended to multiple pages later)
-            // TODO: Process all pages and combine results
-            const imageBase64 = imageDataArray[0].replace(/^data:image\/jpeg;base64,/, '');
-
-            uploadedFile.extractedData = {
-              type: 'image',
-              format: 'pdf_converted',
-              fileName: file.name,
-              originalFileName: file.name,
-              fileSize: file.size,
-              mimeType: 'image/jpeg', // Converted to image
-              extractedText: '', // Don't pre-extract text - let AI handle it
-              textLength: 0,
-              hasTextContent: false,
-              needsBackendProcessing: true, // Let backend AI process the image
-              pageCount: 1,
-              isScannedDocument: true,
-              note: 'PDF converted to image - ready for AI processing',
-              convertedFrom: 'pdf'
-            };
-            uploadedFile.fileData = imageBase64;
-            uploadedFile.mimeType = 'image/jpeg';
-            uploadedFile.name = `${file.name.replace('.pdf', '')}_page1.jpg`;
-
-            setPdfProcessingStatus(prev => ({ ...prev, [file.name]: 'Conversion complete' }));
-          } else {
-            throw new Error('PDF conversion produced no images');
-          }
-        } catch (conversionError) {
-          console.error(`❌ [PDF] Failed to convert PDF: ${file.name}`, conversionError);
-          setPdfProcessingStatus(prev => ({ ...prev, [file.name]: 'Conversion failed' }));
-
-          // Fall back to original PDF processing
-          const arrayBuffer = await file.arrayBuffer();
-          const base64Data = arrayBufferToBase64(arrayBuffer);
           uploadedFile.extractedData = {
             type: 'document',
             format: 'pdf',
@@ -619,9 +507,18 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
             needsBackendProcessing: true,
             pageCount: 0,
             isScannedDocument: true,
-            conversionError: conversionError instanceof Error ? conversionError.message : 'Unknown error'
+            note: 'PDF ready for AI text extraction'
           };
           uploadedFile.fileData = base64Data;
+        } catch (error) {
+          console.error(`❌ [PDF] Failed to process PDF: ${file.name}`, error);
+          uploadedFile.extractedData = {
+            type: 'error',
+            format: 'pdf',
+            fileName: file.name,
+            fileSize: file.size,
+            error: 'Failed to process PDF file'
+          };
         }
       } else if (file.type.startsWith('image/')) {
         const arrayBuffer = await file.arrayBuffer();
@@ -1023,32 +920,36 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
           insights: Array.isArray(aiResponse.insights) ? aiResponse.insights : [],
         });
          
-        // Clean up Firebase files after successful processing
+        // Clean up Firebase files after successful processing (don't let cleanup errors affect success)
         if (firebaseFileUrlsRef.current.length > 0) {
-          try {
-            const storage = getStorage();
-            for (const fileInfo of firebaseFileUrlsRef.current) {
-              if (fileInfo.storagePath) {
-                const storageRef = ref(storage, fileInfo.storagePath);
-                await deleteObject(storageRef);
-                console.log(`Cleaned up Firebase file: ${fileInfo.storagePath}`);
-              } else {
-                // Fallback to old method if storagePath is not available
-                const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
-                if (fileName && fileName.includes('temp-uploads%2F')) {
-                  // Extract just the filename part after temp-uploads%2F
-                  const actualFileName = fileName.split('temp-uploads%2F')[1];
-                  if (actualFileName) {
-                    const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
-                    await deleteObject(storageRef);
-                    console.log(`Cleaned up Firebase file (fallback): temp-uploads/${actualFileName}`);
+          // Fire and forget - don't await cleanup to prevent it from blocking success
+          setTimeout(async () => {
+            try {
+              const storage = getStorage();
+              for (const fileInfo of firebaseFileUrlsRef.current) {
+                if (fileInfo.storagePath) {
+                  const storageRef = ref(storage, fileInfo.storagePath);
+                  await deleteObject(storageRef);
+                  console.log(`Cleaned up Firebase file: ${fileInfo.storagePath}`);
+                } else {
+                  // Fallback to old method if storagePath is not available
+                  const fileName = fileInfo.downloadURL.split('/').pop()?.split('?')[0];
+                  if (fileName && fileName.includes('temp-uploads%2F')) {
+                    // Extract just the filename part after temp-uploads%2F
+                    const actualFileName = fileName.split('temp-uploads%2F')[1];
+                    if (actualFileName) {
+                      const storageRef = ref(storage, `temp-uploads/${actualFileName}`);
+                      await deleteObject(storageRef);
+                      console.log(`Cleaned up Firebase file (fallback): temp-uploads/${actualFileName}`);
+                    }
                   }
                 }
               }
+            } catch (cleanupError) {
+              console.error('Failed to cleanup Firebase files:', cleanupError);
+              // Cleanup failure should not affect the user experience
             }
-          } catch (cleanupError) {
-            console.error('Failed to cleanup Firebase files:', cleanupError);
-          }
+          }, 0);
         }
        } else {
         // Remove the processing message if it exists
@@ -1242,12 +1143,7 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
               {uploadedFiles.map((file) => (
                 <div key={file.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded-lg text-white/80 file-transition-in" data-file-id={file.id}>
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {pdfProcessingStatus[file.name] ? (
-                    <div className="flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 flex-shrink-0 animate-spin text-blue-400" />
-                      <span className="text-xs text-blue-400">Converting...</span>
-                    </div>
-                  ) : file.status === 'processing' ? (
+                  {file.status === 'processing' ? (
                     <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin text-amber-400" />
                   ) : file.status === 'completed' ? (
                     <div className="w-4 h-4 flex-shrink-0 rounded-full bg-emerald-500 flex items-center justify-center">
