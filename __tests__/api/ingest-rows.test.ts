@@ -127,7 +127,7 @@ describe('/api/ingest-rows', () => {
       await handler(mockReq as NextApiRequest, mockRes as NextApiResponse);
 
       expect(mockStatus).toHaveBeenCalledWith(500);
-      expect(mockJson).toHaveBeenCalledWith({ error: 'Failed to ingest rows' });
+      expect(mockJson).toHaveBeenCalledWith({ error: 'Failed to ingest data' });
     });
   });
 });

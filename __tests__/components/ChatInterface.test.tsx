@@ -19,6 +19,13 @@ jest.mock('../../app/providers/ChatProvider', () => ({
   }),
 }));
 
+// Mock the analytics module
+jest.mock('@/lib/analytics/safeAnalytics', () => ({
+  trackConversion: jest.fn(),
+  trackUserInteraction: jest.fn(),
+  trackFeatureUsage: jest.fn(),
+}));
+
 jest.mock('../../app/providers/SheetProvider', () => ({
   useSheet: () => ({
     defaultSpreadsheetId: 'test-spreadsheet-id',

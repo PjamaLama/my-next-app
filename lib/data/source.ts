@@ -256,6 +256,7 @@ export class SheetDataSource extends DataSource {
   async update(data: {
     sheetName?: string;
     updates: Array<{
+      sheetName?: string;
       cell: string;
       value: string;
       valueInputOption?: 'RAW' | 'USER_ENTERED';

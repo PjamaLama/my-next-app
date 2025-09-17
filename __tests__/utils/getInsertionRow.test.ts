@@ -1,7 +1,7 @@
-import { getInsertionRow } from '../../../lib/sheetUtils';
+import { getInsertionRow } from '@/lib/sheetUtils';
 
 // Mock the Google Sheets client
-jest.mock('../../../lib/googleSheets', () => ({
+jest.mock('@/lib/googleSheets', () => ({
   getGoogleSheetsClient: jest.fn(),
   getSheetMetadataCached: jest.fn(),
   getColumnLetter: jest.fn()

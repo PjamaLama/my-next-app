@@ -85,12 +85,12 @@ describe('ChatMessage', () => {
     it('should disable approve button when processing', () => {
       const propsWithProcessing = {
         ...defaultProps,
-        processingTables: new Set(['table-1']),
+        processingTables: new Set(['1-0']), // message.id + index
       };
 
       render(<ChatMessage {...propsWithProcessing} />);
 
-      const approveButton = screen.getByRole('button', { name: /approve/i });
+      const approveButton = screen.getByRole('button', { name: /Applying/i });
       expect(approveButton).toBeDisabled();
       expect(approveButton).toHaveTextContent('Applying...');
     });
@@ -141,7 +141,7 @@ describe('ChatMessage', () => {
               tableIndex: 0,
               title: 'Test Table',
               sheetName: 'Sheet1',
-              uid: 'table-1',
+              uid: '1-0', // message.id + index since no uid provided in table
             }),
           },
         })
@@ -151,12 +151,12 @@ describe('ChatMessage', () => {
     it('should disable reject button when processing', () => {
       const propsWithProcessing = {
         ...defaultProps,
-        processingTables: new Set(['reject-table-1']),
+        processingTables: new Set(['reject-1-0']), // reject- + tableId (message.id + index)
       };
 
       render(<ChatMessage {...propsWithProcessing} />);
 
-      const rejectButton = screen.getByRole('button', { name: /reject/i });
+      const rejectButton = screen.getByRole('button', { name: /Removing/i }); // Button shows "Removing..." when processing
       expect(rejectButton).toBeDisabled();
       expect(rejectButton).toHaveTextContent('Removing...');
     });
@@ -206,8 +206,14 @@ describe('ChatMessage', () => {
       expect(mockOnEdit).toHaveBeenCalledWith({
         headers: ['Name', 'Age'],
         rows: [
-          { column: 'Name', value: 'John' },
-          { column: 'Age', value: '25' },
+          [
+            { column: 'Name', value: 'John' },
+            { column: 'Age', value: '25' },
+          ],
+          [
+            { column: 'Name', value: 'Jane' },
+            { column: 'Age', value: '30' },
+          ]
         ],
         message: 'Test data',
         messageId: '1',

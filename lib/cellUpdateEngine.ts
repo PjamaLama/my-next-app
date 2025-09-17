@@ -1,5 +1,5 @@
 import { getGoogleSheetsClient, rateLimiter } from './googleSheets';
-import { escapeSheetName, validateCellReference, detectFormula, extractFormulaDependencies, isCellWithinBounds, ensureSheetCapacity } from './sheetUtils';
+import { escapeSheetName, validateCellReference, cellToIndices, indexToColumn, detectFormula, extractFormulaDependencies, isCellWithinBounds, ensureSheetCapacity } from './sheetUtils';
 import { createLogger } from './logger';
 
 export interface CellUpdate {
@@ -113,9 +113,8 @@ export class CellUpdateEngine {
           const withinBounds = await isCellWithinBounds(spreadsheetId, update.sheetName, update.cell);
           if (!withinBounds) {
             // Try to expand sheet capacity
-            const { row, col } = update.cell.match(/^([A-Z]+)(\d+)$/)!;
-            const targetRow = parseInt(row[2], 10);
-            const targetCol = row[1];
+            const { row: targetRow, col: targetColIndex } = cellToIndices(update.cell);
+            const targetCol = indexToColumn(targetColIndex);
 
             await ensureSheetCapacity(spreadsheetId, update.sheetName, targetRow, targetCol);
           }

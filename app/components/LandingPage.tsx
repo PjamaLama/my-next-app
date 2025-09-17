@@ -1311,8 +1311,41 @@ export default function LandingPage({ onSignIn, user }: LandingPageProps) {
               </div>
             </motion.div>
           </motion.div>
-            
-            {/* CTA button moved to prime mobile position above */}
+
+          {/* Bottom CTA Button - Duplicate for users who scroll down */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.4 }}
+            className="mt-20 mb-8"
+          >
+            <div className="text-center">
+              <motion.button
+                onClick={handleSignIn}
+                whileHover={{ scale: 1.05, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800 text-white font-black py-5 px-10 rounded-xl transition-all duration-300 shadow-2xl hover:shadow-emerald-500/50 flex items-center justify-center gap-3 mx-auto border-4 border-emerald-400/70 hover:border-emerald-300 text-lg relative group focus:outline-none focus:ring-4 focus:ring-emerald-300/50 w-full sm:w-auto max-w-xs sm:max-w-none min-h-[60px] touch-manipulation transform hover:-translate-y-1 active:translate-y-0"
+                aria-label="Convert data now with 3 free conversions"
+              >
+                <span className="text-2xl">🚀</span>
+                <span className="relative z-10 font-extrabold tracking-wide">SIGN UP & CONVERT DATA</span>
+                <span className="text-sm font-bold bg-white/20 px-2 py-1 rounded-full">FREE</span>
+              </motion.button>
+
+              {/* Free/Pro info - Same as top button */}
+              <div className="flex items-center justify-center gap-2 mt-4">
+                <div className="text-xs text-emerald-300 font-medium bg-emerald-500/20 px-3 py-1 rounded-full">
+                  🎁 3 Free/Day
+                </div>
+                <div className="text-xs text-purple-300 font-medium bg-purple-500/20 px-3 py-1 rounded-full">
+                  ⭐ Pro: Unlimited
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* CTA button moved to prime mobile position above */}
 
         </main>
 

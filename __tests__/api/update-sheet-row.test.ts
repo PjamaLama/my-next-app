@@ -2,13 +2,13 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import handler from '../../../pages/api/update-sheet-row';
 
 // Mock the dependencies
-jest.mock('../../../lib/googleSheets', () => ({
+jest.mock('@/lib/googleSheets', () => ({
   getGoogleSheetsClient: jest.fn(),
   getSheetMetadataCached: jest.fn(),
   getColumnLetter: jest.fn(),
 }));
 
-jest.mock('../../../lib/sheetUtils', () => ({
+jest.mock('@/lib/sheetUtils', () => ({
   escapeSheetName: jest.fn(),
 }));
 
