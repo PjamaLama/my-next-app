@@ -644,17 +644,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
       return;
     }
 
-    // Check if any files are still processing
-    const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
-    if (processingFiles.length > 0) {
-      console.log('⏳ [ChatInterface] Waiting for file processing to complete:', processingFiles.map(f => f.name));
-      // Show user feedback that files are still processing
-      await addMessage({
-        role: 'assistant',
-        content: `⏳ Please wait, I'm still processing ${processingFiles.length} file${processingFiles.length > 1 ? 's' : ''}. This usually takes just a few seconds...`
-      });
-      return;
-    }
 
     // Check if we have required sheet data for selected sheets
     const hasRequiredSheetData = selectedSheetNames.every(sheetName => sheetDataCache[sheetName]);
@@ -1130,28 +1119,14 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
         
         {uploadedFiles.length > 0 && (
           <div className="mb-2 space-y-1">
-            <div className="text-xs text-white/60 mb-2 flex items-center gap-2 px-1">
+            <div className="text-xs text-white/60 mb-2 px-1">
               <span>📎 Files ready to send ({uploadedFiles.length})</span>
-              {isProcessingFiles && (
-                <div className="flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Processing...</span>
-                </div>
-              )}
             </div>
             <div className="space-y-1">
               {uploadedFiles.map((file) => (
                 <div key={file.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded-lg text-white/80 file-transition-in" data-file-id={file.id}>
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {file.status === 'processing' ? (
-                    <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin text-amber-400" />
-                  ) : file.status === 'completed' ? (
-                    <div className="w-4 h-4 flex-shrink-0 rounded-full bg-emerald-500 flex items-center justify-center">
-                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  ) : file.status === 'error' ? (
+                  {file.status === 'error' ? (
                     <div className="w-4 h-4 flex-shrink-0 rounded-full bg-red-500 flex items-center justify-center">
                       <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
@@ -1161,9 +1136,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                     <FileIcon className="w-4 h-4 flex-shrink-0 text-emerald-400" />
                   )}
                     <span className="text-sm truncate font-medium">{file.name}</span>
-                    {file.status === 'processing' && (
-                      <span className="text-xs text-amber-400 ml-1">Processing...</span>
-                    )}
                     {file.status === 'error' && (
                       <span className="text-xs text-red-400 ml-1">Error</span>
                     )}
@@ -1171,7 +1143,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                   <button
                     onClick={() => removeFile(file.id)}
                     className="p-1 hover:bg-white/10 rounded-md active:scale-95 flex items-center justify-center ml-1 transition-colors"
-                    disabled={file.status === 'processing'}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1251,7 +1222,6 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                     : (userType === 'free' && isLimitReached)
                       ? true
                       : (!inputValue.trim() && uploadedFiles.length === 0) ||
-                        uploadedFiles.some(file => file.status === 'processing') ||
                         (selectedSheetNames.length > 0 &&
                          !selectedSheetNames.every(sheetName => sheetDataCache[sheetName]) &&
                          !(sheetDataLoadStartTime && (Date.now() - sheetDataLoadStartTime) > 30000))
@@ -1261,30 +1231,23 @@ export default function ChatInterface({ className = '', onShowTutorial }: ChatIn
                     ? "Upgrade to Pro for unlimited messages"
                     : isSending
                       ? "Stop chat generation"
-                      : uploadedFiles.some(file => file.status === 'processing')
-                        ? "Files are still processing..."
-                        : "Send message"
+                      : "Send message"
                 }
                 className={`w-11 h-11 rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 border min-w-[44px] min-h-[44px] ${
                   isSending
                     ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
-                    : uploadedFiles.some(file => file.status === 'processing')
-                      ? 'bg-amber-500 hover:bg-amber-600 text-white focus:ring-amber-500'
-                      : userType === 'free' && isLimitReached
-                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
-                        : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+                    : userType === 'free' && isLimitReached
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
+                      : 'bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-500'
                 } ${
                   (userType === 'free' && isLimitReached) ||
-                  (!inputValue.trim() && uploadedFiles.length === 0) ||
-                  uploadedFiles.some(file => file.status === 'processing')
+                  (!inputValue.trim() && uploadedFiles.length === 0)
                     ? 'opacity-50 cursor-not-allowed'
                     : 'hover:scale-105 cursor-pointer active:scale-95'
                 }`}
               >
                 {isSending ? (
                   <Square className="h-3.5 w-3.5" />
-                ) : uploadedFiles.some(file => file.status === 'processing') ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Send className="w-3.5 h-3.5" />
                 )}
