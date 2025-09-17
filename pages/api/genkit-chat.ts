@@ -318,10 +318,218 @@ ${basePrompt}`;
   }
 }
 
+// 🎯 SMART QUERY ANALYSIS SYSTEM
+interface QueryAnalysis {
+  requiresFullData: boolean;
+  requiresCellOperations: boolean;
+  dataLevel: 'minimal' | 'sample' | 'full' | 'selective';
+  requiredSheets: string[];
+  operationType: 'add_rows' | 'cell_update' | 'complex_calculation' | 'search_filter' | 'aggregate';
+  complexity: 'simple' | 'medium' | 'complex';
+}
+
+
+// 🎯 SUPER SIMPLE SMART DATA DETECTION
+function analyzeQueryForDataRequirements(
+  message: string | undefined,
+  sheetInfo: Record<string, any>,
+  availableSheets: string[]
+): QueryAnalysis {
+  const query = message?.toLowerCase() || '';
+
+  // Default analysis - keep existing functionality
+  const analysis: QueryAnalysis = {
+    requiresFullData: false,
+    requiresCellOperations: false,
+    dataLevel: 'sample',
+    requiredSheets: availableSheets,
+    operationType: 'add_rows',
+    complexity: 'simple'
+  };
+
+  // 🎯 ULTRA-SIMPLE GENERALIST DETECTION
+  const needsFullData = (query: string): boolean => {
+    const q = query.toLowerCase();
+
+    // Check 1: ANY bulk operation with ANY quantifier
+    const bulkWords = ['mark', 'change', 'update', 'set', 'modify', 'add', 'remove', 'delete', 'create', 'publish', 'archive', 'activate', 'deactivate'];
+    const quantifiers = ['all', 'every', 'each', 'any', 'my', 'the', 'these', 'those', 'both', 'several'];
+
+    const hasBulkIntent = bulkWords.some(word => q.includes(word)) &&
+                         quantifiers.some(quant => q.includes(quant));
+
+    // Check 2: ANY aggregation or calculation
+    const calcWords = ['total', 'sum', 'average', 'count', 'max', 'min', 'calculate', 'compute'];
+    const hasCalculation = calcWords.some(calc => q.includes(calc));
+
+    return hasBulkIntent || hasCalculation;
+  };
+
+  // Apply simple detection
+  if (needsFullData(query)) {
+    analysis.requiresFullData = true;
+    analysis.requiresCellOperations = true;
+    analysis.operationType = 'cell_update';
+    analysis.dataLevel = 'full';
+    analysis.complexity = 'complex';
+
+    console.log('🎯 [SIMPLE DETECTION] Full data required:', {
+      query: query.substring(0, 100) + '...',
+      reason: 'Bulk operation or status transition detected'
+    });
+  } else {
+    console.log('🎯 [SIMPLE DETECTION] Sample data sufficient:', {
+      query: query.substring(0, 100) + '...'
+    });
+  }
+
+  return analysis;
+}
+
+// 📊 ENHANCED SHEET DATA TRANSMISSION
+async function getEnhancedSheetData(
+  rawSheetData: Record<string, any> | undefined,
+  requiredSheets: string[],
+  dataLevel: string
+): Promise<Record<string, any>> {
+  const enhancedData: Record<string, any> = {};
+
+  if (!rawSheetData) return enhancedData;
+
+  for (const sheetName of requiredSheets) {
+    const sheetData = rawSheetData[sheetName];
+    if (!Array.isArray(sheetData) || sheetData.length === 0) continue;
+
+    const headers = sheetData[0].map((h: any) => String(h ?? ''));
+    const dataRows = sheetData.slice(1); // Skip header row
+
+    let processedData: any = { headers };
+
+    switch (dataLevel) {
+      case 'full':
+        // Send ALL data rows
+        processedData.fullRows = dataRows.map(row =>
+          Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
+        );
+        processedData.rowCount = dataRows.length;
+        processedData.columnCount = headers.length;
+        break;
+
+      case 'selective':
+        // Send data with intelligent sampling
+        const totalRows = dataRows.length;
+        if (totalRows <= 10) {
+          // Small dataset - send all
+          processedData.fullRows = dataRows.map(row =>
+            Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
+          );
+        } else {
+          // Large dataset - send strategic sample
+          const sampleSize = Math.min(20, Math.floor(totalRows * 0.3));
+          const step = Math.floor(totalRows / sampleSize);
+
+          processedData.sampleRows = [];
+          for (let i = 0; i < totalRows; i += step) {
+            if (processedData.sampleRows.length >= sampleSize) break;
+            const row = dataRows[i];
+            if (Array.isArray(row)) {
+              processedData.sampleRows.push(
+                row.map((cell: any) => String(cell ?? ''))
+              );
+            }
+          }
+
+          // Always include first and last few rows
+          processedData.firstRows = dataRows.slice(0, 3).map(row =>
+            Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
+          );
+          processedData.lastRows = dataRows.slice(-3).map(row =>
+            Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
+          );
+        }
+        break;
+
+      case 'sample':
+      default:
+        // Original behavior - send last 3 rows
+        const sampleRows = dataRows.slice(-3).map(row =>
+          Array.isArray(row) ? row.map((cell: any) => String(cell ?? '')) : []
+        );
+        if (sampleRows.length > 0) {
+          processedData.sampleRows = sampleRows;
+        }
+        break;
+    }
+
+    enhancedData[sheetName] = processedData;
+
+    console.log(`📊 [ENHANCED DATA] Processed ${sheetName}:`, {
+      dataLevel,
+      originalRows: dataRows.length,
+      sentRows: processedData.fullRows?.length || processedData.sampleRows?.length || 0,
+      hasFirstRows: !!processedData.firstRows,
+      hasLastRows: !!processedData.lastRows
+    });
+  }
+
+  return enhancedData;
+}
+
+// 🎯 SIMPLE AI INSTRUCTIONS
+function getAIDataInstructions(analysis: QueryAnalysis): string {
+  if (analysis.dataLevel === 'full' && analysis.operationType === 'cell_update') {
+    return `
+## 🎯 CELL UPDATE MODE - FULL DATA AVAILABLE
+
+IMPORTANT: You have access to ALL data in the sheet, not just samples.
+
+### 📋 Your Task:
+1. **SEARCH ALL ROWS**: Look through every single row in sheetInfo.fullRows
+2. **FIND MATCHING ITEMS**: Identify all items that match the criteria (e.g., Status = "overdue")
+3. **CALCULATE CELL COORDINATES**: Determine exact cell references (A1, B5, C10, etc.)
+4. **GENERATE CELL UPDATES**: Return specific cell coordinates and new values
+
+### 📊 Data Access:
+- sheetInfo.fullRows contains ALL rows (not just samples)
+- Headers are in sheetInfo.headers
+- Row indexing starts from 1 (A1, not A0)
+- Find the column index for the field you want to update
+
+### 🔄 Response Format:
+Return cell updates in this format:
+{
+  "cell": "B5",  // Column letter + row number
+  "value": "completed",
+  "reason": "Status was 'overdue'"
+}
+`;
+  }
+
+  if (analysis.dataLevel === 'sample') {
+    return `
+## 📊 SAMPLE DATA MODE
+
+You only have sample data (usually last 3 rows).
+- This is sufficient for simple operations
+- Cannot see all items in the sheet
+- Use available sampleRows for patterns
+`;
+  }
+
+  return `
+## 📊 STANDARD MODE
+
+Use the available data to respond to the user's request.
+- Headers indicate column structure
+- Focus on the user's specific request
+`;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
 
   try {
     // Replace the images processing with Firebase URL processing
@@ -675,13 +883,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     });
 
-    // Prepare the final payload for the N8N webhook with simplified data
+    // 🎯 Smart Query Analysis for Data Transmission
+    const queryAnalysis = analyzeQueryForDataRequirements(message, sheetInfo, context?.sheetNames || []);
+
+    // 📊 Enhanced Sheet Data Transmission Based on Query Analysis
+    let enhancedSheetInfo = sheetInfo;
+
+    if (queryAnalysis.requiresFullData || queryAnalysis.requiresCellOperations) {
+      console.log('🔄 [N8N] Query requires enhanced data transmission:', queryAnalysis);
+
+      // Send full data for sheets that need it
+      enhancedSheetInfo = await getEnhancedSheetData(
+        context?.sheetData,
+        queryAnalysis.requiredSheets,
+        queryAnalysis.dataLevel
+      );
+    }
+
+    // Prepare the final payload for the N8N webhook with smart data transmission
     const webhookData = {
       message: message || (structuredExtracts.length > 0 ? 'Please extract and display the data from the uploaded files in a structured table format.' : ''),
       // Remove raw text completely - only send structured data
       selectedSheets: context?.sheetNames || [],
-      sheetInfo: sheetInfo, // Send headers + one sample row per sheet to provide context without duplication
+      sheetInfo: enhancedSheetInfo, // Enhanced sheet data based on query analysis
       conversationHistory: conversationHistory ? conversationHistory.slice(-5) : [], // Max 5 recent messages
+      queryAnalysis: queryAnalysis, // Include analysis for N8N processing
+      // 📋 Enhanced AI Guidance for Smart Data Usage
+      aiGuidance: {
+        dataLevel: queryAnalysis.dataLevel,
+        operationType: queryAnalysis.operationType,
+        availableData: Object.keys(enhancedSheetInfo).map(sheetName => {
+          const sheetData = enhancedSheetInfo[sheetName];
+          return {
+            sheetName,
+            hasFullData: !!(sheetData as any).fullRows,
+            hasSampleData: !!(sheetData as any).sampleRows,
+            hasSelectiveData: !!((sheetData as any).firstRows || (sheetData as any).lastRows),
+            rowCount: (sheetData as any).rowCount || 0,
+            columnCount: (sheetData as any).columnCount || sheetData.headers?.length || 0
+          };
+        }),
+        instructions: getAIDataInstructions(queryAnalysis)
+      },
       // Enhanced file information for better AI processing
       fileSummary: {
         totalFiles: initialFileSummary.totalFiles,

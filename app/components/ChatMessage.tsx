@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ChatMessage as ChatMessageType } from '../providers/ChatProvider';
 import { useChat } from '../providers/ChatProvider';
-import { Volume2, ChevronDown, ChevronUp, Move, Trash2 } from 'lucide-react';
+import { Volume2, ChevronDown, ChevronUp, Move, Trash2, Target } from 'lucide-react';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -119,6 +119,34 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
     }
   };
 
+  // Helper function to detect if a table represents cell updates vs traditional data
+  const isCellUpdateTable = (table: any, rows: any[]) => {
+    const headers = table.headers || [];
+
+    // Cell update indicators in headers
+    const cellUpdateHeaders = ['cell', 'location', 'formula', 'coordinate'];
+    const hasCellHeaders = headers.some((h: string) =>
+      cellUpdateHeaders.some(keyword =>
+        h.toLowerCase().includes(keyword)
+      )
+    );
+
+    // Check for cell reference patterns in data (A1, B5, AA10, etc.)
+    const hasCellReferences = rows.some(row =>
+      row.some((cell: any) =>
+        typeof cell === 'string' && /^[A-Z]+\d+$/.test(cell.trim())
+      )
+    );
+
+    // Check meta information for cell update indicators
+    const meta = table.meta || {};
+    const isCellOperation = meta.targetStrategy === 'cell_update' ||
+                           meta.targetStrategy === 'find_and_update' ||
+                           meta.operations?.update === 1;
+
+    return hasCellHeaders || hasCellReferences || isCellOperation;
+  };
+
   return (
     <div
       className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} ${message.status === 'pending' ? 'opacity-50' : ''} transition-opacity`}
@@ -231,166 +259,230 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
                   )}
                   {(() => {
                     if (rows.length > 0) {
-                      return (
-                        <>
-                          <div className="overflow-x-auto mb-3">
-                            <div className="flex items-center gap-2 mb-2 text-xs text-emerald-300">
-                              <Move className="w-4 h-4" />
-                              <span>Drag cells to reorder values within rows</span>
+                      // Check if this is a cell update table
+                      const isCellUpdate = isCellUpdateTable(table, rows);
+
+                      if (isCellUpdate) {
+                        // 🎯 Render as Cell Updates
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-xs text-blue-300 mb-2">
+                              <Target className="w-4 h-4" />
+                              <span>Cell Updates</span>
                             </div>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="border-b border-white/20">
-                                  {Array.isArray(table.headers) && (table.headers as string[]).map((header: string, i: number) => (
-                                    <th key={i} className="text-left p-2 font-medium text-white/80">
-                                      {header}
-                                    </th>
-                                  ))}
-                                  <th className="text-center p-2 font-medium text-white/80 w-12">
-                                    Actions
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {displayRows.map((row: any[], rowIndex: number) => (
-                                  <tr key={rowIndex} className="border-b border-white/10">
-                                    {row.map((cell: any, cellIndex: number) => (
-                                      <td 
-                                        key={cellIndex} 
-                                        className="p-2 text-white/90 cursor-move hover:bg-white/10 transition-colors"
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, tableId, rowIndex, cellIndex, String(cell || ''))}
-                                        onDragOver={handleDragOver}
-                                        onDrop={(e) => handleDrop(e, tableId, rowIndex, cellIndex)}
-                                        onDragEnd={handleDragEnd}
-                                        title="Drag to move this value to another column"
-                                      >
-                                        {String(cell || '')}
-                                      </td>
-                                    ))}
-                                    <td className="p-2 text-center">
-                                      <button
-                                        onClick={() => handleDeleteRow(index, rowIndex)}
-                                        className="p-1 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
-                                        title="Delete this row"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            {hasMoreRows && (
-                              <div className="flex items-center justify-center mt-3">
-                                <button
-                                  onClick={() => toggleTableExpansion(tableId)}
-                                  className="flex items-center gap-2 px-3 py-2 text-xs font-medium bg-white/20 hover:bg-white/30 text-white rounded transition-colors"
-                                >
-                                  {isExpanded ? (
-                                    <>
-                                      <ChevronUp className="w-4 h-4" />
-                                      Collapse
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ChevronDown className="w-4 h-4" />
-                                      Show All ({rows.length} rows)
-                                    </>
-                                  )}
-                                </button>
-                              </div>
+
+                            {displayRows.map((row: any[], rowIndex: number) => {
+                              const cellRef = row[0]; // A1, B5, etc.
+                              const value = row[1];   // The value/formula
+                              const description = row[2] || '';
+
+                              return (
+                                <div key={rowIndex} className="flex items-start gap-3 p-3 bg-white/5 rounded border border-white/10">
+                                  <div className="font-mono text-emerald-300 font-semibold min-w-[50px] mt-0.5">
+                                    {cellRef}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-mono text-white/90 text-sm break-all">
+                                      {typeof value === 'string' && value.startsWith('=') ? (
+                                        <span className="text-blue-300">{value}</span>
+                                      ) : (
+                                        <span className="text-white/90">"{value}"</span>
+                                      )}
+                                    </div>
+                                    {description && (
+                                      <div className="text-xs text-white/60 mt-1">
+                                        {description}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {hasMoreRows && !isExpanded && (
+                              <button
+                                onClick={() => toggleTableExpansion(tableId)}
+                                className="flex items-center gap-1 text-xs text-white/60 hover:text-white/80 transition-colors"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                                Show {rows.length - 10} more updates
+                              </button>
+                            )}
+
+                            {hasMoreRows && isExpanded && (
+                              <button
+                                onClick={() => toggleTableExpansion(tableId)}
+                                className="flex items-center gap-1 text-xs text-white/60 hover:text-white/80 transition-colors"
+                              >
+                                <ChevronUp className="w-3 h-3" />
+                                Show less
+                              </button>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
-                            <div className="text-xs text-white/60 mr-auto">
-                              📊 Target: <span className={`font-medium ${table.meta?.sheetName ? 'text-emerald-300' : 'text-yellow-400'}`}>
-                                {table.meta?.sheetName || 'No target sheet specified'}
-                              </span>
-                              {!table.meta?.sheetName && (
-                                <span className="text-yellow-400 ml-2">⚠️ This table needs a target sheet to be approved</span>
+                        );
+                      } else {
+                        // 📊 Render as Traditional Table (original logic)
+                        return (
+                          <>
+                            <div className="overflow-x-auto mb-3">
+                              <div className="flex items-center gap-2 mb-2 text-xs text-emerald-300">
+                                <Move className="w-4 h-4" />
+                                <span>Drag cells to reorder values within rows</span>
+                              </div>
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="border-b border-white/20">
+                                    {Array.isArray(table.headers) && (table.headers as string[]).map((header: string, i: number) => (
+                                      <th key={i} className="text-left p-2 font-medium text-white/80">
+                                        {header}
+                                      </th>
+                                    ))}
+                                    <th className="text-center p-2 font-medium text-white/80 w-12">
+                                      Actions
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {displayRows.map((row: any[], rowIndex: number) => (
+                                    <tr key={rowIndex} className="border-b border-white/10">
+                                      {row.map((cell: any, cellIndex: number) => (
+                                        <td
+                                          key={cellIndex}
+                                          className="p-2 text-white/90 cursor-move hover:bg-white/10 transition-colors"
+                                          draggable
+                                          onDragStart={(e) => handleDragStart(e, tableId, rowIndex, cellIndex, String(cell || ''))}
+                                          onDragOver={handleDragOver}
+                                          onDrop={(e) => handleDrop(e, tableId, rowIndex, cellIndex)}
+                                          onDragEnd={handleDragEnd}
+                                          title="Drag to move this value to another column"
+                                        >
+                                          {String(cell || '')}
+                                        </td>
+                                      ))}
+                                      <td className="p-2 text-center">
+                                        <button
+                                          onClick={() => handleDeleteRow(index, rowIndex)}
+                                          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
+                                          title="Delete this row"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              {hasMoreRows && (
+                                <div className="flex items-center justify-center mt-3">
+                                  <button
+                                    onClick={() => toggleTableExpansion(tableId)}
+                                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium bg-white/20 hover:bg-white/30 text-white rounded transition-colors"
+                                  >
+                                    {isExpanded ? (
+                                      <>
+                                        <ChevronUp className="w-4 h-4" />
+                                        Collapse
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="w-4 h-4" />
+                                        Show All ({rows.length} rows)
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
                               )}
                             </div>
-                            <button
-                              onClick={() => {
-                                if (table.headers && rows) {
-                                  const headers = Array.isArray(table.headers) ? table.headers : [];
-                                  const normalizedRows = (rows as any[][]).map((row: any[]) =>
-                                    headers.map((h, i) => ({ column: h, value: String(row?.[i] ?? '') }))
-                                  );
-                                  onEdit({
-                                    headers,
-                                    rows: normalizedRows,
-                                    message: table.summary || `Edit data for ${table.title}`,
-                                    messageId: message.id,
+                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
+                              <div className="text-xs text-white/60 mr-auto">
+                                📊 Target: <span className={`font-medium ${table.meta?.sheetName ? 'text-emerald-300' : 'text-yellow-400'}`}>
+                                  {table.meta?.sheetName || 'No target sheet specified'}
+                                </span>
+                                {!table.meta?.sheetName && (
+                                  <span className="text-yellow-400 ml-2">⚠️ This table needs a target sheet to be approved</span>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (table.headers && rows) {
+                                    const headers = Array.isArray(table.headers) ? table.headers : [];
+                                    const normalizedRows = (rows as any[][]).map((row: any[]) =>
+                                      headers.map((h, i) => ({ column: h, value: String(row?.[i] ?? '') }))
+                                    );
+                                    onEdit({
+                                      headers,
+                                      rows: normalizedRows,
+                                      message: table.summary || `Edit data for ${table.title}`,
+                                      messageId: message.id,
+                                      tableIndex: index,
+                                      title: table.title,
+                                    });
+                                  }
+                                }}
+                                className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => {
+                                  console.log('🚀 Dispatching approve event:', {
                                     tableIndex: index,
                                     title: table.title,
+                                    hasMeta: !!table.meta,
+                                    meta: table.meta,
+                                    updateRow: table.meta?.updateRow
                                   });
-                                }
-                              }}
-                              className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => {
-                                console.log('🚀 Dispatching approve event:', {
-                                  tableIndex: index,
-                                  title: table.title,
-                                  hasMeta: !!table.meta,
-                                  meta: table.meta,
-                                  updateRow: table.meta?.updateRow
-                                });
 
-                                const event = new CustomEvent('chat:approve-update', {
-                                  detail: {
-                                    preview: {
-                                      headers: table.headers,
-                                      rows: rows,
-                                      message: table.summary || `Approve update for ${table.title}`,
-                                      messageId: message.id,
-                                      tableIndex: index,
-                                      title: table.title,
-                                      sheetName: table.meta?.sheetName || undefined,
-                                      meta: table.meta, // ✅ Include full meta object
-                                      uid: stableUid,
+                                  const event = new CustomEvent('chat:approve-update', {
+                                    detail: {
+                                      preview: {
+                                        headers: table.headers,
+                                        rows: rows,
+                                        message: table.summary || `Approve update for ${table.title}`,
+                                        messageId: message.id,
+                                        tableIndex: index,
+                                        title: table.title,
+                                        sheetName: table.meta?.sheetName || undefined,
+                                        meta: table.meta, // ✅ Include full meta object
+                                        uid: stableUid,
+                                      }
                                     }
-                                  }
-                                });
-                                window.dispatchEvent(event);
-                              }}
-                              disabled={processingTables.has(tableId) || !table.meta?.sheetName}
-                              className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
-                              title={!table.meta?.sheetName ? 'This table needs a target sheet specified to be approved' : 'Approve and submit this data to the sheet'}
-                            >
-                              {processingTables.has(tableId) ? 'Applying...' : 'Approve'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                const event = new CustomEvent('chat:reject-update', {
-                                  detail: {
-                                    preview: {
-                                      headers: table.headers,
-                                      rows: rows,
-                                      message: table.summary || `Reject update for ${table.title}`,
-                                      messageId: message.id,
-                                      tableIndex: index,
-                                      title: table.title,
-                                      sheetName: table.meta?.sheetName || undefined,
-                                      uid: stableUid,
+                                  });
+                                  window.dispatchEvent(event);
+                                }}
+                                disabled={processingTables.has(tableId) || !table.meta?.sheetName}
+                                className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                title={!table.meta?.sheetName ? 'This table needs a target sheet specified to be approved' : 'Approve and submit this data to the sheet'}
+                              >
+                                {processingTables.has(tableId) ? 'Applying...' : 'Approve'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const event = new CustomEvent('chat:reject-update', {
+                                    detail: {
+                                      preview: {
+                                        headers: table.headers,
+                                        rows: rows,
+                                        message: table.summary || `Reject update for ${table.title}`,
+                                        messageId: message.id,
+                                        tableIndex: index,
+                                        title: table.title,
+                                        sheetName: table.meta?.sheetName || undefined,
+                                        uid: stableUid,
+                                      }
                                     }
-                                  }
-                                });
-                                window.dispatchEvent(event);
-                              }}
-                              disabled={processingTables.has(`reject-${tableId}`)}
-                              className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
-                            >
-                              {processingTables.has(`reject-${tableId}`) ? 'Removing...' : 'Reject'}
-                            </button>
-                          </div>
-                        </>
-                      );
+                                  });
+                                  window.dispatchEvent(event);
+                                }}
+                                disabled={processingTables.has(`reject-${tableId}`)}
+                                className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                              >
+                                {processingTables.has(`reject-${tableId}`) ? 'Removing...' : 'Reject'}
+                              </button>
+                            </div>
+                          </>
+                        );
+                      }
                     } else {
                       return (
                         <div className="space-y-2 text-xs">

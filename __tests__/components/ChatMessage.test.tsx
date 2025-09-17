@@ -141,7 +141,7 @@ describe('ChatMessage', () => {
               tableIndex: 0,
               title: 'Test Table',
               sheetName: 'Sheet1',
-              uid: '1-0', // message.id + index since no uid provided in table
+              uid: undefined, // stableUid is undefined since no uid provided in table
             }),
           },
         })
