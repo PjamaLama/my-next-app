@@ -21,7 +21,6 @@
     "cleanup:denormalized-fields": "ts-node --project scripts/tsconfig.migrate.json scripts/migrate-users.ts --cleanup"
   },
   "dependencies": {
-    "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@genkit-ai/firebase": "^1.15.5",
     "@genkit-ai/googleai": "^1.15.5",
     "@google/generative-ai": "^0.24.1",
