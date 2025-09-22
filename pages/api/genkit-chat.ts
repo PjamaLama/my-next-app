@@ -347,22 +347,28 @@ function analyzeQueryForDataRequirements(
     complexity: 'simple'
   };
 
-  // 🎯 ULTRA-SIMPLE GENERALIST DETECTION
+  // 🎯 ULTRA-SIMPLE GENERALIST DETECTION - Be more conservative about cell updates
   const needsFullData = (query: string): boolean => {
     const q = query.toLowerCase();
 
-    // Check 1: ANY bulk operation with ANY quantifier
-    const bulkWords = ['mark', 'change', 'update', 'set', 'modify', 'add', 'remove', 'delete', 'create', 'publish', 'archive', 'activate', 'deactivate'];
-    const quantifiers = ['all', 'every', 'each', 'any', 'my', 'the', 'these', 'those', 'both', 'several'];
+    // Check 1: SPECIFIC bulk operations that clearly need cell-by-cell updates
+    // Require both a specific bulk action AND a specific quantifier pattern
+    const specificBulkWords = ['mark.*all.*as', 'change.*all.*to', 'update.*all.*status', 'set.*all.*to', 'modify.*all'];
+    const hasSpecificBulkIntent = specificBulkWords.some(pattern => {
+      const regex = new RegExp(pattern.replace(/\*/g, '.*'), 'i');
+      return regex.test(q);
+    });
 
-    const hasBulkIntent = bulkWords.some(word => q.includes(word)) &&
-                         quantifiers.some(quant => q.includes(quant));
+    // Check 2: Cell-specific operations
+    const cellSpecificWords = ['cell', 'formula', 'coordinate', 'range.*=', '=.*range'];
+    const hasCellSpecificIntent = cellSpecificWords.some(word => q.includes(word));
 
-    // Check 2: ANY aggregation or calculation
-    const calcWords = ['total', 'sum', 'average', 'count', 'max', 'min', 'calculate', 'compute'];
-    const hasCalculation = calcWords.some(calc => q.includes(calc));
+    // Check 3: Status transitions (like mark all overdue as completed)
+    const statusTransitionPattern = /(mark|change|update|set).*(overdue|pending|completed|active|inactive|cancelled).*to/i;
+    const hasStatusTransition = statusTransitionPattern.test(q);
 
-    return hasBulkIntent || hasCalculation;
+    // Only trigger cell updates for very specific patterns
+    return hasSpecificBulkIntent || hasCellSpecificIntent || hasStatusTransition;
   };
 
   // Apply simple detection

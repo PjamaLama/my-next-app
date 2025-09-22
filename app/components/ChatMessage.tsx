@@ -120,31 +120,31 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({
   };
 
   // Helper function to detect if a table represents cell updates vs traditional data
+  // Only show as cell updates when we're VERY sure it's not regular tabular data
   const isCellUpdateTable = (table: any, rows: any[]) => {
-    const headers = table.headers || [];
+    // Be very restrictive - only show cell updates if we have STRONG evidence
 
-    // Cell update indicators in headers
-    const cellUpdateHeaders = ['cell', 'location', 'formula', 'coordinate'];
-    const hasCellHeaders = headers.some((h: string) =>
-      cellUpdateHeaders.some(keyword =>
-        h.toLowerCase().includes(keyword)
-      )
-    );
-
-    // Check for cell reference patterns in data (A1, B5, AA10, etc.)
-    const hasCellReferences = rows.some(row =>
-      row.some((cell: any) =>
-        typeof cell === 'string' && /^[A-Z]+\d+$/.test(cell.trim())
-      )
-    );
-
-    // Check meta information for cell update indicators
+    // Check meta information for explicit cell update indicators (most reliable)
     const meta = table.meta || {};
-    const isCellOperation = meta.targetStrategy === 'cell_update' ||
-                           meta.targetStrategy === 'find_and_update' ||
-                           meta.operations?.update === 1;
+    const isExplicitCellOperation = meta.targetStrategy === 'cell_update' ||
+                                   meta.targetStrategy === 'find_and_update';
 
-    return hasCellHeaders || hasCellReferences || isCellOperation;
+    // Only if meta explicitly says it's cell updates AND we have exactly 2-3 columns (cell + value + optional description)
+    const headers = table.headers || [];
+    const hasMinimalColumns = headers.length >= 2 && headers.length <= 3;
+
+    // AND the first column header suggests it's a cell reference
+    const firstHeader = headers[0]?.toLowerCase() || '';
+    const hasCellHeader = firstHeader.includes('cell') || firstHeader.includes('location') || firstHeader.includes('coordinate');
+
+    // AND most rows in first column look like cell references (A1, B5, AA10 format)
+    const cellReferenceRatio = rows.length > 0 ?
+      rows.filter(row =>
+        row[0] && typeof row[0] === 'string' && /^[A-Z]+\d+$/.test(row[0].trim())
+      ).length / rows.length : 0;
+
+    // Require strong evidence: explicit meta + cell headers + high ratio of cell references
+    return isExplicitCellOperation && hasCellHeader && cellReferenceRatio > 0.8;
   };
 
   return (
