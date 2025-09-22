@@ -7,7 +7,14 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://www.sheetyai.com',
     cleartext: false
-  }
+  },
+  plugins: {
+    GoogleAuth: {
+      scopes: ['profile', 'email'],
+      serverClientId: 'YOUR_GOOGLE_CLIENT_ID_HERE',
+      forceCodeForRefreshToken: true,
+    },
+  },
 };
 
 export default config;

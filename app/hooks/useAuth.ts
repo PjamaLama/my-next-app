@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { getFirebaseAuth } from '../providers/FirebaseProvider';
 import { trackConversion, trackUserInteraction } from '@/lib/analytics/safeAnalytics';
+import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
 interface UseAuthReturn {
   user: User | null;
@@ -226,6 +228,39 @@ export const useAuth = (): UseAuthReturn => {
     try {
       console.log('🔐 Starting Google sign-in process...');
       setAuthError(null);
+
+      // Use Capacitor native Google Auth for mobile apps
+      if (Capacitor.isNativePlatform()) {
+        console.log('🔐 Using Capacitor native Google Auth...');
+        try {
+          const googleUser = await GoogleAuth.signIn();
+          console.log('🔐 Native Google sign-in successful:', googleUser);
+
+          // Create Firebase credential from Google auth result
+          const credential = GoogleAuthProvider.credential(
+            googleUser.authentication.idToken,
+            googleUser.authentication.accessToken
+          );
+
+          // Sign in to Firebase with the credential
+          const result = await signInWithCredential(auth, credential);
+          console.log('🔐 Firebase sign-in with credential successful:', result.user.email);
+
+          // Mark as signed in for future seamless auth
+          try {
+            localStorage.setItem('hasSignedInBefore', 'true');
+          } catch {}
+
+          console.log('🔐 Native Google sign-in process completed successfully');
+          return;
+        } catch (nativeError: any) {
+          console.error('🔐 Native Google auth failed, falling back to web auth:', nativeError);
+          // Fall through to web auth
+        }
+      }
+
+      // Web-based Firebase auth for browsers and fallback
+      console.log('🔐 Using Firebase web Google Auth...');
       const provider = new GoogleAuthProvider();
 
       // Industry standard: Use appropriate prompt based on user state
