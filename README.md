@@ -1,5 +1,7 @@
 # Sheety AI - Next.js Application
 
+Demo site : https://www.sheetyai.com/
+
 A Next.js application for AI-powered Google Sheets automation and chat-driven updates.
 
 ## Features
